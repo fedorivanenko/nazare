@@ -1,12 +1,14 @@
 {% comment %}
   Section CSS loader.
-  Keep entries in sync with section styles in /styles.
+  Keep entries in sync with registry css.load policy.
 {% endcomment %}
 
 {% case section_name %}
   {% when 's-announcement' %}
+    <link rel="preload" href="{{ 's-announcement.css' | asset_url }}" as="style">
     {{ 's-announcement.css' | asset_url | stylesheet_tag }}
   {% when 's-hero' %}
+    <link rel="preload" href="{{ 's-hero.css' | asset_url }}" as="style">
     {{ 's-hero.css' | asset_url | stylesheet_tag }}
   {% when 's-social-video-gallery' %}
     {{ 's-social-video-gallery.css' | asset_url | stylesheet_tag }}

@@ -25,6 +25,7 @@ components:
       mode: generated
       entry: styles/base.css
       output: assets/base.css
+      load: normal
       sources:
         - layout/**/*.liquid
         - templates/**/*.json
@@ -53,6 +54,7 @@ components:
       mode: generated
       entry: styles/s-announcement.css
       output: assets/s-announcement.css
+      load: preload
       sources:
         - sections/s-announcement.liquid
     files:
@@ -67,6 +69,7 @@ components:
       mode: generated
       entry: styles/s-hero.css
       output: assets/s-hero.css
+      load: preload
       sources:
         - sections/s-hero.liquid
         - snippets/c-button.liquid
@@ -84,6 +87,7 @@ components:
       mode: generated
       entry: styles/s-social-video-gallery.css
       output: assets/s-social-video-gallery.css
+      load: normal
       sources:
         - sections/s-social-video-gallery.liquid
         - snippets/c-button.liquid

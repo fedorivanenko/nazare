@@ -211,6 +211,7 @@ function lockEntry(component) {
 						mode: component.css.mode,
 						entry: component.css.entry,
 						output: component.css.output,
+						...(component.css.load ? { load: component.css.load } : {}),
 					},
 				}
 			: {}),

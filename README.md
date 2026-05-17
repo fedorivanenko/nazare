@@ -25,6 +25,11 @@ No `assets/` here. Shopify `assets/` are compiled theme output.
 
 No `styles/` here by default. Section CSS entry files are generated in theme from manifest `css.sources`.
 
+CSS load policy lives in manifest `css.load`:
+
+- `preload` adds `<link rel="preload" as="style">` plus normal stylesheet.
+- `normal` uses normal stylesheet only.
+
 ## Manifest
 
 Each component declares files it owns and optional dependencies. Tooling components may also declare package scripts and dev dependencies.
@@ -59,6 +64,7 @@ components:
       mode: generated
       entry: styles/s-hero.css
       output: assets/s-hero.css
+      load: preload
       sources:
         - sections/s-hero.liquid
         - snippets/c-button.liquid
