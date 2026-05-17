@@ -127,6 +127,12 @@ function cssEntryContent(component) {
 async function confirmOverwrite(rl, filePath) {
 	if (yes) return true;
 
+	if (!input.isTTY) {
+		throw new Error(
+			`Refusing to overwrite ${filePath} in non-interactive mode. Re-run with --yes to overwrite.`,
+		);
+	}
+
 	const answer = await rl.question(`Overwrite ${filePath}? [y/N] `);
 	return (
 		answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes"
@@ -189,34 +195,42 @@ function mergePackageJson(packageJson, components, resolvedNames) {
 	return `${JSON.stringify(nextPackageJson, null, "\t")}\n`;
 }
 
-function lockContent(config, manifest, components, resolvedNames) {
+function lockEntry(component) {
+	return {
+		kind: component.kind,
+		...(component.dependencies ? { dependencies: component.dependencies } : {}),
+		...(component.package ? { package: component.package } : {}),
+		...(component.css
+			? {
+					css: {
+						mode: component.css.mode,
+						entry: component.css.entry,
+						output: component.css.output,
+					},
+				}
+			: {}),
+	};
+}
+
+function lockContent(
+	config,
+	manifest,
+	components,
+	resolvedNames,
+	existingLock,
+) {
+	const nextComponents = {
+		...(existingLock?.components ?? {}),
+	};
+
+	for (const name of resolvedNames) {
+		nextComponents[name] = lockEntry(components[name]);
+	}
+
 	const lock = {
 		version: manifest.version ?? 1,
 		registry: config.registry,
-		components: Object.fromEntries(
-			resolvedNames.map((name) => {
-				const component = components[name];
-				return [
-					name,
-					{
-						kind: component.kind,
-						...(component.dependencies
-							? { dependencies: component.dependencies }
-							: {}),
-						...(component.package ? { package: component.package } : {}),
-						...(component.css
-							? {
-									css: {
-										mode: component.css.mode,
-										entry: component.css.entry,
-										output: component.css.output,
-									},
-								}
-							: {}),
-					},
-				];
-			}),
-		),
+		components: nextComponents,
 	};
 
 	return YAML.stringify(lock);
@@ -260,6 +274,9 @@ async function main() {
 	const resolvedNames = resolveComponents(components, componentNames);
 	console.log(`Resolved: ${resolvedNames.join(", ")}`);
 
+	const existingLock = fsSync.existsSync(lockPath)
+		? await readYaml(lockPath)
+		: null;
 	const rl = readline.createInterface({ input, output });
 	const writes = [];
 
@@ -309,7 +326,7 @@ async function main() {
 			rl,
 			writes,
 			lockPath,
-			lockContent(config, manifest, components, resolvedNames),
+			lockContent(config, manifest, components, resolvedNames, existingLock),
 		);
 	} finally {
 		rl.close();
