@@ -7,6 +7,7 @@
     {{ 'critical.css' | asset_url | stylesheet_tag: preload: true }}
     {{ 'base.css' | asset_url | preload_tag: as: 'style' }}
     {{ 'base.css' | asset_url | stylesheet_tag }}
+    {% render 'section-css-preloads' %}
 
     {{ 'theme.js' | asset_url | preload_tag: as: 'script' }}
     <script type="module" src="{{ 'theme.js' | asset_url }}"></script>

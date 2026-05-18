@@ -1,6 +1,6 @@
 {
 	"name": "nazare-registry",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"private": true,
 	"type": "module",
 	"bin": {
@@ -9,7 +9,7 @@
 	"nazare": {
 		"updateNotice": "Core tooling changed. Run: nazare pull core --yes in each theme.",
 		"componentUpdates": {
-			"core": "0.1.4"
+			"core": "0.1.5"
 		}
 	}
 }

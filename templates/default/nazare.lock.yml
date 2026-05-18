@@ -6,7 +6,7 @@ registry:
 components:
   core:
     kind: core
-    version: 0.1.4
+    version: 0.1.5
     js:
       imports:
         - ./core.js
