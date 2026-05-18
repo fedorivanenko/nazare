@@ -15,8 +15,8 @@ Empty Nazare Shopify theme template built with Liquid, Tailwind CSS v4, Vite, Re
 ```bash
 pnpm dev            # node tooling/dev.mjs
 pnpm dev:protected  # node tooling/dev.mjs --protected
-pnpm registry list  # list registry components
-pnpm registry pull  # pull registry components
+nazare list         # list registry components
+nazare pull         # pull registry components
 pnpm watch          # vite build --watch
 pnpm build          # vite build
 ```
@@ -79,9 +79,9 @@ Generated CSS entries use Tailwind `@source` directives. Vite scans `styles/*.cs
 Pull components:
 
 ```bash
-pnpm registry list
-pnpm registry pull s-hero
-pnpm registry pull s-social-video-gallery --yes
+nazare list
+nazare pull s-hero
+nazare pull s-social-video-gallery --yes
 ```
 
 The registry CLI checks existing files and asks before overriding changed files. Use `--dry-run` to preview writes.

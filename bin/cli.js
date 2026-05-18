@@ -3,7 +3,6 @@
 import { spawn } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
-import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,6 +17,8 @@ const help = `nazare
 
 Usage:
   nazare init [name]       Create a Nazare Shopify theme from nazare-registry
+  nazare list              List registry components
+  nazare pull <component>  Pull registry components into current theme
   nazare registry list     List registry components
   nazare registry pull     Pull registry components into current theme
   nazare self install      Install nazare CLI
@@ -53,6 +54,11 @@ async function main() {
 
 	if (command === "registry") {
 		await registry(args.slice(1));
+		return;
+	}
+
+	if (command === "list" || command === "pull") {
+		await registry(args);
 		return;
 	}
 
@@ -200,21 +206,24 @@ async function registry(args) {
 		flags.has("-h")
 	) {
 		console.log(`Usage:
+  nazare list
+  nazare pull <component...> [--yes] [--dry-run]
+
+Aliases:
   nazare registry list
-  nazare registry pull <component...> [--yes] [--dry-run]
+  nazare registry pull <component...>
 
 Examples:
-  nazare registry list
-  nazare registry pull s-hero
-  nazare registry pull core s-social-video-gallery --yes`);
+  nazare list
+  nazare pull s-hero
+  nazare pull core s-social-video-gallery --yes`);
 		return;
 	}
 
-	const YAML = loadThemeYaml(root);
 	const configPath = path.join(root, "nazare.config.yml");
 	const lockPath = path.join(root, "nazare.lock.yml");
 	const sectionCssPath = path.join(root, "snippets", "section-css.liquid");
-	const config = YAML.parse(await fs.readFile(configPath, "utf8"));
+	const config = parseYaml(await fs.readFile(configPath, "utf8"));
 
 	if (!config.registry?.repo || !config.registry?.manifest) {
 		throw new Error(
@@ -223,7 +232,7 @@ Examples:
 	}
 
 	const registryDir = await cloneRegistry(config);
-	const manifest = YAML.parse(
+	const manifest = parseYaml(
 		await fs.readFile(path.join(registryDir, config.registry.manifest), "utf8"),
 	);
 	const components = manifest.components ?? {};
@@ -238,15 +247,13 @@ Examples:
 	if (command !== "pull")
 		throw new Error(`Unknown registry command: ${command}`);
 	if (componentNames.length === 0)
-		throw new Error(
-			"No components given. Example: nazare registry pull s-hero",
-		);
+		throw new Error("No components given. Example: nazare pull s-hero");
 
 	const resolvedNames = resolveComponents(components, componentNames);
 	console.log(`Resolved: ${resolvedNames.join(", ")}`);
 
 	const existingLock = (await pathExists(lockPath))
-		? YAML.parse(await fs.readFile(lockPath, "utf8"))
+		? parseYaml(await fs.readFile(lockPath, "utf8"))
 		: null;
 	const nextLock = buildLock(
 		config,
@@ -294,20 +301,10 @@ Examples:
 		root,
 		yes,
 	);
-	await stageWrite(writes, lockPath, YAML.stringify(nextLock), root, yes);
+	await stageWrite(writes, lockPath, stringifyYaml(nextLock), root, yes);
 	await writeAll(writes, dryRun);
 
 	if (dryRun) console.log("Dry run only. No files changed.");
-}
-
-function loadThemeYaml(root) {
-	try {
-		return createRequire(path.join(root, "package.json"))("yaml");
-	} catch {
-		throw new Error(
-			"Missing theme dependency: yaml. Run pnpm install, then retry.",
-		);
-	}
 }
 
 async function cloneRegistry(config) {
@@ -438,6 +435,152 @@ function buildLock(config, manifest, components, resolvedNames, existingLock) {
 		registry: config.registry,
 		components: nextComponents,
 	};
+}
+
+function parseYaml(source) {
+	const root = {};
+	const stack = [{ indent: -1, value: root }];
+	const lines = source.replaceAll("\t", "  ").split(/\r?\n/);
+
+	for (const rawLine of lines) {
+		const withoutComment = stripYamlComment(rawLine);
+		if (!withoutComment.trim()) continue;
+
+		const indent = withoutComment.match(/^ */)[0].length;
+		const text = withoutComment.trim();
+		while (stack.at(-1).indent >= indent) stack.pop();
+		const parent = stack.at(-1).value;
+
+		if (text.startsWith("- ")) {
+			if (!Array.isArray(parent))
+				throw new Error(`Invalid YAML list item: ${rawLine}`);
+			const itemText = text.slice(2).trim();
+			if (itemText.includes(":")) {
+				const item = {};
+				parent.push(item);
+				const [key, value] = splitYamlPair(itemText);
+				item[unquoteYaml(key)] = parseYamlScalar(value);
+				stack.push({ indent, value: item });
+			} else {
+				parent.push(parseYamlScalar(itemText));
+			}
+			continue;
+		}
+
+		const [key, rawValue] = splitYamlPair(text);
+		const name = unquoteYaml(key);
+		if (rawValue === "") {
+			const next = nextYamlContainer(lines, rawLine);
+			parent[name] = next;
+			stack.push({ indent, value: next });
+		} else {
+			parent[name] = parseYamlScalar(rawValue);
+		}
+	}
+
+	return root;
+}
+
+function nextYamlContainer(lines, currentLine) {
+	const currentIndex = lines.indexOf(currentLine);
+	const currentIndent = currentLine.match(/^ */)[0].length;
+	for (const line of lines.slice(currentIndex + 1)) {
+		const stripped = stripYamlComment(line);
+		if (!stripped.trim()) continue;
+		const indent = stripped.match(/^ */)[0].length;
+		if (indent <= currentIndent) return {};
+		return stripped.trim().startsWith("- ") ? [] : {};
+	}
+	return {};
+}
+
+function stripYamlComment(line) {
+	let quote = null;
+	for (let index = 0; index < line.length; index += 1) {
+		const char = line[index];
+		if ((char === '"' || char === "'") && line[index - 1] !== "\\") {
+			quote = quote === char ? null : (quote ?? char);
+		}
+		if (char === "#" && !quote && (index === 0 || /\s/.test(line[index - 1]))) {
+			return line.slice(0, index);
+		}
+	}
+	return line;
+}
+
+function splitYamlPair(text) {
+	let quote = null;
+	for (let index = 0; index < text.length; index += 1) {
+		const char = text[index];
+		if ((char === '"' || char === "'") && text[index - 1] !== "\\") {
+			quote = quote === char ? null : (quote ?? char);
+		}
+		if (char === ":" && !quote)
+			return [text.slice(0, index).trim(), text.slice(index + 1).trim()];
+	}
+	throw new Error(`Invalid YAML mapping: ${text}`);
+}
+
+function parseYamlScalar(value) {
+	if (value === "") return "";
+	if (value === "true") return true;
+	if (value === "false") return false;
+	if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
+	return unquoteYaml(value);
+}
+
+function unquoteYaml(value) {
+	if (
+		(value.startsWith('"') && value.endsWith('"')) ||
+		(value.startsWith("'") && value.endsWith("'"))
+	) {
+		return value.slice(1, -1);
+	}
+	return value;
+}
+
+function stringifyYaml(value, indent = 0) {
+	const lines = [];
+	for (const [key, child] of Object.entries(value)) {
+		lines.push(...stringifyYamlEntry(key, child, indent));
+	}
+	return `${lines.join("\n")}\n`;
+}
+
+function stringifyYamlEntry(key, value, indent) {
+	const pad = " ".repeat(indent);
+	if (Array.isArray(value)) {
+		const lines = [`${pad}${key}:`];
+		for (const item of value) {
+			if (isPlainObject(item)) {
+				const entries = Object.entries(item);
+				const [firstKey, firstValue] = entries[0];
+				lines.push(`${pad}  - ${firstKey}: ${formatYamlScalar(firstValue)}`);
+				for (const [itemKey, itemValue] of entries.slice(1)) {
+					lines.push(...stringifyYamlEntry(itemKey, itemValue, indent + 4));
+				}
+			} else {
+				lines.push(`${pad}  - ${formatYamlScalar(item)}`);
+			}
+		}
+		return lines;
+	}
+	if (isPlainObject(value))
+		return [
+			`${pad}${key}:`,
+			...Object.entries(value).flatMap(([childKey, childValue]) =>
+				stringifyYamlEntry(childKey, childValue, indent + 2),
+			),
+		];
+	return [`${pad}${key}: ${formatYamlScalar(value)}`];
+}
+
+function isPlainObject(value) {
+	return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function formatYamlScalar(value) {
+	return String(value);
 }
 
 async function readJson(filePath) {

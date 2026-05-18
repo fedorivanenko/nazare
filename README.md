@@ -20,6 +20,13 @@ pnpm install
 pnpm dev
 ```
 
+List and pull components:
+
+```bash
+nazare list
+nazare pull s-hero
+```
+
 Update CLI:
 
 ```bash
