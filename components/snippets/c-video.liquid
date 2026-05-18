@@ -8,6 +8,7 @@
   @param {string} [video_class] - Video classes
   @param {boolean} [autoplay] - Autoplay video. Defaults to true.
   @param {boolean} [show_controls] - Show custom play/pause and mute/unmute controls. Defaults to true.
+  @param {string} [video_key] - Shared key for duplicated video instances. Defaults to video id.
 {% enddoc %}
 
 {% liquid
@@ -16,6 +17,7 @@
   assign player_class = video_class | default: 'absolute inset-0 h-full w-full object-cover'
   assign video_autoplay = true
   assign video_show_controls = true
+  assign video_shared_key = video_key | default: video.id
 
   if autoplay == false
     assign video_autoplay = false
@@ -27,7 +29,7 @@
 %}
 
 {% if video != blank or poster_image != blank %}
-  <div class="{{ wrapper_class }}" data-video data-video-autoplay="{{ video_autoplay }}">
+  <div class="{{ wrapper_class }}" data-video data-video-autoplay="{{ video_autoplay }}" data-video-key="{{ video_shared_key }}">
     {% if poster_image != blank %}
       {{ poster_image | image_url: width: 2400 | image_tag: class: poster_class, loading: 'eager', fetchpriority: 'high', widths: '750, 1100, 1500, 2000, 2400', sizes: '100vw' }}
     {% endif %}

@@ -1,25 +1,70 @@
 const createVideoStore = () => {
-	const roots = new Set();
+	const entries = new Map();
+	let activeUnmutedKey = null;
+
+	const getKey = (root) => root.dataset.videoKey || "";
+
+	const syncAll = () => {
+		for (const entry of entries.values()) {
+			entry.syncMuteState();
+		}
+	};
+
+	const muteEntry = (entry) => {
+		entry.video.muted = true;
+	};
 
 	return {
-		register(root) {
-			roots.add(root);
+		register(root, entry) {
+			entries.set(root, entry);
 		},
 		unregister(root) {
-			roots.delete(root);
+			const key = getKey(root);
+			entries.delete(root);
+
+			if (activeUnmutedKey === key) {
+				activeUnmutedKey = null;
+				syncAll();
+			}
 		},
-		muteOthers(activeRoot) {
-			for (const root of roots) {
-				if (root === activeRoot) {
+		isLogicallyMuted(root) {
+			return activeUnmutedKey !== getKey(root);
+		},
+		muteKey(key) {
+			for (const entry of entries.values()) {
+				if (entry.key === key) {
+					muteEntry(entry);
+				}
+			}
+
+			if (activeUnmutedKey === key) {
+				activeUnmutedKey = null;
+			}
+
+			syncAll();
+		},
+		unmute(root) {
+			const activeEntry = entries.get(root);
+
+			if (!activeEntry) {
+				return;
+			}
+
+			activeUnmutedKey = activeEntry.key;
+
+			for (const [entryRoot, entry] of entries) {
+				if (entryRoot === root) {
 					continue;
 				}
 
-				const video = root.querySelector("video");
-
-				if (video) {
-					video.muted = true;
-				}
+				muteEntry(entry);
 			}
+
+			activeEntry.video.muted = false;
+			syncAll();
+		},
+		muteOthers(activeRoot) {
+			this.unmute(activeRoot);
 		},
 	};
 };
@@ -46,13 +91,13 @@ const initVideo = (root) => {
 	const unmuteIcon = root.querySelector("[data-video-unmute-icon]");
 	const playLabel = root.querySelector("[data-video-play-label]");
 	const muteLabel = root.querySelector("[data-video-mute-label]");
+	const store = getVideoStore();
 
 	if (!video) {
 		return;
 	}
 
 	initializedRoots.add(root);
-	getVideoStore().register(root);
 
 	const syncPlayState = () => {
 		if (!playToggle) {
@@ -78,18 +123,25 @@ const initVideo = (root) => {
 			return;
 		}
 
+		const isMuted = store.isLogicallyMuted(root);
 		muteToggle.setAttribute(
 			"aria-label",
-			video.muted ? "Unmute video" : "Mute video",
+			isMuted ? "Unmute video" : "Mute video",
 		);
-		muteToggle.setAttribute("aria-pressed", String(!video.muted));
-		muteIcon?.classList.toggle("hidden", video.muted);
-		unmuteIcon?.classList.toggle("hidden", !video.muted);
+		muteToggle.setAttribute("aria-pressed", String(!isMuted));
+		muteIcon?.classList.toggle("hidden", isMuted);
+		unmuteIcon?.classList.toggle("hidden", !isMuted);
 
 		if (muteLabel) {
-			muteLabel.textContent = video.muted ? "Unmute video" : "Mute video";
+			muteLabel.textContent = isMuted ? "Unmute video" : "Mute video";
 		}
 	};
+
+	store.register(root, {
+		key: root.dataset.videoKey || "",
+		video,
+		syncMuteState,
+	});
 
 	playToggle?.addEventListener("click", () => {
 		if (video.paused || video.ended) {
@@ -101,13 +153,12 @@ const initVideo = (root) => {
 	});
 
 	muteToggle?.addEventListener("click", () => {
-		video.muted = !video.muted;
-
-		if (!video.muted) {
-			getVideoStore().muteOthers(root);
+		if (store.isLogicallyMuted(root)) {
+			store.unmute(root);
+			return;
 		}
 
-		syncMuteState();
+		store.muteKey(root.dataset.videoKey || "");
 	});
 
 	video.addEventListener("play", syncPlayState);
@@ -115,7 +166,8 @@ const initVideo = (root) => {
 	video.addEventListener("ended", syncPlayState);
 	video.addEventListener("volumechange", () => {
 		if (!video.muted) {
-			getVideoStore().muteOthers(root);
+			store.unmute(root);
+			return;
 		}
 
 		syncMuteState();

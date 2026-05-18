@@ -14,7 +14,11 @@
   assign marquee_track_class = track_class | default: 'flex gap-4 will-change-transform'
   assign marquee_item_class = item_class | default: 'aspect-[4/5] w-72 shrink-0 select-none overflow-hidden rounded-3xl bg-slate-100 sm:w-80 lg:w-88'
   assign marquee_speed = speed | default: 35
-  assign marquee_stop_on_hover = stop_on_hover | default: true
+  assign marquee_stop_on_hover = true
+
+  if stop_on_hover == false
+    assign marquee_stop_on_hover = false
+  endif
 %}
 
 <div
