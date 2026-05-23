@@ -55,10 +55,31 @@ registry:
 
 Fields:
 
-- `name`: required string
-- `repo`: required string identifying registry origin
-- `ref`: required string for branch, tag, or commit used for resolution
+- `name`: required non-empty string
+- `repo`: required non-empty string identifying registry origin
+- `ref`: required non-empty string for branch, tag, or commit used for resolution
 - `manifest`: required string path to manifest inside registry repo
+
+V1 supports public GitHub registry repos.
+
+Accepted `repo` forms:
+
+- `https://github.com/<owner>/<repo>.git`
+- `https://github.com/<owner>/<repo>`
+- `git@github.com:<owner>/<repo>.git`
+- `github.com/<owner>/<repo>`
+
+The CLI may normalize `repo` internally to an implementation-specific fetch URL.
+
+`ref` has no version or semver range semantics. It is only a Git branch, tag, or commit SHA selector.
+
+`manifest` path rules:
+
+- must be relative path inside registry repo
+- must use forward slashes
+- must not be absolute path
+- must not contain `..`
+- must remain inside registry repo after normalization
 
 ## Semantics
 
@@ -103,6 +124,9 @@ CLI must fail validation for:
 - missing `registry.repo`
 - missing `registry.ref`
 - missing `registry.manifest`
+- empty registry field values
+- unsupported `registry.repo` format
+- unsafe `registry.manifest` path
 - invalid field types
 
 ## Ownership boundary

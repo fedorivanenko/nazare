@@ -32,11 +32,17 @@ Fixtures should be copied into temporary directories per test to avoid cross-tes
 Required fixture cases:
 
 - valid minimal manifest
+- valid manifest with `components: {}`
 - missing `theme` block
+- theme present but missing `source`
+- invalid theme version
+- unsafe theme `from` path
+- unsafe theme `to` path
+- duplicate theme destination path
 - missing requested component
 - invalid component version
 - dependency cycle
-- unsafe `to` path
+- unsafe component `to` path
 - forbidden component destination
 - missing declared source file
 
@@ -51,17 +57,20 @@ Required fixture cases:
 ### `theme pull`
 
 - copies missing theme files
-- prompts on existing files
+- prompts on existing files in interactive TTY mode
+- fails before writes on conflicts in non-interactive mode without `--yes`
 - `--yes` overwrites all conflicts
 - all skipped results in success and unchanged lockfile
 - copied file updates lockfile theme metadata
 - theme version is recorded in lockfile
+- theme source is recorded in lockfile
 
 ### `add`
 
 - installs component files
 - installs transitive dependencies
-- prompts on file conflicts for direct component files and dependency files
+- prompts on file conflicts for direct component files and dependency files in interactive TTY mode
+- fails before writes on conflicts in non-interactive mode without `--yes`
 - `--yes` overwrites all conflicts
 - skipped files warn about incomplete local state
 - lockfile updates only for components with written files
@@ -79,6 +88,22 @@ Required fixture cases:
 
 - outputs all installed tracked items
 - shows installed version and origin version for each item
+- uses `nazare.config.yml` registry origin when config and lockfile registry provenance differ
+- warns when config and lockfile registry provenance differ
+
+### JSON output
+
+- `list --json` outputs `{ "items": [...] }`
+- `installed --json` outputs theme first when present, then components by name
+- `outdated --json` outputs theme first when present, then components by name
+- failing command with `--json` outputs `{ "error": { "code", "message" } }`
+
+### Exit codes
+
+- validation errors exit `2`
+- registry fetch or origin resolution errors exit `3`
+- user-canceled or unresolved conflict errors exit `4`
+- skipped conflicts resolved by user choice still exit `0`
 
 ## Plugin fixture cases
 
@@ -104,9 +129,10 @@ Required fixture cases:
 - no directive defaults to `normal`
 - `nazare:css preload`
 - duplicate directive error
-- directive after first real HTML element error
+- directive after first rendered output error
 - directive inside snippet file error
 - invalid directive value error
+- missing section CSS bridge render warning
 
 ### Generated outputs
 
@@ -132,6 +158,10 @@ Required runtime tests:
 - isolates module import failure from other mounts
 - isolates `init(node)` failure from other mounts
 - isolates `destroy(node)` failure from other cleanup
+- clears mounted state even when `destroy(node)` throws
+- does not mark nodes mounted when import fails
+- does not mark nodes mounted when `init(node)` throws
+- does not call `destroy(node)` for nodes that were not successfully initialized
 - handles `shopify:section:load`
 - handles `shopify:section:unload`
 

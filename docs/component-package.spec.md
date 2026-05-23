@@ -15,7 +15,8 @@ A component may include:
 - `scripts/sections/*.js`
 - `scripts/snippets/*.js`
 - `assets/*`
-- optional registry-side docs or examples metadata files
+
+V1 does not include component docs or examples as package file categories.
 
 ## Manifest declaration
 

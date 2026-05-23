@@ -11,7 +11,7 @@ It exists to support:
 - installed component listing
 - installed theme version tracking
 - theme and component version change checks
-- explicit overwrite flows
+- explicit overwrite choices during file conflicts
 - dependency provenance
 
 It does not define build graph truth.
@@ -130,7 +130,9 @@ Fields:
 - `ref`: required string for branch, tag, or commit used for resolution
 - `manifest`: required string path to manifest inside registry repo
 
-This block records provenance for future pull/update and version change checks.
+This block records installed provenance from the time files were copied.
+
+`nazare.config.yml` remains source of truth for future registry origin resolution. If config registry fields later differ from this lockfile block, CLI commands use config values and warn that installed provenance differs from current configured origin.
 
 ### `theme`
 
@@ -150,7 +152,7 @@ theme:
 
 Fields:
 
-- `version`: required string if `theme` is present
+- `version`: required exact SemVer 2.0.0 string if `theme` is present
 - `source`: required string if `theme` is present
 - `installedAt`: required RFC 3339 timestamp if `theme` is present
 - `files`: required non-empty array if `theme` is present
@@ -161,6 +163,12 @@ Each theme file entry:
 
 - `path`: required relative path in theme repo
 - `source`: required path in registry repo
+
+Rules:
+
+- `path` must stay inside theme root
+- `source` must be path inside registry repo
+- duplicate `path` entries within `theme.files` are invalid
 
 ### `components`
 
@@ -197,6 +205,8 @@ Allowed values:
 ### `version`
 
 Required string.
+
+Must be an exact SemVer 2.0.0 version string: `MAJOR.MINOR.PATCH` with optional prerelease and build metadata. Ranges, tags, prefixes, and loose versions are invalid.
 
 Component version copied into theme from registry origin.
 
@@ -248,11 +258,13 @@ At `init` time, the lockfile contains registry provenance and an empty `componen
 
 `init` does not care whether target directory is empty. It only checks whether `nazare.lock.yml` already exists at target location.
 
+Registry fields in the lockfile are provenance, not command input, after initialization.
+
 It is used for:
 
 - `nazare installed`
 - `nazare outdated`
-- explicit overwrite/update flows
+- explicit overwrite choices during file conflicts
 
 For v1, `nazare outdated` lists installed `theme.version` and component `version` values from lockfile against current origin theme and component version values at configured registry `ref`. It does not resolve arbitrary historical component versions.
 
@@ -299,12 +311,20 @@ CLI must fail validation for:
 - unsupported `schemaVersion`
 - missing `registry`
 - missing `components`
+- theme present but missing `version`, `source`, `installedAt`, or `files`
+- invalid theme `version` format
+- invalid theme `installedAt` timestamp format
+- unsafe theme `source` path
+- unsafe theme file `path`
+- unsafe theme file `source`
+- duplicate file path within `theme.files`
 - component lock entry missing `kind`, `version`, `installedAt`, `dependencies`, or `files`
-- invalid timestamp format
+- invalid component `version` format
+- invalid component `installedAt` timestamp format
 - duplicate component key
 - duplicate file path within one component
-- unsafe local `path`
-- unsafe registry `source`
+- unsafe component file `path`
+- unsafe component file `source`
 
 ## Ownership boundary
 

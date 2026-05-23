@@ -61,7 +61,7 @@ Rules:
 
 - only valid in `sections/*.liquid`
 - applies to whole section CSS chunk
-- must appear before first real HTML element in the section file
+- must appear before first rendered output in the section file
 - duplicate directives in one section file are errors
 - invalid values are errors
 - missing directive means `normal`
@@ -70,6 +70,7 @@ Rules:
 
 ```liquid
 {% comment %} nazare:css preload {% endcomment %}
+{% render 'section-css', section_name: 's-hero' %}
 
 <section class="px-6 py-12">
   <div data-nazare-use="sections/s-hero">
@@ -79,7 +80,7 @@ Rules:
 </section>
 ```
 
-This example defines `sections/s-hero.liquid`, uses Tailwind utilities in markup, statically depends on `snippets/c-button.liquid`, declares section CSS chunk load mode as `preload`, and exposes a runtime mount node through `data-nazare-use="sections/s-hero"`.
+This example defines `sections/s-hero.liquid`, uses Tailwind utilities in markup, statically depends on `snippets/c-button.liquid`, declares section CSS chunk load mode as `preload`, renders the generated section CSS bridge, and exposes a runtime mount node through `data-nazare-use="sections/s-hero"`.
 
 ## Build-time behavior
 
@@ -94,7 +95,7 @@ This example outputs:
 - CSS preload mapping: `s-hero` maps to `assets/s-hero.css` in `snippets/section-css-preloads.liquid`
 - CSS runtime mapping: non-preloaded section CSS chunks map through `snippets/section-css.liquid`
 
-The Nazare Vite plugin scans local `.liquid` files, follows static `{% render %}` references, extracts `data-nazare-use` attributes and section CSS directives, and generates Liquid bridge snippets for compiled section CSS chunks.
+The Nazare Vite plugin scans local `.liquid` files, follows static `{% render %}` references, extracts `data-nazare-use` attributes and section CSS directives, checks section CSS bridge usage, and generates Liquid bridge snippets for compiled section CSS chunks.
 
 ## Build scanner algorithm
 
@@ -175,10 +176,46 @@ Rules:
 Rules:
 
 - only one `nazare:css` directive is allowed per section file
-- directive is only valid before first real HTML element in section file body
+- directive is only valid before first rendered output in section file body
 - directive is invalid in snippet files
 - allowed values are `normal` and `preload`
 - missing directive defaults to `normal`
+
+For directive placement, allowed content before the directive:
+
+- whitespace
+- Liquid comments: `{% comment %} ... {% endcomment %}`
+- HTML comments: `<!-- ... -->`
+- non-output Liquid control tags such as `{% assign ... %}`, `{% capture ... %}`, `{% liquid ... %}`, `{% if ... %}`, and `{% unless ... %}`
+
+Content that makes a directive too late:
+
+- first HTML element start tag, such as `<section>` or `<div>`
+- Liquid output tags, such as `{{ ... }}`
+- Liquid render/output-producing tags, such as `{% render ... %}`
+- raw text that would render to the page
+
+Shopify `{% schema %}` blocks are ignored for directive placement and are expected at the end of section files.
+
+### Section CSS bridge render
+
+Every section file should render the generated normal CSS bridge near the top of the section file:
+
+```liquid
+{% render 'section-css', section_name: '<section-name>' %}
+```
+
+For `sections/s-hero.liquid`, expected usage is:
+
+```liquid
+{% render 'section-css', section_name: 's-hero' %}
+```
+
+This render lets sections with `nazare:css normal` load their compiled CSS only when the section appears on a page.
+
+Sections with `nazare:css preload` may still include this render. The generated `section-css.liquid` snippet emits no output for preload sections, because preload CSS is handled by `section-css-preloads.liquid` in the layout.
+
+Missing section CSS bridge render is a plugin warning in v1, not a build error. The theme may intentionally load CSS through another mechanism.
 
 ## Generated file lifecycle
 
@@ -301,15 +338,20 @@ const modules = {
 const modulePromises = new Map();
 const mounted = new WeakMap();
 
-function importModule(key) {
+async function importModule(key) {
   const load = modules[`./${key}.js`];
 
   if (!load) {
     console.warn(`[nazare] Missing JS module for ${key}`);
-    return Promise.resolve(null);
+    return null;
   }
 
-  return load();
+  try {
+    return await load();
+  } catch (error) {
+    console.warn(`[nazare] Failed to import JS module for ${key}`, error);
+    return null;
+  }
 }
 
 function nazareNodes(root) {
@@ -327,7 +369,7 @@ export async function initNazare(root = document) {
   for (const node of nazareNodes(root)) {
     const key = node.dataset.nazareUse;
 
-    if (mounted.get(node) === key) continue;
+    if (mounted.get(node)?.key === key) continue;
 
     if (!modulePromises.has(key)) {
       modulePromises.set(key, importModule(key));
@@ -336,8 +378,27 @@ export async function initNazare(root = document) {
     const module = await modulePromises.get(key);
     if (!module?.init) continue;
 
-    module.init(node);
-    mounted.set(node, key);
+    try {
+      module.init(node);
+      mounted.set(node, { key, module });
+    } catch (error) {
+      console.warn(`[nazare] Failed to initialize JS module for ${key}`, error);
+    }
+  }
+}
+
+export function destroyNazare(root = document) {
+  for (const node of nazareNodes(root)) {
+    const mount = mounted.get(node);
+    if (!mount) continue;
+
+    try {
+      mount.module.destroy?.(node);
+    } catch (error) {
+      console.warn(`[nazare] Failed to destroy JS module for ${mount.key}`, error);
+    } finally {
+      mounted.delete(node);
+    }
   }
 }
 
@@ -416,12 +477,23 @@ export function destroy(node) {
 
 Runtime should provide subtree cleanup behavior through `destroyNazare(root)`.
 
+Mounted state must store both the module key and loaded module for each successfully initialized DOM node.
+
+Runtime state rules:
+
+- module import promise is cached once per module key
+- mounted state is written only after `init(node)` succeeds
+- nodes with missing modules, failed imports, missing `init`, or thrown `init(node)` are not marked mounted
+- repeated `initNazare(root)` calls skip nodes already mounted with the same key
+- mutation of `data-nazare-use` after initial mount is unsupported in v1
+
 `destroyNazare(root)` must:
 
 - find all matching `[data-nazare-use]` nodes under `root`
 - include `root` itself if it matches
-- call optional `destroy(node)` for nodes that were previously initialized
-- clear mounted state for cleaned nodes
+- call optional `destroy(node)` only for nodes that were successfully initialized
+- catch thrown `destroy(node)` errors, warn, and continue
+- clear mounted state for cleaned nodes even if `destroy(node)` throws
 
 ## Shopify lifecycle
 
@@ -471,7 +543,7 @@ Plugin build errors:
 - malformed `nazare:css` directive
 - duplicate `nazare:css` directive in one section
 - `nazare:css` directive inside snippet file
-- `nazare:css` directive after first real HTML element
+- `nazare:css` directive after first rendered output
 - malformed `data-nazare-use`
 - invalid module key format
 - missing JS module declared by `data-nazare-use`
@@ -481,6 +553,7 @@ Plugin build warnings:
 
 - dynamic render usage
 - section has no explicit `nazare:css` directive and defaults to `normal`
+- section missing generated section CSS bridge render
 - CSS chunk requested but no utility classes are discovered
 
 Runtime warnings:

@@ -69,7 +69,13 @@ The scaffold must provide:
 - generated section CSS preload snippet in `<head>`
 - generated runtime JS asset
 
-The scaffold must also allow section templates to render generated normal CSS loads through `snippets/section-css.liquid`.
+The scaffold starter section must render generated normal CSS loads through `snippets/section-css.liquid` using:
+
+```liquid
+{% render 'section-css', section_name: '<section-name>' %}
+```
+
+The scaffold must also allow added section templates to use the same render contract.
 
 ## Minimal content expectations
 

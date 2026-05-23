@@ -4,7 +4,7 @@
 
 Nazare CLI manages relationship between a user theme repo and the Nazare registry origin.
 
-Its job is limited to init, pull, and explicit overwrite/update flows for theme and component files that come from the registry.
+Its job is limited to init, pull, add, and explicit overwrite choices for theme and component files that come from the registry.
 
 The CLI copies registry theme files and components into the user repo. After copy, the user owns the files. The CLI tracks component origin and installed component versions, but build/runtime integration is derived from local theme files by Vite and the Nazare Vite plugin.
 
@@ -53,6 +53,12 @@ Dependency resolution is automatic during component add. File conflicts from bot
 
 For v1, `nazare list` outputs component names with origin versions only. `nazare installed` outputs installed item names with installed versions only, including theme when present. `nazare outdated` outputs installed item names with installed and origin versions, including theme when present.
 
+Text output sort order:
+
+- `list`: by `name` ascending
+- `installed`: theme first when present, then components by `name` ascending
+- `outdated`: theme first when present, then components by `name` ascending
+
 ## Validation ownership
 
 CLI validates origin relation and install state:
@@ -85,7 +91,6 @@ Component files may include:
 - `scripts/sections/*.js`
 - `scripts/snippets/*.js`
 - `assets/*`
-- docs/examples if present
 
 After install, copied files are user-owned. Registry updates are not auto-reconciled with local edits.
 
@@ -99,6 +104,24 @@ If target file exists, CLI requires explicit choice:
 Default action is skip.
 
 Conflict prompts are per file, not per component or per dependency.
+
+Before writing files, CLI must preflight the full operation and collect file conflicts. This avoids partial writes when a later conflict cannot be resolved.
+
+Interactive TTY behavior:
+
+- prompt for each conflict unless a bulk choice has been selected
+- `skip` leaves that file unchanged
+- `overwrite` writes that file from origin
+- `all` overwrites this and all remaining conflicts in the current command
+- `none` skips this and all remaining conflicts in the current command
+
+Non-interactive behavior:
+
+- `--yes` resolves all conflicts as overwrite
+- without `--yes`, any unresolved conflict fails before writing files
+- unresolved conflict failure uses exit code `4`
+
+Skipped conflicts are successful command outcomes unless the user cancels or a conflict is unresolved.
 
 ## Build boundary
 
@@ -120,13 +143,13 @@ CLI owns:
 
 - theme initialization via config and lockfile creation
 - registry fetch
-- theme pull/overwrite flows
-- component add/overwrite flows
+- theme pull flows
+- component add flows
 - component copy
 - dependency resolution
 - install manifest / lockfile
 - installed component version tracking
-- explicit overwrite flows
+- explicit overwrite choices during file conflicts
 
 Nazare Vite plugin owns:
 
@@ -147,13 +170,19 @@ Theme/user owns:
 
 ## Registry fetch model
 
-CLI resolves configured registry origin as snapshot of `repo` at `ref`, reads `manifest` from that snapshot, and uses that snapshot for theme and component operations.
+CLI resolves configured registry origin from `nazare.config.yml` as snapshot of `repo` at `ref`, reads `manifest` from that snapshot, and uses that snapshot for theme and component operations.
+
+`nazare.config.yml` is source of truth for future origin resolution. `nazare.lock.yml` stores installed provenance and may contain older registry values.
+
+If config registry fields differ from lockfile registry fields, CLI must continue using config values and warn that installed provenance differs from current configured origin. This is not a validation error by itself.
+
+V1 supports public GitHub registry repos. Accepted `repo` forms are defined in `docs/theme-config.spec.md`.
 
 Supported `ref` forms in v1 are branch, tag, and commit sha.
 
 CLI may use a local cache of resolved registry snapshots. Cache storage details are implementation details in v1.
 
-V1 only guarantees public registry support. Private registry authentication flow is not specified yet.
+Private registry authentication flow is not specified yet.
 
 ## Manifest / lockfile role
 
@@ -163,7 +192,7 @@ Registry manifest schema is defined separately in `docs/registry-manifest.spec.m
 
 Theme lockfile schema is defined separately in `docs/theme-lockfile.spec.md`.
 
-CLI manifest or lockfile stores install history and registry origin.
+The lockfile stores install history and registry origin provenance at install time.
 
 It tracks:
 
@@ -255,13 +284,42 @@ V1 standard flags:
 
 `--yes` auto-accepts overwrite for all file conflicts in the current command.
 
+In non-interactive contexts, `--yes` is required for commands that would otherwise prompt for conflicts. Without `--yes`, those commands fail before writing files.
+
 `--json` requests machine-readable output for `nazare list`, `nazare installed`, and `nazare outdated`.
 
-Recommended v1 JSON row shapes:
+V1 JSON success output shape:
 
-- `list`: `{ name, version }`
-- `installed`: `{ kind, name, version }`
-- `outdated`: `{ kind, name, installedVersion, originVersion }`
+```json
+{
+  "items": []
+}
+```
+
+V1 JSON item shapes:
+
+- `list`: `{ "name": string, "version": string }`
+- `installed`: `{ "kind": "theme" | "section" | "snippet" | "utility", "name": string, "version": string }`
+- `outdated`: `{ "kind": "theme" | "section" | "snippet" | "utility", "name": string, "installedVersion": string, "originVersion": string }`
+
+Sort order:
+
+- `list`: sort by `name` ascending
+- `installed`: theme first when present, then components by `name` ascending
+- `outdated`: theme first when present, then components by `name` ascending
+
+When `--json` is used and a command fails, CLI writes JSON error output:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid nazare.config.yml"
+  }
+}
+```
+
+Error `code` values should be stable uppercase snake case strings. `message` should be human-readable.
 
 ## Exit codes
 
@@ -272,6 +330,8 @@ V1 exit codes:
 - `2` validation, config, lockfile, or manifest error
 - `3` registry fetch or origin resolution error
 - `4` user-canceled or unresolved conflict error
+
+A command with skipped conflicts still exits `0` if all conflicts were resolved by explicit `skip`, `none`, or default interactive skip selection.
 
 Version differences reported by `nazare outdated` do not change success exit code.
 
@@ -289,6 +349,8 @@ V1 update behavior is limited to:
 - `nazare add <component>`
 - explicit overwrite choices during file conflicts
 - `nazare outdated` for version visibility
+
+V1 does not include separate overwrite commands. Overwrite only happens through conflict choices during `nazare theme pull`, `nazare add <component>`, or `--yes` on those commands.
 
 ## CLI error and warning behavior
 
@@ -315,6 +377,7 @@ CLI warnings:
 
 - skipped conflicting theme file
 - skipped conflicting component file
+- config registry differs from lockfile registry provenance
 - requested component had skipped files, resulting local theme may be incomplete
 - dependency had skipped files, resulting local theme may be incomplete
 

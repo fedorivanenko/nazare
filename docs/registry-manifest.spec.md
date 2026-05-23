@@ -30,6 +30,7 @@ registry:
 
 theme:
   version: 1.0.0
+  source: templates/default
   files:
     - from: templates/default/package.json
       to: package.json
@@ -106,6 +107,7 @@ Optional object.
 ```yaml
 theme:
   version: 1.0.0
+  source: templates/default
   files:
     - from: templates/default/layout/theme.liquid
       to: layout/theme.liquid
@@ -113,18 +115,41 @@ theme:
 
 Fields:
 
-- `version`: required string if `theme` is present
+- `version`: required exact SemVer 2.0.0 string if `theme` is present
+- `source`: required string if `theme` is present; registry-side scaffold root, such as `templates/default`
 - `files`: required array if `theme` is present
 
-This metadata is used by `nazare theme pull` and theme overwrite flows.
+`theme.source` is provenance metadata and must be copied into `nazare.lock.yml` when theme files are written.
+
+This metadata is used by `nazare theme pull` and explicit overwrite choices during file conflicts.
 
 A registry may omit `theme` and still be valid for component operations, but `nazare theme pull` requires `theme` to exist.
 
 Theme scaffold requirements are defined separately in `docs/theme-scaffold.spec.md`.
 
+Theme file path rules:
+
+- `from` must be relative path inside registry repo
+- `from` must use forward slashes
+- `from` must exist in registry
+- `from` must not be absolute path
+- `from` must not contain `..`
+- `to` must be relative path inside target theme repo
+- `to` must use forward slashes
+- `to` must not be absolute path
+- `to` must not contain `..`
+- `to` must remain within theme root after normalization
+- duplicate `to` paths within `theme.files` are invalid
+
 ### `components`
 
 Required map keyed by component name.
+
+An empty map is valid for registries that only provide a theme scaffold:
+
+```yaml
+components: {}
+```
 
 Key rules:
 
@@ -161,7 +186,27 @@ Allowed values:
 
 Required string.
 
-Uses semver.
+Must be an exact SemVer 2.0.0 version string: `MAJOR.MINOR.PATCH` with optional prerelease and build metadata.
+
+Valid examples:
+
+- `1.0.0`
+- `0.1.2`
+- `2.3.4-beta.1`
+- `2.3.4+build.5`
+- `2.3.4-beta.1+build.5`
+
+Invalid examples:
+
+- `1`
+- `1.0`
+- `v1.0.0`
+- `^1.0.0`
+- `~1.0.0`
+- `>=1.0.0`
+- `1.x`
+- `latest`
+- `main`
 
 This is tracked by the CLI as component version for install history, display, diff context, and outdated checks.
 
@@ -204,7 +249,7 @@ Rules:
 
 ## Optional component metadata
 
-Optional metadata may be included for registry UX and documentation.
+Optional metadata may be included for registry UX.
 
 ```yaml
 displayName: Hero
@@ -212,13 +257,11 @@ description: Large hero section with CTA
 tags:
   - video
   - conversion
-docs:
-  - components/docs/s-hero.md
-examples:
-  - components/examples/s-hero.json
 ```
 
 These fields are optional and do not affect build graph behavior.
+
+V1 does not define registry-side component docs or examples fields.
 
 Component package contents and destination rules are defined separately in `docs/component-package.spec.md`.
 
@@ -245,6 +288,13 @@ The CLI must fail validation for:
 - unsupported `schemaVersion`
 - missing `registry`
 - missing `components`
+- theme present but missing `version`, `source`, or `files`
+- invalid theme `version` format
+- unsafe theme `source` path
+- missing theme `from` file
+- unsafe theme `from` path
+- unsafe theme `to` path
+- duplicate destination path within `theme.files`
 - component missing `kind`, `version`, or `files`
 - invalid component `version` format
 - unknown dependency reference
@@ -254,7 +304,7 @@ The CLI must fail validation for:
 - duplicate component key
 - duplicate destination path within one component
 
-The CLI may also fail when two requested components in one install operation map different origin files to the same destination path, unless that conflict is resolved through an explicit user overwrite flow.
+The CLI may also fail when two requested components in one install operation map different origin files to the same destination path, unless that conflict is resolved through explicit conflict choices.
 
 ## Versioning model
 
