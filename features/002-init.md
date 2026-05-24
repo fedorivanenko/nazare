@@ -41,6 +41,7 @@ codebaseOwnership:
 
   mustNotModify:
     - existing nazare.lock.yml
+    - existing nazare.config.yml
     - theme files
     - component files
     - registry files
@@ -78,7 +79,6 @@ Included:
 - Running `nazare init [directory]` creates the project directory when needed and writes initial files there.
 - Running `nazare init --repo <repo>` uses the provided registry repo in generated files.
 - Running `nazare init --ref <ref>` uses the provided registry ref in generated files.
-- `nazare init [directory]` rejects directory values containing path separators.
 - Generated `nazare.config.yml` uses default registry metadata when `--repo` and `--ref` are omitted:
 
   ```yaml
@@ -139,6 +139,8 @@ Result: not tested yet.
   - Verify config and lockfile contents.
 - [ ] `nazare init [directory]` creates target directory and initial files
   - Verify in temp parent directory.
+- [ ] `nazare init [directory]` rejects directory values containing path separators
+  - Verify with `/` and `\\` path separators.
 - [ ] init fails when `nazare.lock.yml` exists
   - Verify existing lockfile content remains unchanged.
 - [ ] init fails when `nazare.config.yml` exists without `nazare.lock.yml`
@@ -160,9 +162,9 @@ A future `nazare init --adopt` could validate an existing `nazare.config.yml` an
 
 A future `nazare init --force` could reset init state by replacing config and lockfile, but it must require destructive confirmation behavior before writing.
 
-`nazare init [directory]` should create the directory when it does not exist, then apply the same lockfile guard inside that directory.
+`nazare init [directory]` should reject values containing `/` or `\\` path separators before creating directories. Nested target paths are out of scope for F-002.
 
-`nazare init [directory]` should reject values containing `/` or `\\` path separators. Nested target paths are out of scope for F-002.
+`nazare init [directory]` should create the directory when it does not exist, then apply the same lockfile guard inside that directory.
 
 Default registry repo should be `github.com/fedorivanenko/nazare`.
 
@@ -170,7 +172,7 @@ Default registry repo should be `github.com/fedorivanenko/nazare`.
 
 Default registry ref should use `refs/heads/main` to match installer URL behavior and avoid ambiguous raw branch resolution.
 
-`--ref <ref>` should accept any non-empty branch, tag, or commit string. Full registry ref resolution belongs to later registry fetch behavior.
+`--ref <ref>` should accept any non-empty ref selector string, including branch names, full refs, tags, and commit SHAs. Full registry ref resolution belongs to later registry fetch behavior.
 
 ---
 

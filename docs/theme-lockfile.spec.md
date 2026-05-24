@@ -32,7 +32,7 @@ schemaVersion: 1
 registry:
   name: nazare
   repo: github.com/fedorivanenko/nazare
-  ref: main
+  ref: refs/heads/main
   manifest: nazare.registry.yml
 
 components: {}
@@ -46,7 +46,7 @@ schemaVersion: 1
 registry:
   name: nazare
   repo: github.com/fedorivanenko/nazare
-  ref: main
+  ref: refs/heads/main
   manifest: nazare.registry.yml
 
 theme:
@@ -119,7 +119,7 @@ Required object.
 registry:
   name: nazare
   repo: github.com/fedorivanenko/nazare
-  ref: main
+  ref: refs/heads/main
   manifest: nazare.registry.yml
 ```
 
@@ -127,7 +127,7 @@ Fields:
 
 - `name`: required string
 - `repo`: required string identifying registry origin
-- `ref`: required string for branch, tag, or commit used for resolution
+- `ref`: required string for branch, full ref, tag, or commit used for resolution
 - `manifest`: required string path to manifest inside registry repo
 
 This block records installed provenance from the time files were copied.
