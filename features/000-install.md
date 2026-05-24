@@ -29,6 +29,9 @@ codebaseOwnership:
       - install.sh
       - bin/nazare.js
       - README.md install instructions
+      - package.json test script
+      - package-lock.json
+      - test/ CLI smoke tests
     install:
       - ~/.nazare
       - ~/.local/bin/nazare when Nazare-owned
@@ -60,6 +63,7 @@ Included:
 - README install instructions
 - idempotent install behavior
 - install conflict detection
+- Vitest CLI smoke test harness
 
 ---
 
@@ -108,6 +112,8 @@ Result: tested and passed.
   - Verified with shell syntax check, missing-path warnings, and conflict failure.
 - [x] `README.md` documents install command and Node.js requirement
   - Verified by review.
+- [x] Vitest smoke tests cover CLI help output
+  - Verified with `npm test`.
 
 Commands run:
 
@@ -115,9 +121,10 @@ Commands run:
 sh -n install.sh
 biome check bin/nazare.js README.md install.sh
 node bin/nazare.js --help
+npm test
 ```
 
-Additional checks used temp `HOME` installs, repeated install, conflict handling, and raw branch installer download.
+Additional checks used temp `HOME` installs, repeated install, conflict handling, and raw branch installer download. Vitest provides the reusable CLI smoke test harness for future features.
 
 ---
 

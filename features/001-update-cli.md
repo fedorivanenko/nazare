@@ -36,6 +36,8 @@ codebaseOwnership:
       - install.sh
       - README.md CLI update instructions
       - package.json
+      - package-lock.json
+      - test/ CLI smoke tests
     install:
       - ~/.nazare
       - ~/.local/bin/nazare when Nazare-owned
@@ -70,6 +72,7 @@ Included:
 - README update instructions
 - reinstall/update flow for Nazare-owned installs created by `install.sh`
 - clear update failure messages
+- Vitest CLI smoke coverage for version/help behavior
 
 ---
 
@@ -121,6 +124,8 @@ Result: tested and passed.
   - Verified conflict test preserves unrelated `~/.local/bin/nazare`.
 - [x] README documents update command and Node.js requirement
   - Verified by review.
+- [x] Vitest smoke tests cover version output against `package.json`
+  - Verified with `npm test`.
 
 ---
 
@@ -137,6 +142,8 @@ Result: tested and passed.
 - Missing or invalid version metadata is a CLI error.
 
 Installer should copy enough package metadata into the installed CLI so `nazare --version` does not need network access.
+
+Vitest is the project test harness for CLI behavior that can run locally without network access. F-001 keeps installer/update integration checks as temp `HOME` shell scenarios, while version/help smoke coverage lives in `test/` and runs via `npm test`.
 
 `nazare self update` should reuse installer ownership checks instead of introducing a second write policy.
 

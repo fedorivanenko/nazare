@@ -5,6 +5,12 @@
 	"bin": {
 		"nazare": "./bin/nazare.js"
 	},
+	"scripts": {
+		"test": "vitest run"
+	},
 	"license": "UNLICENSED",
-	"private": true
+	"private": true,
+	"devDependencies": {
+		"vitest": "^4.1.7"
+	}
 }
