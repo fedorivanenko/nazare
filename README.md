@@ -27,6 +27,12 @@ Update a Nazare-owned CLI install from its originally installed source:
 nazare self update
 ```
 
+Update from a specific branch, tag, full ref, or commit SHA:
+
+```sh
+nazare self update --source feat/my-branch
+```
+
 Verify update:
 
 ```sh

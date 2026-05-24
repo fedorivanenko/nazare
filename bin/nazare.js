@@ -10,19 +10,24 @@ Usage:
   nazare --help
   nazare --version
   nazare init [name]
-  nazare self update
+  nazare self update [--source <ref>]
 
 Commands:
   init [name]    Initialize Nazare relationship in a theme repo (not implemented yet)
-  self update    Update the Nazare CLI install from its original source
+  self update    Update the Nazare CLI install from its original source or --source override
 
 Options:
-  -h, --help     Show this help
-  -v, --version  Show CLI version
+  -h, --help          Show this help
+  -v, --version       Show CLI version
+  --source <ref>      Update from a branch, tag, full ref, or commit SHA
 `;
 
 const SEMVER_PATTERN =
 	/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
+const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
+const TAG_PATTERN =
+	/^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 function getInstallDir() {
 	return process.env.NAZARE_INSTALL_DIR || path.resolve(__dirname, "..");
@@ -88,10 +93,68 @@ function shellQuote(value) {
 	return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
-function selfUpdate() {
+function parseSelfUpdateArgs(args) {
+	const options = { source: undefined };
+
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+
+		if (arg === "--source") {
+			const value = args[index + 1];
+			if (!value || value.startsWith("--")) {
+				throw new Error("Missing value for --source");
+			}
+			options.source = normalizeSourceRef(value);
+			index += 1;
+			continue;
+		}
+
+		throw new Error(`Unknown self update option: ${arg}`);
+	}
+
+	return options;
+}
+
+function normalizeSourceRef(source) {
+	if (typeof source !== "string" || source.length === 0) {
+		throw new Error("Missing value for --source");
+	}
+
+	if (/^https?:\/\//.test(source)) {
+		throw new Error("--source expects a ref selector, not a URL");
+	}
+
+	if (source.startsWith("refs/")) {
+		return source;
+	}
+
+	if (COMMIT_SHA_PATTERN.test(source) || TAG_PATTERN.test(source)) {
+		return source;
+	}
+
+	return `refs/heads/${source}`;
+}
+
+function sourceMetadata(metadata, installedRef) {
+	if (!installedRef) {
+		return metadata;
+	}
+
+	return {
+		...metadata,
+		installedRef,
+		installScriptUrl: `https://raw.githubusercontent.com/fedorivanenko/nazare/${installedRef}/install.sh`,
+		cliUrl: `https://raw.githubusercontent.com/fedorivanenko/nazare/${installedRef}/bin/nazare.js`,
+		packageUrl: `https://raw.githubusercontent.com/fedorivanenko/nazare/${installedRef}/package.json`,
+	};
+}
+
+function selfUpdate(args) {
+	let options;
 	let metadata;
 	try {
-		metadata = readInstallMetadata();
+		options = parseSelfUpdateArgs(args);
+		metadata = sourceMetadata(readInstallMetadata(), options.source);
 	} catch (error) {
 		process.stderr.write(`nazare self update error: ${error.message}\n`);
 		return 1;
@@ -130,10 +193,10 @@ function main(argv) {
 		return printVersion();
 	}
 
-	const [command, subcommand] = argv;
+	const [command, subcommand, ...rest] = argv;
 
 	if (command === "self" && subcommand === "update") {
-		return selfUpdate();
+		return selfUpdate(rest);
 	}
 
 	if (command === "init") {
