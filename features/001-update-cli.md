@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: F-001
 title: Nazare CLI Versioning and Update
-status: planned
+status: done
 
 dependencies:
   - F-000
@@ -93,22 +93,22 @@ Included:
 
 ## Verification
 
-Result: not tested yet.
+Result: tested and passed.
 
-- [ ] repo has valid npm-standard `package.json` version metadata
-  - Verify by reading and validating `package.json`.
-- [ ] install generates installed CLI metadata under `~/.nazare`
-  - Verify with temp `HOME` install.
-- [ ] `nazare --version` prints installed version and exits with code `0`
-  - Verify with local CLI entrypoint and installed shim.
-- [ ] `nazare self update` leaves `nazare --help` working
-  - Verify with temp `HOME` install and local update source override.
-- [ ] repeated update remains working
-  - Verify by running update twice in temp `HOME`.
-- [ ] update respects owned install path rules
-  - Verify conflict test preserves unrelated `~/.local/bin/nazare`.
-- [ ] README documents update command and Node.js requirement
-  - Verify by review.
+- [x] repo has valid npm-standard `package.json` version metadata
+  - Verified with `node bin/nazare.js --version` and install metadata validation.
+- [x] install generates installed CLI metadata under `~/.nazare`
+  - Verified with temp `HOME` install.
+- [x] `nazare --version` prints installed version and exits with code `0`
+  - Verified with local CLI entrypoint and installed shim.
+- [x] `nazare self update` leaves `nazare --help` working
+  - Verified with temp `HOME` install and local update source override.
+- [x] repeated update remains working
+  - Verified by running update twice in temp `HOME`.
+- [x] update respects owned install path rules
+  - Verified conflict test preserves unrelated `~/.local/bin/nazare`.
+- [x] README documents update command and Node.js requirement
+  - Verified by review.
 
 ---
 
