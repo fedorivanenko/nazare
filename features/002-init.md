@@ -12,7 +12,7 @@ dependencies:
 surfaces:
   cli:
     - nazare init
-    - nazare init [name]
+    - nazare init [directory]
 
 invariants:
   - Init must not overwrite existing nazare.lock.yml
@@ -56,7 +56,7 @@ The command should create the initial local Nazare state without pulling theme f
 Included:
 
 - `nazare init`
-- optional project directory creation via `nazare init [name]`
+- optional project directory creation via `nazare init [directory]`
 - `nazare.config.yml` creation
 - `nazare.lock.yml` creation
 - README init instructions
@@ -67,7 +67,7 @@ Included:
 ## Success behavior
 
 - Running `nazare init` in a theme repo creates `nazare.config.yml` and `nazare.lock.yml` in the current directory.
-- Running `nazare init [name]` creates the project directory when needed and writes initial files there.
+- Running `nazare init [directory]` creates the project directory when needed and writes initial files there.
 - Generated `nazare.config.yml` uses default registry metadata:
 
   ```yaml
@@ -118,7 +118,7 @@ Result: not tested yet.
   - Verify in temp directory.
 - [ ] generated files use default registry metadata
   - Verify file contents.
-- [ ] `nazare init [name]` creates target directory and initial files
+- [ ] `nazare init [directory]` creates target directory and initial files
   - Verify in temp parent directory.
 - [ ] init fails when `nazare.lock.yml` exists
   - Verify existing lockfile content remains unchanged.
@@ -133,7 +133,7 @@ Result: not tested yet.
 
 `nazare.lock.yml` is the guard for an initialized repo. Existing lockfile means the target is already initialized.
 
-`nazare init [name]` should create the directory when it does not exist, then apply the same lockfile guard inside that directory.
+`nazare init [directory]` should create the directory when it does not exist, then apply the same lockfile guard inside that directory.
 
 Default registry ref should use `refs/heads/main` to match installer URL behavior and avoid ambiguous raw branch resolution.
 
@@ -142,4 +142,4 @@ Default registry ref should use `refs/heads/main` to match installer URL behavio
 ## Open questions
 
 - Should `nazare init` fail when `nazare.config.yml` exists but `nazare.lock.yml` does not?
-- Should `nazare init [name]` reject path separators or allow nested paths?
+- Should `nazare init [directory]` reject path separators or allow nested paths?
