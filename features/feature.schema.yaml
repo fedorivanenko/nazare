@@ -3,92 +3,131 @@ schemaVersion: 1
 featureDocument:
   filePattern: "features/[0-9][0-9][0-9]-*.md"
   purpose: "Lock the structure for feature description documents."
+  format: "YAML frontmatter followed by markdown body."
+
+frontmatter:
+  required: true
+  delimiter: "---"
+  fields:
+    schemaVersion:
+      required: true
+      type: integer
+      value: 1
+    id:
+      required: true
+      type: string
+      format: "F-<number>"
+      rules:
+        - "Number must match the numeric prefix in the file name."
+    title:
+      required: true
+      type: string
+      rules:
+        - "Describe the user-visible feature outcome."
+    status:
+      required: true
+      type: string
+      allowedValues:
+        - planned
+        - ready
+        - in-progress
+        - done
+        - blocked
+    dependencies:
+      required: true
+      type: array
+      itemType: string
+      rules:
+        - "Use an empty array when none exist."
+    surfaces:
+      required: true
+      type: object
+      allowedFields:
+        - cli
+        - storefront
+      rules:
+        - "Include only surface types used by the feature."
+        - "Use storefront for Shopify theme user-facing Liquid/templates/sections/snippets/assets behavior."
+        - "Use cli for Nazare commands and command output."
+        - "Do not include files here; use codebaseOwnership for file/path boundaries."
+    invariants:
+      required: true
+      type: array
+      itemType: string
+      rules:
+        - "List behavior that must always hold."
+    nonGoals:
+      required: true
+      type: array
+      itemType: string
+    codebaseOwnership:
+      required: true
+      type: object
+      requiredFields:
+        - owns
+        - mustNotModify
+      rules:
+        - "List repo paths, generated paths, or broad areas owned by the feature."
+        - "List boundaries this feature must not cross."
 
 requiredSections:
   - heading
-  - status
   - goal
   - scope
-  - codebaseOwnership
   - successBehavior
   - failureBehavior
-  - acceptanceCriteria
-  - testPlan
+  - verification
+  - architectureNotes
+  - openQuestions
 
 sections:
   heading:
     format: "# <number> — <title>"
     required: true
     rules:
-      - "Number must match the numeric prefix in the file name."
-      - "Title should describe user-visible feature outcome."
-
-  status:
-    format: "Status: <status>"
-    required: true
-    allowedValues:
-      - planned
-      - ready
-      - in-progress
-      - done
-      - blocked
-    rules:
-      - "Place directly below the heading."
-
+      - "Number and title must match frontmatter id/title."
   goal:
     heading: "## Goal"
     required: true
     rules:
       - "State why this feature exists in one or two short paragraphs."
       - "Avoid implementation details unless they are user-visible contract."
-
   scope:
     heading: "## Scope"
     required: true
     rules:
-      - "Define what this feature includes."
-      - "Define user-visible commands, files, or outputs when relevant."
+      - "Include what this feature implements."
+      - "Put exclusions in frontmatter nonGoals instead of duplicating them here."
+      - "Define user-visible commands, files, outputs, or behavior when relevant."
       - "Do not include future feature behavior."
-
-  codebaseOwnership:
-    heading: "## Codebase ownership"
-    required: true
-    rules:
-      - "List repo files or broad areas this feature may create or change."
-      - "List boundaries this feature must not cross."
-      - "Keep ownership high-level; avoid internal function/module design."
-
   successBehavior:
     heading: "## Success behavior"
     required: true
     rules:
-      - "Describe observable success behavior."
-      - "Include user commands and expected output when relevant."
-      - "Include owned user files/paths when feature creates, updates, or deletes them."
-      - "Include exit codes, warnings, or idempotency only when user-visible."
-
+      - "Describe observable success behavior as a checklist."
+      - "Include commands, expected output, owned paths, exit codes, warnings, or idempotency when user-visible."
   failureBehavior:
     heading: "## Failure behavior"
     required: true
     rules:
-      - "Describe observable failure behavior."
+      - "Describe observable failure behavior as a checklist."
       - "Include clear error or warning cases."
       - "Include non-zero exit behavior when relevant."
       - "Feature must not mutate unrelated user files on failure."
-
-  acceptanceCriteria:
-    heading: "## Acceptance criteria"
+  verification:
+    heading: "## Verification"
     required: true
     rules:
-      - "Use a concise checklist."
-      - "Reference behavior coverage instead of duplicating every behavior detail."
-      - "Criteria must be testable or reviewable."
-
-  testPlan:
-    heading: "## Test plan"
+      - "Use markdown task checklist items for required outcomes."
+      - "Include how each outcome is verified."
+      - "Mark result when verification is complete."
+  architectureNotes:
+    heading: "## Architecture notes"
     required: true
     rules:
-      - "Describe how acceptance criteria will be verified."
-      - "Use manual checks when automated tests are not available yet."
-      - "Include setup, command, expected result, and cleanup when relevant."
-      - "Do not duplicate every acceptance criterion unless it clarifies execution."
+      - "Document implementation constraints, boundaries, and coupling risks."
+  openQuestions:
+    heading: "## Open questions"
+    required: true
+    rules:
+      - "List unresolved questions, or 'None' when resolved."

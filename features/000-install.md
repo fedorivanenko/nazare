@@ -1,137 +1,135 @@
-# 000 — Install Nazare CLI
+---
+schemaVersion: 1
 
-Status: done
+id: F-000
+title: Install Nazare CLI
+status: done
+
+dependencies: []
+
+surfaces:
+  cli:
+    - nazare --help
+    - nazare init
+
+invariants:
+  - Installer must not overwrite unrelated user files
+  - Installer must be idempotent
+  - nazare --help must exit with code 0 after successful install
+  - Non-install CLI behavior must remain placeholder-only
+
+nonGoals:
+  - Implementing nazare init behavior
+  - Implementing theme or component commands
+  - Managing updates beyond replacing Nazare-owned install files
+
+codebaseOwnership:
+  owns:
+    - install.sh
+    - bin/nazare.js
+    - README.md install instructions
+    - ~/.nazare
+    - ~/.local/bin/nazare when Nazare-owned
+
+  mustNotModify:
+    - unrelated files under ~/.local/bin
+    - unrelated files outside ~/.nazare
+    - non-install CLI command behavior
+---
+
+# 000 — Install Nazare CLI
 
 ## Goal
 
-Make `nazare` CLI available in a local theme repo
+Make `nazare` CLI available in a local theme repo.
+
+Users must be able to install Nazare from the registry repo and run `nazare --help` after install.
+
+---
 
 ## Scope
 
-Install Nazare CLI by downloading and running `install.sh` from the registry repo, so users can run:
-
-```sh
-nazare --help
-nazare init
-```
-
-## Codebase ownership
-
-This feature owns:
+Included:
 
 - `install.sh`
-- CLI entrypoint needed for install verification
+- minimal CLI entrypoint needed for install verification
+- `nazare --help` output
+- clear placeholder errors for non-install CLI behavior
 - README install instructions
+- idempotent install behavior
+- install conflict detection
 
-This feature may create minimal support files needed to make `nazare --help` work.
-
-This feature must not implement non-install CLI behavior beyond help output and clear placeholder errors.
+---
 
 ## Success behavior
 
-User installs Nazare with:
+- User can install Nazare with:
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/install.sh | sh
-```
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/install.sh | sh
+  ```
 
-Installer creates or updates a Nazare-owned CLI install.
+- Installer creates or updates a Nazare-owned CLI install under `~/.nazare`.
+- Installer creates `~/.local/bin/nazare` when missing.
+- Installer replaces `~/.local/bin/nazare` only when it is Nazare-owned.
+- `nazare --help` prints CLI help and exits with code `0`.
+- Running install repeatedly leaves a working `nazare` command.
+- Installer prints a clear warning when install succeeds but `~/.local/bin` is not on `PATH`.
 
-After install:
-
-```sh
-nazare --help
-```
-
-prints CLI help and exits with code `0`.
-
-The install is idempotent: running the same install command again leaves a working `nazare` command.
-
-### Owned install paths
-
-Default install paths:
-
-- install directory: `~/.nazare`
-- executable shim: `~/.local/bin/nazare`
-
-Installer may create or update files under `~/.nazare`.
-
-Installer may create or replace `~/.local/bin/nazare` only when that file is missing or already points to a Nazare-owned install.
-
-Installer must not overwrite unrelated user files.
+---
 
 ## Failure behavior
 
-Installer exits non-zero and prints a clear error when:
+- `curl` download failure exits non-zero with a clear error.
+- Missing Node.js runtime exits non-zero with a clear error.
+- Missing `curl` exits non-zero with a clear error.
+- Unwritable install destination exits non-zero with a clear error.
+- CLI bin creation failure exits non-zero with a clear error.
+- Existing non-Nazare `~/.local/bin/nazare` exits non-zero and is not overwritten.
+- Failed install must not mutate unrelated user files.
 
-- `curl` cannot download `install.sh`
-- shell cannot execute installer
-- required runtime is missing
-- CLI bin cannot be created
-- install destination is not writable
-- `~/.local/bin/nazare` exists but is not owned by Nazare
+---
 
-Installer prints a clear warning when install succeeds but `~/.local/bin` is not on `PATH`.
-
-## Acceptance criteria
-
-- curl `install.sh` installs Nazare using the documented curl command
-- install creates working `nazare --help`
-- repeated install remains working
-- installer respects owned install path rules
-- installer covers listed failure and warning cases
-- `README.md` documents install command and Node.js requirement
-
-## Test plan
+## Verification
 
 Result: tested and passed.
 
-Manual checks:
+- [x] curl `install.sh` installs Nazare using the documented curl command
+  - Verified with raw branch installer download and branch CLI override.
+- [x] install creates working `nazare --help`
+  - Verified with `node bin/nazare.js --help` and installed shim in temp `HOME`.
+- [x] repeated install remains working
+  - Verified by running installer twice in temp `HOME`.
+- [x] installer respects owned install path rules
+  - Verified conflict test preserves unrelated `~/.local/bin/nazare`.
+- [x] installer covers listed failure and warning cases
+  - Verified with shell syntax check, missing-path warnings, and conflict failure.
+- [x] `README.md` documents install command and Node.js requirement
+  - Verified by review.
 
-1. Remove existing install:
+Commands run:
 
-   ```sh
-   rm -rf ~/.nazare ~/.local/bin/nazare
-   ```
+```sh
+sh -n install.sh
+biome check bin/nazare.js README.md install.sh
+node bin/nazare.js --help
+```
 
-2. Run documented install command:
+Additional checks used temp `HOME` installs, repeated install, conflict handling, and raw branch installer download.
 
-   ```sh
-   curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/install.sh | sh
-   ```
+---
 
-3. Verify help works:
+## Architecture notes
 
-   ```sh
-   nazare --help
-   echo $?
-   ```
+Installer owns files under `~/.nazare` and a shim at `~/.local/bin/nazare` only when that shim is missing or already Nazare-owned.
 
-   Expected: help prints and exit code is `0`.
+The CLI entrypoint is intentionally minimal so install verification can work before broader CLI behavior is implemented.
 
-4. Run documented install command again.
+`install.sh` supports `NAZARE_INSTALL_DIR`, `NAZARE_BIN_DIR`, and `NAZARE_CLI_URL` overrides for testing and non-default install locations.
 
-   Expected: install completes and `nazare --help` still works.
+---
 
-5. Verify conflict handling:
+## Open questions
 
-   ```sh
-   rm -rf ~/.nazare ~/.local/bin/nazare
-   mkdir -p ~/.local/bin
-   printf '#!/bin/sh\necho other\n' > ~/.local/bin/nazare
-   chmod +x ~/.local/bin/nazare
-   ```
-
-   Run documented install command.
-
-   Expected: installer exits non-zero and does not overwrite `~/.local/bin/nazare`.
-
-6. Verify unwritable destination handling with a temporary home or install destination.
-
-   Expected: installer exits non-zero and prints a clear error.
-
-7. Cleanup:
-
-   ```sh
-   rm -rf ~/.nazare ~/.local/bin/nazare
-   ```
+- Should a future release provide npm, Homebrew, or other package manager install paths?
+- Should installer support shell profile updates for `~/.local/bin`?
