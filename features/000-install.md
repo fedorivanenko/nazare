@@ -68,7 +68,7 @@ Included:
 - User can install Nazare with:
 
   ```sh
-  curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/refs/heads/main/install.sh | sh
   ```
 
 - Installer creates or updates a Nazare-owned CLI install under `~/.nazare`.

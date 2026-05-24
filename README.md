@@ -9,7 +9,7 @@ Nazare CLI requires Node.js and `curl`.
 Install latest CLI:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/refs/heads/main/install.sh | sh
 ```
 
 Verify install:
