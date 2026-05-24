@@ -113,8 +113,8 @@ Result: tested and passed.
   - Verified with temp `HOME` install and local update source override.
 - [x] `nazare self update --source <ref>` updates from requested source and records it
   - Verified with temp `HOME` install and branch/ref source override.
-- [ ] `nazare self update latest` updates from latest stable release tag and records it
-  - Verify with temp `HOME` install and GitHub latest release resolution.
+- [x] `nazare self update latest` updates from latest stable release tag and records it
+  - Verified with temp `HOME` install and GitHub latest release resolution.
 - [x] repeated update remains working
   - Verified by running update twice in temp `HOME`.
 - [x] update respects owned install path rules

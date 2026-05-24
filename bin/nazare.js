@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const https = require("node:https");
 const { spawnSync } = require("node:child_process");
 
 const HELP = `Nazare CLI
@@ -10,11 +11,11 @@ Usage:
   nazare --help
   nazare --version
   nazare init [name]
-  nazare self update [--source <ref>]
+  nazare self update [latest|--source <ref>]
 
 Commands:
   init [name]    Initialize Nazare relationship in a theme repo (not implemented yet)
-  self update    Update the Nazare CLI install from its original source or --source override
+  self update    Update the Nazare CLI install from its original source, latest release, or --source override
 
 Options:
   -h, --help          Show this help
@@ -93,13 +94,83 @@ function shellQuote(value) {
 	return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
-function parseSelfUpdateArgs(args) {
+function fetchJson(url) {
+	return new Promise((resolve, reject) => {
+		const request = https.get(
+			url,
+			{
+				headers: {
+					Accept: "application/vnd.github+json",
+					"User-Agent": "nazare-cli",
+				},
+			},
+			(response) => {
+				let body = "";
+				response.setEncoding("utf8");
+				response.on("data", (chunk) => {
+					body += chunk;
+				});
+				response.on("end", () => {
+					if (response.statusCode < 200 || response.statusCode >= 300) {
+						reject(
+							new Error(
+								`GitHub latest release request failed with status ${response.statusCode}`,
+							),
+						);
+						return;
+					}
+
+					try {
+						resolve(JSON.parse(body));
+					} catch {
+						reject(
+							new Error("GitHub latest release response was not valid JSON"),
+						);
+					}
+				});
+			},
+		);
+
+		request.on("error", (error) => reject(error));
+		request.setTimeout(15000, () => {
+			request.destroy(new Error("GitHub latest release request timed out"));
+		});
+	});
+}
+
+async function resolveLatestReleaseRef() {
+	const release = await fetchJson(
+		"https://api.github.com/repos/fedorivanenko/nazare/releases/latest",
+	);
+
+	if (
+		typeof release.tag_name !== "string" ||
+		!TAG_PATTERN.test(release.tag_name)
+	) {
+		throw new Error("GitHub latest release has no valid SemVer tag");
+	}
+
+	return release.tag_name;
+}
+
+async function parseSelfUpdateArgs(args) {
 	const options = { source: undefined };
 
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index];
 
+		if (arg === "latest") {
+			if (options.source) {
+				throw new Error("Use either latest or --source, not both");
+			}
+			options.source = await resolveLatestReleaseRef();
+			continue;
+		}
+
 		if (arg === "--source") {
+			if (options.source) {
+				throw new Error("Use either latest or --source, not both");
+			}
 			const value = args[index + 1];
 			if (!value || value.startsWith("--")) {
 				throw new Error("Missing value for --source");
@@ -149,11 +220,11 @@ function sourceMetadata(metadata, installedRef) {
 	};
 }
 
-function selfUpdate(args) {
+async function selfUpdate(args) {
 	let options;
 	let metadata;
 	try {
-		options = parseSelfUpdateArgs(args);
+		options = await parseSelfUpdateArgs(args);
 		metadata = sourceMetadata(readInstallMetadata(), options.source);
 	} catch (error) {
 		process.stderr.write(`nazare self update error: ${error.message}\n`);
@@ -183,7 +254,7 @@ function selfUpdate(args) {
 	return result.status === null ? 1 : result.status;
 }
 
-function main(argv) {
+async function main(argv) {
 	if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
 		process.stdout.write(HELP);
 		return 0;
@@ -212,4 +283,11 @@ function main(argv) {
 	return 1;
 }
 
-process.exitCode = main(process.argv.slice(2));
+main(process.argv.slice(2))
+	.then((exitCode) => {
+		process.exitCode = exitCode;
+	})
+	.catch((error) => {
+		process.stderr.write(`nazare error: ${error.message}\n`);
+		process.exitCode = 1;
+	});
