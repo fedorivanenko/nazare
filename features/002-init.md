@@ -36,6 +36,7 @@ codebaseOwnership:
     repo:
       - bin/nazare.js
       - README.md init instructions
+      - test/ CLI init tests
       - nazare.config.yml generated in user theme repo
       - nazare.lock.yml generated in user theme repo
 
@@ -70,6 +71,7 @@ Included:
 - README init instructions
 - clear failure when target already has `nazare.lock.yml`
 - clear failure when target has `nazare.config.yml` without `nazare.lock.yml`
+- Vitest coverage for init success and failure behavior
 
 ---
 
@@ -125,7 +127,7 @@ Included:
 
 ## Verification
 
-Result: not tested yet.
+Result: Vitest test design added; tests currently fail until `nazare init` is implemented.
 
 - [ ] `nazare init` creates `nazare.config.yml`
   - Verify in temp directory.
