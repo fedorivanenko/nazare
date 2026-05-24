@@ -14,15 +14,29 @@ Prerelease versions may use SemVer prerelease syntax when needed.
 
 ## Release source
 
-The default install and update source is `refs/heads/main` until tagged releases are introduced.
+The default development install and update source is `refs/heads/main`.
+
+Stable releases use Git tags.
 
 `nazare self update` updates from the originally installed ref/source recorded in install metadata.
 
 ## Tags
 
-Tagged releases are not required yet.
+Release tags are required for stable releases.
 
-When tags are introduced, tags should point to commits where `package.json.version` matches the tag version.
+Tag names must match `package.json.version` with a leading `v`:
+
+```txt
+vMAJOR.MINOR.PATCH
+```
+
+Example:
+
+```txt
+v0.1.0
+```
+
+Tags must point to commits where `package.json.version` matches the tag version without the leading `v`.
 
 ## Compatibility
 
@@ -31,7 +45,3 @@ Patch releases should preserve existing CLI behavior except for bug fixes.
 Minor releases may add commands or flags.
 
 Breaking CLI behavior requires a major version.
-
-## Rollback
-
-Users can reinstall a known commit or ref by running `install.sh` with explicit install source environment variables.
