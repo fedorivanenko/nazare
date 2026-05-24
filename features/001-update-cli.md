@@ -12,6 +12,7 @@ surfaces:
   cli:
     - nazare --version
     - nazare self update
+    - nazare self update latest
     - nazare self update --source <ref>
     - nazare --help
 
@@ -64,6 +65,7 @@ Included:
 - generated install metadata under `~/.nazare`
 - `nazare --version` output
 - `nazare self update` command
+- `nazare self update latest` stable release channel
 - `nazare self update --source <ref>` override
 - README update instructions
 - reinstall/update flow for Nazare-owned installs created by `install.sh`
@@ -75,6 +77,7 @@ Included:
 
 - `nazare --version` prints the installed CLI version and exits with code `0`.
 - `nazare self update` updates a Nazare-owned install using the same install source as `install.sh`.
+- `nazare self update latest` resolves the latest stable GitHub release tag, updates from that tag, and records it as the new install source.
 - `nazare self update --source <ref>` updates from the requested branch, tag, full ref, or commit SHA and records it as the new install source.
 - After update, `nazare --help` works and exits with code `0`.
 - Re-running `nazare self update` is safe and leaves a working `nazare` command.
@@ -87,6 +90,7 @@ Included:
 - Missing Node.js runtime exits non-zero with a clear error.
 - Missing `curl` exits non-zero with a clear error.
 - Download failure exits non-zero with a clear error.
+- Latest release resolution failure exits non-zero with a clear error.
 - Missing or invalid `--source` value exits non-zero with a clear error.
 - Existing non-Nazare `~/.local/bin/nazare` exits non-zero and is not overwritten.
 - Missing or invalid `package.json` version metadata exits non-zero with a clear error.
@@ -109,6 +113,8 @@ Result: tested and passed.
   - Verified with temp `HOME` install and local update source override.
 - [x] `nazare self update --source <ref>` updates from requested source and records it
   - Verified with temp `HOME` install and branch/ref source override.
+- [ ] `nazare self update latest` updates from latest stable release tag and records it
+  - Verify with temp `HOME` install and GitHub latest release resolution.
 - [x] repeated update remains working
   - Verified by running update twice in temp `HOME`.
 - [x] update respects owned install path rules
@@ -135,6 +141,10 @@ Installer should copy enough package metadata into the installed CLI so `nazare 
 `nazare self update` should reuse installer ownership checks instead of introducing a second write policy.
 
 `nazare self update` should update from the originally installed ref/source recorded in install metadata.
+
+`nazare self update latest` should resolve the latest stable GitHub release tag, update from that tag, and store the resolved tag in generated install metadata.
+
+`latest` is a channel selector, not a stored ref. Install metadata should store the resolved tag such as `v0.1.2`.
 
 `nazare self update --source <ref>` should override the update source for that update and store the new source in generated install metadata.
 
