@@ -157,6 +157,9 @@ theme:
   files:
     - path: layout/theme.liquid
       source: theme/default/layout/theme.liquid
+      checksum:
+        algorithm: sha256
+        value: 3b7b7f1f4c8c0d36c9d6f2f3d1b2a1a0c9e8d7f6a5b4c3d2e1f0a9b8c7d6e5f4
 ```
 
 Lockfile rules:
@@ -166,6 +169,8 @@ Lockfile rules:
 - `theme.source` is copied from manifest `theme.source`.
 - `theme.installedAt` is the pull time as an RFC 3339 timestamp.
 - `theme.files` records only files actually copied or overwritten by the CLI.
+- `theme.files[].checksum.algorithm` is `sha256`.
+- `theme.files[].checksum.value` is the SHA-256 checksum of the copied registry file content.
 - `theme.files` is cumulative across pulls.
 - Existing tracked file entries are updated when that same path is overwritten.
 - Previously tracked files are not removed when later pulls skip them.
@@ -211,6 +216,8 @@ Result: planned.
   - Verify SemVer validation.
 - [ ] valid `theme.version` is stored in lockfile as scaffold provenance
   - Verify lockfile `theme.version` equals manifest `theme.version` after a write.
+- [ ] copied files are stored with SHA-256 checksum metadata
+  - Verify lockfile checksum values equal copied file content checksums.
 - [ ] unsafe `from` and `to` paths fail before writing files
   - Verify absolute paths, `..`, backslashes, and escaping target root are rejected.
 - [ ] duplicate `to` paths fail before writing files
@@ -257,7 +264,7 @@ The registry scaffold lives in this repo for the default registry but is owned b
 
 Theme files become user-owned immediately after copy. Later pulls can offer overwrite, but must not silently synchronize or reconcile drift.
 
-`nazare theme` is the theme command namespace. This feature implements only `nazare theme pull`. Future features may add `nazare theme version` and `nazare theme update`.
+`nazare theme` is the theme command namespace. This feature implements only `nazare theme pull`. Future features may add `nazare theme version`; `nazare theme update` is defined separately by `theme-update`.
 
 `nazare theme pull` is canonical for theme scaffold install. Bare `nazare pull` remains out of scope to avoid ambiguity with future component install behavior.
 
