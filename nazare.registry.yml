@@ -17,5 +17,13 @@ theme:
       to: config/settings_schema.json
     - from: theme/default/nazare/vite-plugin.js
       to: nazare/vite-plugin.js
+    - from: theme/default/package.json
+      to: package.json
+    - from: theme/default/vite.config.js
+      to: vite.config.js
+    - from: theme/default/styles/base.css
+      to: styles/base.css
+    - from: theme/default/.gitignore
+      to: .gitignore
 
 components: {}

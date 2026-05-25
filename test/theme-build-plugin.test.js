@@ -94,7 +94,7 @@ describe("theme build plugin", () => {
 		await writeText(
 			root,
 			"sections/s-main.liquid",
-			"<section>Main</section>\n",
+			"{% render 'section-css', section_name: 's-main' %}\n<section>Main</section>\n",
 		);
 
 		generateThemeBuildFiles(root);

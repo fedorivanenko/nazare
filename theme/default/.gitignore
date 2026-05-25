@@ -1,0 +1,6 @@
+node_modules/
+.vite/
+.shopify/
+.env
+.env.*
+!.env.example

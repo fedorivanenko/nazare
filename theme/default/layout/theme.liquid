@@ -4,9 +4,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>{{ page_title }}</title>
+    {{ 'base.css' | asset_url | stylesheet_tag }}
+    {% render 'section-css-preloads' %}
     {{ content_for_header }}
   </head>
   <body>
     {{ content_for_layout }}
+    <script type="module" src="{{ 'theme.js' | asset_url }}"></script>
   </body>
 </html>

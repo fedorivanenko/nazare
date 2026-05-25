@@ -1,7 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-const root = new URL("../", import.meta.url);
 const manifestPath = new URL("../nazare.registry.yml", import.meta.url);
 const layoutPath = new URL(
 	"../theme/default/layout/theme.liquid",
@@ -45,7 +44,7 @@ describe("theme scaffold", () => {
 		);
 	});
 
-	it("keeps scaffold sources present and build pipeline files absent", async () => {
+	it("keeps Shopify scaffold sources present", async () => {
 		await expect(readText(layoutPath)).resolves.toContain(
 			"{{ content_for_layout }}",
 		);
@@ -54,18 +53,6 @@ describe("theme scaffold", () => {
 		await expect(readText(settingsSchemaPath)).resolves.toContain(
 			'"name": "Theme settings"',
 		);
-		await expect(
-			readText(new URL("../theme/default/package.json", root)),
-		).rejects.toMatchObject({ code: "ENOENT" });
-		await expect(
-			readText(new URL("../theme/default/vite.config.js", root)),
-		).rejects.toMatchObject({ code: "ENOENT" });
-		await expect(
-			readText(new URL("../theme/default/styles/base.css", root)),
-		).rejects.toMatchObject({ code: "ENOENT" });
-		await expect(
-			readText(new URL("../theme/default/.gitignore", root)),
-		).rejects.toMatchObject({ code: "ENOENT" });
 	});
 
 	it("uses one starter section only and index template points to it", async () => {
