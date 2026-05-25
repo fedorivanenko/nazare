@@ -47,6 +47,25 @@ Use a custom registry origin or ref:
 nazare init --repo github.com/fedorivanenko/nazare --ref refs/heads/main
 ```
 
+## Theme scaffold
+
+Default registry includes minimal Shopify-only theme scaffold source for future `nazare theme pull`.
+
+Current v1 scaffold source files:
+
+- `theme/default/layout/theme.liquid`
+- `theme/default/templates/index.json`
+- `theme/default/sections/s-main.liquid`
+- `theme/default/config/settings_schema.json`
+
+The scaffold is intentionally thin:
+
+- one layout
+- one JSON template
+- one starter section
+- minimal Shopify settings schema
+- no build pipeline files yet
+
 ## Update
 
 Update a Nazare-owned CLI install from its originally installed source:
