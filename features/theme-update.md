@@ -113,11 +113,14 @@ Local state:
 - obsolete: tracked file no longer appears in current manifest by `path`/`source`
 - untracked target: manifest target path absent from lockfile `theme.files`
 
-Missing checksum metadata is unsafe. Update must fail before mutation and ask user to refresh theme metadata, for example by rerunning `nazare theme pull`.
+Missing checksum metadata is migrated when it can be proven safe: if a current tracked local file equals current registry content, update may add checksum metadata without rewriting the file. If the local file differs, update must fail unless `--force` is passed. Missing obsolete files without checksum metadata may be untracked.
 
 ### Operation rules
 
 - Current tracked file + unmodified + registry content changed -> overwrite and update checksum.
+- Current tracked file + missing checksum + local equals registry -> add checksum metadata.
+- Current tracked file + missing checksum + local differs from registry -> fail before mutation.
+- Current tracked file + missing checksum + local differs from registry + `--force` -> overwrite and update checksum.
 - Current tracked file + modified -> fail before mutation.
 - Current tracked file + modified + `--force` -> overwrite and update checksum.
 - Current tracked file + missing -> fail before mutation.
@@ -164,7 +167,7 @@ Before any mutation, exit non-zero with clear error when:
 - lockfile lacks `theme` metadata
 - config, lockfile, registry origin, manifest, manifest `theme` block, version, source, or files are invalid
 - any manifest `from`/`to` path is unsafe, duplicate, or missing in registry snapshot
-- any tracked entry lacks checksum metadata
+- any tracked entry lacks checksum metadata and cannot be safely migrated
 - any current tracked installed file is modified or missing, unless `--force` is passed
 - any obsolete tracked file is modified, unless `--force` is passed
 - any new manifest target exists locally but is untracked, unless `--force` is passed
@@ -195,7 +198,9 @@ Result: planned.
   - Verify file and lockfile entry removed.
 - [ ] obsolete already-missing tracked file untracks
   - Verify lockfile entry removed without delete attempt.
-- [ ] missing checksum metadata fails before mutation
+- [ ] missing checksum metadata is added when local file equals registry
+  - Verify lockfile gets checksum and file content remains unchanged.
+- [ ] missing checksum metadata fails when local file differs from registry
   - Verify clear metadata error and lockfile unchanged.
 - [ ] new manifest file copies when target absent
   - Verify file created and lockfile entry has checksum.

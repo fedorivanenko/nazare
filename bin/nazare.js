@@ -777,11 +777,6 @@ async function themeUpdate(args) {
 					`Unsafe tracked theme file source path: ${file.source}`,
 				);
 			}
-			if (!hasValidChecksum(file)) {
-				throw new Error(
-					`Missing checksum metadata for tracked theme file: ${file.path}`,
-				);
-			}
 		}
 
 		const { theme, sources } = await readCurrentTheme(registry);
@@ -793,6 +788,7 @@ async function themeUpdate(args) {
 		const writes = [];
 		const deletes = [];
 		const untracks = [];
+		const metadataUpdates = [];
 
 		for (const tracked of trackedByPath.values()) {
 			const manifestFile = manifestByPath.get(tracked.path);
@@ -800,11 +796,23 @@ async function themeUpdate(args) {
 			const exists = fs.existsSync(targetPath);
 			const localContent = exists ? fs.readFileSync(targetPath) : undefined;
 			const localChecksum = exists ? sha256(localContent) : undefined;
-			const modified = exists && localChecksum !== tracked.checksum.value;
+			const hasChecksum = hasValidChecksum(tracked);
+			const modified =
+				exists && hasChecksum && localChecksum !== tracked.checksum.value;
 
 			if (!manifestFile) {
 				if (!exists) {
 					untracks.push(tracked);
+					continue;
+				}
+				if (!hasChecksum) {
+					if (!options.force) {
+						errors.push(
+							`Missing checksum metadata for obsolete theme file: ${tracked.path}`,
+						);
+						continue;
+					}
+					deletes.push(tracked);
 					continue;
 				}
 				if (modified && !options.force) {
@@ -812,6 +820,44 @@ async function themeUpdate(args) {
 					continue;
 				}
 				deletes.push(tracked);
+				continue;
+			}
+
+			const registryContent = sources.get(manifestFile.from);
+			const registryChecksum = sha256(registryContent);
+			const registryFile = {
+				path: manifestFile.to,
+				source: manifestFile.from,
+				content: registryContent,
+				checksum: { algorithm: "sha256", value: registryChecksum },
+			};
+
+			if (!hasChecksum) {
+				if (!exists) {
+					if (!options.force) {
+						errors.push(
+							`Missing installed theme file without checksum metadata: ${tracked.path}`,
+						);
+						continue;
+					}
+					writes.push(registryFile);
+					continue;
+				}
+				if (localChecksum === registryChecksum) {
+					metadataUpdates.push({
+						path: manifestFile.to,
+						source: manifestFile.from,
+						checksum: registryFile.checksum,
+					});
+					continue;
+				}
+				if (!options.force) {
+					errors.push(
+						`Missing checksum metadata for tracked theme file with local changes: ${tracked.path}`,
+					);
+					continue;
+				}
+				writes.push(registryFile);
 				continue;
 			}
 
@@ -824,19 +870,12 @@ async function themeUpdate(args) {
 				continue;
 			}
 
-			const registryContent = sources.get(manifestFile.from);
-			const registryChecksum = sha256(registryContent);
 			if (
 				!exists ||
 				localChecksum !== registryChecksum ||
 				tracked.source !== manifestFile.from
 			) {
-				writes.push({
-					path: manifestFile.to,
-					source: manifestFile.from,
-					content: registryContent,
-					checksum: { algorithm: "sha256", value: registryChecksum },
-				});
+				writes.push(registryFile);
 			}
 		}
 
@@ -861,7 +900,8 @@ async function themeUpdate(args) {
 			throw new Error(errors.join("; "));
 		}
 
-		const operations = writes.length + deletes.length + untracks.length;
+		const operations =
+			writes.length + deletes.length + untracks.length + metadataUpdates.length;
 		if (options.check) {
 			if (operations === 0) {
 				process.stdout.write("Theme already up to date\n");
@@ -873,6 +913,8 @@ async function themeUpdate(args) {
 				process.stdout.write(`Would delete ${file.path}\n`);
 			for (const file of untracks)
 				process.stdout.write(`Would untrack ${file.path}\n`);
+			for (const file of metadataUpdates)
+				process.stdout.write(`Would update metadata ${file.path}\n`);
 			return 0;
 		}
 
@@ -903,6 +945,9 @@ async function themeUpdate(args) {
 				source: file.source,
 				checksum: file.checksum,
 			});
+		}
+		for (const file of metadataUpdates) {
+			nextFiles.set(file.path, file);
 		}
 
 		fs.writeFileSync(

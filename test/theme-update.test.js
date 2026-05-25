@@ -113,6 +113,69 @@ describe("nazare theme update", () => {
 		expect(lockfile).toContain("updatedAt:");
 	});
 
+	it("bootstraps missing checksum metadata when local file matches registry", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
+		await initAndPull(cwd, registry);
+		const lockPath = join(cwd, "nazare.lock.yml");
+		await writeFile(
+			lockPath,
+			(await readFile(lockPath, "utf8")).replace(
+				/\n {6}checksum:\n {8}algorithm: sha256\n {8}value: [0-9a-f]{64}/,
+				"",
+			),
+		);
+
+		const result = await runCli(["theme", "update", "--check"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(result.stdout).toContain(
+			"Would update metadata layout/theme.liquid",
+		);
+
+		const update = await runCli(["theme", "update"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(update).toMatchObject({ code: 0, stderr: "" });
+		expect(await readFile(lockPath, "utf8")).toContain("checksum:");
+	});
+
+	it("untracks obsolete missing files without checksum metadata", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, {
+			"layout/theme.liquid": "layout\n",
+			"templates/old.json": "old\n",
+		});
+		await initAndPull(cwd, registry);
+		await rm(join(cwd, "templates", "old.json"));
+		const lockPath = join(cwd, "nazare.lock.yml");
+		await writeFile(
+			lockPath,
+			(await readFile(lockPath, "utf8")).replace(
+				/ {4}- path: templates\/old\.json\n {6}source: theme\/default\/templates\/old\.json\n {6}checksum:\n {8}algorithm: sha256\n {8}value: [0-9a-f]{64}\n/,
+				"    - path: templates/old.json\n      source: theme/default/templates/old.json\n",
+			),
+		);
+		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
+
+		const result = await runCli(["theme", "update"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(await readFile(lockPath, "utf8")).not.toContain(
+			"templates/old.json",
+		);
+	});
+
 	it("fails before mutation when tracked file is modified", async () => {
 		const cwd = await makeTempDir();
 		const registry = await makeTempDir("nazare-registry-test-");
