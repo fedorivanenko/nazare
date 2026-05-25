@@ -10,16 +10,18 @@ const HELP = `Nazare CLI
 Usage:
   nazare --help
   nazare --version
-  nazare init [name]
+  nazare init [directory] [--repo <repo>] [--ref <ref>]
   nazare self update [latest|--source <ref>]
 
 Commands:
-  init [name]    Initialize Nazare relationship in a theme repo (not implemented yet)
-  self update    Update the Nazare CLI install from its original source, latest release, or --source override
+  init [directory]    Initialize Nazare relationship in a theme repo
+  self update         Update the Nazare CLI install from its original source, latest release, or --source override
 
 Options:
   -h, --help          Show this help
   -v, --version       Show CLI version
+  --repo <repo>       Registry GitHub repo for init
+  --ref <ref>         Registry ref for init
   --source <ref>      Update from a branch, tag, full ref, or commit SHA
 `;
 
@@ -29,6 +31,14 @@ const SEMVER_PATTERN =
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
 const TAG_PATTERN =
 	/^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const GITHUB_REPO_PATTERN =
+	/^(?:https:\/\/github\.com\/|git@github\.com:|github\.com\/)[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?$/;
+const DEFAULT_REGISTRY = {
+	name: "nazare",
+	repo: "github.com/fedorivanenko/nazare",
+	ref: "refs/heads/main",
+	manifest: "nazare.registry.yml",
+};
 
 function getInstallDir() {
 	return process.env.NAZARE_INSTALL_DIR || path.resolve(__dirname, "..");
@@ -220,6 +230,137 @@ function sourceMetadata(metadata, installedRef) {
 	};
 }
 
+function isValidRegistryRepo(repo) {
+	return typeof repo === "string" && GITHUB_REPO_PATTERN.test(repo);
+}
+
+function parseInitArgs(args) {
+	const options = {
+		directory: undefined,
+		registry: { ...DEFAULT_REGISTRY },
+	};
+
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+
+		if (arg === "--repo") {
+			const value = args[index + 1];
+			if (!value || value.startsWith("--")) {
+				throw new Error("Missing value for --repo");
+			}
+			if (!isValidRegistryRepo(value)) {
+				throw new Error("Invalid registry repo for --repo");
+			}
+			options.registry.repo = value;
+			index += 1;
+			continue;
+		}
+
+		if (arg === "--ref") {
+			const value = args[index + 1];
+			if (!value || value.startsWith("--")) {
+				throw new Error("Missing value for --ref");
+			}
+			options.registry.ref = value;
+			index += 1;
+			continue;
+		}
+
+		if (arg.startsWith("--")) {
+			throw new Error(`Unknown init option: ${arg}`);
+		}
+
+		if (options.directory !== undefined) {
+			throw new Error("nazare init accepts only one directory argument");
+		}
+
+		if (arg.length === 0) {
+			throw new Error("Init directory must not be empty");
+		}
+
+		if (arg.includes("/") || arg.includes("\\")) {
+			throw new Error("Init directory must not contain path separators");
+		}
+
+		options.directory = arg;
+	}
+
+	if (!isValidRegistryRepo(options.registry.repo)) {
+		throw new Error("Invalid registry repo");
+	}
+
+	return options;
+}
+
+function renderRegistryYaml(registry) {
+	return `schemaVersion: 1
+
+registry:
+  name: ${registry.name}
+  repo: ${registry.repo}
+  ref: ${registry.ref}
+  manifest: ${registry.manifest}
+`;
+}
+
+function renderLockYaml(registry) {
+	return `${renderRegistryYaml(registry)}
+components: {}
+`;
+}
+
+function initTheme(args) {
+	let options;
+	try {
+		options = parseInitArgs(args);
+	} catch (error) {
+		process.stderr.write(`nazare init error: ${error.message}\n`);
+		return 1;
+	}
+
+	const targetDir = options.directory
+		? path.resolve(process.cwd(), options.directory)
+		: process.cwd();
+	const configPath = path.join(targetDir, "nazare.config.yml");
+	const lockPath = path.join(targetDir, "nazare.lock.yml");
+	let createdConfig = false;
+
+	try {
+		fs.mkdirSync(targetDir, { recursive: true });
+
+		if (fs.existsSync(lockPath)) {
+			throw new Error(`Target already has nazare.lock.yml: ${lockPath}`);
+		}
+
+		if (fs.existsSync(configPath)) {
+			throw new Error(
+				`Target has nazare.config.yml without nazare.lock.yml: ${configPath}`,
+			);
+		}
+
+		fs.writeFileSync(configPath, renderRegistryYaml(options.registry), {
+			flag: "wx",
+		});
+		createdConfig = true;
+		fs.writeFileSync(lockPath, renderLockYaml(options.registry), {
+			flag: "wx",
+		});
+	} catch (error) {
+		if (createdConfig) {
+			try {
+				fs.rmSync(configPath);
+			} catch {
+				// Keep original write failure visible.
+			}
+		}
+		process.stderr.write(`nazare init error: ${error.message}\n`);
+		return 1;
+	}
+
+	process.stdout.write(`Created ${configPath}\nCreated ${lockPath}\n`);
+	return 0;
+}
+
 async function selfUpdate(args) {
 	let options;
 	let metadata;
@@ -271,10 +412,7 @@ async function main(argv) {
 	}
 
 	if (command === "init") {
-		process.stderr.write(
-			"nazare init is not implemented yet. Run `nazare --help` for available commands.\n",
-		);
-		return 1;
+		return initTheme(argv.slice(1));
 	}
 
 	process.stderr.write(

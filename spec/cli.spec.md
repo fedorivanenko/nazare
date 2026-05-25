@@ -17,15 +17,15 @@ Registry contains two main pieces:
 - Registry components
   Installable snippets, sections, scripts, assets, and other component files
 
-Theme config schema is defined in `docs/theme-config.spec.md`.
+Theme config schema is defined in `spec/theme-config.spec.md`.
 
-Theme scaffold requirements are defined in `docs/theme-scaffold.spec.md`.
+Theme scaffold requirements are defined in `spec/theme-scaffold.spec.md`.
 
-Registry manifest schema is defined in `docs/registry-manifest.spec.md`.
+Registry manifest schema is defined in `spec/registry-manifest.spec.md`.
 
-Component package contents rules are defined in `docs/component-package.spec.md`.
+Component package contents rules are defined in `spec/component-package.spec.md`.
 
-Test plan is defined in `docs/test-plan.spec.md`.
+Test plan is defined in `spec/test-plan.spec.md`.
 
 ## Actions
 
@@ -176,7 +176,7 @@ CLI resolves configured registry origin from `nazare.config.yml` as snapshot of 
 
 If config registry fields differ from lockfile registry fields, CLI must continue using config values and warn that installed provenance differs from current configured origin. This is not a validation error by itself.
 
-V1 supports public GitHub registry repos. Accepted `repo` forms are defined in `docs/theme-config.spec.md`.
+V1 supports public GitHub registry repos. Accepted `repo` forms are defined in `spec/theme-config.spec.md`.
 
 Supported `ref` forms in v1 are branch, tag, and commit sha.
 
@@ -186,11 +186,11 @@ Private registry authentication flow is not specified yet.
 
 ## Manifest / lockfile role
 
-Theme config schema is defined separately in `docs/theme-config.spec.md`.
+Theme config schema is defined separately in `spec/theme-config.spec.md`.
 
-Registry manifest schema is defined separately in `docs/registry-manifest.spec.md`.
+Registry manifest schema is defined separately in `spec/registry-manifest.spec.md`.
 
-Theme lockfile schema is defined separately in `docs/theme-lockfile.spec.md`.
+Theme lockfile schema is defined separately in `spec/theme-lockfile.spec.md`.
 
 The lockfile stores install history and registry origin provenance at install time.
 

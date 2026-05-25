@@ -24,7 +24,7 @@ schemaVersion: 1
 registry:
   name: nazare
   repo: github.com/fedorivanenko/nazare
-  ref: main
+  ref: refs/heads/main
   manifest: nazare.registry.yml
 ```
 
@@ -49,7 +49,7 @@ Required object.
 registry:
   name: nazare
   repo: github.com/fedorivanenko/nazare
-  ref: main
+  ref: refs/heads/main
   manifest: nazare.registry.yml
 ```
 
@@ -57,7 +57,7 @@ Fields:
 
 - `name`: required non-empty string
 - `repo`: required non-empty string identifying registry origin
-- `ref`: required non-empty string for branch, tag, or commit used for resolution
+- `ref`: required non-empty string for branch, full ref, tag, or commit used for resolution
 - `manifest`: required string path to manifest inside registry repo
 
 V1 supports public GitHub registry repos.
@@ -71,7 +71,7 @@ Accepted `repo` forms:
 
 The CLI may normalize `repo` internally to an implementation-specific fetch URL.
 
-`ref` has no version or semver range semantics. It is only a Git branch, tag, or commit SHA selector.
+`ref` has no version or semver range semantics. It is only a Git branch, full ref such as `refs/heads/main`, tag, or commit SHA selector.
 
 `manifest` path rules:
 
@@ -107,7 +107,7 @@ schemaVersion: 1
 registry:
   name: nazare
   repo: github.com/fedorivanenko/nazare
-  ref: main
+  ref: refs/heads/main
   manifest: nazare.registry.yml
 ```
 

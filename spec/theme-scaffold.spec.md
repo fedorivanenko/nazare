@@ -96,7 +96,7 @@ Generated files created later by the Nazare Vite plugin are not user-owned.
 
 ## Relationship to other specs
 
-- registry manifest describes how theme files are declared: `docs/registry-manifest.spec.md`
-- local theme build/runtime behavior is defined in: `docs/theme.spec.md`
-- local theme config is defined in: `docs/theme-config.spec.md`
-- local lockfile behavior is defined in: `docs/theme-lockfile.spec.md`
+- registry manifest describes how theme files are declared: `spec/registry-manifest.spec.md`
+- local theme build/runtime behavior is defined in: `spec/theme.spec.md`
+- local theme config is defined in: `spec/theme-config.spec.md`
+- local lockfile behavior is defined in: `spec/theme-lockfile.spec.md`

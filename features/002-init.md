@@ -1,65 +1,185 @@
-# 002 — Initialize Nazare Theme Repo
+---
+schemaVersion: 1
 
-Status: planned
+id: F-002
+title: Initialize Nazare Theme Repo
+status: planned
+
+dependencies:
+  - F-000
+  - F-001
+
+surfaces:
+  cli:
+    - nazare init
+    - nazare init [directory]
+    - nazare init --repo <repo>
+    - nazare init --ref <ref>
+    - nazare init [directory] --repo <repo> --ref <ref>
+
+invariants:
+  - Init must not overwrite existing nazare.lock.yml
+  - Init must create valid initial config and lock files
+  - Init must not pull theme files or components
+  - Failed init must not partially mutate target state when avoidable
+
+nonGoals:
+  - Pulling registry theme files
+  - Adding or updating components
+  - Fetching or validating the remote registry manifest
+  - Creating Shopify theme scaffold files
+  - Adopting existing nazare.config.yml without a lockfile
+  - Force-overwriting existing init files
+
+codebaseOwnership:
+  owns:
+    repo:
+      - bin/nazare.js
+      - README.md init instructions
+      - test/ CLI init tests
+      - nazare.config.yml generated in user theme repo
+      - nazare.lock.yml generated in user theme repo
+
+  mustNotModify:
+    - existing nazare.lock.yml
+    - existing nazare.config.yml
+    - theme files
+    - component files
+    - registry files
+---
+
+# 002 — Initialize Nazare Theme Repo
 
 ## Goal
 
-Add `nazare init` so a user theme repo can be linked to a Nazare registry origin.
+Add `nazare init` so a user theme repo can be linked to the default Nazare registry origin.
+
+The command should create the initial local Nazare state without pulling theme files or components.
+
+---
 
 ## Scope
 
-`nazare init` creates the initial local Nazare files:
+Included:
 
-- `nazare.config.yml`
-- `nazare.lock.yml`
+- `nazare init`
+- optional project directory creation via `nazare init [directory]`
+- optional registry origin override via `--repo <repo>`
+- optional registry ref override via `--ref <ref>`
+- `nazare.config.yml` creation
+- `nazare.lock.yml` creation
+- README init instructions
+- clear failure when target already has `nazare.lock.yml`
+- clear failure when target has `nazare.config.yml` without `nazare.lock.yml`
+- Vitest coverage for init success and failure behavior
 
-## Behavior
+---
 
-### Success
+## Success behavior
 
-Running `nazare init` in a theme repo creates:
+- Running `nazare init` in a theme repo creates `nazare.config.yml` and `nazare.lock.yml` in the current directory.
+- Running `nazare init [directory]` creates the project directory when needed and writes initial files there.
+- Running `nazare init --repo <repo>` uses the provided registry repo in generated files.
+- Running `nazare init --ref <ref>` uses the provided registry ref in generated files.
+- Generated `nazare.config.yml` uses default registry metadata when `--repo` and `--ref` are omitted:
 
-```yaml
-# nazare.config.yml
-schemaVersion: 1
+  ```yaml
+  schemaVersion: 1
 
-registry:
-  name: nazare
-  repo: github.com/fedorivanenko/nazare
-  ref: main
-  manifest: nazare.registry.yml
-```
+  registry:
+    name: nazare
+    repo: github.com/fedorivanenko/nazare
+    ref: refs/heads/main
+    manifest: nazare.registry.yml
+  ```
 
-```yaml
-# nazare.lock.yml
-schemaVersion: 1
+- Generated `nazare.lock.yml` uses the same registry metadata as config and starts with no installed components:
 
-registry:
-  name: nazare
-  repo: github.com/fedorivanenko/nazare
-  ref: main
-  manifest: nazare.registry.yml
+  ```yaml
+  schemaVersion: 1
 
-components: {}
-```
+  registry:
+    name: nazare
+    repo: github.com/fedorivanenko/nazare
+    ref: refs/heads/main
+    manifest: nazare.registry.yml
 
-### Failure
+  components: {}
+  ```
 
-`nazare init` fails if `nazare.lock.yml` already exists.
+- Successful init prints created file paths and exits with code `0`.
 
-It must not overwrite existing lockfile state.
+---
 
-## Acceptance criteria
+## Failure behavior
 
-- Creates `nazare.config.yml`
-- Creates `nazare.lock.yml`
-- Uses default registry metadata
-- Fails when `nazare.lock.yml` exists
-- Does not mutate existing `nazare.lock.yml`
-- Has tests using temporary directories
+- If target `nazare.lock.yml` already exists, init exits non-zero with a clear error.
+- If target `nazare.config.yml` exists but `nazare.lock.yml` does not, init exits non-zero with a clear error.
+- Init must not overwrite existing `nazare.lock.yml` or `nazare.config.yml`.
+- If `--repo` is missing a value or has an invalid repo form, init exits non-zero with a clear error.
+- If `--ref` is missing a value or is empty, init exits non-zero with a clear error.
+- If `[directory]` contains path separators, init exits non-zero with a clear error.
+- If target directory cannot be created, init exits non-zero with a clear error.
+- If target files cannot be written, init exits non-zero with a clear error.
+- Failed init must not mutate theme files or component files.
 
-## Related specs
+---
 
-- [`docs/cli.spec.md`](../docs/cli.spec.md)
-- [`docs/theme-config.spec.md`](../docs/theme-config.spec.md)
-- [`docs/theme-lockfile.spec.md`](../docs/theme-lockfile.spec.md)
+## Verification
+
+Result: tested and passed.
+
+- [x] `nazare init` creates `nazare.config.yml`
+  - Verified in temp directory with Vitest.
+- [x] `nazare init` creates `nazare.lock.yml`
+  - Verified in temp directory with Vitest.
+- [x] generated files use default registry metadata
+  - Verified file contents with Vitest.
+- [x] `nazare init --repo <repo>` writes custom registry repo metadata
+  - Verified config and lockfile contents with Vitest.
+- [x] `nazare init --ref <ref>` writes custom registry ref metadata
+  - Verified config and lockfile contents with Vitest.
+- [x] `nazare init [directory]` creates target directory and initial files
+  - Verified in temp parent directory with Vitest.
+- [x] `nazare init [directory]` rejects directory values containing path separators
+  - Verified with `/` and `\\` path separators with Vitest.
+- [x] init fails when `nazare.lock.yml` exists
+  - Verified existing lockfile content remains unchanged with Vitest.
+- [x] init fails when `nazare.config.yml` exists without `nazare.lock.yml`
+  - Verified existing config content remains unchanged with Vitest.
+- [x] failed init does not mutate theme or component files
+  - Verified with temp fixture files in Vitest.
+- [x] invalid or missing `--repo` and `--ref` values fail before writing files
+  - Verified with Vitest.
+
+---
+
+## Architecture notes
+
+`nazare.init` should write only local config and lockfile state. Registry fetch and manifest validation belong to later theme/component commands.
+
+`nazare.lock.yml` is the guard for an initialized repo. Existing lockfile means the target is already initialized.
+
+Existing `nazare.config.yml` without `nazare.lock.yml` is ambiguous state. F-002 should fail instead of adopting or overwriting it.
+
+A future `nazare init --adopt` could validate an existing `nazare.config.yml` and create a matching `nazare.lock.yml` without changing the config.
+
+A future `nazare init --force` could reset init state by replacing config and lockfile, but it must require destructive confirmation behavior before writing.
+
+`nazare init [directory]` should reject values containing `/` or `\\` path separators before creating directories. Nested target paths are out of scope for F-002.
+
+`nazare init [directory]` should create the directory when it does not exist, then apply the same lockfile guard inside that directory.
+
+Default registry repo should be `github.com/fedorivanenko/nazare`.
+
+`--repo <repo>` should accept the public GitHub repo forms defined in `spec/theme-config.spec.md`.
+
+Default registry ref should use `refs/heads/main` to match installer URL behavior and avoid ambiguous raw branch resolution.
+
+`--ref <ref>` should accept any non-empty ref selector string, including branch names, full refs, tags, and commit SHAs. Full registry ref resolution belongs to later registry fetch behavior.
+
+---
+
+## Open questions
+
+- None

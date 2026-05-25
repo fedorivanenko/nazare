@@ -101,6 +101,6 @@ CLI must fail validation for:
 
 ## Relationship to other specs
 
-- registry manifest schema: `docs/registry-manifest.spec.md`
-- CLI behavior and install flows: `docs/cli.spec.md`
-- local build/runtime behavior: `docs/theme.spec.md`
+- registry manifest schema: `spec/registry-manifest.spec.md`
+- CLI behavior and install flows: `spec/cli.spec.md`
+- local build/runtime behavior: `spec/theme.spec.md`

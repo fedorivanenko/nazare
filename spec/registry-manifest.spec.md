@@ -125,7 +125,7 @@ This metadata is used by `nazare theme pull` and explicit overwrite choices duri
 
 A registry may omit `theme` and still be valid for component operations, but `nazare theme pull` requires `theme` to exist.
 
-Theme scaffold requirements are defined separately in `docs/theme-scaffold.spec.md`.
+Theme scaffold requirements are defined separately in `spec/theme-scaffold.spec.md`.
 
 Theme file path rules:
 
@@ -263,7 +263,7 @@ These fields are optional and do not affect build graph behavior.
 
 V1 does not define registry-side component docs or examples fields.
 
-Component package contents and destination rules are defined separately in `docs/component-package.spec.md`.
+Component package contents and destination rules are defined separately in `spec/component-package.spec.md`.
 
 ## Explicit non-fields
 
