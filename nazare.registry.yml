@@ -15,5 +15,7 @@ theme:
       to: sections/s-main.liquid
     - from: theme/default/config/settings_schema.json
       to: config/settings_schema.json
+    - from: theme/default/nazare/vite-plugin.js
+      to: nazare/vite-plugin.js
 
 components: {}

@@ -10,6 +10,7 @@ dependencies:
   - cli-self-update
   - cli-init
   - theme-scaffold
+  - theme-build-plugin
 
 surfaces:
   storefront:
@@ -28,6 +29,7 @@ nonGoals:
   - Implementing nazare theme pull
   - Implementing component install behavior
   - Implementing the full Nazare Vite plugin
+  - Supporting operation without the Nazare Vite plugin
   - Defining a visual design system
   - Shipping generated build output as source
   - Shipping a full Shopify skeleton theme
@@ -104,7 +106,7 @@ These entries are additive to the Shopify-only files from `theme-scaffold`.
 ### Required file intent
 
 - `package.json`: local `dev`, `build`, and `watch` scripts plus package metadata required by the scaffold.
-- `vite.config.js`: minimal Vite and Tailwind wiring for the local theme, with placeholder integration surface for a later Nazare Vite plugin feature.
+- `vite.config.js`: Vite, Tailwind, and relative import wiring for the vendored Nazare Vite plugin.
 - `styles/base.css`: Tailwind-powered base CSS entry imported by the build pipeline.
 - `.gitignore`: ignores dependency folders and local-only tooling state, but does not ignore generated build outputs.
 
@@ -180,12 +182,16 @@ The runtime discovers JavaScript mount nodes with `data-nazare-use`:
 ```liquid
 <div data-nazare-use="sections/s-hero"></div>
 <div data-nazare-use="snippets/c-video"></div>
+<div data-nazare-use="behaviors/scroll-snap"></div>
 ```
+
+One DOM node uses exactly one module key. Multiple behaviors should use nested/wrapper nodes or one composed module key.
 
 The generated runtime lazy-loads matching source modules through Vite dynamic imports:
 
 - `data-nazare-use="sections/s-hero"` -> `scripts/sections/s-hero.js` -> `assets/sections--s-hero.js`
 - `data-nazare-use="snippets/c-video"` -> `scripts/snippets/c-video.js` -> `assets/snippets--c-video.js`
+- `data-nazare-use="behaviors/scroll-snap"` -> `scripts/behaviors/scroll-snap.js` -> `assets/behaviors--scroll-snap.js`
 
 Component JavaScript modules export:
 
@@ -218,6 +224,7 @@ Vite build outputs into Shopify theme assets:
 - `scripts/theme.js` -> `assets/theme.js`
 - `scripts/sections/<section-name>.js` -> `assets/sections--<section-name>.js`
 - `scripts/snippets/<snippet-name>.js` -> `assets/snippets--<snippet-name>.js`
+- `scripts/behaviors/<behavior-name>.js` -> `assets/behaviors--<behavior-name>.js`
 
 V1 asset output names must be stable and must not include content hashes.
 
@@ -227,7 +234,7 @@ Script contract:
 - `build`: runs a one-shot production build into `assets/`.
 - `watch`: runs the build pipeline in watch mode for use beside Shopify theme development.
 
-Git policy:
+Git policy follows [`docs/policies/generated-files-policy.md`](../docs/policies/generated-files-policy.md):
 
 - scaffold source files in `theme.files` are user-owned after `nazare theme pull`.
 - generated intermediate files are not listed in `theme.files`.
@@ -255,12 +262,13 @@ Generated files are not scaffold source and must not be listed in `theme.files` 
 - Every build pipeline `theme.files[].from` path exists in the repo.
 - Every build pipeline `theme.files[].to` path is a safe relative theme path.
 - `package.json` exposes local `dev`, `build`, and `watch` scripts.
-- `vite.config.js` wires the minimal Vite/Tailwind build pipeline for the local theme and leaves an explicit integration surface for the later Nazare Vite plugin feature.
+- `vite.config.js` wires the Vite/Tailwind build pipeline and vendored Nazare Vite plugin for the local theme.
 - `styles/base.css` is the base CSS entry.
 - `layout/theme.liquid` contains CSS bridge and module runtime hook points.
 - `sections/s-main.liquid` contains the section CSS contract hook point.
 - build contract maps source inputs and generated intermediates to stable Shopify asset outputs.
 - Generated Vite plugin output is not committed as registry scaffold source, but is intended to be git tracked after generation in user theme repos.
+- The local build depends on the Nazare Vite plugin and fails if that plugin is unavailable or cannot generate required runtime and bridge files.
 
 ---
 
@@ -269,10 +277,11 @@ Generated files are not scaffold source and must not be listed in `theme.files` 
 - If a manifest theme file owned by this feature points at a missing source file, validation tests fail.
 - If a manifest theme destination owned by this feature is unsafe, validation tests fail.
 - If required scripts are missing from `package.json`, validation tests fail.
-- If required Vite/Tailwind wiring or plugin integration surface is missing from `vite.config.js`, validation tests fail.
+- If required Vite/Tailwind wiring or Nazare Vite plugin integration is missing from `vite.config.js`, validation tests fail.
 - If required layout or section hook points are missing, validation tests fail.
 - If required build input/output mappings are missing from `vite.config.js`, validation tests fail.
 - If generated Vite plugin output is committed as registry scaffold source before generation, validation tests fail.
+- If the Nazare Vite plugin dependency is missing or not wired in `vite.config.js`, build-pipeline validation tests fail.
 
 ---
 
@@ -291,13 +300,13 @@ Result: planned.
 - [ ] `package.json` exposes local `dev`, `build`, and `watch` scripts
   - Verify package fixture assertions.
 - [ ] `vite.config.js` wires Nazare theme build behavior
-  - Verify config fixture assertions.
+  - Verify config fixture assertions, including real Nazare Vite plugin import/use.
 - [ ] `styles/base.css` exists as base CSS entry
   - Verify file existence and basic content.
 - [ ] layout has Nazare CSS preload and module runtime hook points
   - Verify string/fixture assertions.
 - [ ] CSS and JavaScript bridge contracts are documented and asserted
-  - Verify generated snippet shapes, `data-nazare-use` lazy-load mapping, and module script usage.
+  - Verify generated snippet shapes, one-key `data-nazare-use` lazy-load mapping, and module script usage.
 - [ ] starter section supports section CSS contract
   - Verify string/fixture assertions.
 - [ ] build contract maps source inputs and generated intermediates to stable Shopify asset outputs
@@ -319,9 +328,9 @@ Vite and Tailwind belong in the same feature because they jointly define the loc
 
 A JavaScript UI framework does not belong in this feature. The scaffold runtime contract should remain framework-agnostic in v1.
 
-The Nazare Vite plugin is a separate later feature. This feature should not implement Liquid scanning, generated runtime code, generated bridge snippets, or stale generated file cleanup.
+The Nazare Vite plugin is owned by `theme-build-plugin`. This feature depends on that plugin and should not attempt to provide placeholder behavior without it.
 
-`vite.config.js` should use minimal placeholder wiring that can build `styles/base.css` now and expose an obvious integration point for the future Nazare Vite plugin.
+`vite.config.js` should import and use the vendored plugin by relative path, such as `./nazare/vite-plugin.js`. A pulled theme with this build pipeline is not expected to build or render correctly if the plugin is missing, because generated runtime files and bridge snippets come from the plugin.
 
 Generated files must remain generated. They should be absent from registry scaffold source and `theme.files`, but trackable in user theme repos after generation.
 
