@@ -236,13 +236,15 @@ V1 asset output names must be stable and must not include content hashes.
 
 Script contract:
 
-- `dev`: runs Shopify theme development through global `shopify theme dev -e development`.
+- `dev`: runs Shopify theme development through global `shopify theme dev -e development --nodelete`.
 - `build`: runs a one-shot Vite production build into `assets/`.
 - `watch`: runs the Vite build pipeline in watch mode for use beside Shopify theme development.
 
 `dev` relies on Shopify CLI being installed globally and available on `PATH`. If `shopify` is missing, the script should fail with the shell command-not-found error.
 
 Local store pinning uses Shopify CLI theme environments. `shopify.theme.toml` must define `[environments.development]` with `store = "your-store.myshopify.com"` and `theme-editor-sync = true`. Users replace the placeholder store with their Shopify store domain.
+
+`--nodelete` is required for the minimal scaffold because Shopify CLI otherwise attempts to delete remote theme files that are absent locally, including Shopify-protected files such as `templates/gift_card.liquid`.
 
 Git policy follows [`docs/policies/generated-files-policy.md`](../docs/policies/generated-files-policy.md):
 
@@ -271,7 +273,7 @@ Generated files are not scaffold source and must not be listed in `theme.files` 
 - The default registry manifest contains valid `theme.files` entries for those build pipeline files.
 - Every build pipeline `theme.files[].from` path exists in the repo.
 - Every build pipeline `theme.files[].to` path is a safe relative theme path.
-- `package.json` exposes local `dev`, `build`, and `watch` scripts, where `dev` runs `shopify theme dev -e development`.
+- `package.json` exposes local `dev`, `build`, and `watch` scripts, where `dev` runs `shopify theme dev -e development --nodelete`.
 - `vite.config.js` wires the Vite/Tailwind build pipeline and vendored Nazare Vite plugin for the local theme.
 - `styles/base.css` is the base CSS entry.
 - `layout/theme.liquid` contains CSS bridge and module runtime hook points.
@@ -289,7 +291,7 @@ Generated files are not scaffold source and must not be listed in `theme.files` 
 - If a manifest theme file owned by this feature points at a missing source file, validation tests fail.
 - If a manifest theme destination owned by this feature is unsafe, validation tests fail.
 - If required scripts are missing from `package.json`, validation tests fail.
-- If `dev` does not run `shopify theme dev -e development`, validation tests fail.
+- If `dev` does not run `shopify theme dev -e development --nodelete`, validation tests fail.
 - If `shopify.theme.toml` is missing or does not define the `development` environment, validation tests fail.
 - If `.gitignore` does not ignore local `.env` files, validation tests fail.
 - If required Vite/Tailwind wiring or Nazare Vite plugin integration is missing from `vite.config.js`, validation tests fail.
@@ -313,7 +315,7 @@ Result: planned.
 - [ ] every build pipeline `theme.files[].to` is safe
   - Verify path safety test.
 - [ ] `package.json` exposes local `dev`, `build`, and `watch` scripts
-  - Verify package fixture assertions, including `shopify theme dev -e development`.
+  - Verify package fixture assertions, including `shopify theme dev -e development --nodelete`.
 - [ ] `vite.config.js` wires Nazare theme build behavior
   - Verify config fixture assertions, including real Nazare Vite plugin import/use.
 - [ ] `styles/base.css` exists as base CSS entry

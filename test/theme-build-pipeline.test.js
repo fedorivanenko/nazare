@@ -54,7 +54,7 @@ describe("theme build pipeline", () => {
 		const packageJson = JSON.parse(await readText(packagePath));
 
 		expect(packageJson.scripts).toEqual({
-			dev: "shopify theme dev -e development",
+			dev: "shopify theme dev -e development --nodelete",
 			build: "vite build",
 			watch: "vite build --watch",
 		});
