@@ -13,18 +13,18 @@ dependencies:
 surfaces:
   storefront:
     - minimal Shopify Liquid theme scaffold
-    - Nazare runtime integration points
 
 invariants:
   - The scaffold must be thinner than Shopify skeleton theme
   - The scaffold must remain a valid minimal Shopify Liquid theme
-  - Every scaffold file must be required for Shopify validity, initial render, local development, or Nazare integration
+  - Every scaffold file must be required for Shopify validity or initial render
   - The scaffold must include exactly one starter section in v1
   - Scaffold files become user-owned after nazare theme pull copies them
-  - Generated Vite plugin output must not be committed as scaffold source
+  - Build pipeline files must be owned by a later feature
 
 nonGoals:
   - Implementing nazare theme pull
+  - Implementing theme build pipeline files
   - Implementing component install behavior
   - Shipping a full Shopify skeleton theme
   - Shipping demo sections or starter content beyond the minimum render path
@@ -36,13 +36,20 @@ nonGoals:
 codebaseOwnership:
   owns:
     repo:
-      - theme/default/ minimal registry theme scaffold
-      - nazare.registry.yml theme block and theme.files list
+      - theme/default/layout/theme.liquid
+      - theme/default/templates/index.json
+      - theme/default/sections/main.liquid
+      - theme/default/config/settings_schema.json
+      - nazare.registry.yml theme block entries for minimal scaffold files
       - README.md minimal theme scaffold notes
       - test/ theme scaffold fixture tests
 
   mustNotModify:
     - bin/nazare.js command behavior
+    - theme/default/package.json
+    - theme/default/vite.config.js
+    - theme/default/styles/base.css
+    - theme/default/.gitignore
     - component registry behavior
     - generated Vite plugin output files
     - user theme files outside generated test fixtures
@@ -53,9 +60,9 @@ codebaseOwnership:
 
 ## Goal
 
-Define the initial Nazare registry theme scaffold copied later by `nazare theme pull`.
+Define the initial Shopify-only Nazare registry theme scaffold copied later by `nazare theme pull`.
 
-The scaffold should be the thinnest valid Shopify Liquid theme needed for Nazare usage: enough to render, run local development, and support later component adds, without shipping a full starter theme.
+The scaffold should be the thinnest valid Shopify Liquid theme needed for first render, without build tooling, component install behavior, or full starter-theme content.
 
 ---
 
@@ -64,16 +71,15 @@ The scaffold should be the thinnest valid Shopify Liquid theme needed for Nazare
 Included:
 
 - minimal registry theme scaffold under `theme/default/`
-- exact v1 scaffold file list
-- manifest `theme` block content for the default registry
+- exact v1 Shopify-only scaffold file list
+- manifest `theme` block entries for the minimal scaffold files
 - Shopify minimal theme validity expectations
-- Nazare runtime and build integration points in scaffold files
 - README notes for the minimal scaffold
-- tests that verify scaffold fixture shape and required integration points
+- tests that verify scaffold fixture shape and required Shopify files
 
 ### V1 scaffold files
 
-The default registry scaffold should declare these files in `nazare.registry.yml`:
+The default registry scaffold starts with these Shopify-only files in `nazare.registry.yml`:
 
 ```yaml
 theme:
@@ -88,68 +94,40 @@ theme:
       to: sections/main.liquid
     - from: theme/default/config/settings_schema.json
       to: config/settings_schema.json
-    - from: theme/default/styles/base.css
-      to: styles/base.css
-    - from: theme/default/package.json
-      to: package.json
-    - from: theme/default/vite.config.js
-      to: vite.config.js
-    - from: theme/default/.gitignore
-      to: .gitignore
 ```
 
 `theme.version` is the registry scaffold version. It is not the local user theme version.
 
 ### Required file intent
 
-- `layout/theme.liquid`: baseline Shopify layout with Nazare asset and runtime hook points.
+- `layout/theme.liquid`: baseline Shopify layout that can render the initial template and section.
 - `templates/index.json`: minimal JSON template that renders the starter section.
 - `sections/main.liquid`: one minimal starter section and first render target.
 - `config/settings_schema.json`: minimal Shopify theme settings schema required for theme validity.
-- `styles/base.css`: baseline CSS entry imported by the build pipeline.
-- `package.json`: local dev/build scripts and package metadata required by the scaffold.
-- `vite.config.js`: Vite and Nazare plugin wiring for the local theme.
-- `.gitignore`: ignores dependency folders and generated build output that should not be committed by default.
-
-### Required integration points
-
-`layout/theme.liquid` must include hook points for:
-
-- base CSS asset generated from `styles/base.css`
-- generated section CSS preload snippet in `<head>`
-- generated runtime JS asset
-
-The starter section must support the same section CSS contract later used by added sections.
-
-Generated files are not scaffold source and must not be listed in `theme.files` unless a later feature changes ownership:
-
-- `assets/theme.js`
-- `scripts/theme.js`
-- `snippets/section-css.liquid`
-- `snippets/section-css-preloads.liquid`
 
 ---
 
 ## Success behavior
 
-- The repo contains `theme/default/` with exactly the v1 scaffold files listed in this feature.
-- The default registry manifest contains a valid `theme` block for those files.
+- The repo contains `theme/default/` with the v1 Shopify-only scaffold files listed in this feature.
+- The default registry manifest contains valid `theme.files` entries for those files.
 - `theme.version` is a valid SemVer 2.0.0 string.
-- Every `theme.files[].from` path exists in the repo.
-- Every `theme.files[].to` path is a safe relative theme path.
+- Every `theme.files[].from` path owned by this feature exists in the repo.
+- Every `theme.files[].to` path owned by this feature is a safe relative theme path.
 - The scaffold includes one starter section only.
 - The scaffold has no broad Shopify skeleton demo content.
+- The scaffold has no build pipeline files.
 - The scaffold has no generated Vite plugin output committed as source.
 
 ---
 
 ## Failure behavior
 
-- If a manifest theme file points at a missing scaffold source file, validation tests fail.
-- If a manifest theme destination is unsafe, validation tests fail.
+- If a manifest theme file owned by this feature points at a missing scaffold source file, validation tests fail.
+- If a manifest theme destination owned by this feature is unsafe, validation tests fail.
 - If scaffold includes extra starter/demo sections beyond the one starter section, validation tests fail.
+- If build pipeline files are added by this feature, validation tests fail.
 - If generated Vite plugin output is committed as scaffold source, validation tests fail.
-- If required integration points are missing from layout or starter section files, validation tests fail.
 
 ---
 
@@ -157,20 +135,22 @@ Generated files are not scaffold source and must not be listed in `theme.files` 
 
 Result: planned.
 
-- [ ] `theme/default/` contains the exact v1 scaffold file list
+- [ ] `theme/default/` contains the exact Shopify-only v1 scaffold file list
   - Verify with fixture file-list test.
-- [ ] `nazare.registry.yml` contains a valid `theme` block
+- [ ] `nazare.registry.yml` contains valid `theme.files` entries for scaffold files
   - Verify manifest parse and schema test.
-- [ ] every `theme.files[].from` exists
+- [ ] every owned `theme.files[].from` exists
   - Verify manifest-to-filesystem test.
-- [ ] every `theme.files[].to` is safe
+- [ ] every owned `theme.files[].to` is safe
   - Verify path safety test.
 - [ ] scaffold includes exactly one section
   - Verify `theme/default/sections/*.liquid` count.
-- [ ] layout has Nazare CSS preload and runtime hook points
-  - Verify string/fixture assertions.
-- [ ] starter section supports section CSS contract
-  - Verify string/fixture assertions.
+- [ ] layout renders the minimal Shopify document structure
+  - Verify layout fixture assertions.
+- [ ] starter section can render from `templates/index.json`
+  - Verify template references the starter section.
+- [ ] scaffold includes no build pipeline files
+  - Verify `package.json`, `vite.config.js`, `styles/base.css`, and `.gitignore` are absent until F-004.
 - [ ] generated Vite plugin output is not included as scaffold source
   - Verify generated paths are absent from `theme.files` and `theme/default/`.
 - [ ] scaffold stays thinner than Shopify skeleton
@@ -180,13 +160,13 @@ Result: planned.
 
 ## Architecture notes
 
-This feature owns scaffold source content, not copy behavior. `nazare theme pull` is implemented separately and should copy whatever the registry manifest declares.
+This feature owns Shopify scaffold source content, not copy behavior. `nazare theme pull` is implemented separately and should copy whatever the registry manifest declares.
 
 The scaffold should use Shopify skeleton theme as an audit/reference source only. The shipped scaffold should be a reduced Nazare-specific subset.
 
-The file list should be conservative. Add files only when required by Shopify validity, first render, local dev/build flow, or Nazare integration.
+The file list should be conservative. Add files only when required by Shopify validity or first render.
 
-Generated Vite plugin output belongs to build/runtime features, not scaffold source.
+Theme build pipeline files are intentionally separate so the roadmap stays linear and each feature has one reason to change.
 
 ---
 

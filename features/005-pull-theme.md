@@ -1,7 +1,7 @@
 ---
 schemaVersion: 1
 
-id: F-004
+id: F-005
 title: Pull Theme
 status: planned
 
@@ -10,6 +10,7 @@ dependencies:
   - F-001
   - F-002
   - F-003
+  - F-004
 
 surfaces:
   cli:
@@ -57,13 +58,13 @@ codebaseOwnership:
     - install metadata
 ---
 
-# 004 — Pull Theme
+# 005 — Pull Theme
 
 ## Goal
 
 Add `nazare theme pull` so an initialized theme repo can pull the Nazare theme scaffold from the configured registry origin.
 
-This feature owns CLI copy, conflict, validation, and lockfile behavior. The scaffold source files and default manifest file list are owned by F-003 Minimal Theme Scaffold.
+This feature owns CLI copy, conflict, validation, and lockfile behavior. The scaffold source files and default manifest file list are owned by F-003 Minimal Theme Scaffold and F-004 Theme Build Pipeline.
 
 ---
 
