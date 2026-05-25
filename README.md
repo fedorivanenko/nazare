@@ -49,7 +49,7 @@ nazare init --repo github.com/fedorivanenko/nazare --ref refs/heads/main
 
 ## Theme scaffold
 
-Default registry includes minimal Shopify-only theme scaffold source for future `nazare theme pull`.
+Default registry includes a minimal Shopify theme scaffold source for `nazare theme pull`.
 
 Current v1 scaffold source files:
 
@@ -57,6 +57,11 @@ Current v1 scaffold source files:
 - `theme/default/templates/index.json`
 - `theme/default/sections/s-main.liquid`
 - `theme/default/config/settings_schema.json`
+- `theme/default/nazare/vite-plugin.js`
+- `theme/default/package.json`
+- `theme/default/vite.config.js`
+- `theme/default/styles/base.css`
+- `theme/default/.gitignore`
 
 The scaffold is intentionally thin:
 
@@ -64,7 +69,18 @@ The scaffold is intentionally thin:
 - one JSON template
 - one starter section
 - minimal Shopify settings schema
-- no build pipeline files yet
+- vendored Nazare Vite plugin
+- minimal Vite and Tailwind build pipeline
+
+Local theme commands after pull:
+
+```sh
+npm run build
+npm run watch
+npm run dev
+```
+
+`npm run dev` runs `shopify theme dev` and requires Shopify CLI installed globally.
 
 ## Update
 

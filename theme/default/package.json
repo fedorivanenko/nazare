@@ -3,7 +3,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "vite",
+		"dev": "shopify theme dev",
 		"build": "vite build",
 		"watch": "vite build --watch"
 	},

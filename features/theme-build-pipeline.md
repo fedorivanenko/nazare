@@ -230,9 +230,11 @@ V1 asset output names must be stable and must not include content hashes.
 
 Script contract:
 
-- `dev`: starts the local Vite development flow.
-- `build`: runs a one-shot production build into `assets/`.
-- `watch`: runs the build pipeline in watch mode for use beside Shopify theme development.
+- `dev`: runs Shopify theme development through global `shopify theme dev`.
+- `build`: runs a one-shot Vite production build into `assets/`.
+- `watch`: runs the Vite build pipeline in watch mode for use beside Shopify theme development.
+
+`dev` relies on Shopify CLI being installed globally and available on `PATH`. If `shopify` is missing, the script should fail with the shell command-not-found error.
 
 Git policy follows [`docs/policies/generated-files-policy.md`](../docs/policies/generated-files-policy.md):
 
@@ -261,7 +263,7 @@ Generated files are not scaffold source and must not be listed in `theme.files` 
 - The default registry manifest contains valid `theme.files` entries for those build pipeline files.
 - Every build pipeline `theme.files[].from` path exists in the repo.
 - Every build pipeline `theme.files[].to` path is a safe relative theme path.
-- `package.json` exposes local `dev`, `build`, and `watch` scripts.
+- `package.json` exposes local `dev`, `build`, and `watch` scripts, where `dev` runs `shopify theme dev`.
 - `vite.config.js` wires the Vite/Tailwind build pipeline and vendored Nazare Vite plugin for the local theme.
 - `styles/base.css` is the base CSS entry.
 - `layout/theme.liquid` contains CSS bridge and module runtime hook points.
