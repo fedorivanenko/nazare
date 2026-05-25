@@ -107,6 +107,39 @@ function shellQuote(value) {
 	return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
 
+function fetchUrlBuffer(url) {
+	return new Promise((resolve, reject) => {
+		const request = https.get(
+			url,
+			{
+				headers: {
+					"User-Agent": "nazare-cli",
+				},
+			},
+			(response) => {
+				const chunks = [];
+				response.on("data", (chunk) => chunks.push(chunk));
+				response.on("end", () => {
+					if (response.statusCode < 200 || response.statusCode >= 300) {
+						reject(
+							new Error(
+								`Request failed with status ${response.statusCode}: ${url}`,
+							),
+						);
+						return;
+					}
+					resolve(Buffer.concat(chunks));
+				});
+			},
+		);
+
+		request.on("error", (error) => reject(error));
+		request.setTimeout(15000, () => {
+			request.destroy(new Error(`Request timed out: ${url}`));
+		});
+	});
+}
+
 function fetchJson(url) {
 	return new Promise((resolve, reject) => {
 		const request = https.get(
@@ -396,7 +429,7 @@ function isSafeRelativePath(value) {
 	);
 }
 
-function ensureSafeThemeFiles(theme, registryRoot) {
+function ensureSafeThemeFiles(theme) {
 	const seenTargets = new Set();
 
 	for (const file of theme.files) {
@@ -410,27 +443,38 @@ function ensureSafeThemeFiles(theme, registryRoot) {
 			throw new Error(`Duplicate theme file target path: ${file.to}`);
 		}
 		seenTargets.add(file.to);
-
-		const sourcePath = path.resolve(registryRoot, file.from);
-		if (!sourcePath.startsWith(path.resolve(registryRoot) + path.sep)) {
-			throw new Error(`Unsafe theme file source path: ${file.from}`);
-		}
-		if (!fs.existsSync(sourcePath)) {
-			throw new Error(`Missing theme file source: ${file.from}`);
-		}
 	}
 }
 
-function resolveRegistryRoot(registry) {
+function githubRepoSlug(repo) {
+	const match = repo.match(
+		/^(?:https:\/\/github\.com\/|git@github\.com:|github\.com\/)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?$/,
+	);
+	if (!match) {
+		throw new Error(`Cannot resolve registry repo: ${repo}`);
+	}
+	return match[1];
+}
+
+function registryRawUrl(registry, filePath) {
+	return `https://raw.githubusercontent.com/${githubRepoSlug(registry.repo)}/${registry.ref}/${filePath}`;
+}
+
+function resolveRegistryRoot() {
 	if (process.env.NAZARE_REGISTRY_DIR) {
 		return path.resolve(process.env.NAZARE_REGISTRY_DIR);
 	}
 
-	if (registry.repo === DEFAULT_REGISTRY.repo) {
-		return getInstallDir();
+	return getInstallDir();
+}
+
+async function readRegistryFile(registry, registryRoot, filePath) {
+	const localPath = path.join(registryRoot, filePath);
+	if (fs.existsSync(localPath)) {
+		return fs.readFileSync(localPath);
 	}
 
-	throw new Error(`Cannot resolve registry repo: ${registry.repo}`);
+	return fetchUrlBuffer(registryRawUrl(registry, filePath));
 }
 
 function parseThemePullArgs(args) {
@@ -494,7 +538,7 @@ ${renderedFiles}
 `;
 }
 
-function themePull(args) {
+async function themePull(args) {
 	let options;
 	try {
 		options = parseThemePullArgs(args);
@@ -519,15 +563,14 @@ function themePull(args) {
 		const lockSource = fs.readFileSync(lockPath, "utf8");
 		const registry = parseRegistryYaml(configSource, "nazare.config.yml");
 		parseRegistryYaml(lockSource, "nazare.lock.yml");
-		const registryRoot = resolveRegistryRoot(registry);
-		const manifestPath = path.join(registryRoot, registry.manifest);
-
-		if (!fs.existsSync(manifestPath)) {
-			throw new Error(`Missing registry manifest: ${registry.manifest}`);
-		}
-
-		const theme = parseThemeManifest(fs.readFileSync(manifestPath, "utf8"));
-		ensureSafeThemeFiles(theme, registryRoot);
+		const registryRoot = resolveRegistryRoot();
+		const manifest = await readRegistryFile(
+			registry,
+			registryRoot,
+			registry.manifest,
+		);
+		const theme = parseThemeManifest(manifest.toString("utf8"));
+		ensureSafeThemeFiles(theme);
 
 		const conflicts = theme.files.filter((file) =>
 			fs.existsSync(path.join(cwd, file.to)),
@@ -538,13 +581,24 @@ function themePull(args) {
 			);
 		}
 
+		const sources = new Map();
+		for (const file of theme.files) {
+			try {
+				sources.set(
+					file.from,
+					await readRegistryFile(registry, registryRoot, file.from),
+				);
+			} catch {
+				throw new Error(`Missing theme file source: ${file.from}`);
+			}
+		}
+
 		const writtenFiles = [];
 		for (const file of theme.files) {
-			const sourcePath = path.join(registryRoot, file.from);
 			const targetPath = path.join(cwd, file.to);
 			if (fs.existsSync(targetPath) && !options.yes) continue;
 			fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-			fs.copyFileSync(sourcePath, targetPath);
+			fs.writeFileSync(targetPath, sources.get(file.from));
 			writtenFiles.push(file);
 			process.stdout.write(`Wrote ${file.to}\n`);
 		}
