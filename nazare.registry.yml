@@ -25,7 +25,7 @@ theme:
       to: styles/base.css
     - from: theme/default/.gitignore
       to: .gitignore
-    - from: theme/default/.env.example
-      to: .env.example
+    - from: theme/default/shopify.theme.toml
+      to: shopify.theme.toml
 
 components: {}

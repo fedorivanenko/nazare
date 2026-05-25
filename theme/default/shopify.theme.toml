@@ -1,0 +1,3 @@
+[environments.development]
+store = "your-store.myshopify.com"
+theme-editor-sync = true

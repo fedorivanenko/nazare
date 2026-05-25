@@ -42,7 +42,7 @@ codebaseOwnership:
       - theme/default/vite.config.js
       - theme/default/styles/base.css
       - theme/default/.gitignore
-      - theme/default/.env.example
+      - theme/default/shopify.theme.toml
       - Nazare build hook points in theme/default/layout/theme.liquid
       - section CSS hook point in theme/default/sections/s-main.liquid
       - nazare.registry.yml theme block entries for build pipeline files
@@ -75,7 +75,7 @@ Included:
 - `theme/default/vite.config.js`
 - `theme/default/styles/base.css`
 - `theme/default/.gitignore`
-- `theme/default/.env.example`
+- `theme/default/shopify.theme.toml`
 - Vite and Tailwind wiring required for the minimal Nazare build pipeline
 - no required JavaScript UI framework in v1 scaffold
 - manifest `theme.files` entries for build pipeline files
@@ -101,8 +101,8 @@ theme:
       to: styles/base.css
     - from: theme/default/.gitignore
       to: .gitignore
-    - from: theme/default/.env.example
-      to: .env.example
+    - from: theme/default/shopify.theme.toml
+      to: shopify.theme.toml
 ```
 
 These entries are additive to the Shopify-only files from `theme-scaffold`.
@@ -113,7 +113,7 @@ These entries are additive to the Shopify-only files from `theme-scaffold`.
 - `vite.config.js`: Vite, Tailwind, and relative import wiring for the vendored Nazare Vite plugin.
 - `styles/base.css`: Tailwind-powered base CSS entry imported by the build pipeline.
 - `.gitignore`: ignores dependency folders and local-only tooling state, including local `.env` files, but does not ignore generated build outputs.
-- `.env.example`: documents optional Shopify CLI flag environment variables for local theme development.
+- `shopify.theme.toml`: defines the default Shopify CLI `development` environment for local theme development.
 
 V1 includes Vite and Tailwind together as one build pipeline feature.
 
@@ -214,7 +214,7 @@ Source inputs owned by this feature:
 - `styles/base.css`: global base CSS entry.
 - `vite.config.js`: Vite build configuration.
 - `package.json`: local build command surface.
-- `.env.example`: optional local Shopify CLI flag template.
+- `shopify.theme.toml`: Shopify CLI environment configuration.
 
 Generated intermediate files owned by the future Nazare Vite plugin, not scaffold source:
 
@@ -236,13 +236,13 @@ V1 asset output names must be stable and must not include content hashes.
 
 Script contract:
 
-- `dev`: loads `.env` when present, then runs Shopify theme development through global `shopify theme dev`.
+- `dev`: runs Shopify theme development through global `shopify theme dev -e development`.
 - `build`: runs a one-shot Vite production build into `assets/`.
 - `watch`: runs the Vite build pipeline in watch mode for use beside Shopify theme development.
 
 `dev` relies on Shopify CLI being installed globally and available on `PATH`. If `shopify` is missing, the script should fail with the shell command-not-found error.
 
-Local store pinning uses Shopify CLI flag environment variables. `.env.example` must document `SHOPIFY_FLAG_STORE=your-store.myshopify.com`, which maps to the Shopify CLI `--store` flag. User-specific `.env` files are local-only and must not be committed.
+Local store pinning uses Shopify CLI theme environments. `shopify.theme.toml` must define `[environments.development]` with `store = "your-store.myshopify.com"` and `theme-editor-sync = true`. Users replace the placeholder store with their Shopify store domain.
 
 Git policy follows [`docs/policies/generated-files-policy.md`](../docs/policies/generated-files-policy.md):
 
@@ -271,14 +271,14 @@ Generated files are not scaffold source and must not be listed in `theme.files` 
 - The default registry manifest contains valid `theme.files` entries for those build pipeline files.
 - Every build pipeline `theme.files[].from` path exists in the repo.
 - Every build pipeline `theme.files[].to` path is a safe relative theme path.
-- `package.json` exposes local `dev`, `build`, and `watch` scripts, where `dev` loads `.env` when present and runs `shopify theme dev`.
+- `package.json` exposes local `dev`, `build`, and `watch` scripts, where `dev` runs `shopify theme dev -e development`.
 - `vite.config.js` wires the Vite/Tailwind build pipeline and vendored Nazare Vite plugin for the local theme.
 - `styles/base.css` is the base CSS entry.
 - `layout/theme.liquid` contains CSS bridge and module runtime hook points.
 - `sections/s-main.liquid` contains the section CSS contract hook point.
 - build contract maps source inputs and generated intermediates to stable Shopify asset outputs.
-- `.env.example` documents `SHOPIFY_FLAG_STORE=your-store.myshopify.com` for optional local Shopify store pinning.
-- `.gitignore` ignores local `.env` files while allowing `.env.example` to be committed.
+- `shopify.theme.toml` defines `[environments.development]`, `store = "your-store.myshopify.com"`, and `theme-editor-sync = true` for optional local Shopify store pinning.
+- `.gitignore` ignores local `.env` files.
 - Generated Vite plugin output is not committed as registry scaffold source, but is intended to be git tracked after generation in user theme repos.
 - The local build depends on the Nazare Vite plugin and fails if that plugin is unavailable or cannot generate required runtime and bridge files.
 
@@ -289,9 +289,9 @@ Generated files are not scaffold source and must not be listed in `theme.files` 
 - If a manifest theme file owned by this feature points at a missing source file, validation tests fail.
 - If a manifest theme destination owned by this feature is unsafe, validation tests fail.
 - If required scripts are missing from `package.json`, validation tests fail.
-- If `dev` does not load `.env` before `shopify theme dev`, validation tests fail.
-- If `.env.example` is missing or does not document `SHOPIFY_FLAG_STORE`, validation tests fail.
-- If `.gitignore` does not ignore local `.env` files or accidentally ignores `.env.example`, validation tests fail.
+- If `dev` does not run `shopify theme dev -e development`, validation tests fail.
+- If `shopify.theme.toml` is missing or does not define the `development` environment, validation tests fail.
+- If `.gitignore` does not ignore local `.env` files, validation tests fail.
 - If required Vite/Tailwind wiring or Nazare Vite plugin integration is missing from `vite.config.js`, validation tests fail.
 - If required layout or section hook points are missing, validation tests fail.
 - If required build input/output mappings are missing from `vite.config.js`, validation tests fail.
@@ -305,7 +305,7 @@ Generated files are not scaffold source and must not be listed in `theme.files` 
 Result: planned.
 
 - [ ] `theme/default/` contains build pipeline files
-  - Verify `package.json`, `vite.config.js`, `styles/base.css`, `.gitignore`, and `.env.example` exist.
+  - Verify `package.json`, `vite.config.js`, `styles/base.css`, `.gitignore`, and `shopify.theme.toml` exist.
 - [ ] `nazare.registry.yml` contains valid `theme.files` entries for build pipeline files
   - Verify manifest parse and schema test.
 - [ ] every build pipeline `theme.files[].from` exists
@@ -313,7 +313,7 @@ Result: planned.
 - [ ] every build pipeline `theme.files[].to` is safe
   - Verify path safety test.
 - [ ] `package.json` exposes local `dev`, `build`, and `watch` scripts
-  - Verify package fixture assertions, including `.env` loading before `shopify theme dev`.
+  - Verify package fixture assertions, including `shopify theme dev -e development`.
 - [ ] `vite.config.js` wires Nazare theme build behavior
   - Verify config fixture assertions, including real Nazare Vite plugin import/use.
 - [ ] `styles/base.css` exists as base CSS entry
@@ -328,10 +328,10 @@ Result: planned.
   - Verify `vite.config.js` fixture assertions for stable asset names and output root.
 - [ ] generated Vite plugin output is not included as registry scaffold source before generation
   - Verify generated paths are absent from `theme.files` and `theme/default/`.
-- [ ] `.env.example` documents optional Shopify store pinning
-  - Verify `SHOPIFY_FLAG_STORE=your-store.myshopify.com` exists and `.env.example` is listed in `theme.files`.
-- [ ] `.gitignore` ignores local `.env` files without ignoring `.env.example`
-  - Verify `.env` and `.env.*` are ignored and `!.env.example` is present.
+- [ ] `shopify.theme.toml` documents optional Shopify store pinning
+  - Verify `[environments.development]`, `store = "your-store.myshopify.com"`, and `theme-editor-sync = true` exist and `shopify.theme.toml` is listed in `theme.files`.
+- [ ] `.gitignore` ignores local `.env` files
+  - Verify `.env` and `.env.*` are ignored.
 - [ ] `.gitignore` does not ignore generated build outputs
   - Verify generated `assets/`, `styles/<section-name>.css`, `scripts/theme.js`, and generated Liquid bridge snippets remain trackable in user theme repos.
 

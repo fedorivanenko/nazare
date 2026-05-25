@@ -3,4 +3,3 @@ node_modules/
 .shopify/
 .env
 .env.*
-!.env.example

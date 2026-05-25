@@ -3,7 +3,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "set -a; [ -f .env ] && . ./.env; set +a; shopify theme dev",
+		"dev": "shopify theme dev -e development",
 		"build": "vite build",
 		"watch": "vite build --watch"
 	},
