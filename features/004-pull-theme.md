@@ -1,7 +1,7 @@
 ---
 schemaVersion: 1
 
-id: F-003
+id: F-004
 title: Pull Theme
 status: planned
 
@@ -9,14 +9,12 @@ dependencies:
   - F-000
   - F-001
   - F-002
+  - F-003
 
 surfaces:
   cli:
     - nazare theme pull
     - nazare theme pull --yes
-  storefront:
-    - minimal Shopify Liquid theme scaffold
-    - Nazare runtime integration points
 
 invariants:
   - Theme pull must require an initialized Nazare theme repo
@@ -29,16 +27,17 @@ invariants:
   - Failed theme pull must not partially mutate lockfile metadata when avoidable
 
 nonGoals:
+  - Defining the minimal theme scaffold file contents
   - Adding or updating components
   - Implementing nazare add <component>
   - Implementing nazare pull <component>
   - Implementing a generic nazare pull command
+  - Implementing nazare theme version
+  - Implementing nazare theme update
   - Component dependency resolution
   - Theme drift detection or reconciliation
   - Removing old theme files
   - Adopting existing Shopify themes
-  - Full Shopify skeleton theme
-  - Demo sections or starter content beyond the minimum valid scaffold
   - Implementing the Nazare Vite plugin
 
 codebaseOwnership:
@@ -47,12 +46,10 @@ codebaseOwnership:
       - bin/nazare.js theme pull command handling
       - README.md theme pull instructions
       - test/ CLI theme pull tests
-      - nazare.registry.yml theme block
-      - templates/default/ minimal registry theme scaffold
-      - generated theme files declared by manifest theme.files
       - nazare.lock.yml theme metadata in user theme repo
 
   mustNotModify:
+    - templates/default/ scaffold source content
     - component registry behavior
     - component files not declared by manifest theme.files
     - existing user theme files unless explicitly overwritten by user choice or --yes
@@ -60,13 +57,13 @@ codebaseOwnership:
     - install metadata
 ---
 
-# 003 — Pull Theme
+# 004 — Pull Theme
 
 ## Goal
 
-Add `nazare theme pull` so an initialized theme repo can pull the initial Nazare theme scaffold from the configured registry origin.
+Add `nazare theme pull` so an initialized theme repo can pull the Nazare theme scaffold from the configured registry origin.
 
-The pulled theme should be the thinnest valid Shopify Liquid scaffold needed for Nazare usage: enough to render, run local development, and support later component adds, without shipping a full starter theme.
+This feature owns CLI copy, conflict, validation, and lockfile behavior. The scaffold source files and default manifest file list are owned by F-003 Minimal Theme Scaffold.
 
 ---
 
@@ -79,36 +76,15 @@ Included:
 - registry origin resolution from `nazare.config.yml`
 - registry manifest read from the resolved origin snapshot
 - manifest `theme` block validation
-- minimal registry theme scaffold under `templates/default/`
 - file copy from registry paths to local theme paths
 - interactive conflict handling for existing target files
 - lockfile `theme` metadata updates
 - README theme pull instructions
 - Vitest coverage for theme pull success and failure behavior
 
-### Initial theme scaffold
-
-The v1 scaffold should be thinner than Shopify skeleton theme.
-
-The scaffold should include only files required for:
-
-- valid minimal Shopify Liquid theme structure
-- initial page render
-- Nazare runtime and build integration points
-- later component installation by CLI
-
-Every scaffold file must satisfy at least one of those requirements. Demo content, broad starter theme sections, and optional Shopify skeleton conveniences are out of scope.
-
-Expected scaffold shape:
-
-- one baseline layout, such as `layout/theme.liquid`
-- one minimal render path for the default page, such as a template and one section
-- minimal config files required for Shopify theme validity
-- Nazare asset/runtime hook points needed by local build output
-
 ### Registry manifest theme block
 
-The registry manifest must support a `theme` block:
+The command consumes a registry manifest `theme` block:
 
 ```yaml
 theme:
@@ -214,18 +190,16 @@ Lockfile rules:
 
 Result: planned.
 
-- [ ] `nazare theme pull` copies missing scaffold files
+- [ ] `nazare theme pull` copies missing manifest-declared theme files
   - Verify with a temp initialized repo and registry fixture.
-- [ ] copied scaffold is thinner than Shopify skeleton but valid enough for initial render
-  - Verify fixture file list and minimal theme smoke test.
 - [ ] missing `nazare.config.yml` fails before writing files
   - Verify target directory remains unchanged.
 - [ ] missing `nazare.lock.yml` fails before writing files
   - Verify target directory remains unchanged.
 - [ ] invalid config fails before writing files
-  - Verify no scaffold files are created.
+  - Verify no theme files are created.
 - [ ] invalid lockfile fails before writing files
-  - Verify no scaffold files are created.
+  - Verify no theme files are created.
 - [ ] missing manifest fails before writing files
   - Verify clear error and unchanged target files.
 - [ ] missing manifest `theme` block fails before writing files
@@ -276,9 +250,11 @@ The command should plan and validate all manifest paths before writing any theme
 
 File writes and lockfile writes should be separated. Theme files are copied first according to explicit conflict choices. Lockfile metadata is updated only after the set of actually written files is known.
 
-The registry scaffold lives in this repo for the default registry. The scaffold is source content, not generated output.
+The registry scaffold lives in this repo for the default registry but is owned by F-003. This feature should treat registry theme files as data declared by the manifest.
 
 Theme files become user-owned immediately after copy. Later pulls can offer overwrite, but must not silently synchronize or reconcile drift.
+
+`nazare theme` is the theme command namespace. This feature implements only `nazare theme pull`. Future features may add `nazare theme version` and `nazare theme update`.
 
 `nazare theme pull` is canonical for theme scaffold install. Bare `nazare pull` remains out of scope to avoid ambiguity with future component install behavior.
 
@@ -286,6 +262,4 @@ Theme files become user-owned immediately after copy. Later pulls can offer over
 
 ## Open questions
 
-- What exact minimal Shopify file set is required for the first scaffold fixture?
-- Should the baseline render path use `templates/index.json` plus one section, or a thinner Liquid template path?
 - Should theme pull support `--json` in v1, or reserve JSON output for list-style commands only?
