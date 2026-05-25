@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const https = require("node:https");
+const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 
 const HELP = `Nazare CLI
@@ -12,11 +13,13 @@ Usage:
   nazare --version
   nazare init [directory] [--repo <repo>] [--ref <ref>]
   nazare theme pull [--yes]
+  nazare theme update [--force] [--check]
   nazare self update [latest|--source <ref>]
 
 Commands:
   init [directory]    Initialize Nazare relationship in a theme repo
   theme pull          Pull registry theme scaffold into an initialized theme repo
+  theme update        Safely update installed theme scaffold files
   self update         Update the Nazare CLI install from its original source, latest release, or --source override
 
 Options:
@@ -26,6 +29,8 @@ Options:
   --ref <ref>         Registry ref for init
   --source <ref>      Update from a branch, tag, full ref, or commit SHA
   --yes               Overwrite theme file conflicts without prompting
+  --force             Overwrite modified theme update files
+  --check             Print theme update plan without changing files
 `;
 
 const SEMVER_PATTERN =
@@ -491,40 +496,109 @@ function parseThemePullArgs(args) {
 	return options;
 }
 
-function existingLockThemeFiles(lockSource) {
-	const files = [];
-	const themeFilesMatch = lockSource.match(
-		/\ntheme:\n[\s\S]*?\n\s+files:\n([\s\S]*?)(?:\n\S|$)/,
-	);
-	if (!themeFilesMatch) return files;
+function parseThemeUpdateArgs(args) {
+	const options = { force: false, check: false };
 
-	let current;
-	for (const line of themeFilesMatch[1].split("\n")) {
-		const pathMatch = line.match(/^\s*-\s+path:\s*(.+)$/);
-		const sourceMatch = line.match(/^\s+source:\s*(.+)$/);
-		if (pathMatch) {
-			current = { path: pathMatch[1].trim() };
-			files.push(current);
+	for (const arg of args) {
+		if (arg === "--force") {
+			options.force = true;
 			continue;
 		}
-		if (sourceMatch && current) {
-			current.source = sourceMatch[1].trim();
+		if (arg === "--check") {
+			options.check = true;
+			continue;
+		}
+		throw new Error(`Unknown theme update option: ${arg}`);
+	}
+
+	return options;
+}
+
+function sha256(buffer) {
+	return crypto.createHash("sha256").update(buffer).digest("hex");
+}
+
+function themeBlockExists(lockSource) {
+	return /(?:^|\n)theme:\n/.test(lockSource);
+}
+
+function parseThemeLockMetadata(lockSource) {
+	const themeMatch = lockSource.match(/(?:^|\n)theme:\n([\s\S]*?)(?:\n\S|$)/);
+	if (!themeMatch) return undefined;
+
+	const theme = { files: [] };
+	let current;
+	let inChecksum = false;
+
+	for (const line of themeMatch[1].split("\n")) {
+		const versionMatch = line.match(/^\s+version:\s*(.+)$/);
+		const sourceMatch = line.match(/^\s+source:\s*(.+)$/);
+		const installedAtMatch = line.match(/^\s+installedAt:\s*"?(.+?)"?\s*$/);
+		const updatedAtMatch = line.match(/^\s+updatedAt:\s*"?(.+?)"?\s*$/);
+		const pathMatch = line.match(/^\s*-\s+path:\s*(.+)$/);
+		const fileSourceMatch = line.match(/^\s+source:\s*(.+)$/);
+		const checksumMatch = line.match(/^\s+checksum:\s*$/);
+		const algorithmMatch = line.match(/^\s+algorithm:\s*(.+)$/);
+		const valueMatch = line.match(/^\s+value:\s*(.+)$/);
+
+		if (versionMatch) theme.version = versionMatch[1].trim();
+		if (sourceMatch && !current) theme.source = sourceMatch[1].trim();
+		if (installedAtMatch) theme.installedAt = installedAtMatch[1].trim();
+		if (updatedAtMatch) theme.updatedAt = updatedAtMatch[1].trim();
+		if (pathMatch) {
+			current = { path: pathMatch[1].trim() };
+			theme.files.push(current);
+			inChecksum = false;
+			continue;
+		}
+		if (fileSourceMatch && current && !inChecksum) {
+			current.source = fileSourceMatch[1].trim();
+			continue;
+		}
+		if (checksumMatch && current) {
+			current.checksum = {};
+			inChecksum = true;
+			continue;
+		}
+		if (algorithmMatch && current?.checksum) {
+			current.checksum.algorithm = algorithmMatch[1].trim();
+			continue;
+		}
+		if (valueMatch && current?.checksum) {
+			current.checksum.value = valueMatch[1].trim();
 		}
 	}
 
-	return files.filter((file) => file.path && file.source);
+	return theme;
 }
 
-function renderThemeLockYaml(registry, theme, writtenFiles, existingFiles) {
-	const merged = new Map(existingFiles.map((file) => [file.path, file]));
-	for (const file of writtenFiles) {
-		merged.set(file.to, { path: file.to, source: file.from });
-	}
+function existingLockThemeFiles(lockSource) {
+	return parseThemeLockMetadata(lockSource)?.files ?? [];
+}
 
-	const renderedFiles = [...merged.values()]
+function hasValidChecksum(file) {
+	return (
+		file.checksum?.algorithm === "sha256" &&
+		typeof file.checksum.value === "string" &&
+		/^[0-9a-f]{64}$/i.test(file.checksum.value)
+	);
+}
+
+function renderThemeFileEntry(file) {
+	const checksum = hasValidChecksum(file)
+		? `\n      checksum:\n        algorithm: sha256\n        value: ${file.checksum.value}`
+		: "";
+	return `    - path: ${file.path}\n      source: ${file.source}${checksum}`;
+}
+
+function renderThemeLockYaml(registry, theme, files, timestamps = {}) {
+	const renderedFiles = [...files]
 		.sort((a, b) => a.path.localeCompare(b.path))
-		.map((file) => `    - path: ${file.path}\n      source: ${file.source}`)
+		.map(renderThemeFileEntry)
 		.join("\n");
+	const updatedAt = timestamps.updatedAt
+		? `  updatedAt: "${timestamps.updatedAt}"\n`
+		: "";
 
 	return `${renderRegistryYaml(registry)}
 components: {}
@@ -532,10 +606,54 @@ components: {}
 theme:
   version: ${theme.version}
   source: ${theme.source}
-  installedAt: "${new Date().toISOString()}"
-  files:
+  installedAt: "${timestamps.installedAt ?? new Date().toISOString()}"
+${updatedAt}  files:
 ${renderedFiles}
 `;
+}
+
+function readProjectState(cwd) {
+	const configPath = path.join(cwd, "nazare.config.yml");
+	const lockPath = path.join(cwd, "nazare.lock.yml");
+
+	if (!fs.existsSync(configPath)) {
+		throw new Error("Missing nazare.config.yml; run nazare init first");
+	}
+	if (!fs.existsSync(lockPath)) {
+		throw new Error("Missing nazare.lock.yml; run nazare init first");
+	}
+
+	const configSource = fs.readFileSync(configPath, "utf8");
+	const lockSource = fs.readFileSync(lockPath, "utf8");
+	const registry = parseRegistryYaml(configSource, "nazare.config.yml");
+	parseRegistryYaml(lockSource, "nazare.lock.yml");
+
+	return { configPath, lockPath, configSource, lockSource, registry };
+}
+
+async function readCurrentTheme(registry) {
+	const registryRoot = resolveRegistryRoot();
+	const manifest = await readRegistryFile(
+		registry,
+		registryRoot,
+		registry.manifest,
+	);
+	const theme = parseThemeManifest(manifest.toString("utf8"));
+	ensureSafeThemeFiles(theme);
+
+	const sources = new Map();
+	for (const file of theme.files) {
+		try {
+			sources.set(
+				file.from,
+				await readRegistryFile(registry, registryRoot, file.from),
+			);
+		} catch {
+			throw new Error(`Missing theme file source: ${file.from}`);
+		}
+	}
+
+	return { theme, sources };
 }
 
 async function themePull(args) {
@@ -597,27 +715,207 @@ async function themePull(args) {
 		for (const file of theme.files) {
 			const targetPath = path.join(cwd, file.to);
 			if (fs.existsSync(targetPath) && !options.yes) continue;
+			const content = sources.get(file.from);
 			fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-			fs.writeFileSync(targetPath, sources.get(file.from));
-			writtenFiles.push(file);
+			fs.writeFileSync(targetPath, content);
+			writtenFiles.push({
+				path: file.to,
+				source: file.from,
+				checksum: { algorithm: "sha256", value: sha256(content) },
+			});
 			process.stdout.write(`Wrote ${file.to}\n`);
 		}
 
 		if (writtenFiles.length > 0) {
+			const merged = new Map(
+				existingLockThemeFiles(lockSource).map((file) => [file.path, file]),
+			);
+			for (const file of writtenFiles) {
+				merged.set(file.path, file);
+			}
 			fs.writeFileSync(
 				lockPath,
-				renderThemeLockYaml(
-					registry,
-					theme,
-					writtenFiles,
-					existingLockThemeFiles(lockSource),
-				),
+				renderThemeLockYaml(registry, theme, [...merged.values()]),
 			);
 		}
 
 		return 0;
 	} catch (error) {
 		process.stderr.write(`nazare theme pull error: ${error.message}\n`);
+		return 1;
+	}
+}
+
+async function themeUpdate(args) {
+	let options;
+	try {
+		options = parseThemeUpdateArgs(args);
+	} catch (error) {
+		process.stderr.write(`nazare theme update error: ${error.message}\n`);
+		return 1;
+	}
+
+	const cwd = process.cwd();
+
+	try {
+		const { lockPath, lockSource, registry } = readProjectState(cwd);
+		if (!themeBlockExists(lockSource)) {
+			throw new Error("Missing theme metadata; run nazare theme pull first");
+		}
+
+		const lockTheme = parseThemeLockMetadata(lockSource);
+		if (!lockTheme || !Array.isArray(lockTheme.files)) {
+			throw new Error("Invalid theme metadata in nazare.lock.yml");
+		}
+
+		for (const file of lockTheme.files) {
+			if (!isSafeRelativePath(file.path)) {
+				throw new Error(`Unsafe tracked theme file path: ${file.path}`);
+			}
+			if (!isSafeRelativePath(file.source)) {
+				throw new Error(
+					`Unsafe tracked theme file source path: ${file.source}`,
+				);
+			}
+			if (!hasValidChecksum(file)) {
+				throw new Error(
+					`Missing checksum metadata for tracked theme file: ${file.path}`,
+				);
+			}
+		}
+
+		const { theme, sources } = await readCurrentTheme(registry);
+		const manifestByPath = new Map(theme.files.map((file) => [file.to, file]));
+		const trackedByPath = new Map(
+			lockTheme.files.map((file) => [file.path, { ...file }]),
+		);
+		const errors = [];
+		const writes = [];
+		const deletes = [];
+		const untracks = [];
+
+		for (const tracked of trackedByPath.values()) {
+			const manifestFile = manifestByPath.get(tracked.path);
+			const targetPath = path.join(cwd, tracked.path);
+			const exists = fs.existsSync(targetPath);
+			const localContent = exists ? fs.readFileSync(targetPath) : undefined;
+			const localChecksum = exists ? sha256(localContent) : undefined;
+			const modified = exists && localChecksum !== tracked.checksum.value;
+
+			if (!manifestFile) {
+				if (!exists) {
+					untracks.push(tracked);
+					continue;
+				}
+				if (modified && !options.force) {
+					errors.push(`Modified obsolete theme file: ${tracked.path}`);
+					continue;
+				}
+				deletes.push(tracked);
+				continue;
+			}
+
+			if (!exists && !options.force) {
+				errors.push(`Missing installed theme file: ${tracked.path}`);
+				continue;
+			}
+			if (modified && !options.force) {
+				errors.push(`Modified installed theme file: ${tracked.path}`);
+				continue;
+			}
+
+			const registryContent = sources.get(manifestFile.from);
+			const registryChecksum = sha256(registryContent);
+			if (
+				!exists ||
+				localChecksum !== registryChecksum ||
+				tracked.source !== manifestFile.from
+			) {
+				writes.push({
+					path: manifestFile.to,
+					source: manifestFile.from,
+					content: registryContent,
+					checksum: { algorithm: "sha256", value: registryChecksum },
+				});
+			}
+		}
+
+		for (const manifestFile of theme.files) {
+			if (trackedByPath.has(manifestFile.to)) continue;
+			const targetPath = path.join(cwd, manifestFile.to);
+			const exists = fs.existsSync(targetPath);
+			if (exists && !options.force) {
+				errors.push(`Untracked theme file target exists: ${manifestFile.to}`);
+				continue;
+			}
+			const content = sources.get(manifestFile.from);
+			writes.push({
+				path: manifestFile.to,
+				source: manifestFile.from,
+				content,
+				checksum: { algorithm: "sha256", value: sha256(content) },
+			});
+		}
+
+		if (errors.length > 0) {
+			throw new Error(errors.join("; "));
+		}
+
+		const operations = writes.length + deletes.length + untracks.length;
+		if (options.check) {
+			if (operations === 0) {
+				process.stdout.write("Theme already up to date\n");
+				return 0;
+			}
+			for (const file of writes)
+				process.stdout.write(`Would write ${file.path}\n`);
+			for (const file of deletes)
+				process.stdout.write(`Would delete ${file.path}\n`);
+			for (const file of untracks)
+				process.stdout.write(`Would untrack ${file.path}\n`);
+			return 0;
+		}
+
+		if (operations === 0) {
+			process.stdout.write("Theme already up to date\n");
+			return 0;
+		}
+
+		for (const file of writes) {
+			const targetPath = path.join(cwd, file.path);
+			fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+			fs.writeFileSync(targetPath, file.content);
+			process.stdout.write(`Wrote ${file.path}\n`);
+		}
+		for (const file of deletes) {
+			fs.rmSync(path.join(cwd, file.path));
+			process.stdout.write(`Deleted ${file.path}\n`);
+		}
+
+		const nextFiles = new Map(
+			lockTheme.files.map((file) => [file.path, { ...file }]),
+		);
+		for (const file of deletes) nextFiles.delete(file.path);
+		for (const file of untracks) nextFiles.delete(file.path);
+		for (const file of writes) {
+			nextFiles.set(file.path, {
+				path: file.path,
+				source: file.source,
+				checksum: file.checksum,
+			});
+		}
+
+		fs.writeFileSync(
+			lockPath,
+			renderThemeLockYaml(registry, theme, [...nextFiles.values()], {
+				installedAt: lockTheme.installedAt ?? new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			}),
+		);
+
+		return 0;
+	} catch (error) {
+		process.stderr.write(`nazare theme update error: ${error.message}\n`);
 		return 1;
 	}
 }
@@ -730,6 +1028,10 @@ async function main(argv) {
 
 	if (command === "theme" && subcommand === "pull") {
 		return themePull(rest);
+	}
+
+	if (command === "theme" && subcommand === "update") {
+		return themeUpdate(rest);
 	}
 
 	process.stderr.write(

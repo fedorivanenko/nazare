@@ -71,6 +71,8 @@ describe("nazare theme pull", () => {
 			"theme:\n  version: 1.0.0\n  source: theme/default",
 		);
 		expect(lockfile).toContain("path: layout/theme.liquid");
+		expect(lockfile).toContain("checksum:");
+		expect(lockfile).toContain("algorithm: sha256");
 	});
 
 	it("fails before writes when not initialized", async () => {
