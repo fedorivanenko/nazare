@@ -1,6 +1,6 @@
 {
 	"name": "nazare",
-	"version": "0.1.2",
+	"version": "0.2.0",
 	"description": "Opinionated Shopify Liquid theme and component registry built for speed.",
 	"bin": {
 		"nazare": "./bin/nazare.js"
