@@ -49,7 +49,7 @@ codebaseOwnership:
       - nazare.lock.yml theme metadata in user theme repo
 
   mustNotModify:
-    - templates/default/ scaffold source content
+    - theme/default/ scaffold source content
     - component registry behavior
     - component files not declared by manifest theme.files
     - existing user theme files unless explicitly overwritten by user choice or --yes
@@ -89,9 +89,9 @@ The command consumes a registry manifest `theme` block:
 ```yaml
 theme:
   version: 1.0.0
-  source: templates/default
+  source: theme/default
   files:
-    - from: templates/default/layout/theme.liquid
+    - from: theme/default/layout/theme.liquid
       to: layout/theme.liquid
 ```
 
@@ -149,11 +149,11 @@ Expected lockfile theme metadata after at least one written file:
 ```yaml
 theme:
   version: 1.0.0
-  source: templates/default
+  source: theme/default
   installedAt: "2026-05-25T00:00:00.000Z"
   files:
     - path: layout/theme.liquid
-      source: templates/default/layout/theme.liquid
+      source: theme/default/layout/theme.liquid
 ```
 
 Lockfile rules:

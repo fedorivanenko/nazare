@@ -36,7 +36,7 @@ nonGoals:
 codebaseOwnership:
   owns:
     repo:
-      - templates/default/ minimal registry theme scaffold
+      - theme/default/ minimal registry theme scaffold
       - nazare.registry.yml theme block and theme.files list
       - README.md minimal theme scaffold notes
       - test/ theme scaffold fixture tests
@@ -63,7 +63,7 @@ The scaffold should be the thinnest valid Shopify Liquid theme needed for Nazare
 
 Included:
 
-- minimal registry theme scaffold under `templates/default/`
+- minimal registry theme scaffold under `theme/default/`
 - exact v1 scaffold file list
 - manifest `theme` block content for the default registry
 - Shopify minimal theme validity expectations
@@ -78,23 +78,23 @@ The default registry scaffold should declare these files in `nazare.registry.yml
 ```yaml
 theme:
   version: 1.0.0
-  source: templates/default
+  source: theme/default
   files:
-    - from: templates/default/layout/theme.liquid
+    - from: theme/default/layout/theme.liquid
       to: layout/theme.liquid
-    - from: templates/default/templates/index.json
+    - from: theme/default/templates/index.json
       to: templates/index.json
-    - from: templates/default/sections/main.liquid
+    - from: theme/default/sections/main.liquid
       to: sections/main.liquid
-    - from: templates/default/config/settings_schema.json
+    - from: theme/default/config/settings_schema.json
       to: config/settings_schema.json
-    - from: templates/default/styles/base.css
+    - from: theme/default/styles/base.css
       to: styles/base.css
-    - from: templates/default/package.json
+    - from: theme/default/package.json
       to: package.json
-    - from: templates/default/vite.config.js
+    - from: theme/default/vite.config.js
       to: vite.config.js
-    - from: templates/default/.gitignore
+    - from: theme/default/.gitignore
       to: .gitignore
 ```
 
@@ -132,7 +132,7 @@ Generated files are not scaffold source and must not be listed in `theme.files` 
 
 ## Success behavior
 
-- The repo contains `templates/default/` with exactly the v1 scaffold files listed in this feature.
+- The repo contains `theme/default/` with exactly the v1 scaffold files listed in this feature.
 - The default registry manifest contains a valid `theme` block for those files.
 - `theme.version` is a valid SemVer 2.0.0 string.
 - Every `theme.files[].from` path exists in the repo.
@@ -157,7 +157,7 @@ Generated files are not scaffold source and must not be listed in `theme.files` 
 
 Result: planned.
 
-- [ ] `templates/default/` contains the exact v1 scaffold file list
+- [ ] `theme/default/` contains the exact v1 scaffold file list
   - Verify with fixture file-list test.
 - [ ] `nazare.registry.yml` contains a valid `theme` block
   - Verify manifest parse and schema test.
@@ -166,13 +166,13 @@ Result: planned.
 - [ ] every `theme.files[].to` is safe
   - Verify path safety test.
 - [ ] scaffold includes exactly one section
-  - Verify `templates/default/sections/*.liquid` count.
+  - Verify `theme/default/sections/*.liquid` count.
 - [ ] layout has Nazare CSS preload and runtime hook points
   - Verify string/fixture assertions.
 - [ ] starter section supports section CSS contract
   - Verify string/fixture assertions.
 - [ ] generated Vite plugin output is not included as scaffold source
-  - Verify generated paths are absent from `theme.files` and `templates/default/`.
+  - Verify generated paths are absent from `theme.files` and `theme/default/`.
 - [ ] scaffold stays thinner than Shopify skeleton
   - Verify no demo section library, no sample content bulk, and only required files exist.
 
