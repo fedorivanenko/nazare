@@ -10,6 +10,7 @@ dependencies:
   - cli-self-update
   - cli-init
   - theme-scaffold
+  - theme-build-plugin
   - theme-build-pipeline
 
 surfaces:
@@ -40,6 +41,7 @@ nonGoals:
   - Removing old theme files
   - Adopting existing Shopify themes
   - Implementing the Nazare Vite plugin
+  - JSON output mode
 
 codebaseOwnership:
   owns:
@@ -259,8 +261,3 @@ Theme files become user-owned immediately after copy. Later pulls can offer over
 
 `nazare theme pull` is canonical for theme scaffold install. Bare `nazare pull` remains out of scope to avoid ambiguity with future component install behavior.
 
----
-
-## Open questions
-
-- Should theme pull support `--json` in v1, or reserve JSON output for list-style commands only?

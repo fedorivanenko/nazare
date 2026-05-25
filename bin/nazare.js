@@ -11,10 +11,12 @@ Usage:
   nazare --help
   nazare --version
   nazare init [directory] [--repo <repo>] [--ref <ref>]
+  nazare theme pull [--yes]
   nazare self update [latest|--source <ref>]
 
 Commands:
   init [directory]    Initialize Nazare relationship in a theme repo
+  theme pull          Pull registry theme scaffold into an initialized theme repo
   self update         Update the Nazare CLI install from its original source, latest release, or --source override
 
 Options:
@@ -23,6 +25,7 @@ Options:
   --repo <repo>       Registry GitHub repo for init
   --ref <ref>         Registry ref for init
   --source <ref>      Update from a branch, tag, full ref, or commit SHA
+  --yes               Overwrite theme file conflicts without prompting
 `;
 
 const SEMVER_PATTERN =
@@ -309,6 +312,262 @@ components: {}
 `;
 }
 
+function parseRegistryYaml(source, label) {
+	const registryMatch = source.match(
+		/registry:\n\s+name:\s*(.+)\n\s+repo:\s*(.+)\n\s+ref:\s*(.+)\n\s+manifest:\s*(.+)/,
+	);
+
+	if (!registryMatch) {
+		throw new Error(`Invalid ${label}: missing registry metadata`);
+	}
+
+	return {
+		name: registryMatch[1].trim(),
+		repo: registryMatch[2].trim(),
+		ref: registryMatch[3].trim(),
+		manifest: registryMatch[4].trim(),
+	};
+}
+
+function parseThemeManifest(source) {
+	const lines = source.split("\n");
+	const theme = { files: [] };
+	let inTheme = false;
+	let inFiles = false;
+	let current;
+
+	for (const line of lines) {
+		if (line === "theme:") {
+			inTheme = true;
+			inFiles = false;
+			continue;
+		}
+
+		if (inTheme && /^\S/.test(line) && line !== "theme:") {
+			break;
+		}
+
+		if (!inTheme) continue;
+
+		const versionMatch = line.match(/^\s+version:\s*(.+)$/);
+		const sourceMatch = line.match(/^\s+source:\s*(.+)$/);
+		const filesMatch = line.match(/^\s+files:\s*$/);
+		const fromMatch = line.match(/^\s*-\s+from:\s*(.+)$/);
+		const toMatch = line.match(/^\s+to:\s*(.+)$/);
+
+		if (versionMatch) theme.version = versionMatch[1].trim();
+		if (sourceMatch) theme.source = sourceMatch[1].trim();
+		if (filesMatch) inFiles = true;
+		if (inFiles && fromMatch) {
+			current = { from: fromMatch[1].trim() };
+			theme.files.push(current);
+		}
+		if (inFiles && toMatch && current) {
+			current.to = toMatch[1].trim();
+		}
+	}
+
+	if (!inTheme) {
+		throw new Error("Registry manifest has no theme block");
+	}
+	if (!theme.version || !SEMVER_PATTERN.test(theme.version)) {
+		throw new Error("Invalid theme.version in registry manifest");
+	}
+	if (!theme.source) {
+		throw new Error("Invalid theme.source in registry manifest");
+	}
+	if (
+		theme.files.length === 0 ||
+		theme.files.some((file) => !file.from || !file.to)
+	) {
+		throw new Error("Invalid theme.files in registry manifest");
+	}
+
+	return theme;
+}
+
+function isSafeRelativePath(value) {
+	return (
+		typeof value === "string" &&
+		value.length > 0 &&
+		!value.startsWith("/") &&
+		!value.includes("\\") &&
+		!value.split("/").includes("..")
+	);
+}
+
+function ensureSafeThemeFiles(theme, registryRoot) {
+	const seenTargets = new Set();
+
+	for (const file of theme.files) {
+		if (!isSafeRelativePath(file.from)) {
+			throw new Error(`Unsafe theme file source path: ${file.from}`);
+		}
+		if (!isSafeRelativePath(file.to)) {
+			throw new Error(`Unsafe theme file target path: ${file.to}`);
+		}
+		if (seenTargets.has(file.to)) {
+			throw new Error(`Duplicate theme file target path: ${file.to}`);
+		}
+		seenTargets.add(file.to);
+
+		const sourcePath = path.resolve(registryRoot, file.from);
+		if (!sourcePath.startsWith(path.resolve(registryRoot) + path.sep)) {
+			throw new Error(`Unsafe theme file source path: ${file.from}`);
+		}
+		if (!fs.existsSync(sourcePath)) {
+			throw new Error(`Missing theme file source: ${file.from}`);
+		}
+	}
+}
+
+function resolveRegistryRoot(registry) {
+	if (process.env.NAZARE_REGISTRY_DIR) {
+		return path.resolve(process.env.NAZARE_REGISTRY_DIR);
+	}
+
+	if (registry.repo === DEFAULT_REGISTRY.repo) {
+		return getInstallDir();
+	}
+
+	throw new Error(`Cannot resolve registry repo: ${registry.repo}`);
+}
+
+function parseThemePullArgs(args) {
+	const options = { yes: false };
+
+	for (const arg of args) {
+		if (arg === "--yes") {
+			options.yes = true;
+			continue;
+		}
+		throw new Error(`Unknown theme pull option: ${arg}`);
+	}
+
+	return options;
+}
+
+function existingLockThemeFiles(lockSource) {
+	const files = [];
+	const themeFilesMatch = lockSource.match(
+		/\ntheme:\n[\s\S]*?\n\s+files:\n([\s\S]*?)(?:\n\S|$)/,
+	);
+	if (!themeFilesMatch) return files;
+
+	let current;
+	for (const line of themeFilesMatch[1].split("\n")) {
+		const pathMatch = line.match(/^\s*-\s+path:\s*(.+)$/);
+		const sourceMatch = line.match(/^\s+source:\s*(.+)$/);
+		if (pathMatch) {
+			current = { path: pathMatch[1].trim() };
+			files.push(current);
+			continue;
+		}
+		if (sourceMatch && current) {
+			current.source = sourceMatch[1].trim();
+		}
+	}
+
+	return files.filter((file) => file.path && file.source);
+}
+
+function renderThemeLockYaml(registry, theme, writtenFiles, existingFiles) {
+	const merged = new Map(existingFiles.map((file) => [file.path, file]));
+	for (const file of writtenFiles) {
+		merged.set(file.to, { path: file.to, source: file.from });
+	}
+
+	const renderedFiles = [...merged.values()]
+		.sort((a, b) => a.path.localeCompare(b.path))
+		.map((file) => `    - path: ${file.path}\n      source: ${file.source}`)
+		.join("\n");
+
+	return `${renderRegistryYaml(registry)}
+components: {}
+
+theme:
+  version: ${theme.version}
+  source: ${theme.source}
+  installedAt: "${new Date().toISOString()}"
+  files:
+${renderedFiles}
+`;
+}
+
+function themePull(args) {
+	let options;
+	try {
+		options = parseThemePullArgs(args);
+	} catch (error) {
+		process.stderr.write(`nazare theme pull error: ${error.message}\n`);
+		return 1;
+	}
+
+	const cwd = process.cwd();
+	const configPath = path.join(cwd, "nazare.config.yml");
+	const lockPath = path.join(cwd, "nazare.lock.yml");
+
+	try {
+		if (!fs.existsSync(configPath)) {
+			throw new Error("Missing nazare.config.yml; run nazare init first");
+		}
+		if (!fs.existsSync(lockPath)) {
+			throw new Error("Missing nazare.lock.yml; run nazare init first");
+		}
+
+		const configSource = fs.readFileSync(configPath, "utf8");
+		const lockSource = fs.readFileSync(lockPath, "utf8");
+		const registry = parseRegistryYaml(configSource, "nazare.config.yml");
+		parseRegistryYaml(lockSource, "nazare.lock.yml");
+		const registryRoot = resolveRegistryRoot(registry);
+		const manifestPath = path.join(registryRoot, registry.manifest);
+
+		if (!fs.existsSync(manifestPath)) {
+			throw new Error(`Missing registry manifest: ${registry.manifest}`);
+		}
+
+		const theme = parseThemeManifest(fs.readFileSync(manifestPath, "utf8"));
+		ensureSafeThemeFiles(theme, registryRoot);
+
+		const conflicts = theme.files.filter((file) =>
+			fs.existsSync(path.join(cwd, file.to)),
+		);
+		if (conflicts.length > 0 && !options.yes) {
+			throw new Error(
+				`Theme file conflicts require --yes: ${conflicts.map((file) => file.to).join(", ")}`,
+			);
+		}
+
+		const writtenFiles = [];
+		for (const file of theme.files) {
+			const sourcePath = path.join(registryRoot, file.from);
+			const targetPath = path.join(cwd, file.to);
+			if (fs.existsSync(targetPath) && !options.yes) continue;
+			fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+			fs.copyFileSync(sourcePath, targetPath);
+			writtenFiles.push(file);
+			process.stdout.write(`Wrote ${file.to}\n`);
+		}
+
+		if (writtenFiles.length > 0) {
+			fs.writeFileSync(
+				lockPath,
+				renderThemeLockYaml(
+					registry,
+					theme,
+					writtenFiles,
+					existingLockThemeFiles(lockSource),
+				),
+			);
+		}
+
+		return 0;
+	} catch (error) {
+		process.stderr.write(`nazare theme pull error: ${error.message}\n`);
+		return 1;
+	}
+}
+
 function initTheme(args) {
 	let options;
 	try {
@@ -413,6 +672,10 @@ async function main(argv) {
 
 	if (command === "init") {
 		return initTheme(argv.slice(1));
+	}
+
+	if (command === "theme" && subcommand === "pull") {
+		return themePull(rest);
 	}
 
 	process.stderr.write(
