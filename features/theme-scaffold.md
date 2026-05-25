@@ -179,13 +179,19 @@ The scaffold should use Shopify skeleton theme as an audit/reference source only
 
 The file list should be conservative. Add files only when required by Shopify validity or first render.
 
-Product, collection, cart, and other storefront page implementations should be modeled as later component packages. Example: a future product page package may install `templates/product.json`, `sections/product-main.liquid`, supporting snippets, CSS, and JavaScript together.
+Product, collection, cart, and other storefront page implementations should be modeled as later component packages. Example: a future product page package may install `templates/product.json`, `sections/s-product-main.liquid`, supporting snippets, CSS, and JavaScript together.
 
 Theme build pipeline files are intentionally separate so the roadmap stays linear and each feature has one reason to change.
 
 ---
 
-## Open questions
+## Naming
 
-- Should the starter section be named `main.liquid`, `s-main.liquid`, or another Nazare naming convention?
-- Is `templates/index.json` the best minimum render path, or should v1 use a Liquid template?
+Follow [`docs/policies/naming-policy.md`](../docs/policies/naming-policy.md).
+
+For v1 scaffold:
+
+- starter section file is `sections/s-main.liquid`
+- minimum render path is `templates/index.json`
+- `templates/index.json` should contain one section instance with local key `main`
+- that instance should reference section type `s-main`

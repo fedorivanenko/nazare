@@ -1,0 +1,20 @@
+<section>
+  <div>
+    <h1>{{ shop.name }}</h1>
+    <p>{{ section.settings.body }}</p>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Main",
+  "settings": [
+    {
+      "type": "text",
+      "id": "body",
+      "label": "Body",
+      "default": "Welcome to your Nazare theme."
+    }
+  ]
+}
+{% endschema %}
