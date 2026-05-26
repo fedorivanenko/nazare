@@ -1243,6 +1243,81 @@ function buildComponentOwnership(installedComponents) {
 	return ownership;
 }
 
+function splitPreservingNewlines(source) {
+	return source.match(/[^\n]*\n|[^\n]+/g) ?? [];
+}
+
+function diffChunks(localLines, incomingLines) {
+	const table = Array.from({ length: localLines.length + 1 }, () =>
+		Array(incomingLines.length + 1).fill(0),
+	);
+	for (let localIndex = localLines.length - 1; localIndex >= 0; localIndex--) {
+		for (
+			let incomingIndex = incomingLines.length - 1;
+			incomingIndex >= 0;
+			incomingIndex--
+		) {
+			table[localIndex][incomingIndex] =
+				localLines[localIndex] === incomingLines[incomingIndex]
+					? table[localIndex + 1][incomingIndex + 1] + 1
+					: Math.max(
+							table[localIndex + 1][incomingIndex],
+							table[localIndex][incomingIndex + 1],
+						);
+		}
+	}
+
+	const chunks = [];
+	let localIndex = 0;
+	let incomingIndex = 0;
+	let pending = null;
+	function flushPending() {
+		if (!pending) return;
+		chunks.push(pending);
+		pending = null;
+	}
+	function pushChanged(side, line) {
+		pending ??= { type: "change", local: [], incoming: [] };
+		pending[side].push(line);
+	}
+
+	while (
+		localIndex < localLines.length &&
+		incomingIndex < incomingLines.length
+	) {
+		if (localLines[localIndex] === incomingLines[incomingIndex]) {
+			flushPending();
+			chunks.push({ type: "equal", lines: [localLines[localIndex]] });
+			localIndex++;
+			incomingIndex++;
+		} else if (
+			table[localIndex + 1][incomingIndex] >=
+			table[localIndex][incomingIndex + 1]
+		) {
+			pushChanged("local", localLines[localIndex]);
+			localIndex++;
+		} else {
+			pushChanged("incoming", incomingLines[incomingIndex]);
+			incomingIndex++;
+		}
+	}
+	while (localIndex < localLines.length) {
+		pushChanged("local", localLines[localIndex]);
+		localIndex++;
+	}
+	while (incomingIndex < incomingLines.length) {
+		pushChanged("incoming", incomingLines[incomingIndex]);
+		incomingIndex++;
+	}
+	flushPending();
+
+	return chunks;
+}
+
+function ensureTrailingNewline(source) {
+	return source.endsWith("\n") || source.length === 0 ? source : `${source}\n`;
+}
+
 function markerContent(
 	localContent,
 	registryContent,
@@ -1256,7 +1331,18 @@ function markerContent(
 	const incoming = Buffer.isBuffer(registryContent)
 		? registryContent.toString("utf8")
 		: String(registryContent ?? "");
-	return `<<<<<<< local\n${local}${local.endsWith("\n") ? "" : "\n"}=======\n${incoming}${incoming.endsWith("\n") || incoming.length === 0 ? "" : "\n"}>>>>>>> registry ${id}@${version}${removed ? " (removed)" : ""}\n`;
+	const markerLabel = `registry ${id}@${version}${removed ? " (removed)" : ""}`;
+	return diffChunks(
+		splitPreservingNewlines(local),
+		splitPreservingNewlines(incoming),
+	)
+		.map((chunk) => {
+			if (chunk.type === "equal") return chunk.lines.join("");
+			const localSide = ensureTrailingNewline(chunk.local.join(""));
+			const incomingSide = ensureTrailingNewline(chunk.incoming.join(""));
+			return `<<<<<<< local\n${localSide}=======\n${incomingSide}>>>>>>> ${markerLabel}\n`;
+		})
+		.join("");
 }
 
 async function promptComponentUpdate(operation, rl) {

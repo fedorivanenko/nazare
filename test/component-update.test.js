@@ -280,6 +280,48 @@ new
 		expect(await readLock(cwd)).toBe(lockBefore);
 	});
 
+	it("manual prompt writes conflict markers only around changed lines", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await initProject(cwd);
+		await installComponent(cwd, registry);
+		await writeFile(
+			join(cwd, "snippets", "c-button.liquid"),
+			"before\nlocal\nafter\n",
+		);
+		await writeRegistry(
+			registry,
+			componentSource({
+				version: "1.1.0",
+				content: "before\nincoming\nafter\n",
+			}),
+			{ "components/c-button/c-button.liquid": "before\nincoming\nafter\n" },
+		);
+		const lockBefore = await readLock(cwd);
+
+		const result = await runCliInteractive(["update", "c-button"], "m\n", {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry, NAZARE_TEST_INTERACTIVE: "1" },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(
+			await readFile(join(cwd, "snippets", "c-button.liquid"), "utf8"),
+		).toBe(
+			[
+				"before",
+				"<<<<<<< local",
+				"local",
+				"=======",
+				"incoming",
+				">>>>>>> registry c-button@1.1.0",
+				"after",
+				"",
+			].join("\n"),
+		);
+		expect(await readLock(cwd)).toBe(lockBefore);
+	});
+
 	it("skip prompt leaves file and lockfile unchanged", async () => {
 		const cwd = await makeTempDir();
 		const registry = await makeTempDir("nazare-registry-test-");
