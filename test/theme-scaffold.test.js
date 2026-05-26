@@ -28,7 +28,7 @@ describe("theme scaffold", () => {
 		const manifest = await readText(manifestPath);
 
 		expect(manifest).toContain(
-			"theme:\n  version: 1.0.0\n  source: theme/default",
+			"theme:\n  version: 1.1.0\n  source: theme/default",
 		);
 		expect(manifest).toContain(
 			"- from: theme/default/layout/theme.liquid\n      to: layout/theme.liquid",
