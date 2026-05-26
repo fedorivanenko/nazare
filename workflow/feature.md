@@ -72,12 +72,17 @@ git diff --check
 git diff --stat
 ```
 
-## 7. Reconcile docs
+## 7. Reconcile docs and release impact
 
 - Mark verified checklist items in the feature doc.
 - Update README only for user-visible commands or behavior.
 - Update policies only when the rule should apply beyond this feature.
-- If CLI/install behavior changed, check `docs/policies/release-policy.md`.
+- If CLI/install behavior changed, follow `docs/policies/release-policy.md` before PR merge:
+  - choose SemVer impact from compatibility rules
+  - bump `package.json.version`
+  - update lockfile package metadata when present
+  - include the version bump in the implementation PR
+- If only registry content changed, do not bump the CLI package version unless the installed CLI or installer must change to consume it.
 
 ## 8. Commit
 
@@ -109,6 +114,17 @@ After PR merge:
 git branch -d feat/<feature-id>
 git push origin --delete feat/<feature-id>
 ```
+
+If the merged PR changed CLI/install behavior and bumped `package.json.version`, create and push the matching stable tag from updated `main`:
+
+```sh
+git checkout main
+git pull --ff-only
+git tag vMAJOR.MINOR.PATCH
+git push origin vMAJOR.MINOR.PATCH
+```
+
+Tag version must match `package.json.version` without the leading `v`.
 
 ## Rule of thumb
 
