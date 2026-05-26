@@ -34,29 +34,9 @@ Tag format: `vMAJOR.MINOR.PATCH`.
 
 The tag version must match `package.json.version` without the leading `v`.
 
-## GitHub release workflow
+## Workflow
 
-Always write release notes to a temporary Markdown file and pass it with `gh release create --notes-file <path>`. Do not pass Markdown notes inline with `--notes "..."`; backticks in inline notes can be evaluated by the shell.
-
-Example:
-
-```sh
-cat > /tmp/nazare-vX.Y.Z-notes.md <<'EOF'
-## Fixes
-- Release note with `inline code` safely preserved.
-EOF
-
-gh release create vX.Y.Z \
-  --target main \
-  --title "vX.Y.Z" \
-  --notes-file /tmp/nazare-vX.Y.Z-notes.md
-```
-
-After creation, verify the release body with:
-
-```sh
-gh release view vX.Y.Z --json url,tagName,name,publishedAt
-```
+Follow `workflow/release.md` for release commands and verification. Always create GitHub Releases with `--notes-file`; never pass Markdown notes inline with `--notes "..."`.
 
 ## Compatibility
 

@@ -23,10 +23,16 @@ git tag v<new-version>
 git push origin main
 git push origin v<new-version>
 
+# create GitHub Release notes file first; required to preserve Markdown safely
+cat > /tmp/nazare-v<new-version>-notes.md <<'EOF'
+## Fixes
+- <short release note with `inline code` safely preserved>
+EOF
+
 # create GitHub Release; required by `nazare self update latest`
 gh release create v<new-version> \
   --title "v<new-version>" \
-  --notes "Patch release: <short release note>."
+  --notes-file /tmp/nazare-v<new-version>-notes.md
 
 # verify latest release API
 curl -fsSL \

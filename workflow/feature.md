@@ -77,7 +77,7 @@ git diff --stat
 - Mark verified checklist items in the feature doc.
 - Update README only for user-visible commands or behavior.
 - Update policies only when the rule should apply beyond this feature.
-- If CLI/install behavior changed, follow `docs/policies/release-policy.md` before PR merge:
+- If CLI/install behavior changed, follow `docs/policies/release-policy.md` and `workflow/release.md` before PR merge:
   - choose SemVer impact from compatibility rules
   - bump `package.json.version`
   - update lockfile package metadata when present
@@ -123,7 +123,12 @@ git pull --ff-only
 VERSION=$(node -p "require('./package.json').version")
 git tag "v$VERSION"
 git push origin "v$VERSION"
-gh release create "v$VERSION" --title "v$VERSION" --notes "$(git log -1 --pretty=%B)" --latest
+cat > "/tmp/nazare-v$VERSION-notes.md" <<'EOF'
+## Fixes
+- <short release note with `inline code` safely preserved>
+EOF
+
+gh release create "v$VERSION" --title "v$VERSION" --notes-file "/tmp/nazare-v$VERSION-notes.md" --latest
 ```
 
 Release requirements:
