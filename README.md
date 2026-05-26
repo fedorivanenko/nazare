@@ -145,7 +145,7 @@ Update an installed component from the registry:
 nazare update c-button
 ```
 
-`nazare update` compares local files with the checksums recorded in `nazare.lock.yml`. Untouched files update automatically. Touched files require an interactive choice: overwrite, skip, or write manual conflict markers. Use `--dry-run` to preview the plan, or `--force` to overwrite/recreate/delete touched files without prompting.
+`nazare update` compares local files with the checksums recorded in `nazare.lock.yml`. Existing files require an interactive choice before overwrite: overwrite, skip, or write manual conflict markers. Use `--dry-run` to preview the plan, or `--force` to overwrite/recreate/delete files without prompting.
 
 ## CLI update
 

@@ -148,7 +148,7 @@ afterEach(async () => {
 });
 
 describe("nazare update", () => {
-	it("updates untouched installed component files and lockfile metadata", async () => {
+	it("prompts before overwriting existing installed component files", async () => {
 		const cwd = await makeTempDir();
 		const registry = await makeTempDir("nazare-registry-test-");
 		await initProject(cwd);
@@ -159,13 +159,15 @@ describe("nazare update", () => {
 			{ "components/c-button/c-button.liquid": "new\n" },
 		);
 
-		const result = await runCli(["update", "c-button"], {
+		const result = await runCliInteractive(["update", "c-button"], "y\n", {
 			cwd,
-			env: { NAZARE_REGISTRY_DIR: registry },
+			env: { NAZARE_REGISTRY_DIR: registry, NAZARE_TEST_INTERACTIVE: "1" },
 		});
 
 		expect(result).toMatchObject({ code: 0, stderr: "" });
 		expect(result.stdout).toContain("c-button 1.0.0 -> 1.1.0");
+		expect(result.stdout).toContain("snippets/c-button.liquid exists locally.");
+		expect(result.stdout).toContain("Overwrite with registry version? [y/N/m]");
 		expect(result.stdout).toContain("Wrote snippets/c-button.liquid");
 		expect(result.stdout).toContain("Done.");
 		expect(
@@ -211,19 +213,20 @@ describe("nazare update", () => {
 		});
 
 		expect(result).toMatchObject({ code: 0, stderr: "" });
-		expect(result.stdout).toContain("Would write snippets/c-button.liquid");
+		expect(result.stdout).toContain(
+			"Would prompt write snippets/c-button.liquid",
+		);
 		expect(
 			await readFile(join(cwd, "snippets", "c-button.liquid"), "utf8"),
 		).toBe("button\n");
 		expect(await readLock(cwd)).toBe(lockBefore);
 	});
 
-	it("fails in non-interactive mode before overwriting touched files", async () => {
+	it("fails in non-interactive mode before overwriting existing files", async () => {
 		const cwd = await makeTempDir();
 		const registry = await makeTempDir("nazare-registry-test-");
 		await initProject(cwd);
 		await installComponent(cwd, registry);
-		await writeFile(join(cwd, "snippets", "c-button.liquid"), "local\n");
 		await writeRegistry(
 			registry,
 			componentSource({ version: "1.1.0", content: "new\n" }),
@@ -240,7 +243,7 @@ describe("nazare update", () => {
 		expect(result.stderr).toContain("interactive terminal or --force");
 		expect(
 			await readFile(join(cwd, "snippets", "c-button.liquid"), "utf8"),
-		).toBe("local\n");
+		).toBe("button\n");
 		expect(await readLock(cwd)).toBe(lockBefore);
 	});
 

@@ -1264,11 +1264,14 @@ async function promptComponentUpdate(operation, rl) {
 		operation.kind === "delete"
 			? "Delete local file?"
 			: "Overwrite with registry version?";
-	process.stdout.write(`${operation.path} modified locally.\n`);
 	if (operation.kind === "delete") {
 		process.stdout.write(
 			`${operation.path} modified locally and no longer exists in registry component.\n`,
 		);
+	} else if (operation.localChecksum !== operation.installedChecksum) {
+		process.stdout.write(`${operation.path} modified locally.\n`);
+	} else {
+		process.stdout.write(`${operation.path} exists locally.\n`);
 	}
 	while (true) {
 		const answer = (await rl.question(`${action} [y/N/m] `))
@@ -1379,13 +1382,18 @@ async function updateComponent(args) {
 
 			const localContent = fs.readFileSync(targetPath);
 			const localChecksum = sha256(localContent);
-			if (localChecksum !== installedFile.checksum.value && !options.force) {
-				prompts.push({ kind: "write", localContent, ...write });
-				continue;
-			}
-
 			if (localChecksum !== manifestFile.checksum.value) {
-				writes.push(write);
+				if (options.force) {
+					writes.push(write);
+				} else {
+					prompts.push({
+						kind: "write",
+						localContent,
+						localChecksum,
+						installedChecksum: installedFile.checksum.value,
+						...write,
+					});
+				}
 			}
 		}
 

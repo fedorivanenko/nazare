@@ -144,8 +144,7 @@ Local file state uses lockfile checksum as authority:
 - Installed component already matches current registry and all files are untouched -> no-op.
 - New registry file absent locally -> write and track.
 - New registry file target exists untracked -> fail before mutation.
-- Registry file replacing an untouched installed file -> overwrite.
-- Registry file replacing a touched installed file -> ask before overwrite or manual conflict write, unless `--force` is set.
+- Registry file replacing an existing installed file -> ask before overwrite or manual conflict write, unless `--force` is set.
 - Registry no longer includes an untouched installed file -> delete and remove from lockfile.
 - Registry no longer includes a touched installed file -> ask before delete or manual conflict write, unless `--force` is set.
 - Missing installed file that still exists in registry -> ask before recreating, unless `--force` is set.
@@ -154,7 +153,14 @@ Local file state uses lockfile checksum as authority:
 
 ### Prompt contract
 
-For touched files:
+For existing installed files:
+
+```txt
+snippets/c-button.liquid exists locally.
+Overwrite with registry version? [y/N/m]
+```
+
+For touched existing installed files:
 
 ```txt
 snippets/c-button.liquid modified locally.
@@ -183,7 +189,7 @@ Prompt actions:
 
 Manual conflict behavior:
 
-- Manual mode is offered only for touched existing files.
+- Manual mode is offered for existing files before overwrite/delete.
 - For overwrite prompts, manual mode writes both local current content and incoming registry content into the file with conflict markers.
 - For delete prompts, manual mode writes local current content against an empty incoming side so the user can decide whether to keep or delete the file manually.
 - For recreate prompts, no `m` option is offered because there is no local file to preserve.
@@ -226,10 +232,10 @@ Non-interactive terminals must fail before mutation when a prompt would be requi
 
 - Resolves registry, validates component metadata, verifies registry bytes, and plans all operations before mutation.
 - Detects touched files by hashing local file bytes and comparing with lockfile checksum.
-- Overwrites untouched installed files with current registry files.
+- Prompts before overwriting existing installed files with current registry files.
 - Writes new registry files that have no local target.
 - Deletes installed files removed from registry when they are untouched.
-- Prompts before overwriting, deleting, manually marking, or recreating touched/missing installed files.
+- Prompts before overwriting, deleting, manually marking, or recreating existing touched/missing installed files.
 - Prints component version change and changed paths.
 - Exits `0` on update or unchanged no-op.
 
@@ -301,9 +307,9 @@ Failure must not mutate component files, theme files, lockfile entries, or files
 
 Result: done.
 
-- [x] installed untouched component updates files and lockfile metadata
+- [x] installed component prompts before overwriting existing files and updates lockfile metadata after confirmation
 - [x] installed current component is no-op
-- [x] touched file prompts before overwrite
+- [x] existing file prompts before overwrite
 - [x] prompt `N` leaves file unchanged and does not bump component version
 - [x] prompt `m` writes conflict markers and leaves lockfile unchanged
 - [x] `--force` overwrites touched files without prompt
