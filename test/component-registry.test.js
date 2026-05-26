@@ -86,7 +86,7 @@ describe("component registry metadata", () => {
 
 		expect(() => validateComponentMetadata(components)).not.toThrow();
 		expect(components["s-announcement"]).toMatchObject({
-			version: "1.0.0",
+			version: "1.0.1",
 			type: "section",
 			dependencies: [],
 			files: [

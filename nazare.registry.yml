@@ -4,7 +4,7 @@ registry:
   name: nazare
 
 theme:
-  version: 1.1.0
+  version: 1.1.1
   source: theme/default
   files:
     - from: theme/default/layout/theme.liquid
@@ -46,7 +46,7 @@ theme:
       to: styles/base.css
       checksum:
         algorithm: sha256
-        value: ae7809d83fa7bc5221469c39ba50720c9b5225720a44f1b08b0ffd3b0aa5318c
+        value: 5eff25b302266dbae25ac9844ff2dc84d37d5a8e0c20a9c088c7797fe513a5ab
     - from: theme/default/.gitignore
       to: .gitignore
       checksum:
@@ -60,7 +60,7 @@ theme:
 
 components:
   s-announcement:
-    version: 1.0.0
+    version: 1.0.1
     type: section
     dependencies: []
     files:
@@ -68,4 +68,4 @@ components:
         to: sections/s-announcement.liquid
         checksum:
           algorithm: sha256
-          value: 352e8b928d1a298b1105c087bcc245660968af1b683e85e54ea38d2ade7e5672
+          value: ba32f53896b8005911aac7b5cdf5106efcef77c6f239de2a45bf8aa45cc358cc

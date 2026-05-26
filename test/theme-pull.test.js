@@ -73,7 +73,7 @@ describe("nazare theme pull", () => {
 		);
 		const lockfile = await readFile(join(cwd, "nazare.lock.yml"), "utf8");
 		expect(lockfile).toContain(
-			"theme:\n  version: 1.1.0\n  source: theme/default",
+			"theme:\n  version: 1.1.1\n  source: theme/default",
 		);
 		expect(lockfile).toContain("path: layout/theme.liquid");
 		expect(lockfile).toContain("checksum:");

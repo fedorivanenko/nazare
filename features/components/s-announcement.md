@@ -71,7 +71,7 @@ Component metadata:
 ```yaml
 components:
   s-announcement:
-    version: 1.0.0
+    version: 1.0.1
     type: section
     dependencies: []
     files:
