@@ -91,6 +91,28 @@ describe("theme build pipeline", () => {
 		expect(css).toContain('@source "../snippets/**/*.liquid"');
 	});
 
+	it("provides semantic theme design tokens", async () => {
+		const css = await readText(baseCssPath);
+
+		expect(css).toContain(":root {");
+		expect(css).toContain("--background: oklch(1 0 0);");
+		expect(css).toContain("--foreground: oklch(0.145 0 0);");
+		expect(css).toContain("--primary: oklch(0.205 0 0);");
+		expect(css).toContain("--primary-foreground: oklch(0.985 0 0);");
+		expect(css).toContain("--radius: 0.625rem;");
+		expect(css).toContain("@theme {");
+		expect(css).toContain("--color-background: var(--background);");
+		expect(css).toContain("--color-foreground: var(--foreground);");
+		expect(css).toContain("--color-primary: var(--primary);");
+		expect(css).toContain(
+			"--color-primary-foreground: var(--primary-foreground);",
+		);
+		expect(css).toContain("--color-border: var(--border);");
+		expect(css).toContain("--color-ring: var(--ring);");
+		expect(css).toContain("--radius-md: calc(var(--radius) - 2px);");
+		expect(css).toContain("--radius-lg: var(--radius);");
+	});
+
 	it("adds CSS and JS bridge hook points", async () => {
 		const layout = await readText(layoutPath);
 		const section = await readText(sectionPath);

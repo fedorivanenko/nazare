@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: theme-design-tokens
 title: Theme Design Tokens
-status: planned
+status: done
 
 dependencies:
   - theme-build-pipeline
@@ -38,6 +38,7 @@ codebaseOwnership:
       - theme/default/styles/base.css
       - nazare.registry.yml theme/default/styles/base.css checksum
       - test/theme-build-pipeline.test.js token coverage
+      - biome.json Tailwind CSS parser support
       - docs/backlog.md follow-up token notes if needed
 
   mustNotModify:
@@ -65,6 +66,7 @@ Included:
 - CSS custom properties in `theme/default/styles/base.css`
 - Tailwind v4 `@theme` mappings for semantic utilities
 - registry checksum update for `theme/default/styles/base.css`
+- Biome CSS parser support for Tailwind directives
 - tests that verify token mappings exist in scaffold CSS
 - guidance for future components to prefer semantic utilities
 
@@ -150,15 +152,16 @@ Example component usage:
 
 ## Verification
 
-Result: planned.
+Result: done.
 
-- [ ] `theme/default/styles/base.css` contains v1 `:root` token values
-- [ ] `theme/default/styles/base.css` contains Tailwind v4 `@theme` semantic mappings
-- [ ] existing Tailwind `@source` directives remain present
-- [ ] registry checksum for `theme/default/styles/base.css` matches source bytes
-- [ ] tests assert key semantic utilities are exposed through `@theme`
-- [ ] `npm test` passes
-- [ ] `biome check theme/default/styles/base.css nazare.registry.yml test/theme-build-pipeline.test.js` passes
+- [x] `theme/default/styles/base.css` contains v1 `:root` token values
+- [x] `theme/default/styles/base.css` contains Tailwind v4 `@theme` semantic mappings
+- [x] existing Tailwind `@source` directives remain present
+- [x] registry checksum for `theme/default/styles/base.css` matches source bytes
+- [x] tests assert key semantic utilities are exposed through `@theme`
+- [x] Biome config allows Tailwind-specific CSS directives
+- [x] `npm test` passes
+- [x] `biome check theme/default/styles/base.css nazare.registry.yml test/theme-build-pipeline.test.js biome.json` passes
 
 ---
 
@@ -176,5 +179,4 @@ Component implementation should prefer semantic utilities for base surfaces and 
 
 ## Open questions
 
-- Should token defaults stay grayscale-only for v1, or should `--primary` use a subtle brand color?
-- Should `s-announcement` be migrated from raw neutral/white classes to semantic token utilities in this feature or a later component cleanup?
+None.
