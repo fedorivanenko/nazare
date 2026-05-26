@@ -152,6 +152,29 @@ describe("nazare theme update", () => {
 		expect(await readFile(lockPath, "utf8")).toContain("checksum:");
 	});
 
+	it("updates stale checksum metadata when local file already matches registry", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, { "vite.config.js": "old config\n" });
+		await initAndPull(cwd, registry);
+		await writeRegistry(registry, { "vite.config.js": "new config\n" });
+		await writeFile(join(cwd, "vite.config.js"), "new config\n");
+
+		const result = await runCli(["theme", "update", "--force"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(result.stdout).toContain("Updated metadata vite.config.js");
+		expect(await readFile(join(cwd, "vite.config.js"), "utf8")).toBe(
+			"new config\n",
+		);
+		expect(await readFile(join(cwd, "nazare.lock.yml"), "utf8")).toContain(
+			`value: ${sha256("new config\n")}`,
+		);
+	});
+
 	it("untracks obsolete missing files without checksum metadata", async () => {
 		const cwd = await makeTempDir();
 		const registry = await makeTempDir("nazare-registry-test-");

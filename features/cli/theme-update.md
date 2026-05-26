@@ -136,6 +136,7 @@ Missing lockfile checksum metadata is migrated when it can be proven safe: if a 
 
 ### Operation rules
 
+- Current tracked file + local already equals current registry content + lockfile metadata is stale -> add current checksum/source metadata without rewriting the file.
 - Current tracked file + unmodified + registry content changed -> overwrite and update checksum.
 - Current tracked file + missing checksum + local equals registry -> add checksum metadata.
 - Current tracked file + missing checksum + local differs from registry -> fail before mutation.
@@ -163,6 +164,7 @@ Missing lockfile checksum metadata is migrated when it can be proven safe: if a 
 
 - Resolves registry, reads current manifest, validates paths and registry checksum metadata, verifies registry file bytes against manifest checksums, and plans all operations before mutation.
 - Writes changed unmodified tracked files with current registry content.
+- Updates stale tracked checksum/source metadata without rewriting when local file content already equals current registry content.
 - Deletes obsolete unmodified tracked files.
 - Copies new manifest files whose target paths are absent.
 - No-op update exits `0`, prints no-op message, and leaves lockfile unchanged.
@@ -231,7 +233,7 @@ Result: implementation present; final feature-doc checklist still needs reconcil
   - Verify file and lockfile entry remain unchanged while safe operations apply.
 - [ ] obsolete already-missing tracked file untracks
   - Verify lockfile entry removed without delete attempt and stdout prints `Untracked <path>`.
-- [ ] missing lockfile checksum metadata is added when local file equals verified registry content
+- [ ] missing or stale lockfile checksum metadata is added when local file equals verified registry content
   - Verify lockfile gets checksum from the registry manifest, file content remains unchanged, and stdout prints `Updated metadata <path>`.
 - [ ] missing checksum metadata fails when local file differs from registry
   - Verify clear metadata error and lockfile unchanged.
