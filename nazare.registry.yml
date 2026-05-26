@@ -68,4 +68,4 @@ components:
         to: sections/s-announcement.liquid
         checksum:
           algorithm: sha256
-          value: a8557dfcc9d7f5a9efaa8b99bcd98b0d8c2e6aac95dee691ca0ac5e1a3eae160
+          value: 352e8b928d1a298b1105c087bcc245660968af1b683e85e54ea38d2ade7e5672
