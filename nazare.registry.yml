@@ -58,4 +58,14 @@ theme:
         algorithm: sha256
         value: 4c454e3c7c76178e84796525272b6e579de62954ea455323ddaf505e7ebbd7d7
 
-components: {}
+components:
+  s-announcement:
+    version: 1.0.0
+    type: section
+    dependencies: []
+    files:
+      - from: components/s-announcement/sections/s-announcement.liquid
+        to: sections/s-announcement.liquid
+        checksum:
+          algorithm: sha256
+          value: a8557dfcc9d7f5a9efaa8b99bcd98b0d8c2e6aac95dee691ca0ac5e1a3eae160

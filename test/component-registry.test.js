@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
@@ -8,6 +10,15 @@ const {
 } = require("../bin/nazare.js");
 
 const checksum = "a".repeat(64);
+const manifestPath = new URL("../nazare.registry.yml", import.meta.url);
+const announcementPath = new URL(
+	"../components/s-announcement/sections/s-announcement.liquid",
+	import.meta.url,
+);
+
+function sha256(value) {
+	return createHash("sha256").update(value).digest("hex");
+}
 
 function component(overrides = {}) {
 	return {
@@ -66,6 +77,36 @@ describe("component registry metadata", () => {
 				}),
 			}),
 		).not.toThrow();
+	});
+
+	it("declares committed s-announcement metadata with matching checksum", async () => {
+		const manifest = await readFile(manifestPath, "utf8");
+		const source = await readFile(announcementPath, "utf8");
+		const components = parseComponentManifest(manifest);
+
+		expect(() => validateComponentMetadata(components)).not.toThrow();
+		expect(components["s-announcement"]).toMatchObject({
+			version: "1.0.0",
+			type: "section",
+			dependencies: [],
+			files: [
+				{
+					from: "components/s-announcement/sections/s-announcement.liquid",
+					to: "sections/s-announcement.liquid",
+					checksum: {
+						algorithm: "sha256",
+						value: sha256(source),
+					},
+				},
+			],
+		});
+		expect(source).toContain(
+			"{% render 'section-css', section_name: 's-announcement' %}",
+		);
+		expect(source).toContain('"id": "text"');
+		expect(source).toContain('"id": "link_url"');
+		expect(source).toContain('"id": "link_label"');
+		expect(source).toContain("if link_url != blank and link_label != blank");
 	});
 
 	it("parses valid component metadata", () => {

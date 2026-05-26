@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
 const cliPath = new URL("../bin/nazare.js", import.meta.url);
+const registryRoot = new URL("../", import.meta.url).pathname;
 const tempRoots = [];
 
 async function makeTempDir(prefix = "nazare-component-add-test-") {
@@ -109,6 +110,26 @@ afterEach(async () => {
 });
 
 describe("nazare add", () => {
+	it("installs committed s-announcement from local registry", async () => {
+		const cwd = await makeTempDir();
+		await initProject(cwd);
+
+		const result = await runCli(["add", "s-announcement"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registryRoot },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(result.stdout).toContain("Wrote sections/s-announcement.liquid");
+		expect(result.stdout).toContain("Installed components: s-announcement");
+		expect(
+			await readFile(join(cwd, "sections", "s-announcement.liquid"), "utf8"),
+		).toContain("assign announcement_text = section.settings.text");
+		const lock = await readLock(cwd);
+		expect(lock).toContain("s-announcement:");
+		expect(lock).toContain("path: sections/s-announcement.liquid");
+	});
+
 	it("installs a component file and lockfile metadata", async () => {
 		const cwd = await makeTempDir();
 		const registry = await makeTempDir("nazare-registry-test-");

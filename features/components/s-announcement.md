@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: s-announcement
 title: Announcement Section
-status: planned
+status: done
 
 dependencies:
   - component-registry
@@ -105,15 +105,15 @@ components:
 
 ## Verification
 
-Result: planned.
+Result: done.
 
-- [ ] component source exists at registry path
-- [ ] registry contains `s-announcement` metadata
-- [ ] registry checksum matches component source bytes
-- [ ] component metadata validates with component registry parser
-- [ ] section schema contains text, link URL, and link label settings
-- [ ] section uses Tailwind utilities
-- [ ] `nazare add s-announcement` smoke installs section from local registry
+- [x] component source exists at registry path
+- [x] registry contains `s-announcement` metadata
+- [x] registry checksum matches component source bytes
+- [x] component metadata validates with component registry parser
+- [x] section schema contains text, link URL, and link label settings
+- [x] section uses Tailwind utilities
+- [x] `nazare add s-announcement` smoke installs section from local registry
 
 ---
 

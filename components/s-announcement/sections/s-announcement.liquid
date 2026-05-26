@@ -1,0 +1,55 @@
+{% render 'section-css', section_name: 's-announcement' %}
+
+{% liquid
+  assign announcement_text = section.settings.text
+  assign link_url = section.settings.link_url
+  assign link_label = section.settings.link_label
+  assign has_link = false
+
+  if link_url != blank and link_label != blank
+    assign has_link = true
+  endif
+%}
+
+<section class="bg-neutral-950 text-white">
+  <div class="mx-auto flex max-w-screen-xl flex-col items-center justify-center gap-2 px-4 py-3 text-center text-sm font-medium sm:flex-row sm:text-left">
+    {% if announcement_text != blank %}
+      <p>{{ announcement_text }}</p>
+    {% endif %}
+
+    {% if has_link %}
+      <a href="{{ link_url }}" class="inline-flex items-center rounded-full border border-white/30 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white transition hover:border-white hover:bg-white hover:text-neutral-950 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-neutral-950">
+        {{ link_label }}
+      </a>
+    {% endif %}
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Announcement",
+  "settings": [
+    {
+      "type": "text",
+      "id": "text",
+      "label": "Announcement text",
+      "default": "Free shipping on orders over $75."
+    },
+    {
+      "type": "url",
+      "id": "link_url",
+      "label": "Link URL"
+    },
+    {
+      "type": "text",
+      "id": "link_label",
+      "label": "Link label"
+    }
+  ],
+  "presets": [
+    {
+      "name": "Announcement"
+    }
+  ]
+}
+{% endschema %}
