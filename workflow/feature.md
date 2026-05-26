@@ -115,16 +115,31 @@ git branch -d feat/<feature-id>
 git push origin --delete feat/<feature-id>
 ```
 
-If the merged PR changed CLI/install behavior and bumped `package.json.version`, create and push the matching stable tag from updated `main`:
+If the merged PR changed CLI/install behavior and bumped `package.json.version`, create and publish the matching stable release from updated `main`:
 
 ```sh
 git checkout main
 git pull --ff-only
-git tag vMAJOR.MINOR.PATCH
-git push origin vMAJOR.MINOR.PATCH
+VERSION=$(node -p "require('./package.json').version")
+git tag "v$VERSION"
+git push origin "v$VERSION"
+gh release create "v$VERSION" --title "v$VERSION" --notes "$(git log -1 --pretty=%B)" --latest
 ```
 
-Tag version must match `package.json.version` without the leading `v`.
+Release requirements:
+
+- Git tag must exist and be pushed.
+- GitHub Release must exist for the tag.
+- GitHub Release must be marked latest for stable release flow.
+- Tag version must match `package.json.version` without the leading `v`.
+- Verify latest resolves to the new release before announcing:
+
+```sh
+gh release list --limit 3
+gh release view "v$VERSION" --json tagName,name,isDraft,isPrerelease,url
+```
+
+`nazare self update latest` uses GitHub Releases, not plain Git tags. Pushing only a tag is not enough.
 
 ## Rule of thumb
 
