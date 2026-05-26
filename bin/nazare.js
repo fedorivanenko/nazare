@@ -367,6 +367,266 @@ function parseRegistryYaml(source, label) {
 	};
 }
 
+function parseComponentListValue(value, label) {
+	const trimmed = value.trim();
+	if (trimmed === "[]") return [];
+	throw new Error(`Invalid ${label}: expected array`);
+}
+
+function parseComponentManifest(source) {
+	const lines = source.split("\n");
+	const componentsLineIndex = lines.findIndex((line) =>
+		/^components:\s*/.test(line),
+	);
+
+	if (componentsLineIndex === -1) {
+		throw new Error("Registry manifest has no components block");
+	}
+
+	const componentsLine = lines[componentsLineIndex];
+	const inlineValue = componentsLine.replace(/^components:\s*/, "").trim();
+	if (inlineValue === "{}") return {};
+	if (inlineValue !== "") {
+		throw new Error("Invalid components block in registry manifest");
+	}
+
+	const components = {};
+	let currentId;
+	let inDependencies = false;
+	let inFiles = false;
+	let inChecksum = false;
+	let currentFile;
+
+	for (let index = componentsLineIndex + 1; index < lines.length; index += 1) {
+		const line = lines[index];
+		if (line.trim() === "") continue;
+		if (/^\S/.test(line)) break;
+
+		const componentMatch = line.match(/^ {2}([a-z0-9]+(?:-[a-z0-9]+)*):\s*$/);
+		if (componentMatch) {
+			currentId = componentMatch[1];
+			components[currentId] = {};
+			inDependencies = false;
+			inFiles = false;
+			inChecksum = false;
+			currentFile = undefined;
+			continue;
+		}
+
+		if (!currentId) {
+			throw new Error("Invalid components block in registry manifest");
+		}
+
+		const component = components[currentId];
+		const versionMatch = line.match(/^ {4}version:\s*(.+)$/);
+		const typeMatch = line.match(/^ {4}type:\s*(.+)$/);
+		const dependenciesInlineMatch = line.match(/^ {4}dependencies:\s*(.+)$/);
+		const dependenciesBlockMatch = line.match(/^ {4}dependencies:\s*$/);
+		const dependencyMatch = line.match(/^ {6}-\s+(.+)$/);
+		const filesMatch = line.match(/^ {4}files:\s*$/);
+		const fromMatch = line.match(/^ {6}-\s+from:\s*(.+)$/);
+		const toMatch = line.match(/^ {8}to:\s*(.+)$/);
+		const checksumMatch = line.match(/^ {8}checksum:\s*$/);
+		const algorithmMatch = line.match(/^ {10}algorithm:\s*(.+)$/);
+		const valueMatch = line.match(/^ {10}value:\s*(.+)$/);
+
+		if (versionMatch) {
+			component.version = versionMatch[1].trim();
+			continue;
+		}
+		if (typeMatch) {
+			component.type = typeMatch[1].trim();
+			continue;
+		}
+		if (dependenciesInlineMatch) {
+			component.dependencies = parseComponentListValue(
+				dependenciesInlineMatch[1],
+				`components.${currentId}.dependencies`,
+			);
+			inDependencies = false;
+			inFiles = false;
+			continue;
+		}
+		if (dependenciesBlockMatch) {
+			component.dependencies = [];
+			inDependencies = true;
+			inFiles = false;
+			continue;
+		}
+		if (inDependencies && dependencyMatch) {
+			component.dependencies.push(dependencyMatch[1].trim());
+			continue;
+		}
+		if (filesMatch) {
+			component.files = [];
+			inDependencies = false;
+			inFiles = true;
+			continue;
+		}
+		if (inFiles && fromMatch) {
+			currentFile = { from: fromMatch[1].trim() };
+			component.files.push(currentFile);
+			inChecksum = false;
+			continue;
+		}
+		if (inFiles && toMatch && currentFile) {
+			currentFile.to = toMatch[1].trim();
+			continue;
+		}
+		if (inFiles && checksumMatch && currentFile) {
+			currentFile.checksum = {};
+			inChecksum = true;
+			continue;
+		}
+		if (inFiles && inChecksum && algorithmMatch && currentFile?.checksum) {
+			currentFile.checksum.algorithm = algorithmMatch[1].trim();
+			continue;
+		}
+		if (inFiles && inChecksum && valueMatch && currentFile?.checksum) {
+			currentFile.checksum.value = valueMatch[1].trim();
+			continue;
+		}
+
+		throw new Error(`Invalid components metadata near line ${index + 1}`);
+	}
+
+	validateComponentMetadata(components);
+	return components;
+}
+
+const COMPONENT_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const COMPONENT_TYPES = new Set(["section", "snippet", "package"]);
+const COMPONENT_DESTINATION_ROOTS = [
+	"sections/",
+	"snippets/",
+	"templates/",
+	"assets/",
+	"styles/",
+	"scripts/sections/",
+	"scripts/snippets/",
+	"scripts/behaviors/",
+];
+
+function isValidComponentId(value) {
+	return typeof value === "string" && COMPONENT_ID_PATTERN.test(value);
+}
+
+function isAllowedComponentDestination(value) {
+	return COMPONENT_DESTINATION_ROOTS.some((root) => value.startsWith(root));
+}
+
+function validateComponentMetadata(components) {
+	if (
+		!components ||
+		typeof components !== "object" ||
+		Array.isArray(components)
+	) {
+		throw new Error("Invalid components block in registry manifest");
+	}
+
+	const seenDestinations = new Set();
+	const ids = Object.keys(components);
+
+	for (const id of ids) {
+		if (!isValidComponentId(id)) {
+			throw new Error(`Invalid component ID: ${id}`);
+		}
+
+		const component = components[id];
+		if (
+			!component ||
+			typeof component !== "object" ||
+			Array.isArray(component)
+		) {
+			throw new Error(`Invalid component metadata: ${id}`);
+		}
+		if (
+			typeof component.version !== "string" ||
+			!SEMVER_PATTERN.test(component.version)
+		) {
+			throw new Error(`Invalid component version: ${id}`);
+		}
+		if (!COMPONENT_TYPES.has(component.type)) {
+			throw new Error(`Invalid component type: ${id}`);
+		}
+		if (component.type === "section" && !id.startsWith("s-")) {
+			throw new Error(`Invalid section component ID: ${id}`);
+		}
+		if (component.type === "snippet" && !id.startsWith("c-")) {
+			throw new Error(`Invalid snippet component ID: ${id}`);
+		}
+		if (!Array.isArray(component.dependencies)) {
+			throw new Error(`Invalid component dependencies: ${id}`);
+		}
+		const seenDependencies = new Set();
+		for (const dependency of component.dependencies) {
+			if (!isValidComponentId(dependency)) {
+				throw new Error(`Invalid component dependency: ${id}`);
+			}
+			if (dependency === id) {
+				throw new Error(`Component cannot depend on itself: ${id}`);
+			}
+			if (seenDependencies.has(dependency)) {
+				throw new Error(`Duplicate component dependency: ${id}`);
+			}
+			if (!components[dependency]) {
+				throw new Error(`Missing component dependency: ${dependency}`);
+			}
+			seenDependencies.add(dependency);
+		}
+		if (!Array.isArray(component.files) || component.files.length === 0) {
+			throw new Error(`Invalid component files: ${id}`);
+		}
+		for (const file of component.files) {
+			if (!isSafeRelativePath(file.from)) {
+				throw new Error(`Unsafe component file source path: ${id}`);
+			}
+			if (!file.from.startsWith(`components/${id}/`)) {
+				throw new Error(
+					`Component source path must be under components/${id}/: ${file.from}`,
+				);
+			}
+			if (!isSafeRelativePath(file.to)) {
+				throw new Error(`Unsafe component file target path: ${id}`);
+			}
+			if (!isAllowedComponentDestination(file.to)) {
+				throw new Error(`Disallowed component file target path: ${file.to}`);
+			}
+			if (seenDestinations.has(file.to)) {
+				throw new Error(`Duplicate component file target path: ${file.to}`);
+			}
+			seenDestinations.add(file.to);
+			if (
+				file.checksum?.algorithm !== "sha256" ||
+				typeof file.checksum.value !== "string" ||
+				!/^[0-9a-f]{64}$/.test(file.checksum.value)
+			) {
+				throw new Error(
+					`Invalid component file checksum metadata: ${file.from}`,
+				);
+			}
+		}
+	}
+
+	const visiting = new Set();
+	const visited = new Set();
+	function visit(id, trail = []) {
+		if (visited.has(id)) return;
+		if (visiting.has(id)) {
+			throw new Error(
+				`Circular component dependency: ${[...trail, id].join(" -> ")}`,
+			);
+		}
+		visiting.add(id);
+		for (const dependency of components[id].dependencies) {
+			visit(dependency, [...trail, id]);
+		}
+		visiting.delete(id);
+		visited.add(id);
+	}
+	for (const id of ids) visit(id);
+}
+
 function parseThemeManifest(source) {
 	const lines = source.split("\n");
 	const theme = { files: [] };
@@ -1092,11 +1352,19 @@ async function main(argv) {
 	return 1;
 }
 
-main(process.argv.slice(2))
-	.then((exitCode) => {
-		process.exitCode = exitCode;
-	})
-	.catch((error) => {
-		process.stderr.write(`nazare error: ${error.message}\n`);
-		process.exitCode = 1;
-	});
+if (require.main === module) {
+	main(process.argv.slice(2))
+		.then((exitCode) => {
+			process.exitCode = exitCode;
+		})
+		.catch((error) => {
+			process.stderr.write(`nazare error: ${error.message}\n`);
+			process.exitCode = 1;
+		});
+}
+
+module.exports = {
+	isValidComponentId,
+	parseComponentManifest,
+	validateComponentMetadata,
+};

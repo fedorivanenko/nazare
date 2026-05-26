@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: component-registry
 title: Component Registry Contract
-status: planned
+status: done
 
 dependencies: []
 
@@ -163,23 +163,23 @@ Failure must not mutate registry files, component source files, theme files, loc
 
 ## Verification
 
-Result: planned.
+Result: done.
 
-- [ ] valid empty `components: {}` manifest is accepted
-- [ ] valid snippet component metadata is accepted
-- [ ] valid section component metadata is accepted
-- [ ] valid package component metadata is accepted
-- [ ] invalid component ID fails validation
-- [ ] invalid SemVer fails validation
-- [ ] invalid type fails validation
-- [ ] missing/duplicate dependency fails validation
-- [ ] circular dependency graph fails validation
-- [ ] unsafe source path fails validation
-- [ ] unsafe/disallowed destination path fails validation
-- [ ] duplicate destination path fails validation
-- [ ] missing/invalid checksum fails validation
-- [ ] docs show canonical registry contract
-- [ ] no CLI command behavior changes
+- [x] valid empty `components: {}` manifest is accepted
+- [x] valid snippet component metadata is accepted
+- [x] valid section component metadata is accepted
+- [x] valid package component metadata is accepted
+- [x] invalid component ID fails validation
+- [x] invalid SemVer fails validation
+- [x] invalid type fails validation
+- [x] missing/duplicate dependency fails validation
+- [x] circular dependency graph fails validation
+- [x] unsafe source path fails validation
+- [x] unsafe/disallowed destination path fails validation
+- [x] duplicate destination path fails validation
+- [x] missing/invalid checksum fails validation
+- [x] docs show canonical registry contract
+- [x] no CLI command behavior changes
 
 ---
 
@@ -195,5 +195,4 @@ Keep validation metadata-only. Do not read component source bytes unless fixture
 
 ## Open questions
 
-- Should v1 registry include real starter components now, or only fixtures until `component-add` lands?
-- Should `description` be reserved now for future `nazare list` display, or added later when needed?
+None. Real starter components and `description` metadata are deferred until a user-visible component feature needs them.
