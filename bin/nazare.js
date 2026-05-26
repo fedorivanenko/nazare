@@ -1746,13 +1746,21 @@ async function themeUpdate(args) {
 				continue;
 			}
 
-			if (
-				!exists ||
-				localChecksum !== registryChecksum ||
-				tracked.source !== manifestFile.from
-			) {
-				writes.push(registryFile);
+			if (exists && localChecksum === registryChecksum) {
+				if (
+					tracked.checksum.value !== registryChecksum ||
+					tracked.source !== manifestFile.from
+				) {
+					metadataUpdates.push({
+						path: manifestFile.to,
+						source: manifestFile.from,
+						checksum: registryFile.checksum,
+					});
+				}
+				continue;
 			}
+
+			writes.push(registryFile);
 		}
 
 		for (const manifestFile of theme.files) {
