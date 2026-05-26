@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: component-update
 title: Update Component
-status: planned
+status: done
 
 dependencies:
   - cli-install
@@ -299,26 +299,26 @@ Failure must not mutate component files, theme files, lockfile entries, or files
 
 ## Verification
 
-Result: planned.
+Result: done.
 
-- [ ] installed untouched component updates files and lockfile metadata
-- [ ] installed current component is no-op
-- [ ] touched file prompts before overwrite
-- [ ] prompt `N` leaves file unchanged and does not bump component version
-- [ ] prompt `m` writes conflict markers and leaves lockfile unchanged
-- [ ] `--force` overwrites touched files without prompt
-- [ ] `--dry-run` prints plan and mutates nothing
-- [ ] missing installed file prompts before recreate
-- [ ] removed registry file deletes untouched installed file
-- [ ] removed registry file prompts before deleting touched installed file
-- [ ] untracked target path fails before mutation
-- [ ] component not installed fails and suggests `nazare add <component>`
-- [ ] invalid registry metadata fails before mutation
-- [ ] checksum mismatch fails before mutation
-- [ ] non-interactive prompt requirement fails before mutation
-- [ ] conflict markers are written only after explicit `m` choice
-- [ ] no update state, --continue, or --abort files are created
-- [ ] standard validation failures mutate nothing
+- [x] installed untouched component updates files and lockfile metadata
+- [x] installed current component is no-op
+- [x] touched file prompts before overwrite
+- [x] prompt `N` leaves file unchanged and does not bump component version
+- [x] prompt `m` writes conflict markers and leaves lockfile unchanged
+- [x] `--force` overwrites touched files without prompt
+- [x] `--dry-run` prints plan and mutates nothing
+- [x] missing installed file prompts before recreate
+- [x] removed registry file deletes untouched installed file
+- [x] removed registry file prompts before deleting touched installed file
+- [x] untracked target path fails before mutation
+- [x] component not installed fails and suggests `nazare add <component>`
+- [x] invalid registry metadata fails before mutation
+- [x] checksum mismatch fails before mutation
+- [x] non-interactive prompt requirement fails before mutation
+- [x] conflict markers are written only after explicit `m` choice
+- [x] no update state, --continue, or --abort files are created
+- [x] standard validation failures mutate nothing
 
 ---
 

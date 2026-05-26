@@ -5,6 +5,7 @@ const path = require("node:path");
 const https = require("node:https");
 const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
+const readline = require("node:readline/promises");
 
 const HELP = `Nazare CLI
 
@@ -14,6 +15,7 @@ Usage:
   nazare init [directory] [--repo <repo>] [--ref <ref>]
   nazare list [--installed]
   nazare add <component>
+  nazare update <component> [--dry-run] [--force]
   nazare theme pull [--yes]
   nazare theme update [--force] [--check] [--skip-conflicts]
   nazare self update [latest|--source <ref>]
@@ -22,6 +24,7 @@ Commands:
   init [directory]    Initialize Nazare relationship in a theme repo
   list                List registry components or installed components
   add <component>     Install a registry component and its dependencies
+  update <component>  Update an installed registry component
   theme pull          Pull registry theme scaffold into an initialized theme repo
   theme update        Safely update installed theme scaffold files
   self update         Update the Nazare CLI install from its original source, latest release, or --source override
@@ -32,6 +35,7 @@ Options:
   --repo <repo>       Registry GitHub repo for init
   --ref <ref>         Registry ref for init
   --installed         Show installed components from nazare.lock.yml
+  --dry-run           Print component update plan without changing files
   --source <ref>      Update from a branch, tag, full ref, or commit SHA
   --yes               Overwrite theme file conflicts without prompting
   --force             Overwrite modified theme update files
@@ -1093,6 +1097,36 @@ async function readCurrentComponentsWithSources(registry, ids) {
 	return { components, sources };
 }
 
+function parseUpdateArgs(args) {
+	const options = { dryRun: false, force: false, component: undefined };
+	for (const arg of args) {
+		if (arg === "--dry-run") {
+			if (options.dryRun) throw new Error("Duplicate update option: --dry-run");
+			options.dryRun = true;
+			continue;
+		}
+		if (arg === "--force") {
+			if (options.force) throw new Error("Duplicate update option: --force");
+			options.force = true;
+			continue;
+		}
+		if (arg.startsWith("--")) {
+			throw new Error(`Unknown update option: ${arg}`);
+		}
+		if (options.component !== undefined) {
+			throw new Error("Usage: nazare update <component> [--dry-run] [--force]");
+		}
+		options.component = arg;
+	}
+	if (!options.component) {
+		throw new Error("Usage: nazare update <component> [--dry-run] [--force]");
+	}
+	if (!isValidComponentId(options.component)) {
+		throw new Error(`Invalid component ID: ${options.component}`);
+	}
+	return options;
+}
+
 async function addComponent(args) {
 	try {
 		const requestedId = parseAddArgs(args);
@@ -1175,6 +1209,337 @@ async function addComponent(args) {
 		return 0;
 	} catch (error) {
 		process.stderr.write(`nazare add error: ${error.message}\n`);
+		return 1;
+	}
+}
+
+function componentUpdatedLockEntry(
+	manifestComponent,
+	installedComponent,
+	timestamp,
+) {
+	return {
+		version: manifestComponent.version,
+		type: manifestComponent.type,
+		installedAt: installedComponent.installedAt ?? timestamp,
+		updatedAt: timestamp,
+		dependencies: [...manifestComponent.dependencies],
+		files: componentFilesFromManifest(manifestComponent),
+	};
+}
+
+function buildComponentOwnership(installedComponents) {
+	const ownership = new Map();
+	for (const [id, component] of Object.entries(installedComponents)) {
+		for (const file of component.files ?? []) {
+			if (ownership.has(file.path) && ownership.get(file.path).id !== id) {
+				throw new Error(
+					`Component file target has multiple owners: ${file.path}`,
+				);
+			}
+			ownership.set(file.path, { id, file });
+		}
+	}
+	return ownership;
+}
+
+function markerContent(
+	localContent,
+	registryContent,
+	id,
+	version,
+	removed = false,
+) {
+	const local = Buffer.isBuffer(localContent)
+		? localContent.toString("utf8")
+		: String(localContent ?? "");
+	const incoming = Buffer.isBuffer(registryContent)
+		? registryContent.toString("utf8")
+		: String(registryContent ?? "");
+	return `<<<<<<< local\n${local}${local.endsWith("\n") ? "" : "\n"}=======\n${incoming}${incoming.endsWith("\n") || incoming.length === 0 ? "" : "\n"}>>>>>>> registry ${id}@${version}${removed ? " (removed)" : ""}\n`;
+}
+
+async function promptComponentUpdate(operation, rl) {
+	const action =
+		operation.kind === "delete"
+			? "Delete local file?"
+			: "Overwrite with registry version?";
+	process.stdout.write(`${operation.path} modified locally.\n`);
+	if (operation.kind === "delete") {
+		process.stdout.write(
+			`${operation.path} modified locally and no longer exists in registry component.\n`,
+		);
+	}
+	while (true) {
+		const answer = (await rl.question(`${action} [y/N/m] `))
+			.trim()
+			.toLowerCase();
+		if (answer === "y" || answer === "yes") return "yes";
+		if (answer === "m" || answer === "manual") return "manual";
+		if (answer === "" || answer === "n" || answer === "no") return "no";
+	}
+}
+
+async function promptComponentRecreate(operation, rl) {
+	process.stdout.write(`${operation.path} is missing locally.\n`);
+	while (true) {
+		const answer = (await rl.question("Recreate from registry version? [y/N] "))
+			.trim()
+			.toLowerCase();
+		if (answer === "y" || answer === "yes") return "yes";
+		if (answer === "" || answer === "n" || answer === "no") return "no";
+	}
+}
+
+function renderUpdateHeader(id, installedComponent, manifestComponent) {
+	return `${id} ${installedComponent.version} -> ${manifestComponent.version}\n`;
+}
+
+async function updateComponent(args) {
+	let options;
+	try {
+		options = parseUpdateArgs(args);
+	} catch (error) {
+		process.stderr.write(`nazare update error: ${error.message}\n`);
+		return 1;
+	}
+
+	try {
+		const cwd = process.cwd();
+		const { lockPath, lockSource, registry } = readProjectState(cwd);
+		const installedComponents = parseInstalledComponents(lockSource);
+		const installedComponent = installedComponents[options.component];
+		if (!installedComponent) {
+			throw new Error(
+				`Component not installed: ${options.component}; run nazare add ${options.component}`,
+			);
+		}
+
+		const registryComponents = await readCurrentComponents(registry);
+		if (!registryComponents[options.component]) {
+			throw new Error(`Component not found in registry: ${options.component}`);
+		}
+		const { components, sources } = await readCurrentComponentsWithSources(
+			registry,
+			[options.component],
+		);
+		const manifestComponent = components[options.component];
+		for (const dependency of manifestComponent.dependencies) {
+			if (!installedComponents[dependency]) {
+				throw new Error(
+					`Missing installed component dependency: ${dependency}; run nazare add ${dependency}`,
+				);
+			}
+		}
+		const ownership = buildComponentOwnership(installedComponents);
+		const installedByPath = new Map(
+			(installedComponent.files ?? []).map((file) => [file.path, file]),
+		);
+		const manifestByPath = new Map(
+			manifestComponent.files.map((file) => [file.to, file]),
+		);
+		const writes = [];
+		const deletes = [];
+		const prompts = [];
+		const manualWrites = [];
+
+		for (const manifestFile of manifestComponent.files) {
+			const targetPath = path.join(cwd, manifestFile.to);
+			const owner = ownership.get(manifestFile.to);
+			if (owner && owner.id !== options.component) {
+				throw new Error(
+					`Component file target already owned: ${manifestFile.to}`,
+				);
+			}
+			const installedFile = installedByPath.get(manifestFile.to);
+			const registryContent = sources.get(manifestFile.from);
+			const write = {
+				kind: "write",
+				path: manifestFile.to,
+				targetPath,
+				source: manifestFile.from,
+				content: registryContent,
+				checksum: manifestFile.checksum,
+			};
+
+			if (!installedFile) {
+				if (fs.existsSync(targetPath)) {
+					throw new Error(
+						`Component file target exists untracked: ${manifestFile.to}`,
+					);
+				}
+				writes.push(write);
+				continue;
+			}
+
+			if (!fs.existsSync(targetPath)) {
+				prompts.push({ kind: "recreate", ...write });
+				continue;
+			}
+
+			const localContent = fs.readFileSync(targetPath);
+			const localChecksum = sha256(localContent);
+			if (localChecksum !== installedFile.checksum.value && !options.force) {
+				prompts.push({ kind: "write", localContent, ...write });
+				continue;
+			}
+
+			if (localChecksum !== manifestFile.checksum.value) {
+				writes.push(write);
+			}
+		}
+
+		for (const installedFile of installedComponent.files ?? []) {
+			if (manifestByPath.has(installedFile.path)) continue;
+			const targetPath = path.join(cwd, installedFile.path);
+			if (!fs.existsSync(targetPath)) {
+				deletes.push({ kind: "untrack", path: installedFile.path, targetPath });
+				continue;
+			}
+			const localContent = fs.readFileSync(targetPath);
+			const localChecksum = sha256(localContent);
+			const operation = {
+				kind: "delete",
+				path: installedFile.path,
+				targetPath,
+				localContent,
+				content: Buffer.alloc(0),
+			};
+			if (localChecksum !== installedFile.checksum.value && !options.force) {
+				prompts.push(operation);
+				continue;
+			}
+			deletes.push(operation);
+		}
+
+		const plannedCount = writes.length + deletes.length + prompts.length;
+		if (
+			plannedCount === 0 &&
+			componentMatchesLock(manifestComponent, installedComponent)
+		) {
+			process.stdout.write(
+				`Component already up to date: ${options.component}\n`,
+			);
+			return 0;
+		}
+
+		process.stdout.write(
+			renderUpdateHeader(
+				options.component,
+				installedComponent,
+				manifestComponent,
+			),
+		);
+		if (options.dryRun) {
+			for (const write of writes)
+				process.stdout.write(`Would write ${write.path}\n`);
+			for (const file of deletes) {
+				process.stdout.write(
+					`${file.kind === "untrack" ? "Would untrack" : "Would delete"} ${file.path}\n`,
+				);
+			}
+			for (const prompt of prompts) {
+				process.stdout.write(`Would prompt ${prompt.kind} ${prompt.path}\n`);
+			}
+			return 0;
+		}
+
+		if (prompts.length > 0 && options.force) {
+			for (const prompt of prompts) {
+				if (prompt.kind === "delete") deletes.push(prompt);
+				else writes.push(prompt);
+			}
+		} else if (prompts.length > 0) {
+			if (
+				(!process.stdin.isTTY || !process.stdout.isTTY) &&
+				process.env.NAZARE_TEST_INTERACTIVE !== "1"
+			) {
+				throw new Error(
+					"Component update requires an interactive terminal or --force",
+				);
+			}
+			const rl = readline.createInterface({
+				input: process.stdin,
+				output: process.stdout,
+			});
+			try {
+				for (const prompt of prompts) {
+					const answer =
+						prompt.kind === "recreate"
+							? await promptComponentRecreate(prompt, rl)
+							: await promptComponentUpdate(prompt, rl);
+					if (answer === "no") {
+						process.stdout.write(
+							`Skipped ${prompt.path}; component not fully updated.\n`,
+						);
+						return 0;
+					}
+					if (answer === "manual") {
+						manualWrites.push(prompt);
+						continue;
+					}
+					if (prompt.kind === "delete") deletes.push(prompt);
+					else writes.push(prompt);
+				}
+			} finally {
+				rl.close();
+			}
+		}
+
+		if (manualWrites.length > 0) {
+			for (const file of manualWrites) {
+				fs.writeFileSync(
+					file.targetPath,
+					markerContent(
+						file.localContent,
+						file.content,
+						options.component,
+						manifestComponent.version,
+						file.kind === "delete",
+					),
+				);
+				process.stdout.write(
+					`Wrote manual conflict markers to ${file.path}.\n`,
+				);
+			}
+			process.stdout.write(
+				`Resolve markers manually. nazare.lock.yml was not updated.\nRun nazare update ${options.component} again after resolving if you want to accept the registry update.\n`,
+			);
+			return 0;
+		}
+
+		for (const write of writes) {
+			fs.mkdirSync(path.dirname(write.targetPath), { recursive: true });
+			fs.writeFileSync(write.targetPath, write.content);
+			process.stdout.write(`Wrote ${write.path}\n`);
+		}
+		for (const file of deletes) {
+			if (file.kind === "untrack") {
+				process.stdout.write(`Untracked ${file.path}\n`);
+				continue;
+			}
+			fs.rmSync(file.targetPath);
+			process.stdout.write(`Deleted ${file.path}\n`);
+		}
+
+		const nextComponents = { ...installedComponents };
+		nextComponents[options.component] = componentUpdatedLockEntry(
+			manifestComponent,
+			installedComponent,
+			new Date().toISOString(),
+		);
+		fs.writeFileSync(
+			lockPath,
+			renderComponentLockYaml(
+				registry,
+				nextComponents,
+				extractThemeBlock(lockSource),
+			),
+		);
+		process.stdout.write("Done.\n");
+		return 0;
+	} catch (error) {
+		process.stderr.write(`nazare update error: ${error.message}\n`);
 		return 1;
 	}
 }
@@ -2012,6 +2377,10 @@ async function main(argv) {
 
 	if (command === "add") {
 		return addComponent(argv.slice(1));
+	}
+
+	if (command === "update") {
+		return updateComponent(argv.slice(1));
 	}
 
 	if (command === "theme" && subcommand === "pull") {
