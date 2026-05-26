@@ -212,13 +212,13 @@ Result: implementation present; final feature-doc checklist still needs reconcil
   - Verify all files and lockfile unchanged.
 - [ ] `--force` overwrites modified current tracked file
   - Verify file becomes registry content and checksum updates.
-- [ ] `--skip-conflicts` skips modified current tracked file and updates other safe files
+- [x] `--skip-conflicts` skips modified current tracked file and updates other safe files
   - Verify skipped file and its lockfile entry remain unchanged while safe file changes apply.
 - [ ] missing current tracked file fails before mutation
   - Verify clear missing-path error and lockfile unchanged.
 - [ ] `--force` restores missing current tracked file
   - Verify file is recreated from registry and checksum updates.
-- [ ] `--skip-conflicts` skips missing current tracked file and updates other safe files
+- [x] `--skip-conflicts` skips missing current tracked file and updates other safe files
   - Verify missing file remains missing and its lockfile entry remains unchanged while safe file changes apply.
 - [ ] obsolete unmodified tracked file deletes
   - Verify file removed and lockfile entry removed.
@@ -226,7 +226,7 @@ Result: implementation present; final feature-doc checklist still needs reconcil
   - Verify file and lockfile unchanged.
 - [ ] `--force` deletes obsolete modified tracked file
   - Verify file and lockfile entry removed.
-- [ ] `--skip-conflicts` skips obsolete modified tracked file
+- [x] `--skip-conflicts` skips obsolete modified tracked file
   - Verify file and lockfile entry remain unchanged while safe operations apply.
 - [ ] obsolete already-missing tracked file untracks
   - Verify lockfile entry removed without delete attempt.
@@ -240,7 +240,7 @@ Result: implementation present; final feature-doc checklist still needs reconcil
   - Verify ambiguous-path error and target unchanged.
 - [ ] `--force` overwrites existing untracked manifest target
   - Verify file becomes registry content and lockfile entry is added.
-- [ ] `--skip-conflicts` skips existing untracked manifest target
+- [x] `--skip-conflicts` skips existing untracked manifest target
   - Verify local untracked file remains unchanged and safe operations apply.
 - [ ] no-op update leaves lockfile unchanged
   - Verify exact before/after lockfile.

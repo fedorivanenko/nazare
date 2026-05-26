@@ -15,7 +15,7 @@ Usage:
   nazare list [--installed]
   nazare add <component>
   nazare theme pull [--yes]
-  nazare theme update [--force] [--check]
+  nazare theme update [--force] [--check] [--skip-conflicts]
   nazare self update [latest|--source <ref>]
 
 Commands:
@@ -36,6 +36,7 @@ Options:
   --yes               Overwrite theme file conflicts without prompting
   --force             Overwrite modified theme update files
   --check             Print theme update plan without changing files
+  --skip-conflicts    Skip modified or conflicting theme files during update
 `;
 
 const SEMVER_PATTERN =
@@ -1331,7 +1332,7 @@ function parseThemePullArgs(args) {
 }
 
 function parseThemeUpdateArgs(args) {
-	const options = { force: false, check: false };
+	const options = { force: false, check: false, skipConflicts: false };
 
 	for (const arg of args) {
 		if (arg === "--force") {
@@ -1340,6 +1341,10 @@ function parseThemeUpdateArgs(args) {
 		}
 		if (arg === "--check") {
 			options.check = true;
+			continue;
+		}
+		if (arg === "--skip-conflicts") {
+			options.skipConflicts = true;
 			continue;
 		}
 		throw new Error(`Unknown theme update option: ${arg}`);
@@ -1607,6 +1612,14 @@ async function themeUpdate(args) {
 		const deletes = [];
 		const untracks = [];
 		const metadataUpdates = [];
+		const skipped = [];
+		const skipConflict = (message, file) => {
+			if (options.skipConflicts && !options.force) {
+				skipped.push({ path: file.path, message });
+				return true;
+			}
+			return false;
+		};
 
 		for (const tracked of trackedByPath.values()) {
 			const manifestFile = manifestByPath.get(tracked.path);
@@ -1625,6 +1638,14 @@ async function themeUpdate(args) {
 				}
 				if (!hasChecksum) {
 					if (!options.force) {
+						if (
+							skipConflict(
+								`Missing checksum metadata for obsolete theme file: ${tracked.path}`,
+								tracked,
+							)
+						) {
+							continue;
+						}
 						errors.push(
 							`Missing checksum metadata for obsolete theme file: ${tracked.path}`,
 						);
@@ -1634,6 +1655,14 @@ async function themeUpdate(args) {
 					continue;
 				}
 				if (modified && !options.force) {
+					if (
+						skipConflict(
+							`Modified obsolete theme file: ${tracked.path}`,
+							tracked,
+						)
+					) {
+						continue;
+					}
 					errors.push(`Modified obsolete theme file: ${tracked.path}`);
 					continue;
 				}
@@ -1653,6 +1682,14 @@ async function themeUpdate(args) {
 			if (!hasChecksum) {
 				if (!exists) {
 					if (!options.force) {
+						if (
+							skipConflict(
+								`Missing installed theme file without checksum metadata: ${tracked.path}`,
+								tracked,
+							)
+						) {
+							continue;
+						}
 						errors.push(
 							`Missing installed theme file without checksum metadata: ${tracked.path}`,
 						);
@@ -1670,6 +1707,14 @@ async function themeUpdate(args) {
 					continue;
 				}
 				if (!options.force) {
+					if (
+						skipConflict(
+							`Missing checksum metadata for tracked theme file with local changes: ${tracked.path}`,
+							tracked,
+						)
+					) {
+						continue;
+					}
 					errors.push(
 						`Missing checksum metadata for tracked theme file with local changes: ${tracked.path}`,
 					);
@@ -1680,10 +1725,23 @@ async function themeUpdate(args) {
 			}
 
 			if (!exists && !options.force) {
+				if (
+					skipConflict(`Missing installed theme file: ${tracked.path}`, tracked)
+				) {
+					continue;
+				}
 				errors.push(`Missing installed theme file: ${tracked.path}`);
 				continue;
 			}
 			if (modified && !options.force) {
+				if (
+					skipConflict(
+						`Modified installed theme file: ${tracked.path}`,
+						tracked,
+					)
+				) {
+					continue;
+				}
 				errors.push(`Modified installed theme file: ${tracked.path}`);
 				continue;
 			}
@@ -1702,6 +1760,16 @@ async function themeUpdate(args) {
 			const targetPath = path.join(cwd, manifestFile.to);
 			const exists = fs.existsSync(targetPath);
 			if (exists && !options.force) {
+				if (
+					skipConflict(
+						`Untracked theme file target exists: ${manifestFile.to}`,
+						{
+							path: manifestFile.to,
+						},
+					)
+				) {
+					continue;
+				}
 				errors.push(`Untracked theme file target exists: ${manifestFile.to}`);
 				continue;
 			}
@@ -1718,10 +1786,11 @@ async function themeUpdate(args) {
 			throw new Error(errors.join("; "));
 		}
 
-		const operations =
+		const mutationOperations =
 			writes.length + deletes.length + untracks.length + metadataUpdates.length;
+		const reportableOperations = mutationOperations + skipped.length;
 		if (options.check) {
-			if (operations === 0) {
+			if (reportableOperations === 0) {
 				process.stdout.write("Theme already up to date\n");
 				return 0;
 			}
@@ -1733,10 +1802,12 @@ async function themeUpdate(args) {
 				process.stdout.write(`Would untrack ${file.path}\n`);
 			for (const file of metadataUpdates)
 				process.stdout.write(`Would update metadata ${file.path}\n`);
+			for (const file of skipped)
+				process.stdout.write(`Would skip ${file.path}: ${file.message}\n`);
 			return 0;
 		}
 
-		if (operations === 0) {
+		if (reportableOperations === 0) {
 			process.stdout.write("Theme already up to date\n");
 			return 0;
 		}
@@ -1750,6 +1821,13 @@ async function themeUpdate(args) {
 		for (const file of deletes) {
 			fs.rmSync(path.join(cwd, file.path));
 			process.stdout.write(`Deleted ${file.path}\n`);
+		}
+		for (const file of skipped) {
+			process.stdout.write(`Skipped ${file.path}: ${file.message}\n`);
+		}
+
+		if (mutationOperations === 0) {
+			return 0;
 		}
 
 		const nextFiles = new Map(
