@@ -28,6 +28,8 @@ function readText(filePath) {
 }
 
 function writeText(filePath, content) {
+	if (pathExists(filePath) && readText(filePath) === content) return;
+
 	fs.mkdirSync(path.dirname(filePath), { recursive: true });
 	fs.writeFileSync(filePath, content);
 }

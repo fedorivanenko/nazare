@@ -1822,6 +1822,12 @@ async function themeUpdate(args) {
 			fs.rmSync(path.join(cwd, file.path));
 			process.stdout.write(`Deleted ${file.path}\n`);
 		}
+		for (const file of untracks) {
+			process.stdout.write(`Untracked ${file.path}\n`);
+		}
+		for (const file of metadataUpdates) {
+			process.stdout.write(`Updated metadata ${file.path}\n`);
+		}
 		for (const file of skipped) {
 			process.stdout.write(`Skipped ${file.path}: ${file.message}\n`);
 		}

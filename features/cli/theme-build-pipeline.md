@@ -231,7 +231,7 @@ Source inputs owned by this feature:
 - `package.json`: local build command surface.
 - `shopify.theme.toml`: Shopify CLI environment configuration.
 
-Generated intermediate files owned by the future Nazare Vite plugin, not scaffold source:
+Generated intermediate files owned by the Nazare Vite plugin, not scaffold source:
 
 - `styles/<section-name>.css`: per-section Tailwind CSS entry generated from local section/snippet Liquid scan sources.
 - `scripts/theme.js`: runtime entry generated from discovered `data-nazare-use` module keys.
@@ -268,7 +268,9 @@ Git policy follows [`docs/policies/generated-files-policy.md`](../docs/policies/
 - generated asset outputs are not listed in `theme.files`.
 - generated intermediate files and generated asset outputs should be git tracked by default in user theme repos.
 
-Generated files are not scaffold source and must not be listed in `theme.files` unless a later feature changes ownership:
+Generated files are not scaffold source and must not be listed in `theme.files` unless a later feature changes ownership. The generator must write them idempotently: unchanged generated content must not be overwritten, so Vite watch does not retrigger from its own output writes.
+
+Generated paths:
 
 - `assets/base.css`
 - `assets/<section-name>.css`
@@ -299,6 +301,7 @@ Generated files are not scaffold source and must not be listed in `theme.files` 
 - `.gitignore` ignores local `.env` files.
 - Generated Vite plugin output is not committed as registry scaffold source, but is intended to be git tracked after generation in user theme repos.
 - The local build depends on the Nazare Vite plugin and fails if that plugin is unavailable or cannot generate required runtime and bridge files.
+- Vite watch remains stable after the first build because generated runtime, bridge, and section CSS files are only rewritten when their content changes.
 
 ---
 
@@ -315,6 +318,7 @@ Generated files are not scaffold source and must not be listed in `theme.files` 
 - If required build input/output mappings are missing from `vite.config.js`, validation tests fail.
 - If generated Vite plugin output is committed as registry scaffold source before generation, validation tests fail.
 - If the Nazare Vite plugin dependency is missing or not wired in `vite.config.js`, build-pipeline validation tests fail.
+- If the Nazare Vite plugin rewrites unchanged generated runtime, bridge, or section CSS files on each build, Vite watch can loop and plugin validation tests fail.
 
 ---
 
@@ -341,7 +345,7 @@ Result: implementation present; final feature-doc checklist still needs reconcil
 - [ ] layout has Nazare CSS preload and module runtime hook points
   - Verify string/fixture assertions.
 - [ ] CSS and JavaScript bridge contracts are documented and asserted
-  - Verify generated snippet shapes, one-key `data-nazare-use` lazy-load mapping, and module script usage.
+  - Verify generated snippet shapes, one-key `data-nazare-use` lazy-load mapping, module script usage, and idempotent generated-file writes for stable Vite watch.
 - [ ] starter section supports section CSS contract
   - Verify string/fixture assertions.
 - [ ] build contract maps source inputs and generated intermediates to stable Shopify asset outputs

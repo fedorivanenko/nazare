@@ -148,6 +148,7 @@ describe("nazare theme update", () => {
 		});
 
 		expect(update).toMatchObject({ code: 0, stderr: "" });
+		expect(update.stdout).toContain("Updated metadata layout/theme.liquid");
 		expect(await readFile(lockPath, "utf8")).toContain("checksum:");
 	});
 
@@ -176,6 +177,7 @@ describe("nazare theme update", () => {
 		});
 
 		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(result.stdout).toContain("Untracked templates/old.json");
 		expect(await readFile(lockPath, "utf8")).not.toContain(
 			"templates/old.json",
 		);

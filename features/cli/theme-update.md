@@ -89,6 +89,7 @@ Included:
 - copy of new manifest files only when target path is absent
 - skip-conflicts mode for continuing around modified, missing, obsolete modified, and existing untracked targets without overwriting/deleting them
 - lockfile metadata updates after successful writes/deletes
+- stdout reporting for every mutation the command performs, including file writes, deletes, lockfile untracks, checksum metadata migrations, and skipped conflicts
 - README instructions and Vitest coverage
 
 ### Checksum contract
@@ -165,10 +166,10 @@ Missing lockfile checksum metadata is migrated when it can be proven safe: if a 
 - Deletes obsolete unmodified tracked files.
 - Copies new manifest files whose target paths are absent.
 - No-op update exits `0`, prints no-op message, and leaves lockfile unchanged.
-- Successful mutation prints written/deleted paths and exits `0`.
-- `--check` exits `0` when update can proceed safely, prints planned writes/deletes/no-op, and does not mutate files or lockfile.
+- Successful mutation prints every performed change and exits `0`: written paths, deleted paths, untracked lockfile paths, updated checksum metadata paths, and skipped conflict paths.
+- `--check` exits `0` when update can proceed safely, prints planned writes/deletes/untracks/metadata updates/skips/no-op, and does not mutate files or lockfile.
 - `--check` exits non-zero for the same safety errors as normal update and does not mutate files or lockfile.
-- `--skip-conflicts` prints skipped paths, leaves skipped files and lockfile entries unchanged, continues safe writes/deletes/untracks, and exits `0` when remaining plan succeeds.
+- `--skip-conflicts` prints skipped paths with reasons, leaves skipped files and lockfile entries unchanged, continues safe writes/deletes/untracks/metadata updates, and exits `0` when remaining plan succeeds.
 - `--force` may overwrite modified current files, restore missing current files, delete modified obsolete files, and overwrite existing untracked manifest targets.
 
 After successful mutation:
@@ -229,9 +230,9 @@ Result: implementation present; final feature-doc checklist still needs reconcil
 - [x] `--skip-conflicts` skips obsolete modified tracked file
   - Verify file and lockfile entry remain unchanged while safe operations apply.
 - [ ] obsolete already-missing tracked file untracks
-  - Verify lockfile entry removed without delete attempt.
+  - Verify lockfile entry removed without delete attempt and stdout prints `Untracked <path>`.
 - [ ] missing lockfile checksum metadata is added when local file equals verified registry content
-  - Verify lockfile gets checksum from the registry manifest and file content remains unchanged.
+  - Verify lockfile gets checksum from the registry manifest, file content remains unchanged, and stdout prints `Updated metadata <path>`.
 - [ ] missing checksum metadata fails when local file differs from registry
   - Verify clear metadata error and lockfile unchanged.
 - [ ] new manifest file copies when target absent

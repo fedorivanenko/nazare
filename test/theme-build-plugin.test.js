@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -159,6 +160,23 @@ describe("theme build plugin", () => {
 		);
 
 		expect(() => scanTheme(root)).toThrow("before rendered output");
+	});
+
+	it("does not rewrite unchanged generated files", async () => {
+		const root = await makeTheme();
+		await writeText(
+			root,
+			"sections/s-main.liquid",
+			"{% render 'section-css', section_name: 's-main' %}\n<section>Main</section>\n",
+		);
+
+		generateThemeBuildFiles(root);
+		const writeFileSync = vi.spyOn(fs, "writeFileSync");
+
+		generateThemeBuildFiles(root);
+
+		expect(writeFileSync).not.toHaveBeenCalled();
+		writeFileSync.mockRestore();
 	});
 
 	it("cleans stale generated section CSS only when marked", async () => {

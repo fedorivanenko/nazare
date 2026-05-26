@@ -97,7 +97,7 @@ If local scaffold files have user edits, update fails before mutation. To contin
 nazare theme update --skip-conflicts
 ```
 
-Use `--check` to preview the plan, or `--force` to explicitly overwrite modified tracked files.
+Use `--check` to preview the plan, or `--force` to explicitly overwrite modified tracked files. Update output lists every action it performs: `Wrote`, `Deleted`, `Untracked`, `Updated metadata`, and `Skipped`.
 
 ## Component registry
 
