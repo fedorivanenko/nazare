@@ -139,7 +139,15 @@ nazare add c-button
 
 `nazare add` verifies registry file checksums before writing, refuses untracked target conflicts, and records installed component ownership in `nazare.lock.yml`.
 
-## Update
+Update an installed component from the registry:
+
+```sh
+nazare update c-button
+```
+
+`nazare update` compares local files with the checksums recorded in `nazare.lock.yml`. Untouched files update automatically. Touched files require an interactive choice: overwrite, skip, or write manual conflict markers. Use `--dry-run` to preview the plan, or `--force` to overwrite/recreate/delete touched files without prompting.
+
+## CLI update
 
 Update a Nazare-owned CLI install from its originally installed source:
 

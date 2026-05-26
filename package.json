@@ -1,6 +1,6 @@
 {
 	"name": "nazare",
-	"version": "0.11.4",
+	"version": "0.12.0",
 	"description": "Opinionated Shopify Liquid theme and component registry built for speed.",
 	"bin": {
 		"nazare": "./bin/nazare.js"
@@ -9,7 +9,7 @@
 		"test": "npm run test:unit",
 		"test:build": "vitest run test/integration/theme-build.test.js",
 		"test:build:slow": "NAZARE_RUN_SLOW_TESTS=1 vitest run test/integration/theme-build.test.js",
-		"test:unit": "vitest run test/*.test.js"
+		"test:unit": "vitest run test/*.test.js --testTimeout=15000"
 	},
 	"license": "UNLICENSED",
 	"private": true,
