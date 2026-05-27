@@ -135,6 +135,37 @@ describe("committed component install smoke", () => {
 		expect(lock).toContain("path: scripts/snippets/c-video.js");
 	});
 
+	it("installs c-carousel from local registry", async () => {
+		const cwd = await makeTempDir();
+		await initProject(cwd);
+
+		const result = await runCli(["add", "c-carousel"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registryRoot },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(result.stdout).toContain("Wrote snippets/c-carousel.liquid");
+		expect(result.stdout).toContain("Wrote scripts/snippets/c-carousel.js");
+		expect(result.stdout).toContain("Installed components: c-carousel");
+		const snippet = await readFile(
+			join(cwd, "snippets", "c-carousel.liquid"),
+			"utf8",
+		);
+		expect(snippet).toContain('data-nazare-use="snippets/c-carousel"');
+		expect(snippet).toContain("data-c-carousel-track");
+		const script = await readFile(
+			join(cwd, "scripts", "snippets", "c-carousel.js"),
+			"utf8",
+		);
+		expect(script).toContain("requestAnimationFrame");
+		expect(script).not.toContain("cloneNode");
+		const lock = await readLock(cwd);
+		expect(lock).toContain("c-carousel:");
+		expect(lock).toContain("path: snippets/c-carousel.liquid");
+		expect(lock).toContain("path: scripts/snippets/c-carousel.js");
+	});
+
 	it("installs s-video-gallery and dependencies from local registry", async () => {
 		const cwd = await makeTempDir();
 		await initProject(cwd);
@@ -148,6 +179,8 @@ describe("committed component install smoke", () => {
 		expect(result.stdout).toContain("Wrote snippets/c-video.liquid");
 		expect(result.stdout).toContain("Wrote scripts/snippets/c-video.js");
 		expect(result.stdout).toContain("Wrote snippets/c-button.liquid");
+		expect(result.stdout).toContain("Wrote snippets/c-carousel.liquid");
+		expect(result.stdout).toContain("Wrote scripts/snippets/c-carousel.js");
 		expect(result.stdout).toContain("Wrote sections/s-video-gallery.liquid");
 		expect(result.stdout).toContain("s-video-gallery");
 		const section = await readFile(
@@ -163,12 +196,16 @@ describe("committed component install smoke", () => {
 		expect(section).toContain('"id": "cta_label"');
 		expect(section).toContain('"id": "cta_url"');
 		expect(section).toContain('"id": "columns"');
+		expect(section).toContain('"id": "layout_mode"');
+		expect(section).toContain("{% render 'c-carousel'");
+		expect(section).toContain("data-c-carousel-item");
 		const lock = await readLock(cwd);
 		expect(lock).toContain("c-video:");
 		expect(lock).toContain("c-button:");
+		expect(lock).toContain("c-carousel:");
 		expect(lock).toContain("s-video-gallery:");
 		expect(lock).toContain(
-			"    dependencies: \n      - c-video\n      - c-button",
+			"    dependencies: \n      - c-video\n      - c-button\n      - c-carousel",
 		);
 		expect(lock).toContain("path: sections/s-video-gallery.liquid");
 	});

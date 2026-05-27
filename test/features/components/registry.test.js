@@ -27,6 +27,14 @@ const videoGalleryPath = new URL(
 	"../../../components/s-video-gallery/s-video-gallery.liquid",
 	import.meta.url,
 );
+const carouselSnippetPath = new URL(
+	"../../../components/c-carousel/c-carousel.liquid",
+	import.meta.url,
+);
+const carouselScriptPath = new URL(
+	"../../../components/c-carousel/c-carousel.js",
+	import.meta.url,
+);
 const announcementPath = new URL(
 	"../../../components/s-announcement/s-announcement.liquid",
 	import.meta.url,
@@ -174,9 +182,9 @@ describe("component registry metadata", () => {
 
 		expect(() => validateComponentMetadata(components)).not.toThrow();
 		expect(components["s-video-gallery"]).toMatchObject({
-			version: "1.0.0",
+			version: "1.1.0",
 			type: "section",
-			dependencies: ["c-video", "c-button"],
+			dependencies: ["c-video", "c-button", "c-carousel"],
 			files: [
 				{
 					from: "components/s-video-gallery/s-video-gallery.liquid",
@@ -200,6 +208,51 @@ describe("component registry metadata", () => {
 		expect(source).toContain('"id": "cta_url"');
 		expect(source).toContain('"id": "cta_scheme"');
 		expect(source).toContain('"id": "columns"');
+		expect(source).toContain('"id": "layout_mode"');
+		expect(source).toContain('"id": "carousel_direction"');
+		expect(source).toContain('"id": "carousel_speed"');
+		expect(source).toContain('"id": "carousel_pause_on_hover"');
+		expect(source).toContain("{% render 'c-carousel'");
+		expect(source).toContain("data-c-carousel-item");
+	});
+
+	it("declares committed c-carousel metadata with matching checksums", async () => {
+		const manifest = await readFile(manifestPath, "utf8");
+		const snippet = await readFile(carouselSnippetPath, "utf8");
+		const script = await readFile(carouselScriptPath, "utf8");
+		const components = parseComponentManifest(manifest);
+
+		expect(() => validateComponentMetadata(components)).not.toThrow();
+		expect(components["c-carousel"]).toMatchObject({
+			version: "1.0.0",
+			type: "snippet",
+			dependencies: [],
+			files: [
+				{
+					from: "components/c-carousel/c-carousel.liquid",
+					to: "snippets/c-carousel.liquid",
+					checksum: {
+						algorithm: "sha256",
+						value: sha256(snippet),
+					},
+				},
+				{
+					from: "components/c-carousel/c-carousel.js",
+					to: "scripts/snippets/c-carousel.js",
+					checksum: {
+						algorithm: "sha256",
+						value: sha256(script),
+					},
+				},
+			],
+		});
+		expect(snippet).toContain('data-nazare-use="snippets/c-carousel"');
+		expect(snippet).toContain("data-c-carousel-track");
+		expect(snippet).toContain("{{ carousel_content }}");
+		expect(script).toContain("requestAnimationFrame");
+		expect(script).toContain("appendChild(first)");
+		expect(script).toContain("insertBefore(last");
+		expect(script).not.toContain("cloneNode");
 	});
 
 	it("declares committed s-announcement metadata with matching checksum", async () => {

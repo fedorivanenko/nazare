@@ -85,17 +85,33 @@ components:
           algorithm: sha256
           value: ba3cde568c7d1d0d3e825a4209383b821f56b11bfff5cccdd0443390b15a3704
   s-video-gallery:
-    version: 1.0.0
+    version: 1.1.0
     type: section
     dependencies:
       - c-video
       - c-button
+      - c-carousel
     files:
       - from: components/s-video-gallery/s-video-gallery.liquid
         to: sections/s-video-gallery.liquid
         checksum:
           algorithm: sha256
-          value: a9a2fd65288e00324618336ce16b1a0af04e3369e9e0786a6ea2738b2d1aa049
+          value: 840e6933217ffa677fa0719d27309359d44f9b08057f3715e5e4ea83e0360f72
+  c-carousel:
+    version: 1.0.0
+    type: snippet
+    dependencies: []
+    files:
+      - from: components/c-carousel/c-carousel.liquid
+        to: snippets/c-carousel.liquid
+        checksum:
+          algorithm: sha256
+          value: 57661a8ac5b9999956e6079d7b25b91b8dad68cbcd8fdaf9859ccd9e0a7517dd
+      - from: components/c-carousel/c-carousel.js
+        to: scripts/snippets/c-carousel.js
+        checksum:
+          algorithm: sha256
+          value: e5beeaa84bd71abba3b43ff51c7191d7a91a09a6ee4860508f447719833324eb
   s-announcement:
     version: 1.0.1
     type: section

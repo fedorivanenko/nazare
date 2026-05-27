@@ -7,8 +7,16 @@
   assign cta_url = section.settings.cta_url
   assign cta_scheme = section.settings.cta_scheme
   assign columns = section.settings.columns | default: '3'
+  assign layout_mode = section.settings.layout_mode | default: 'grid'
+  assign carousel_direction = section.settings.carousel_direction | default: 'left'
+  assign carousel_speed = section.settings.carousel_speed | default: 'normal'
+  assign carousel_pause_on_hover = section.settings.carousel_pause_on_hover
   assign has_cta = false
   assign rendered_videos = 0
+
+  unless layout_mode == 'grid' or layout_mode == 'carousel' or layout_mode == 'marquee'
+    assign layout_mode = 'grid'
+  endunless
 
   if cta_label != blank and cta_url != blank
     assign has_cta = true
@@ -37,16 +45,39 @@
       {% endif %}
     </div>
 
-    <div class="grid grid-cols-1 gap-6{% if columns == '2' %} lg:grid-cols-2{% elsif columns == '4' %} lg:grid-cols-4{% else %} lg:grid-cols-3{% endif %}">
-      {% for block in section.blocks %}
-        {% if block.settings.video != blank %}
-          {% assign rendered_videos = rendered_videos | plus: 1 %}
-          <div {{ block.shopify_attributes }} class="min-w-0">
-            {% render 'c-video', video: block.settings.video, thumbnail: block.settings.thumbnail, thumbnail_alt: block.settings.thumbnail_alt, id: block.id %}
-          </div>
-        {% endif %}
-      {% endfor %}
-    </div>
+    {% if layout_mode == 'carousel' or layout_mode == 'marquee' %}
+      {% capture carousel_items %}
+        {% for block in section.blocks %}
+          {% if block.settings.video != blank %}
+            {% assign rendered_videos = rendered_videos | plus: 1 %}
+            <div data-c-carousel-item {{ block.shopify_attributes }} class="w-80 shrink-0 sm:w-96">
+              {% render 'c-video', video: block.settings.video, thumbnail: block.settings.thumbnail, thumbnail_alt: block.settings.thumbnail_alt, id: block.id %}
+            </div>
+          {% endif %}
+        {% endfor %}
+      {% endcapture %}
+
+      {% if rendered_videos > 0 %}
+        {% liquid
+          assign carousel_mode = 'static'
+          if layout_mode == 'marquee'
+            assign carousel_mode = 'marquee'
+          endif
+        %}
+        {% render 'c-carousel', content: carousel_items, aria_label: gallery_title, mode: carousel_mode, direction: carousel_direction, speed: carousel_speed, pause_on_hover: carousel_pause_on_hover, gap: 'md' %}
+      {% endif %}
+    {% else %}
+      <div class="grid grid-cols-1 gap-6{% if columns == '2' %} lg:grid-cols-2{% elsif columns == '4' %} lg:grid-cols-4{% else %} lg:grid-cols-3{% endif %}">
+        {% for block in section.blocks %}
+          {% if block.settings.video != blank %}
+            {% assign rendered_videos = rendered_videos | plus: 1 %}
+            <div {{ block.shopify_attributes }} class="min-w-0">
+              {% render 'c-video', video: block.settings.video, thumbnail: block.settings.thumbnail, thumbnail_alt: block.settings.thumbnail_alt, id: block.id %}
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    {% endif %}
 
     {% if rendered_videos == 0 and request.design_mode %}
       <div class="rounded-3xl border border-dashed border-foreground/25 px-6 py-12 text-center text-sm text-foreground/60">
@@ -104,6 +135,26 @@
     },
     {
       "type": "select",
+      "id": "layout_mode",
+      "label": "Layout mode",
+      "default": "grid",
+      "options": [
+        {
+          "value": "grid",
+          "label": "Grid"
+        },
+        {
+          "value": "carousel",
+          "label": "Carousel"
+        },
+        {
+          "value": "marquee",
+          "label": "Endless marquee"
+        }
+      ]
+    },
+    {
+      "type": "select",
       "id": "columns",
       "label": "Columns on large screens",
       "default": "3",
@@ -121,6 +172,48 @@
           "label": "4 columns"
         }
       ]
+    },
+    {
+      "type": "select",
+      "id": "carousel_direction",
+      "label": "Carousel direction",
+      "default": "left",
+      "options": [
+        {
+          "value": "left",
+          "label": "Left"
+        },
+        {
+          "value": "right",
+          "label": "Right"
+        }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "carousel_speed",
+      "label": "Carousel speed",
+      "default": "normal",
+      "options": [
+        {
+          "value": "slow",
+          "label": "Slow"
+        },
+        {
+          "value": "normal",
+          "label": "Normal"
+        },
+        {
+          "value": "fast",
+          "label": "Fast"
+        }
+      ]
+    },
+    {
+      "type": "checkbox",
+      "id": "carousel_pause_on_hover",
+      "label": "Pause carousel on hover or focus",
+      "default": true
     }
   ],
   "blocks": [
