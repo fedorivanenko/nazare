@@ -31,7 +31,7 @@ theme:
       to: nazare/vite-plugin.js
       checksum:
         algorithm: sha256
-        value: 55f21c9950d3d00243b760ac521ca588f422927cf73f569940c4aaa25916fb63
+        value: ee204ffd729de83fa8ad1a18c0ce09ad4231f97013f026c0d76b768444525293
     - from: theme/default/package.json
       to: package.json
       checksum:

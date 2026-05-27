@@ -303,7 +303,9 @@ Result: implementation present; final feature-doc checklist still needs reconcil
 - [ ] errors on invalid module keys
 - [ ] errors on missing JS modules
 - [ ] generates `styles/<section-name>.css` with marker and Tailwind sources
-- [ ] generates `scripts/theme.js` with marker and runtime behavior
+- [x] generates `scripts/theme.js` with marker and runtime behavior
+  - Covered by `test/theme-build-plugin.test.js` for generated runtime shape.
+  - Covered by `test/theme-runtime.test.js` for runtime initialization, one-time module loading, Shopify section load/unload, destroy cleanup, and failure isolation without Playwright.
 - [ ] generates `snippets/section-css.liquid` with marker
 - [ ] generates `snippets/section-css-preloads.liquid` with marker
 - [ ] cleans stale generated files
