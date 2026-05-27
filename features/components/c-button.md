@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: c-button
 title: Button Snippet
-status: ready
+status: done
 
 dependencies:
   - component-registry
@@ -130,19 +130,19 @@ Snippet render contract:
 
 ## Verification
 
-Result: ready for implementation.
+Result: done.
 
-- [ ] component source exists at registry path
-- [ ] registry contains `c-button` metadata
-- [ ] registry checksum matches component source bytes
-- [ ] component metadata validates with component registry parser
-- [ ] snippet renders link when label and URL are present
-- [ ] snippet renders nothing when label or URL is blank
-- [ ] snippet supports solid, outline, and ghost schemes
-- [ ] invalid or missing scheme falls back to solid
-- [ ] snippet uses one fixed size
-- [ ] snippet uses Tailwind utilities
-- [ ] `nazare add c-button` smoke installs snippet from local registry
+- [x] component source exists at registry path
+- [x] registry contains `c-button` metadata
+- [x] registry checksum matches component source bytes
+- [x] component metadata validates with component registry parser
+- [x] snippet renders link when label and URL are present
+- [x] snippet renders nothing when label or URL is blank
+- [x] snippet supports solid, outline, and ghost schemes
+- [x] invalid or missing scheme falls back to solid
+- [x] snippet uses one fixed size
+- [x] snippet uses Tailwind utilities
+- [x] `nazare add c-button` smoke installs snippet from local registry
 
 ---
 

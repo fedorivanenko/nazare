@@ -11,6 +11,10 @@ const {
 
 const checksum = "a".repeat(64);
 const manifestPath = new URL("../nazare.registry.yml", import.meta.url);
+const buttonPath = new URL(
+	"../components/c-button/c-button.liquid",
+	import.meta.url,
+);
 const announcementPath = new URL(
 	"../components/s-announcement/s-announcement.liquid",
 	import.meta.url,
@@ -77,6 +81,38 @@ describe("component registry metadata", () => {
 				}),
 			}),
 		).not.toThrow();
+	});
+
+	it("declares committed c-button metadata with matching checksum", async () => {
+		const manifest = await readFile(manifestPath, "utf8");
+		const source = await readFile(buttonPath, "utf8");
+		const components = parseComponentManifest(manifest);
+
+		expect(() => validateComponentMetadata(components)).not.toThrow();
+		expect(components["c-button"]).toMatchObject({
+			version: "1.0.0",
+			type: "snippet",
+			dependencies: [],
+			files: [
+				{
+					from: "components/c-button/c-button.liquid",
+					to: "snippets/c-button.liquid",
+					checksum: {
+						algorithm: "sha256",
+						value: sha256(source),
+					},
+				},
+			],
+		});
+		expect(source).toContain(
+			"assign button_scheme = scheme | default: 'solid'",
+		);
+		expect(source).toContain("unless button_scheme == 'solid'");
+		expect(source).toContain("button_scheme == 'outline'");
+		expect(source).toContain("button_scheme == 'ghost'");
+		expect(source).toContain(
+			"if button_label != blank and button_url != blank",
+		);
 	});
 
 	it("declares committed s-announcement metadata with matching checksum", async () => {

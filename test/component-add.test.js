@@ -130,6 +130,32 @@ describe("nazare add", () => {
 		expect(lock).toContain("path: sections/s-announcement.liquid");
 	});
 
+	it("installs committed c-button from local registry", async () => {
+		const cwd = await makeTempDir();
+		await initProject(cwd);
+
+		const result = await runCli(["add", "c-button"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registryRoot },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(result.stdout).toContain("Wrote snippets/c-button.liquid");
+		expect(result.stdout).toContain("Installed components: c-button");
+		const source = await readFile(
+			join(cwd, "snippets", "c-button.liquid"),
+			"utf8",
+		);
+		expect(source).toContain(
+			"assign button_scheme = scheme | default: 'solid'",
+		);
+		expect(source).toContain("button_scheme == 'outline'");
+		expect(source).toContain("button_scheme == 'ghost'");
+		const lock = await readLock(cwd);
+		expect(lock).toContain("c-button:");
+		expect(lock).toContain("path: snippets/c-button.liquid");
+	});
+
 	it("installs a component file and lockfile metadata", async () => {
 		const cwd = await makeTempDir();
 		const registry = await makeTempDir("nazare-registry-test-");

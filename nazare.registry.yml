@@ -59,6 +59,16 @@ theme:
         value: 4c454e3c7c76178e84796525272b6e579de62954ea455323ddaf505e7ebbd7d7
 
 components:
+  c-button:
+    version: 1.0.0
+    type: snippet
+    dependencies: []
+    files:
+      - from: components/c-button/c-button.liquid
+        to: snippets/c-button.liquid
+        checksum:
+          algorithm: sha256
+          value: 0defa021164f79723fe8318dfed250f6e0113cb00d7829f381ce09eccfdc84d6
   s-announcement:
     version: 1.0.1
     type: section
