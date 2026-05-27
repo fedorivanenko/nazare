@@ -1,6 +1,6 @@
 # Release Workflow
 
-Policy: `docs/policies/release-policy.md`.
+Policies: `docs/policies/release-policy.md`, `docs/policies/testing-strategy.md`.
 
 Release only for CLI/installer behavior changes, or registry changes that require new installed CLI support. Registry content/docs/tests alone usually need no release.
 
@@ -9,8 +9,9 @@ Version: patch = bug fix, minor = additive command/flag, major = breaking behavi
 ```sh
 # verify
 git status --short
-npx vitest run
-biome check bin/nazare.js test README.md install.sh
+pnpm exec vitest run test/features/**/*.test.js --testTimeout=300000
+pnpm exec vitest run test/e2e/*.test.js --testTimeout=300000
+biome check bin/nazare.js test README.md install.sh docs theme components
 
 # bump
 npm version <new-version> --no-git-tag-version
