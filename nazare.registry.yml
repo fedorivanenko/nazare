@@ -41,7 +41,7 @@ theme:
       to: vite.config.js
       checksum:
         algorithm: sha256
-        value: 58f8810ef91bbae69b775be0fd23d39215fc6db8bf7383a19605db0cdf7aa07f
+        value: c706b73658c3cd5bf628e0351ae14c11703db33d6d7d0264542484b22fbc59c0
     - from: theme/default/styles/base.css
       to: styles/base.css
       checksum:

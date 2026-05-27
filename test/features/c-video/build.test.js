@@ -8,7 +8,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const execFileAsync = promisify(execFile);
 const cliPath = new URL("../../../bin/nazare.js", import.meta.url);
 const registryRoot = new URL("../../../", import.meta.url).pathname;
-const runSlowBuildTests = process.env.NAZARE_RUN_SLOW_TESTS === "1";
 const packageManager = process.env.NAZARE_TEST_PACKAGE_MANAGER ?? "pnpm";
 
 async function timedStep(name, callback) {
@@ -66,7 +65,7 @@ async function readFilesUnder(root) {
 	return files;
 }
 
-describe.skipIf(!runSlowBuildTests).sequential("c-video production build", () => {
+describe.sequential("c-video production build", () => {
 	let cwd;
 	let build;
 
@@ -118,7 +117,10 @@ describe.skipIf(!runSlowBuildTests).sequential("c-video production build", () =>
 			),
 		);
 
-		const snippet = await readFile(join(cwd, "snippets", "c-video.liquid"), "utf8");
+		const snippet = await readFile(
+			join(cwd, "snippets", "c-video.liquid"),
+			"utf8",
+		);
 		const script = await readFile(
 			join(cwd, "scripts", "snippets", "c-video.js"),
 			"utf8",

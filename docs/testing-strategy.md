@@ -10,9 +10,9 @@ test/
     <feature>/
       unit.test.js        # pure logic
       runtime.test.js     # JavaScript runtime behavior with fakes/mocks
-      *.test.js           # fast CLI/filesystem behavior for that feature
+      *.test.js           # CLI/filesystem behavior for that feature
   e2e/
-    *.test.js             # slow full-flow tests, gated by NAZARE_RUN_SLOW_TESTS=1
+    *.test.js             # slow full-flow tests
 ```
 
 ## Commands
@@ -20,49 +20,49 @@ test/
 Run fast default tests:
 
 ```bash
-npm test
+pnpm test
 ```
 
 Run all feature tests:
 
 ```bash
-npm run test:features
+pnpm run test:features
 ```
 
 Run one feature:
 
 ```bash
-npm run test:feature -- test/features/c-video
+pnpm exec vitest run test/features/c-video
 ```
 
 Run one test file:
 
 ```bash
-npm run test:feature -- test/features/c-video/runtime.test.js
+pnpm exec vitest run test/features/c-video/runtime.test.js
 ```
 
 Run c-video production build integration only:
 
 ```bash
-NAZARE_RUN_SLOW_TESTS=1 npm run test:feature -- test/features/c-video/build.test.js --testTimeout=300000
+pnpm exec vitest run test/features/c-video/build.test.js --testTimeout=300000
 ```
 
 Run slow end-to-end tests:
 
 ```bash
-npm run test:e2e
+pnpm run test:e2e
 ```
 
 E2E scaffold dependency install/build uses `pnpm` by default. Override if needed:
 
 ```bash
-NAZARE_TEST_PACKAGE_MANAGER=npm npm run test:e2e
+NAZARE_TEST_PACKAGE_MANAGER=npm pnpm run test:e2e
 ```
 
 Run everything:
 
 ```bash
-npm run test:all
+pnpm run test:all
 ```
 
 ## Slow test rule

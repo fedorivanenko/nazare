@@ -6,14 +6,14 @@
 		"nazare": "./bin/nazare.js"
 	},
 	"scripts": {
-		"test": "npm run test:unit",
+		"test": "pnpm run test:unit",
 		"test:unit": "vitest run test/features/**/unit.test.js test/features/**/runtime.test.js --testTimeout=15000",
 		"test:feature": "vitest run",
 		"test:features": "vitest run test/features/**/*.test.js --testTimeout=30000",
-		"test:e2e": "NAZARE_RUN_SLOW_TESTS=1 vitest run test/e2e/*.test.js --testTimeout=300000",
-		"test:all": "npm run test:features && npm run test:e2e",
-		"test:build": "vitest run test/e2e/theme-build.test.js",
-		"test:build:slow": "npm run test:e2e -- test/e2e/theme-build.test.js"
+		"test:e2e": "vitest run test/e2e/*.test.js --testTimeout=300000",
+		"test:all": "pnpm run test:features && pnpm run test:e2e",
+		"test:build": "vitest run test/e2e/theme-build.test.js --testTimeout=300000",
+		"test:build:slow": "pnpm run test:build"
 	},
 	"license": "UNLICENSED",
 	"private": true,
