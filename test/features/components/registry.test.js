@@ -7,28 +7,28 @@ const require = createRequire(import.meta.url);
 const {
 	parseComponentManifest,
 	validateComponentMetadata,
-} = require("../bin/nazare.js");
+} = require("../../../bin/nazare.js");
 
 const checksum = "a".repeat(64);
-const manifestPath = new URL("../nazare.registry.yml", import.meta.url);
+const manifestPath = new URL("../../../nazare.registry.yml", import.meta.url);
 const buttonPath = new URL(
-	"../components/c-button/c-button.liquid",
+	"../../../components/c-button/c-button.liquid",
 	import.meta.url,
 );
 const videoSnippetPath = new URL(
-	"../components/c-video/c-video.liquid",
+	"../../../components/c-video/c-video.liquid",
 	import.meta.url,
 );
 const videoScriptPath = new URL(
-	"../components/c-video/c-video.js",
+	"../../../components/c-video/c-video.js",
 	import.meta.url,
 );
 const videoGalleryPath = new URL(
-	"../components/s-video-gallery/s-video-gallery.liquid",
+	"../../../components/s-video-gallery/s-video-gallery.liquid",
 	import.meta.url,
 );
 const announcementPath = new URL(
-	"../components/s-announcement/s-announcement.liquid",
+	"../../../components/s-announcement/s-announcement.liquid",
 	import.meta.url,
 );
 

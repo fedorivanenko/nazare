@@ -4,8 +4,8 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
-const cliPath = new URL("../bin/nazare.js", import.meta.url);
-const packagePath = new URL("../package.json", import.meta.url);
+const cliPath = new URL("../../../bin/nazare.js", import.meta.url);
+const packagePath = new URL("../../../package.json", import.meta.url);
 
 async function runCli(args) {
 	return execFileAsync(process.execPath, [cliPath.pathname, ...args], {

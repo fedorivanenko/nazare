@@ -7,9 +7,13 @@
 	},
 	"scripts": {
 		"test": "npm run test:unit",
-		"test:build": "vitest run test/integration/theme-build.test.js",
-		"test:build:slow": "NAZARE_RUN_SLOW_TESTS=1 vitest run test/integration/theme-build.test.js",
-		"test:unit": "vitest run test/*.test.js --testTimeout=15000"
+		"test:unit": "vitest run test/features/**/unit.test.js test/features/**/runtime.test.js --testTimeout=15000",
+		"test:feature": "vitest run",
+		"test:features": "vitest run test/features/**/*.test.js --testTimeout=30000",
+		"test:e2e": "NAZARE_RUN_SLOW_TESTS=1 vitest run test/e2e/*.test.js --testTimeout=300000",
+		"test:all": "npm run test:features && npm run test:e2e",
+		"test:build": "vitest run test/e2e/theme-build.test.js",
+		"test:build:slow": "npm run test:e2e -- test/e2e/theme-build.test.js"
 	},
 	"license": "UNLICENSED",
 	"private": true,

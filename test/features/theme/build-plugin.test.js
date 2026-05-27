@@ -7,9 +7,9 @@ import {
 	generateThemeBuildFiles,
 	nazareThemePlugin,
 	scanTheme,
-} from "../theme/default/nazare/vite-plugin.js";
+} from "../../../theme/default/nazare/vite-plugin.js";
 
-const manifestPath = new URL("../nazare.registry.yml", import.meta.url);
+const manifestPath = new URL("../../../nazare.registry.yml", import.meta.url);
 const tempRoots = [];
 
 async function makeTheme() {

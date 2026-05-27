@@ -1,27 +1,27 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-const manifestPath = new URL("../nazare.registry.yml", import.meta.url);
-const packagePath = new URL("../theme/default/package.json", import.meta.url);
+const manifestPath = new URL("../../../nazare.registry.yml", import.meta.url);
+const packagePath = new URL("../../../theme/default/package.json", import.meta.url);
 const viteConfigPath = new URL(
-	"../theme/default/vite.config.js",
+	"../../../theme/default/vite.config.js",
 	import.meta.url,
 );
 const baseCssPath = new URL(
-	"../theme/default/styles/base.css",
+	"../../../theme/default/styles/base.css",
 	import.meta.url,
 );
-const gitignorePath = new URL("../theme/default/.gitignore", import.meta.url);
+const gitignorePath = new URL("../../../theme/default/.gitignore", import.meta.url);
 const shopifyThemeConfigPath = new URL(
-	"../theme/default/shopify.theme.toml",
+	"../../../theme/default/shopify.theme.toml",
 	import.meta.url,
 );
 const layoutPath = new URL(
-	"../theme/default/layout/theme.liquid",
+	"../../../theme/default/layout/theme.liquid",
 	import.meta.url,
 );
 const sectionPath = new URL(
-	"../theme/default/sections/s-main.liquid",
+	"../../../theme/default/sections/s-main.liquid",
 	import.meta.url,
 );
 

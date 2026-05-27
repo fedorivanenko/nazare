@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { destroy, init } from "../components/c-video/c-video.js";
+import { destroy, init } from "../../../components/c-video/c-video.js";
 
 class FakeNode {
 	constructor() {

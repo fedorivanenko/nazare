@@ -1,21 +1,21 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-const manifestPath = new URL("../nazare.registry.yml", import.meta.url);
+const manifestPath = new URL("../../../nazare.registry.yml", import.meta.url);
 const layoutPath = new URL(
-	"../theme/default/layout/theme.liquid",
+	"../../../theme/default/layout/theme.liquid",
 	import.meta.url,
 );
 const templatePath = new URL(
-	"../theme/default/templates/index.json",
+	"../../../theme/default/templates/index.json",
 	import.meta.url,
 );
 const sectionPath = new URL(
-	"../theme/default/sections/s-main.liquid",
+	"../../../theme/default/sections/s-main.liquid",
 	import.meta.url,
 );
 const settingsSchemaPath = new URL(
-	"../theme/default/config/settings_schema.json",
+	"../../../theme/default/config/settings_schema.json",
 	import.meta.url,
 );
 

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runtimeContent } from "../theme/default/nazare/vite-plugin.js";
+import { runtimeContent } from "../../../theme/default/nazare/vite-plugin.js";
 
 const MODULES_DECLARATION = `const modules = {
   ...import.meta.glob("./sections/*.js"),

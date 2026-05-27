@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
-const cliPath = new URL("../bin/nazare.js", import.meta.url);
+const cliPath = new URL("../../../bin/nazare.js", import.meta.url);
 const tempRoots = [];
 const checksum = "a".repeat(64);
 
