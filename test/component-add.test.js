@@ -156,6 +156,40 @@ describe("nazare add", () => {
 		expect(lock).toContain("path: snippets/c-button.liquid");
 	});
 
+	it("installs committed c-video from local registry", async () => {
+		const cwd = await makeTempDir();
+		await initProject(cwd);
+
+		const result = await runCli(["add", "c-video"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registryRoot },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(result.stdout).toContain("Wrote snippets/c-video.liquid");
+		expect(result.stdout).toContain("Wrote scripts/snippets/c-video.js");
+		expect(result.stdout).toContain("Installed components: c-video");
+		const snippet = await readFile(
+			join(cwd, "snippets", "c-video.liquid"),
+			"utf8",
+		);
+		expect(snippet).toContain('data-nazare-use="snippets/c-video"');
+		expect(snippet).toContain("data-c-video-play");
+		expect(snippet).toContain("data-c-video-mute");
+		expect(snippet).toContain("if video_media != blank");
+		const script = await readFile(
+			join(cwd, "scripts", "snippets", "c-video.js"),
+			"utf8",
+		);
+		expect(script).toContain("window.NazareVideoStore");
+		expect(script).toContain("muteOthers(activeInstance)");
+		expect(script).toContain("export function destroy(root)");
+		const lock = await readLock(cwd);
+		expect(lock).toContain("c-video:");
+		expect(lock).toContain("path: snippets/c-video.liquid");
+		expect(lock).toContain("path: scripts/snippets/c-video.js");
+	});
+
 	it("installs a component file and lockfile metadata", async () => {
 		const cwd = await makeTempDir();
 		const registry = await makeTempDir("nazare-registry-test-");

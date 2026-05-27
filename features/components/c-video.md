@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: c-video
 title: Video Snippet
-status: ready
+status: done
 
 dependencies:
   - component-registry
@@ -149,20 +149,20 @@ JavaScript behavior contract:
 
 ## Verification
 
-Result: ready for implementation.
+Result: done.
 
-- [ ] component source exists at registry paths
-- [ ] registry contains `c-video` metadata with Liquid and JavaScript files
-- [ ] registry checksums match component source bytes
-- [ ] component metadata validates with component registry parser
-- [ ] snippet root declares `data-nazare-use="snippets/c-video"`
-- [ ] snippet uses Tailwind utilities only
-- [ ] snippet renders no broken media when `video` is missing
-- [ ] play/pause control toggles playback state
-- [ ] mute/unmute control toggles muted state
-- [ ] unmuting one initialized instance mutes other initialized instances
-- [ ] `destroy(root)` unregisters instances and removes listeners
-- [ ] `nazare add c-video` smoke installs snippet and script from local registry
+- [x] component source exists at registry paths
+- [x] registry contains `c-video` metadata with Liquid and JavaScript files
+- [x] registry checksums match component source bytes
+- [x] component metadata validates with component registry parser
+- [x] snippet root declares `data-nazare-use="snippets/c-video"`
+- [x] snippet uses Tailwind utilities only
+- [x] snippet renders no broken media when `video` is missing
+- [x] play/pause control toggles playback state
+- [x] mute/unmute control toggles muted state
+- [x] unmuting one initialized instance mutes other initialized instances
+- [x] `destroy(root)` unregisters instances and removes listeners
+- [x] `nazare add c-video` smoke installs snippet and script from local registry
 
 ---
 

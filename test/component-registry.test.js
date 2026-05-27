@@ -15,6 +15,14 @@ const buttonPath = new URL(
 	"../components/c-button/c-button.liquid",
 	import.meta.url,
 );
+const videoSnippetPath = new URL(
+	"../components/c-video/c-video.liquid",
+	import.meta.url,
+);
+const videoScriptPath = new URL(
+	"../components/c-video/c-video.js",
+	import.meta.url,
+);
 const announcementPath = new URL(
 	"../components/s-announcement/s-announcement.liquid",
 	import.meta.url,
@@ -113,6 +121,46 @@ describe("component registry metadata", () => {
 		expect(source).toContain(
 			"if button_label != blank and button_url != blank",
 		);
+	});
+
+	it("declares committed c-video metadata with matching checksums", async () => {
+		const manifest = await readFile(manifestPath, "utf8");
+		const snippet = await readFile(videoSnippetPath, "utf8");
+		const script = await readFile(videoScriptPath, "utf8");
+		const components = parseComponentManifest(manifest);
+
+		expect(() => validateComponentMetadata(components)).not.toThrow();
+		expect(components["c-video"]).toMatchObject({
+			version: "1.0.0",
+			type: "snippet",
+			dependencies: [],
+			files: [
+				{
+					from: "components/c-video/c-video.liquid",
+					to: "snippets/c-video.liquid",
+					checksum: {
+						algorithm: "sha256",
+						value: sha256(snippet),
+					},
+				},
+				{
+					from: "components/c-video/c-video.js",
+					to: "scripts/snippets/c-video.js",
+					checksum: {
+						algorithm: "sha256",
+						value: sha256(script),
+					},
+				},
+			],
+		});
+		expect(snippet).toContain('data-nazare-use="snippets/c-video"');
+		expect(snippet).toContain("if video_media != blank");
+		expect(snippet).toContain("data-c-video-play");
+		expect(snippet).toContain("data-c-video-mute");
+		expect(script).toContain("window.NazareVideoStore");
+		expect(script).toContain("muteOthers(activeInstance)");
+		expect(script).toContain("export function init(root)");
+		expect(script).toContain("export function destroy(root)");
 	});
 
 	it("declares committed s-announcement metadata with matching checksum", async () => {
