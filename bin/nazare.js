@@ -1039,7 +1039,7 @@ function componentLockEntry(manifestComponent, timestamp) {
 
 function renderDependencyList(dependencies) {
 	if (dependencies.length === 0) return "[]";
-	return `\n${dependencies.map((dependency) => `    - ${dependency}`).join("\n")}`;
+	return `\n${dependencies.map((dependency) => `      - ${dependency}`).join("\n")}`;
 }
 
 function renderComponentLockEntry(id, component) {

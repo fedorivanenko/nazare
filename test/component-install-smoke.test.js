@@ -167,6 +167,9 @@ describe("committed component install smoke", () => {
 		expect(lock).toContain("c-video:");
 		expect(lock).toContain("c-button:");
 		expect(lock).toContain("s-video-gallery:");
+		expect(lock).toContain(
+			"    dependencies: \n      - c-video\n      - c-button",
+		);
 		expect(lock).toContain("path: sections/s-video-gallery.liquid");
 	});
 });
