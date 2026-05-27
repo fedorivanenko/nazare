@@ -4,6 +4,20 @@
   assign thumbnail_label = thumbnail_alt
   assign wrapper_class = class
   assign root_id = id
+  assign should_loop = loop
+  assign resolved_aspect_ratio = aspect_ratio
+
+  if should_loop == nil
+    assign should_loop = true
+  endif
+
+  if resolved_aspect_ratio == blank and video_media.aspect_ratio != blank
+    assign resolved_aspect_ratio = video_media.aspect_ratio
+  endif
+
+  if resolved_aspect_ratio == blank
+    assign resolved_aspect_ratio = '260 / 340'
+  endif
 
   if thumbnail_image == blank and video_media.preview_image != blank
     assign thumbnail_image = video_media.preview_image
@@ -18,9 +32,10 @@
   <div
     {% if root_id != blank %}id="c-video-{{ root_id | handleize }}"{% endif %}
     data-nazare-use="snippets/c-video"
-    class="group relative overflow-hidden rounded-3xl bg-foreground text-background shadow-sm{% if wrapper_class != blank %} {{ wrapper_class }}{% endif %}"
+    style="--c-video-aspect-ratio: {{ resolved_aspect_ratio | escape }};"
+    class="group relative aspect-[var(--c-video-aspect-ratio)] overflow-hidden rounded-3xl bg-foreground text-background shadow-sm{% if wrapper_class != blank %} {{ wrapper_class }}{% endif %}"
   >
-    {{ video_media | video_tag: image_size: '1600x', autoplay: false, loop: false, muted: true, controls: false, class: 'aspect-video h-full w-full bg-foreground object-cover' }}
+    {{ video_media | video_tag: image_size: '1600x', autoplay: false, loop: should_loop, muted: true, controls: false, class: 'h-full w-full bg-foreground object-cover' }}
 
     {% if thumbnail_image != blank %}
       <button

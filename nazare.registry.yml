@@ -78,7 +78,7 @@ components:
         to: snippets/c-video.liquid
         checksum:
           algorithm: sha256
-          value: b7ef0e9a7fcb47246f14560ac73627d415f21cfa37cb44ef08eaf9e0e8d60f44
+          value: b85c7916cf65b0afb749a4b867a3f59dc485faf06c9a13e0927bbed19e9a6bca
       - from: components/c-video/c-video.js
         to: scripts/snippets/c-video.js
         checksum:

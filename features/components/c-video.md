@@ -74,6 +74,8 @@ Included:
   - `video`: required Shopify-hosted video object
   - `thumbnail`: optional Shopify image object used as poster/overlay thumbnail
   - `thumbnail_alt`: optional thumbnail alt text
+  - `aspect_ratio`: optional CSS aspect-ratio value; defaults to `video.aspect_ratio` when omitted
+  - `loop`: optional boolean loop flag; defaults to `true`
   - `class`: optional wrapper classes
   - `id`: optional stable DOM id suffix for analytics/testing hooks
 
