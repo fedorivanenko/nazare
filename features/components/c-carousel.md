@@ -147,6 +147,7 @@ Snippet render contract:
 - Root element uses `data-nazare-use="snippets/c-carousel"` so existing Nazare runtime loads `scripts/snippets/c-carousel.js`.
 - Root element uses Tailwind utility classes only.
 - The snippet renders a viewport and one track containing `content` exactly once.
+- Root and viewport constrain vertical height with `max-height: clamp(420px, 60dvh, 680px)`.
 - Caller is responsible for wrapping each carousel item with `data-c-carousel-item`.
 - Blank `content` renders nothing.
 - Missing or unknown `mode` falls back to `static`.

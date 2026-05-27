@@ -39,11 +39,11 @@
     data-c-carousel-pause-on-hover="{{ carousel_pause_on_hover }}"
     role="region"
     aria-label="{{ carousel_label }}"
-    class="relative{% if root_class != blank %} {{ root_class }}{% endif %}"
+    class="relative max-h-[clamp(420px,60dvh,680px)]{% if root_class != blank %} {{ root_class }}{% endif %}"
   >
     <div
       data-c-carousel-viewport
-      class="{% if carousel_mode == 'marquee' %}overflow-hidden{% else %}overflow-x-auto{% endif %}"
+      class="max-h-[inherit] {% if carousel_mode == 'marquee' %}overflow-hidden{% else %}overflow-x-auto overflow-y-hidden{% endif %}"
     >
       <div
         data-c-carousel-track
