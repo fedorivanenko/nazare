@@ -70,7 +70,7 @@ components:
           algorithm: sha256
           value: 0defa021164f79723fe8318dfed250f6e0113cb00d7829f381ce09eccfdc84d6
   c-video:
-    version: 1.0.0
+    version: 1.0.1
     type: snippet
     dependencies: []
     files:
@@ -98,7 +98,7 @@ components:
           algorithm: sha256
           value: 840e6933217ffa677fa0719d27309359d44f9b08057f3715e5e4ea83e0360f72
   c-carousel:
-    version: 1.0.0
+    version: 1.0.1
     type: snippet
     dependencies: []
     files:

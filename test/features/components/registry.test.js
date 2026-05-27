@@ -143,7 +143,7 @@ describe("component registry metadata", () => {
 
 		expect(() => validateComponentMetadata(components)).not.toThrow();
 		expect(components["c-video"]).toMatchObject({
-			version: "1.0.0",
+			version: "1.0.1",
 			type: "snippet",
 			dependencies: [],
 			files: [
@@ -224,7 +224,7 @@ describe("component registry metadata", () => {
 
 		expect(() => validateComponentMetadata(components)).not.toThrow();
 		expect(components["c-carousel"]).toMatchObject({
-			version: "1.0.0",
+			version: "1.0.1",
 			type: "snippet",
 			dependencies: [],
 			files: [

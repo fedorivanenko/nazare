@@ -84,7 +84,7 @@ Component metadata:
 ```yaml
 components:
   c-video:
-    version: 1.0.0
+    version: 1.0.1
     type: snippet
     dependencies: []
     files:

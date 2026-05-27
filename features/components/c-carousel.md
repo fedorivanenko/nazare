@@ -101,7 +101,7 @@ Component metadata:
 ```yaml
 components:
   c-carousel:
-    version: 1.0.0
+    version: 1.0.1
     type: snippet
     dependencies: []
     files:
