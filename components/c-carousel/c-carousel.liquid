@@ -1,0 +1,56 @@
+{% liquid
+  assign carousel_content = content | strip
+  assign carousel_label = aria_label | default: 'Carousel'
+  assign carousel_mode = mode | default: 'static'
+  assign carousel_direction = direction | default: 'left'
+  assign carousel_speed = speed | default: 'normal'
+  assign carousel_gap = gap | default: 'md'
+  assign carousel_pause_on_hover = pause_on_hover
+  assign root_class = class
+  assign content_track_class = track_class
+
+  unless carousel_mode == 'static' or carousel_mode == 'marquee'
+    assign carousel_mode = 'static'
+  endunless
+
+  unless carousel_direction == 'left' or carousel_direction == 'right'
+    assign carousel_direction = 'left'
+  endunless
+
+  unless carousel_speed == 'slow' or carousel_speed == 'normal' or carousel_speed == 'fast'
+    assign carousel_speed = 'normal'
+  endunless
+
+  unless carousel_gap == 'sm' or carousel_gap == 'md' or carousel_gap == 'lg'
+    assign carousel_gap = 'md'
+  endunless
+
+  if carousel_pause_on_hover == nil
+    assign carousel_pause_on_hover = true
+  endif
+%}
+
+{% if carousel_content != blank %}
+  <div
+    data-nazare-use="snippets/c-carousel"
+    data-c-carousel-mode="{{ carousel_mode }}"
+    data-c-carousel-direction="{{ carousel_direction }}"
+    data-c-carousel-speed="{{ carousel_speed }}"
+    data-c-carousel-pause-on-hover="{{ carousel_pause_on_hover }}"
+    role="region"
+    aria-label="{{ carousel_label }}"
+    class="relative{% if root_class != blank %} {{ root_class }}{% endif %}"
+  >
+    <div
+      data-c-carousel-viewport
+      class="{% if carousel_mode == 'marquee' %}overflow-hidden{% else %}overflow-x-auto{% endif %}"
+    >
+      <div
+        data-c-carousel-track
+        class="flex {% if carousel_gap == 'sm' %}gap-4{% elsif carousel_gap == 'lg' %}gap-8{% else %}gap-6{% endif %}{% if carousel_mode == 'marquee' %} will-change-transform{% endif %}{% if content_track_class != blank %} {{ content_track_class }}{% endif %}"
+      >
+        {{ carousel_content }}
+      </div>
+    </div>
+  </div>
+{% endif %}
