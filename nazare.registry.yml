@@ -69,6 +69,21 @@ components:
         checksum:
           algorithm: sha256
           value: 0defa021164f79723fe8318dfed250f6e0113cb00d7829f381ce09eccfdc84d6
+  c-video:
+    version: 1.0.0
+    type: snippet
+    dependencies: []
+    files:
+      - from: components/c-video/c-video.liquid
+        to: snippets/c-video.liquid
+        checksum:
+          algorithm: sha256
+          value: b7ef0e9a7fcb47246f14560ac73627d415f21cfa37cb44ef08eaf9e0e8d60f44
+      - from: components/c-video/c-video.js
+        to: scripts/snippets/c-video.js
+        checksum:
+          algorithm: sha256
+          value: ba3cde568c7d1d0d3e825a4209383b821f56b11bfff5cccdd0443390b15a3704
   s-announcement:
     version: 1.0.1
     type: section

@@ -1,0 +1,57 @@
+{% liquid
+  assign video_media = video
+  assign thumbnail_image = thumbnail
+  assign thumbnail_label = thumbnail_alt
+  assign wrapper_class = class
+  assign root_id = id
+
+  if thumbnail_image == blank and video_media.preview_image != blank
+    assign thumbnail_image = video_media.preview_image
+  endif
+
+  if thumbnail_label == blank and thumbnail_image.alt != blank
+    assign thumbnail_label = thumbnail_image.alt
+  endif
+%}
+
+{% if video_media != blank %}
+  <div
+    {% if root_id != blank %}id="c-video-{{ root_id | handleize }}"{% endif %}
+    data-nazare-use="snippets/c-video"
+    class="group relative overflow-hidden rounded-3xl bg-foreground text-background shadow-sm{% if wrapper_class != blank %} {{ wrapper_class }}{% endif %}"
+  >
+    {{ video_media | video_tag: image_size: '1600x', autoplay: false, loop: false, muted: true, controls: false, class: 'aspect-video h-full w-full bg-foreground object-cover' }}
+
+    {% if thumbnail_image != blank %}
+      <button
+        type="button"
+        data-c-video-thumbnail
+        class="absolute inset-0 z-10 block h-full w-full cursor-pointer overflow-hidden bg-foreground text-left transition-opacity"
+        aria-label="Play video"
+      >
+        {{ thumbnail_image | image_url: width: 1600 | image_tag: alt: thumbnail_label, loading: 'lazy', class: 'h-full w-full object-cover' }}
+        <span class="absolute inset-0 bg-foreground/20"></span>
+      </button>
+    {% endif %}
+
+    <div class="absolute inset-x-4 bottom-4 z-20 flex items-center justify-between gap-3">
+      <button
+        type="button"
+        data-c-video-play
+        class="inline-flex h-11 items-center justify-center rounded-full bg-background px-4 text-sm font-semibold text-foreground shadow-sm transition hover:bg-background/90 focus:outline-none focus:ring-2 focus:ring-background focus:ring-offset-2 focus:ring-offset-foreground"
+        aria-label="Play video"
+      >
+        <span data-c-video-play-label>Play</span>
+      </button>
+
+      <button
+        type="button"
+        data-c-video-mute
+        class="inline-flex h-11 items-center justify-center rounded-full bg-background/80 px-4 text-sm font-semibold text-foreground shadow-sm backdrop-blur transition hover:bg-background focus:outline-none focus:ring-2 focus:ring-background focus:ring-offset-2 focus:ring-offset-foreground"
+        aria-label="Unmute video"
+      >
+        <span data-c-video-mute-label>Unmute</span>
+      </button>
+    </div>
+  </div>
+{% endif %}
