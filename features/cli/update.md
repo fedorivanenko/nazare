@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: update
 title: Unified Update Command
-status: ready
+status: blocked
 
 dependencies:
   - cli-install
@@ -24,12 +24,12 @@ surfaces:
     - nazare update self --latest
     - nazare update self --latest --dev
     - nazare update self --version <version>
-    - nazare update self --source <ref>
+    - nazare update self --ref <ref>
     - nazare update theme
     - nazare update theme --latest
     - nazare update theme --latest --dev
     - nazare update theme --version <version>
-    - nazare update theme --source <ref>
+    - nazare update theme --ref <ref>
     - nazare update theme --force
     - nazare update theme --check
     - nazare update theme --skip-conflicts
@@ -37,7 +37,7 @@ surfaces:
     - nazare update <component> --latest
     - nazare update <component> --latest --dev
     - nazare update <component> --version <version>
-    - nazare update <component> --source <ref>
+    - nazare update <component> --ref <ref>
     - nazare update <component> --dry-run
     - nazare update <component> --force
   devCli:
@@ -49,9 +49,9 @@ invariants:
   - Dev release tags use `vMAJOR.MINOR.PATCH-dev.N`
   - Stable update commands never select dev prerelease tags unless `--dev` is passed
   - `--dev` is valid only with `--latest`
-  - `--latest`, `--version`, and `--source` are mutually exclusive
-  - Theme and component updates use the current configured registry when no target selector is passed
-  - Theme and component updates resolve target registry refs before planning file mutations
+  - `--latest`, `--version`, and `--ref` are mutually exclusive
+  - Theme and component updates use `nazare.lock.yml` registry metadata as the registry source of truth
+  - Theme and component updates resolve target registry refs against the locked registry repo before planning file mutations
   - Registry metadata advances only after the selected theme/component update succeeds
   - Failed updates must leave unrelated files unchanged
   - Theme/component checksum validation remains required before mutation
@@ -80,12 +80,11 @@ codebaseOwnership:
       - docs/policies/release-policy.md update channel policy
       - workflow/release.md release/update verification notes
       - test/ CLI and dev CLI update coverage
-      - nazare.lock.yml theme and component metadata in user theme repo
+      - nazare.config.yml registry block in user theme repo when theme/component update fully succeeds
+      - nazare.lock.yml registry/theme/component metadata in user theme repo when theme/component update fully succeeds
     install:
       - ~/.nazare install metadata
       - ~/.local/bin/nazare when Nazare-owned
-      - nazare.config.yml registry block when theme/component update succeeds
-      - nazare.lock.yml registry/theme/component blocks when theme/component update succeeds
 
   mustNotModify:
     - unrelated files under ~/.local/bin
@@ -115,12 +114,12 @@ Included:
 - `nazare update self --latest`
 - `nazare update self --latest --dev`
 - `nazare update self --version <version>`
-- `nazare update self --source <ref>`
+- `nazare update self --ref <ref>`
 - `nazare update theme`
 - `nazare update theme --latest`
 - `nazare update theme --latest --dev`
 - `nazare update theme --version <version>`
-- `nazare update theme --source <ref>`
+- `nazare update theme --ref <ref>`
 - `nazare update theme --force`
 - `nazare update theme --check`
 - `nazare update theme --skip-conflicts`
@@ -128,7 +127,7 @@ Included:
 - `nazare update <component> --latest`
 - `nazare update <component> --latest --dev`
 - `nazare update <component> --version <version>`
-- `nazare update <component> --source <ref>`
+- `nazare update <component> --ref <ref>`
 - `nazare update <component> --dry-run`
 - `nazare update <component> --force`
 - `nazare-dev registry serve --git-refs`
@@ -173,68 +172,84 @@ v0.14.1-dev.3
 
 All update targets accept the same target selector model:
 
-- no target selector: use the current install source for `self`, or current `nazare.config.yml` registry ref for `theme`/component
-- `--latest`: resolve the newest stable tag `vMAJOR.MINOR.PATCH`
-- `--latest --dev`: resolve the newest dev prerelease tag `vMAJOR.MINOR.PATCH-dev.N`
-- `--version <version>`: normalize to tag `v<version>`
-- `--source <ref>`: use the explicit branch, tag, full ref, or commit SHA
+- no target selector: use `~/.nazare` install metadata for `self`, or current `nazare.lock.yml` registry `repo` and `ref` for `theme`/component
+- `--latest`: resolve the newest stable tag `vMAJOR.MINOR.PATCH` from the locked registry `repo`
+- `--latest --dev`: resolve the newest dev prerelease tag `vMAJOR.MINOR.PATCH-dev.N` from the locked registry `repo`
+- `--version <version>`: use the locked registry `repo` and normalize to tag `v<version>`
+- `--ref <ref>`: use the locked registry `repo` and the explicit Git ref, tag, branch, or commit SHA
+
+`--ref <ref>` accepts:
+
+```text
+refs/heads/main
+main
+feat/update-redesign
+v0.15.0
+v0.15.1-dev.0
+46d5acb
+46d5acb3f0e8d9c7b6a5e4d3c2b1a09876543210
+```
+
+Branch shorthand values normalize to `refs/heads/<branch>` for GitHub raw URLs. Tags and commit SHAs are used as passed.
+
+For `theme` and component targets, selectors never change `registry.repo`. They use the `registry.repo` already recorded in `nazare.lock.yml`; successful updates may advance only `registry.ref` plus related lockfile metadata. `nazare.config.yml` and `nazare.lock.yml` registry blocks must agree before planning. If they disagree, update fails before mutation and tells the user to reinitialize or repair the metadata.
 
 Validation:
 
-- `--latest`, `--version`, and `--source` are mutually exclusive
+- `--latest`, `--version`, and `--ref` are mutually exclusive
 - `--dev` requires `--latest`
 - invalid SemVer values fail before mutation
 
 ### Command contract
 
-Update CLI from current install source:
+Update CLI from current install metadata:
 
 ```sh
 nazare update self
 ```
 
-Update CLI from stable, dev, version, or source:
+Update CLI from stable, dev, version, or ref:
 
 ```sh
 nazare update self --latest
 nazare update self --latest --dev
 nazare update self --version 0.15.0
-nazare update self --source refs/heads/main
+nazare update self --ref refs/heads/main
 ```
 
-Update theme from current registry:
+Update theme from the registry repo/ref recorded in `nazare.lock.yml`:
 
 ```sh
 nazare update theme
 ```
 
-Update theme from stable, dev, version, or source:
+Update theme from stable, dev, version, or ref:
 
 ```sh
 nazare update theme --latest --force
 nazare update theme --latest --dev --force
 nazare update theme --version 0.15.0 --check
-nazare update theme --source v0.15.1-dev.0 --skip-conflicts
+nazare update theme --ref v0.15.1-dev.0 --skip-conflicts
 ```
 
-Update component from current registry:
+Update component from the registry repo/ref recorded in `nazare.lock.yml`:
 
 ```sh
 nazare update c-button
 ```
 
-Update component from stable, dev, version, or source:
+Update component from stable, dev, version, or ref:
 
 ```sh
 nazare update c-button --latest --force
 nazare update c-button --latest --dev --force
 nazare update c-button --version 0.15.0 --dry-run
-nazare update c-button --source v0.15.1-dev.0
+nazare update c-button --ref v0.15.1-dev.0
 ```
 
 ### Theme update contract
 
-`nazare update theme` safely fast-forwards installed Nazare scaffold files from the configured or selected registry without clobbering user edits.
+`nazare update theme` safely fast-forwards installed Nazare scaffold files from the registry repo recorded in `nazare.lock.yml` without clobbering user edits.
 
 Local state uses `nazare.lock.yml` checksums:
 
@@ -253,10 +268,11 @@ Operation rules:
 - delete obsolete unmodified tracked files
 - fail before mutation for modified, missing, obsolete modified, or untracked target conflicts unless `--force` or `--skip-conflicts` is passed
 - `--force` may overwrite modified current files, restore missing current files, delete modified obsolete files, and overwrite existing untracked manifest targets
-- `--skip-conflicts` skips unsafe file conflicts and continues safe operations
+- `--skip-conflicts` skips unsafe file conflicts and continues safe file operations; if any conflict is skipped, the command reports a partial update, exits `0`, updates lockfile entries only for files actually written/deleted, preserves existing registry `ref` metadata in both config and lockfile, and prints a warning that another update is required after conflicts are resolved
 - `--check` prints selected registry ref and planned operations without mutating files, config, or lockfile
-- successful mutation preserves component lockfile metadata
-- successful mutation updates registry metadata only after file writes/deletes succeed
+- a full successful mutation preserves component lockfile metadata
+- a full successful mutation updates registry metadata only after all file writes/deletes and lockfile writes succeed
+- if a write/delete fails after mutation starts, the command restores changed files from backups when possible; if rollback fails, it exits non-zero and reports each path left changed
 
 ### Component update contract
 
@@ -281,10 +297,11 @@ Operation rules:
 - removed untouched installed file -> delete and untrack
 - removed touched installed file -> prompt before delete/manual conflict write unless `--force` is passed
 - missing installed file still present in registry -> prompt before recreate unless `--force` is passed
-- skipped prompt answer mutates nothing and does not bump component lockfile metadata
-- manual conflict marker choice writes only selected marker files and does not advance component or registry metadata
+- prompt action `N` skips the current file operation; if any file operation is skipped, the component is a partial update: command exits `0`, updates lockfile entries only for files actually written/deleted, preserves existing registry `ref` metadata in both config and lockfile, and prints a warning that another update is required after conflicts are resolved
+- manual conflict marker choice writes only selected marker files, performs no normal component mutations after the marker write, exits `0`, and does not advance component or registry metadata
 - `--dry-run` prints selected registry ref, planned operations, and prompts without mutating files, config, or lockfile
-- successful mutation updates registry metadata only after file writes/deletes succeed
+- a full successful mutation updates component and registry metadata only after all file writes/deletes and lockfile writes succeed
+- if a write/delete fails after mutation starts, the command restores changed files from backups when possible; if rollback fails, it exits non-zero and reports each path left changed
 
 Prompt actions:
 
@@ -343,11 +360,11 @@ Rules:
 - `nazare update self --latest` resolves newest stable tag, updates CLI install, and stores the resolved tag in install metadata.
 - `nazare update self --latest --dev` resolves newest dev tag, updates CLI install, and stores the resolved tag in install metadata.
 - `nazare update self --version <version>` updates CLI install from `v<version>`.
-- `nazare update self --source <ref>` updates CLI install from the explicit ref.
-- `nazare update theme` without selector updates from current configured registry ref.
-- `nazare update theme` with selector updates from the selected registry ref and advances config/lockfile registry metadata only after successful file operations.
-- `nazare update <component>` without selector updates from current configured registry ref.
-- `nazare update <component>` with selector updates from the selected registry ref and advances config/lockfile registry metadata only after successful file operations.
+- `nazare update self --ref <ref>` updates CLI install from the explicit ref.
+- `nazare update theme` without selector updates from the locked registry repo/ref, or prints an unchanged no-op and exits `0` when all tracked files already match selected registry checksums.
+- `nazare update theme` with selector updates from the locked registry repo plus selected ref and advances config/lockfile registry ref metadata only after a full successful update with no skipped conflicts.
+- `nazare update <component>` without selector updates from the locked registry repo/ref, or prints an unchanged no-op and exits `0` when the component and dependencies already match selected registry checksums.
+- `nazare update <component>` with selector updates from the locked registry repo plus selected ref and advances config/lockfile registry ref metadata only after a full successful update with no skipped prompts or manual marker writes.
 - `--check` and `--dry-run` report selected registry ref and mutate nothing.
 - Local dev server serves stable and dev tags when `--git-refs` is enabled.
 
@@ -365,32 +382,33 @@ Exit non-zero before mutation when:
 - selected CLI tag package version does not match the tag
 - repo lacks required `nazare.config.yml` or `nazare.lock.yml` for theme/component updates
 - config, lockfile, registry origin, manifest, theme block, components block, metadata, paths, files, or checksums are invalid
-- theme/component file safety checks fail without `--force` or skip/manual choice
+- theme file safety checks fail without `--force` or `--skip-conflicts`
+- component file safety checks fail without `--force`, prompt confirmation, or manual marker choice
 - prompt would be required in a non-interactive terminal without `--force`
 - registry cannot be fetched or read
 - local dev server receives unsafe path or missing Git ref/path
 
-Failed theme/component updates must not mutate files, config registry metadata, lockfile registry metadata, or unrelated lockfile sections. Component manual conflict markers are the only explicit mutation allowed without metadata advancement.
+Failed theme/component updates must not mutate files, config registry metadata, lockfile registry metadata, or unrelated lockfile sections unless a rollback fails after mutation starts; rollback failure must be reported with changed paths. Theme `--skip-conflicts`, component prompt `N`, and component manual conflict markers are explicit partial-success paths, not failed updates, and must not advance registry metadata.
 
 ---
 
 ## Verification
 
-Result: ready for implementation.
+Result: blocked until `theme-pull` reaches a settled `done` contract or this feature is split into smaller implementation features.
 
 - [ ] `nazare --version` prints installed CLI version.
 - [ ] `nazare update self` updates from original install source.
 - [ ] `nazare update self --latest` stores stable resolved tag in install metadata.
 - [ ] `nazare update self --latest --dev` stores dev resolved tag in install metadata.
 - [ ] `nazare update self --version <version>` updates from tag `v<version>`.
-- [ ] `nazare update self --source <ref>` updates from explicit ref.
+- [ ] `nazare update self --ref <ref>` updates from explicit ref.
 - [ ] CLI update rejects tag/package version mismatch.
 - [ ] Stable tag resolver ignores dev prerelease tags.
 - [ ] Dev tag resolver selects highest valid `*-dev.N` prerelease tag.
 - [ ] `nazare update theme --latest` applies stable-tag theme changes and records registry metadata only after success.
 - [ ] `nazare update theme --latest --dev` applies dev-tag theme changes and records registry metadata only after success.
 - [ ] `nazare update theme --version <version>` applies version-tag theme changes and records registry metadata only after success.
-- [ ] `nazare update theme --source <ref>` applies explicit-ref theme changes and records registry metadata only after success.
+- [ ] `nazare update theme --ref <ref>` applies explicit-ref theme changes and records registry metadata only after success.
 - [ ] Failed theme update leaves config and lockfile bytes unchanged.
 - [ ] `nazare update theme --check` prints selected ref and mutates nothing.
 - [ ] Theme update preserves existing component lockfile metadata.
@@ -398,12 +416,12 @@ Result: ready for implementation.
 - [ ] `nazare update <component> --latest` applies stable-tag component changes and records registry metadata only after success.
 - [ ] `nazare update <component> --latest --dev` applies dev-tag component changes and records registry metadata only after success.
 - [ ] `nazare update <component> --version <version>` applies version-tag component changes and records registry metadata only after success.
-- [ ] `nazare update <component> --source <ref>` applies explicit-ref component changes and records registry metadata only after success.
+- [ ] `nazare update <component> --ref <ref>` applies explicit-ref component changes and records registry metadata only after success.
 - [ ] Failed component update leaves config and lockfile bytes unchanged unless manual conflict markers are explicitly chosen.
 - [ ] `nazare update <component> --dry-run` prints selected ref and mutates nothing.
 - [ ] Component update preserves existing theme lockfile metadata.
-- [ ] Component prompt `N` mutates nothing and does not advance metadata.
-- [ ] Component prompt `m` writes conflict markers only and does not advance metadata.
+- [ ] Component prompt `N` skips only the current file operation, exits `0`, records only completed safe file mutations, and does not advance registry metadata.
+- [ ] Component prompt `m` writes conflict markers only, performs no normal component mutations after marker write, exits `0`, and does not advance metadata.
 - [ ] Legacy `nazare self update`, `nazare theme update`, and `nazare registry use` are absent from help and command dispatch.
 - [ ] `nazare-dev registry serve --git-refs` serves manifest and source files from a local stable tag.
 - [ ] `nazare-dev registry serve --git-refs` serves manifest and source files from a local dev tag.
@@ -417,7 +435,7 @@ Result: ready for implementation.
 Use one target parser for `nazare update <target>`:
 
 1. Parse target: `self`, `theme`, or component ID.
-2. Parse common selector flags: `--latest`, `--dev`, `--version`, `--source`.
+2. Parse common selector flags: `--latest`, `--dev`, `--version`, `--ref`.
 3. Resolve target ref.
 4. Dispatch to target-specific planner/executor.
 
@@ -430,8 +448,9 @@ Target-specific ownership:
 Registry metadata advancement:
 
 - No selector: preserve current registry metadata.
-- Selector passed and update succeeds: write selected `repo`/`ref` to both `nazare.config.yml` and `nazare.lock.yml`.
-- Selector passed and update fails: leave both files byte-for-byte unchanged, except explicit component manual conflict marker files.
+- Selector passed and update fully succeeds with no skipped conflicts/prompts/manual markers: preserve locked `repo`, write selected `ref` to both `nazare.config.yml` and `nazare.lock.yml`.
+- Selector passed and update is partial because of `--skip-conflicts`, prompt `N`, or manual marker choice: preserve locked registry `ref`; write only file metadata needed to keep local checksum authority correct for files actually changed.
+- Selector passed and update fails: leave both files byte-for-byte unchanged unless rollback fails after mutation starts; explicit component manual conflict marker files are allowed.
 - `--check` and `--dry-run`: never write registry metadata.
 
 Tag resolution should use one helper that returns ordered stable or dev tags. Stable filtering must exclude prerelease identifiers. Dev filtering must require prerelease identifier `dev` and numeric prerelease counter.
@@ -444,4 +463,4 @@ Do not compare local files to current registry to detect edits. Lockfile checksu
 
 ## Open questions
 
-None. Dev tag resolution selects the latest dev tag globally. `--latest` and `--latest --dev` use the default GitHub registry repo for theme/component targets.
+None. Dev tag resolution selects the latest dev tag globally from the locked registry repo. `--latest`, `--latest --dev`, `--version`, and `--ref` preserve the registry repo recorded in `nazare.lock.yml` for theme/component targets.
