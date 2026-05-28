@@ -1,0 +1,205 @@
+{% liquid
+  assign hero_eyebrow = section.settings.eyebrow
+  assign hero_heading = section.settings.heading
+  assign hero_body = section.settings.body
+  assign hero_video = section.settings.video
+  assign hero_image = section.settings.image
+  assign hero_image_alt = section.settings.image_alt
+  assign cta_label = section.settings.cta_label
+  assign cta_url = section.settings.cta_url
+  assign cta_scheme = section.settings.cta_scheme
+  assign hero_alignment = section.settings.alignment | default: 'left'
+  assign hero_overlay = section.settings.overlay | default: 'none'
+  assign hero_scheme = section.settings.color_scheme | default: 'dark'
+
+  if hero_image_alt == blank and hero_image.alt != blank
+    assign hero_image_alt = hero_image.alt
+  endif
+
+  assign text_color_class = 'text-white'
+  if hero_scheme == 'light'
+    assign text_color_class = 'text-foreground'
+  endif
+
+  assign content_align_class = 'text-left'
+  if hero_alignment == 'center'
+    assign content_align_class = 'mx-auto text-center'
+  endif
+
+  assign overlay_value = nil
+  unless hero_overlay == 'none' or hero_overlay == blank
+    assign overlay_value = hero_overlay
+  endunless
+
+  assign overlay_class = nil
+  if overlay_value == 'light'
+    assign overlay_class = 'bg-black/20'
+  elsif overlay_value == 'medium'
+    assign overlay_class = 'bg-black/40'
+  elsif overlay_value == 'dark'
+    assign overlay_class = 'bg-black/60'
+  endif
+%}
+
+{% capture hero_inner %}
+  <div class="flex min-h-[70dvh] flex-col justify-center py-20">
+    <div class="page-width {{ content_align_class }} {{ text_color_class }}">
+      {% if hero_eyebrow != blank %}
+        <p class="mb-4 text-sm font-semibold uppercase tracking-widest opacity-75">{{ hero_eyebrow | escape }}</p>
+      {% endif %}
+
+      {% if hero_heading != blank %}
+        <h1 class="text-4xl font-bold leading-tight lg:text-6xl">{{ hero_heading | escape }}</h1>
+      {% endif %}
+
+      {% if hero_body != blank %}
+        <div class="mt-6 text-lg opacity-90 [&_a:hover]:underline [&_a]:underline-offset-2">{{ hero_body }}</div>
+      {% endif %}
+
+      {% if cta_label != blank and cta_url != blank %}
+        <div class="mt-8">
+          {% render 'c-button', label: cta_label, url: cta_url, scheme: cta_scheme %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+{% endcapture %}
+
+<section>
+  {% if hero_video != blank %}
+    {% render 'c-bg-video',
+      video: hero_video,
+      poster: hero_image,
+      poster_alt: hero_image_alt,
+      overlay: overlay_value,
+      content: hero_inner,
+      class: 'min-h-[70dvh]'
+    %}
+  {% else %}
+    <div class="relative min-h-[70dvh] overflow-hidden">
+      {% if hero_image != blank %}
+        {{ hero_image | image_url: width: 2400 | image_tag: alt: hero_image_alt, loading: 'eager', class: 'absolute inset-0 h-full w-full object-cover' }}
+      {% endif %}
+      {% if overlay_class != blank %}
+        <div class="absolute inset-0 {{ overlay_class }}"></div>
+      {% endif %}
+      <div class="relative z-10">
+        {{ hero_inner }}
+      </div>
+    </div>
+  {% endif %}
+</section>
+
+{% schema %}
+{
+  "name": "Hero",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Background"
+    },
+    {
+      "type": "video",
+      "id": "video",
+      "label": "Background video"
+    },
+    {
+      "type": "image_picker",
+      "id": "image",
+      "label": "Background image",
+      "info": "Shown as a poster while the video loads, and as a static background when no video is set"
+    },
+    {
+      "type": "text",
+      "id": "image_alt",
+      "label": "Image alt text"
+    },
+    {
+      "type": "select",
+      "id": "overlay",
+      "label": "Overlay",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "light", "label": "Light" },
+        { "value": "medium", "label": "Medium" },
+        { "value": "dark", "label": "Dark" }
+      ]
+    },
+    {
+      "type": "header",
+      "content": "Content"
+    },
+    {
+      "type": "text",
+      "id": "eyebrow",
+      "label": "Eyebrow"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Hero heading"
+    },
+    {
+      "type": "richtext",
+      "id": "body",
+      "label": "Body text"
+    },
+    {
+      "type": "header",
+      "content": "Call to action"
+    },
+    {
+      "type": "url",
+      "id": "cta_url",
+      "label": "Button URL"
+    },
+    {
+      "type": "text",
+      "id": "cta_label",
+      "label": "Button label"
+    },
+    {
+      "type": "select",
+      "id": "cta_scheme",
+      "label": "Button style",
+      "default": "solid",
+      "options": [
+        { "value": "solid", "label": "Solid" },
+        { "value": "outline", "label": "Outline" },
+        { "value": "ghost", "label": "Ghost" }
+      ]
+    },
+    {
+      "type": "header",
+      "content": "Layout"
+    },
+    {
+      "type": "select",
+      "id": "alignment",
+      "label": "Content alignment",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "center", "label": "Center" }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "color_scheme",
+      "label": "Text color",
+      "default": "dark",
+      "options": [
+        { "value": "dark", "label": "Light text (for dark backgrounds)" },
+        { "value": "light", "label": "Dark text (for light backgrounds)" }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Hero"
+    }
+  ]
+}
+{% endschema %}

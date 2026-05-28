@@ -1,0 +1,56 @@
+{% liquid
+  assign video_media = video
+  assign poster_image = poster
+  assign poster_label = poster_alt
+  assign overlay_value = overlay
+  assign wrapper_class = class
+  assign root_id = id
+
+  if poster_image == blank and video_media.preview_image != blank
+    assign poster_image = video_media.preview_image
+  endif
+
+  if poster_label == blank and poster_image.alt != blank
+    assign poster_label = poster_image.alt
+  endif
+
+  assign overlay_class = nil
+  if overlay_value == 'light'
+    assign overlay_class = 'bg-black/20'
+  elsif overlay_value == 'medium'
+    assign overlay_class = 'bg-black/40'
+  elsif overlay_value == 'dark'
+    assign overlay_class = 'bg-black/60'
+  endif
+%}
+
+{% if video_media != blank %}
+  <div
+    {% if root_id != blank %}id="c-bg-video-{{ root_id | handleize }}"{% endif %}
+    data-nazare-use="snippets/c-bg-video"
+    class="relative overflow-hidden{% if wrapper_class != blank %} {{ wrapper_class }}{% endif %}"
+  >
+    {{ video_media | video_tag: image_size: '1600x', autoplay: true, loop: true, muted: true, controls: false, class: 'absolute inset-0 h-full w-full object-cover' }}
+
+    {% if poster_image != blank %}
+      <img
+        data-c-bg-video-poster
+        src="{{ poster_image | image_url: width: 1600 }}"
+        alt="{{ poster_label | escape }}"
+        loading="lazy"
+        class="absolute inset-0 h-full w-full object-cover"
+        hidden
+      >
+    {% endif %}
+
+    {% if overlay_class != blank %}
+      <div class="absolute inset-0 {{ overlay_class }}"></div>
+    {% endif %}
+
+    {% if content != blank %}
+      <div class="absolute inset-0 z-10">
+        {{ content }}
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
