@@ -54,7 +54,7 @@
       {% endif %}
 
       {% if section.blocks.size > 0 %}
-        <div class="mt-8 grid grid-cols-2 gap-6 lg:grid-cols-4">
+        <div class="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {% for block in section.blocks %}
             {% liquid
               assign item_name = block.settings.name

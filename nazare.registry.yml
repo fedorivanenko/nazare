@@ -462,7 +462,7 @@ components:
         to: sections/s-feature-bundle.liquid
         checksum:
           algorithm: sha256
-          value: b959a7f4a406d26341de9fe9591165a87caaa573c7947d9cea34261129259e81
+          value: 1182f4c489977effe7dde1a5ed1fea238c8d5d8a91ffa44056a6cbb6ef992d9d
   s-mission-statement:
     version: 1.0.0
     type: section
