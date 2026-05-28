@@ -29,9 +29,8 @@ function sha256(value) {
 	return createHash("sha256").update(value).digest("hex");
 }
 
-async function writeRegistry(root) {
+async function writeRegistry(root, { themeVersion = "1.0.0", themeSource = "layout\n" } = {}) {
 	const componentSource = "button\n";
-	const themeSource = "layout\n";
 	await mkdir(join(root, "components", "c-button"), { recursive: true });
 	await mkdir(join(root, "theme", "default", "layout"), { recursive: true });
 	await writeFile(
@@ -62,7 +61,7 @@ components:
           value: ${sha256(componentSource)}
 
 theme:
-  version: 1.0.0
+  version: ${themeVersion}
   source: theme/default
   files:
     - from: theme/default/layout/theme.liquid
@@ -328,4 +327,64 @@ describe("nazare-dev registry serve", () => {
 
 		await expect(stopServer(server.child)).resolves.toBe(0);
 	});
+
+	it("serves /tags as 501 without --git-refs", async () => {
+		const registry = await makeTempDir();
+		await writeRegistry(registry);
+		const server = await startServer(registry);
+
+		expect(await request(`${server.url}/tags`)).toMatchObject({ statusCode: 501 });
+	});
+
+	it("serves /tags listing git version tags with --git-refs", async () => {
+		const registry = await makeTempDir();
+		await writeRegistry(registry);
+		await git(["init"], registry);
+		await git(["config", "user.email", "test@example.com"], registry);
+		await git(["config", "user.name", "Test User"], registry);
+		await git(["add", "."], registry);
+		await git(["commit", "-m", "initial"], registry);
+		await git(["tag", "v1.0.0"], registry);
+		await git(["tag", "v1.1.0-dev.0"], registry);
+		const server = await startServer(registry, { gitRefs: true });
+
+		const response = await request(`${server.url}/tags`);
+		expect(response.statusCode).toBe(200);
+		expect(JSON.parse(response.body)).toEqual(
+			expect.arrayContaining(["v1.0.0", "v1.1.0-dev.0"]),
+		);
+	});
+
+	it("update theme --latest resolves latest stable tag from HTTP registry", async () => {
+		const registry = await makeTempDir();
+		const consumer = await makeTempDir();
+
+		await writeRegistry(registry, { themeVersion: "1.0.0", themeSource: "old layout\n" });
+		await git(["init"], registry);
+		await git(["config", "user.email", "test@example.com"], registry);
+		await git(["config", "user.name", "Test User"], registry);
+		await git(["add", "."], registry);
+		await git(["commit", "-m", "v1.0.0"], registry);
+		await git(["tag", "v1.0.0"], registry);
+
+		await writeRegistry(registry, { themeVersion: "1.1.0", themeSource: "new layout\n" });
+		await git(["add", "."], registry);
+		await git(["commit", "-m", "v1.1.0"], registry);
+		await git(["tag", "v1.1.0"], registry);
+		await git(["tag", "v1.2.0-dev.0"], registry);
+
+		const server = await startServer(registry, { gitRefs: true });
+
+		const init = await runCli(["init", "--repo", server.url, "--ref", "v1.0.0"], { cwd: consumer });
+		expect(init).toMatchObject({ code: 0, stderr: "" });
+
+		const pull = await runCli(["theme", "pull"], { cwd: consumer });
+		expect(pull).toMatchObject({ code: 0, stderr: "" });
+		expect(await readFile(join(consumer, "layout", "theme.liquid"), "utf8")).toBe("old layout\n");
+
+		const update = await runCli(["update", "theme", "--latest"], { cwd: consumer });
+		expect(update).toMatchObject({ code: 0, stderr: "" });
+		expect(await readFile(join(consumer, "nazare.config.yml"), "utf8")).toContain("ref: v1.1.0");
+		expect(await readFile(join(consumer, "layout", "theme.liquid"), "utf8")).toBe("new layout\n");
+	}, 20_000);
 });

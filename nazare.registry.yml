@@ -4,7 +4,7 @@ registry:
   name: nazare
 
 theme:
-  version: 1.1.1
+  version: 1.1.2-dev.0
   source: theme/default
   files:
     - from: theme/default/layout/theme.liquid
@@ -21,7 +21,7 @@ theme:
       to: sections/s-main.liquid
       checksum:
         algorithm: sha256
-        value: fb4dfb2f3ae1616bf72157130aa847f1741f8e73b9c79f4d590a6375314ffd7a
+        value: 7d8ae5b53acbde38ab30c2689b1d98a77a40d613da6b74d89b1e7e597be6febf
     - from: theme/default/config/settings_schema.json
       to: config/settings_schema.json
       checksum:
@@ -46,7 +46,7 @@ theme:
       to: styles/base.css
       checksum:
         algorithm: sha256
-        value: 5eff25b302266dbae25ac9844ff2dc84d37d5a8e0c20a9c088c7797fe513a5ab
+        value: b4096845e4b5b4fd72206de5113d4d208428096ee23efebdf327309ef57575f0
     - from: theme/default/.gitignore
       to: .gitignore
       checksum:
@@ -85,7 +85,7 @@ components:
           algorithm: sha256
           value: ba3cde568c7d1d0d3e825a4209383b821f56b11bfff5cccdd0443390b15a3704
   s-video-gallery:
-    version: 1.1.0
+    version: 1.1.1-dev.0
     type: section
     dependencies:
       - c-video
@@ -96,7 +96,7 @@ components:
         to: sections/s-video-gallery.liquid
         checksum:
           algorithm: sha256
-          value: 840e6933217ffa677fa0719d27309359d44f9b08057f3715e5e4ea83e0360f72
+          value: f62536358dd2842745ae9d923330096a318cecde9abb3d6068ac8f04dc5d9195
   c-carousel:
     version: 1.0.1
     type: snippet
@@ -113,7 +113,7 @@ components:
           algorithm: sha256
           value: e5beeaa84bd71abba3b43ff51c7191d7a91a09a6ee4860508f447719833324eb
   s-announcement:
-    version: 1.0.1
+    version: 1.0.2-dev.0
     type: section
     dependencies: []
     files:
@@ -121,4 +121,4 @@ components:
         to: sections/s-announcement.liquid
         checksum:
           algorithm: sha256
-          value: ba32f53896b8005911aac7b5cdf5106efcef77c6f239de2a45bf8aa45cc358cc
+          value: 8addbeb2258dea586a263c88df59e8a58aea1d37895dabac8210ff0dcf4a2e0c

@@ -250,6 +250,24 @@ async function resolveLatestTagRef({ dev = false, repoSlug } = {}) {
 	return tags.sort(compareTagVersions).at(-1);
 }
 
+async function resolveLatestTagRefHttp(registryRepo, dev = false) {
+	const tagsUrl = `${registryRepo.replace(/\/$/, "")}/tags`;
+	const buffer = await fetchUrlBuffer(tagsUrl);
+	const tags = JSON.parse(buffer.toString("utf8"));
+	if (!Array.isArray(tags)) {
+		throw new Error("HTTP registry /tags response was not an array");
+	}
+	const filtered = tags.filter((tag) =>
+		dev ? DEV_TAG_PATTERN.test(tag) : STABLE_TAG_PATTERN.test(tag),
+	);
+	if (filtered.length === 0) {
+		throw new Error(
+			dev ? "No dev release tags found" : "No stable release tags found",
+		);
+	}
+	return filtered.sort(compareTagVersions).at(-1);
+}
+
 function normalizeSourceRef(source) {
 	if (typeof source !== "string" || source.length === 0) {
 		throw new Error("Missing value for --source");
@@ -1265,13 +1283,11 @@ function parseUpdateArgs(args) {
 
 async function resolveUpdateRef(options, registryRepo) {
 	if (options.latest) {
-		let repoSlug;
-		if (registryRepo !== undefined) {
-			if (isHttpRegistryRepo(registryRepo)) {
-				throw new Error("--latest is not supported for HTTP registry sources");
-			}
-			repoSlug = githubRepoSlug(registryRepo);
+		if (registryRepo !== undefined && isHttpRegistryRepo(registryRepo)) {
+			return resolveLatestTagRefHttp(registryRepo, options.dev);
 		}
+		const repoSlug =
+			registryRepo !== undefined ? githubRepoSlug(registryRepo) : undefined;
 		return resolveLatestTagRef({ dev: options.dev, repoSlug });
 	}
 	if (options.version !== undefined) {

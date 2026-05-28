@@ -49,3 +49,11 @@
 @source "../templates/**/*.json";
 @source "../sections/**/*.liquid";
 @source "../snippets/**/*.liquid";
+
+@layer utilities {
+	.page-width {
+		max-width: 1440px;
+		margin-inline: auto;
+		padding-inline: 1rem;
+	}
+}
