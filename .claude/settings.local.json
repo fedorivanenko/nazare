@@ -4,7 +4,16 @@
       "Bash(npm test *)",
       "Bash(npx vitest *)",
       "Bash(node packages/nazare/bin/nazare.js update theme --version 9.9.9)",
-      "Bash(echo \"exit code: $?\")"
+      "Bash(echo \"exit code: $?\")",
+      "Bash(grep -v \"^$\\\\| ✓ \")",
+      "Bash(npx biome *)",
+      "Bash(npx @biomejs/biome check packages/nazare/bin/nazare.js packages/nazare-dev/bin/nazare-dev.js)",
+      "Bash(pnpm exec *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(node_modules/.bin/biome --version)",
+      "Bash(node_modules/.bin/biome format *)",
+      "Bash(pnpm install *)"
     ]
   }
 }
