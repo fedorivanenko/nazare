@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: component-update
 title: Update Component
-status: done
+status: ready
 
 dependencies:
   - cli-install
@@ -20,12 +20,17 @@ dependencies:
 surfaces:
   cli:
     - nazare update <component>
+    - nazare update <component> --latest
+    - nazare update <component> --latest --dev
+    - nazare update <component> --version <version>
+    - nazare update <component> --source <ref>
     - nazare update <component> --dry-run
     - nazare update <component> --force
 
 invariants:
   - Requires initialized repo
-  - Reads registry origin from nazare.config.yml
+  - Reads registry origin from nazare.config.yml when no channel/version/source flag is passed
+  - Resolves --latest, --latest --dev, --version, or --source to a target registry ref when passed
   - Updates only installed components recorded in nazare.lock.yml
   - Resolves and checks the requested component dependency graph before declaring no-op
   - Uses lockfile file checksums as local modification authority
@@ -33,11 +38,11 @@ invariants:
   - Never overwrites modified installed component files without user consent or --force
   - Writes conflict markers only when the user explicitly chooses manual resolution for a touched file
   - Never performs three-way merge
-  - Writes lockfile component metadata only after successful file writes and deletes
+  - Writes config registry metadata and lockfile component/registry metadata only after successful file writes and deletes
   - Leaves theme lockfile metadata unchanged
 
 nonGoals:
-  - Bare nazare update without component operand
+  - Bare nazare update without target operand
   - Updating all installed components in one command
   - Installing missing dependencies during update
   - Removing components as a standalone operation
@@ -80,9 +85,14 @@ The command treats local files as user-owned once their current checksum differs
 Included:
 
 - `nazare update <component>`
+- `nazare update <component> --latest`
+- `nazare update <component> --latest --dev`
+- `nazare update <component> --version <version>`
+- `nazare update <component> --source <ref>`
 - `nazare update <component> --dry-run`
 - `nazare update <component> --force`
-- registry resolution from `nazare.config.yml`
+- registry resolution from `nazare.config.yml` when no target selector is passed
+- registry target selection from latest stable tag, latest dev tag, specific version tag, or explicit ref
 - current manifest `components` block validation
 - installed component lookup in `nazare.lock.yml`
 - requested component dependency graph resolution in install order
@@ -103,14 +113,30 @@ Follow `docs/policies/cli-command-policy.md`: flat registry verbs operate on com
 nazare update c-button
 ```
 
-Optional flags:
+Optional target selector flags:
+
+```bash
+nazare update c-button --latest
+nazare update c-button --latest --dev
+nazare update c-button --version 0.14.0
+nazare update c-button --source v0.14.1-dev.3
+```
+
+Optional safety flags:
 
 ```bash
 nazare update c-button --dry-run
 nazare update c-button --force
 ```
 
-- `--dry-run` prints planned writes, deletes, and prompts without mutating files or lockfile.
+- no target selector uses the current registry ref from `nazare.config.yml`.
+- `--latest` selects the newest stable tag.
+- `--latest --dev` selects the newest dev prerelease tag.
+- `--version <version>` selects tag `v<version>`.
+- `--source <ref>` selects an explicit ref.
+- `--latest`, `--version`, and `--source` are mutually exclusive.
+- `--dev` requires `--latest`.
+- `--dry-run` prints selected registry ref, planned writes, deletes, and prompts without mutating files, lockfile, or registry metadata.
 - `--force` overwrites touched files and deletes touched removed files without prompting.
 
 ### Lockfile contract
@@ -234,7 +260,7 @@ Non-interactive terminals must fail before mutation when a prompt would be requi
 
 ## Success behavior
 
-- Resolves registry, validates component metadata, verifies registry bytes, and plans all operations before mutation.
+- Resolves selected registry ref, validates component metadata, verifies registry bytes, and plans all operations before mutation.
 - Resolves the requested component dependency graph and checks dependencies with the same standard update procedure before checking the requested component.
 - Detects touched files by hashing local file bytes and comparing with lockfile checksum.
 - Prompts before overwriting existing installed files with current registry files.
@@ -270,11 +296,12 @@ Overwrite with registry version? [y/N/m]
 If all required operations complete:
 
 - dependency components with registry changes are updated before the requested component.
+- `registry.ref` and related registry metadata in `nazare.config.yml` and `nazare.lock.yml` are advanced to the selected target when a target selector was passed.
 - `components.<id>.version`, `type`, `dependencies`, and file metadata come from current registry manifest.
 - `installedAt` is preserved.
 - `updatedAt` is refreshed to current RFC 3339 timestamp.
 - file `path`, `source`, and `checksum` come from verified manifest entries.
-- `registry` and `theme` lockfile metadata are unchanged.
+- `theme` lockfile metadata is unchanged.
 
 If any operation is skipped by user choice:
 
@@ -306,14 +333,19 @@ Exit non-zero before mutation when:
 - args include unknown flags or extra operands
 - registry cannot be fetched or read
 
-Failure must not mutate component files, theme files, lockfile entries, or files outside planned component destinations.
+Failure must not mutate component files, theme files, registry metadata, lockfile entries, or files outside planned component destinations unless the user explicitly chooses manual conflict markers.
 
 ---
 
 ## Verification
 
-Result: done.
+Result: existing component file-safety behavior done; unified target-selector behavior pending implementation.
 
+- [ ] `nazare update <component> --latest` resolves the latest stable tag and records registry metadata only after successful update
+- [ ] `nazare update <component> --latest --dev` resolves the latest dev tag and records registry metadata only after successful update
+- [ ] `nazare update <component> --version <version>` resolves tag `v<version>` and records registry metadata only after successful update
+- [ ] `nazare update <component> --source <ref>` uses the explicit registry ref and records registry metadata only after successful update
+- [ ] `nazare update <component> --dry-run` with a target selector prints selected ref and mutates no files, lockfile, or config
 - [x] installed component prompts before overwriting existing files and updates lockfile metadata after confirmation
 - [x] installed current component is no-op
 - [x] stale installed dependency is updated through the standard prompt/write/lockfile procedure before requested component no-op
@@ -340,7 +372,7 @@ Result: done.
 
 Reuse `component-add` and `theme-pull` primitives for config, lockfile, registry fetch, manifest parsing, safe paths, checksum calculation, conflict-marker writes, and lockfile writes.
 
-Plan: validate args/init -> resolve registry -> validate installed component -> resolve requested component dependency graph -> validate every installed dependency -> verify registry checksums for graph files -> compute local file states from lockfile checksums -> collect prompt decisions -> either write manual conflict files or build normal write/delete plan -> apply mutations -> write lockfile entries only for graph components that changed.
+Plan: validate args/init -> resolve selected registry ref -> validate installed component -> resolve requested component dependency graph -> validate every installed dependency -> verify registry checksums for graph files -> compute local file states from lockfile checksums -> collect prompt decisions -> either write manual conflict files or build normal write/delete plan -> apply mutations -> write registry metadata and lockfile entries only for graph components that changed.
 
 Prefer collecting all prompts before any mutation. If any prompt answer is `N`, mutate nothing. If any prompt answer is `m`, write only manual conflict-marker files and leave lockfile unchanged. This avoids partial normal updates and keeps the lockfile simple.
 

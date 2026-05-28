@@ -30,23 +30,23 @@ cat > /tmp/nazare-v<new-version>-notes.md <<'EOF'
 - <short release note with `inline code` safely preserved>
 EOF
 
-# create GitHub Release; required by `nazare self update latest`
+# create GitHub Release for release notes and discoverability
 gh release create v<new-version> \
   --title "v<new-version>" \
   --notes-file /tmp/nazare-v<new-version>-notes.md
 
-# verify latest release API
+# verify tag is visible to latest resolver
 curl -fsSL \
   -H 'Accept: application/vnd.github+json' \
   -H 'Cache-Control: no-cache' \
-  "https://api.github.com/repos/fedorivanenko/nazare/releases/latest?x=$(date +%s)" \
-  | python3 -c 'import sys,json; print(json.load(sys.stdin).get("tag_name"))'
+  "https://api.github.com/repos/fedorivanenko/nazare/tags?per_page=5&x=$(date +%s)" \
+  | python3 -c 'import sys,json; print([tag.get("name") for tag in json.load(sys.stdin)])'
 
 # smoke test
 nazare self update latest
 nazare --version
 ```
 
-Expected API output: `v<new-version>`. Expected CLI output: `<new-version>`.
+Expected tag output includes `v<new-version>`. Expected CLI output: `<new-version>`.
 
-Note: pushing Git tag alone is not enough. `latest` uses GitHub Releases API. If stale, check `gh release list --limit 5`.
+Note: `latest` uses Git tags. GitHub Releases remain required for release notes and stable release bookkeeping.

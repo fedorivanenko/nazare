@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: theme-update
 title: Update Theme
-status: in-progress
+status: ready
 
 dependencies:
   - cli-install
@@ -16,15 +16,20 @@ dependencies:
 
 surfaces:
   cli:
-    - nazare theme update
-    - nazare theme update --force
-    - nazare theme update --check
-    - nazare theme update --skip-conflicts
+    - nazare update theme
+    - nazare update theme --latest
+    - nazare update theme --latest --dev
+    - nazare update theme --version <version>
+    - nazare update theme --source <ref>
+    - nazare update theme --force
+    - nazare update theme --check
+    - nazare update theme --skip-conflicts
 
 invariants:
   - Requires initialized repo and existing lockfile theme metadata
-  - Reads registry origin from nazare.config.yml
-  - Uses current registry manifest theme block as update target
+  - Reads registry origin from nazare.config.yml when no channel/version/source flag is passed
+  - Resolves --latest, --latest --dev, --version, or --source to a target registry ref when passed
+  - Uses the selected registry manifest theme block as update target
   - Checks all tracked installed theme files before any write or delete
   - Overwrites only unmodified tracked files unless --force is explicitly passed
   - Deletes only unmodified obsolete tracked files unless --force is explicitly passed
@@ -33,7 +38,7 @@ invariants:
   - Never overwrites modified user files unless --force is explicitly passed
   - --skip-conflicts skips unsafe user-touched files and continues safe mutations
   - Never deletes untracked files
-  - Updates lockfile theme metadata only after successful file operations
+  - Updates config registry metadata and lockfile theme/registry metadata only after successful file operations
   - Preserves existing lockfile component metadata exactly when rewriting theme metadata
 
 nonGoals:
@@ -41,7 +46,7 @@ nonGoals:
   - Adding or updating components
   - Implementing nazare add <component>
   - Implementing nazare pull <component>
-  - Implementing a generic nazare update command
+  - Keeping legacy `nazare theme update` command behavior
   - Removing untracked old theme files
   - Merging user modifications
   - Adopting existing Shopify themes
@@ -50,9 +55,9 @@ nonGoals:
 codebaseOwnership:
   owns:
     repo:
-      - bin/nazare.js theme update command handling
-      - README.md theme update instructions
-      - test/ CLI theme update tests
+      - bin/nazare.js update theme command handling
+      - README.md update theme instructions
+      - test/ CLI update theme tests
       - nazare.lock.yml theme checksum metadata in user theme repo
 
   mustNotModify:
@@ -68,7 +73,7 @@ codebaseOwnership:
 
 ## Goal
 
-Add `nazare theme update` to safely fast-forward installed Nazare scaffold files from the configured registry without clobbering user edits.
+Add `nazare update theme` to safely fast-forward installed Nazare scaffold files from the configured or selected registry without clobbering user edits.
 
 Unmodified tracked files update. Modified tracked files stop the command before any mutation unless `--force` is passed. Obsolete unmodified tracked files may be deleted. Untracked files are never deleted. `--check` reports the plan without mutating files.
 
@@ -78,11 +83,16 @@ Unmodified tracked files update. Modified tracked files stop the command before 
 
 Included:
 
-- `nazare theme update`
-- `nazare theme update --force`
-- `nazare theme update --check`
-- `nazare theme update --skip-conflicts`
-- registry resolution from `nazare.config.yml`
+- `nazare update theme`
+- `nazare update theme --latest`
+- `nazare update theme --latest --dev`
+- `nazare update theme --version <version>`
+- `nazare update theme --source <ref>`
+- `nazare update theme --force`
+- `nazare update theme --check`
+- `nazare update theme --skip-conflicts`
+- registry resolution from `nazare.config.yml` when no target selector is passed
+- registry target selection from latest stable tag, latest dev tag, specific version tag, or explicit ref
 - current manifest `theme` block validation using `theme-pull` rules, including per-file registry checksum metadata
 - tracked-file safety checks using `nazare.lock.yml` checksum metadata
 - update of unmodified tracked files
@@ -178,6 +188,7 @@ Missing lockfile checksum metadata is migrated when it can be proven safe: if a 
 
 After successful mutation:
 
+- `registry.ref` and related registry metadata in `nazare.config.yml` and `nazare.lock.yml` are advanced to the selected target when a target selector was passed.
 - `theme.version` and `theme.source` come from current manifest.
 - `theme.installedAt` is preserved when present.
 - `theme.updatedAt` is set to update time as RFC 3339 timestamp.
@@ -201,62 +212,67 @@ Before any mutation, exit non-zero with clear error when not using `--skip-confl
 - any obsolete tracked file is modified, unless `--force` or `--skip-conflicts` is passed
 - any new manifest target exists locally but is untracked, unless `--force` or `--skip-conflicts` is passed
 
-Failed update must not mutate theme files, component lockfile entries, or files outside current/previously tracked `theme.files` destinations.
+Failed update must not mutate theme files, registry metadata, component lockfile entries, or files outside current/previously tracked `theme.files` destinations.
 
 ---
 
 ## Verification
 
-Result: implementation present; final feature-doc checklist still needs reconciliation.
+Result: existing file-safety behavior done; unified target-selector command shape pending implementation.
 
-- [ ] verifies registry manifest checksums before planning mutations
+- [ ] `nazare update theme --latest` resolves the latest stable tag and records registry metadata only after successful update
+- [ ] `nazare update theme --latest --dev` resolves the latest dev tag and records registry metadata only after successful update
+- [ ] `nazare update theme --version <version>` resolves tag `v<version>` and records registry metadata only after successful update
+- [ ] `nazare update theme --source <ref>` uses the explicit registry ref and records registry metadata only after successful update
+- [ ] `nazare update theme --check` with a target selector prints selected ref and mutates no files, lockfile, or config
+- [x] verifies registry manifest checksums before planning mutations
   - Verify missing, malformed, unsupported, and mismatched manifest checksum metadata fail before mutation.
-- [ ] unmodified tracked file updates
+- [x] unmodified tracked file updates
   - Verify checksum match before update, new content after update, new checksum in lockfile copied from the verified registry manifest.
-- [ ] modified current tracked file fails before mutation
+- [x] modified current tracked file fails before mutation
   - Verify all files and lockfile unchanged.
-- [ ] `--force` overwrites modified current tracked file
+- [x] `--force` overwrites modified current tracked file
   - Verify file becomes registry content and checksum updates.
 - [x] `--skip-conflicts` skips modified current tracked file and updates other safe files
   - Verify skipped file and its lockfile entry remain unchanged while safe file changes apply.
-- [ ] missing current tracked file fails before mutation
+- [x] missing current tracked file fails before mutation
   - Verify clear missing-path error and lockfile unchanged.
-- [ ] `--force` restores missing current tracked file
+- [x] `--force` restores missing current tracked file
   - Verify file is recreated from registry and checksum updates.
 - [x] `--skip-conflicts` skips missing current tracked file and updates other safe files
   - Verify missing file remains missing and its lockfile entry remains unchanged while safe file changes apply.
-- [ ] obsolete unmodified tracked file deletes
+- [x] obsolete unmodified tracked file deletes
   - Verify file removed and lockfile entry removed.
-- [ ] obsolete modified tracked file fails before mutation
+- [x] obsolete modified tracked file fails before mutation
   - Verify file and lockfile unchanged.
-- [ ] `--force` deletes obsolete modified tracked file
+- [x] `--force` deletes obsolete modified tracked file
   - Verify file and lockfile entry removed.
 - [x] `--skip-conflicts` skips obsolete modified tracked file
   - Verify file and lockfile entry remain unchanged while safe operations apply.
-- [ ] obsolete already-missing tracked file untracks
+- [x] obsolete already-missing tracked file untracks
   - Verify lockfile entry removed without delete attempt and stdout prints `Untracked <path>`.
-- [ ] missing or stale lockfile checksum metadata is added when local file equals verified registry content
+- [x] missing or stale lockfile checksum metadata is added when local file equals verified registry content
   - Verify lockfile gets checksum from the registry manifest, file content remains unchanged, and stdout prints `Updated metadata <path>`.
-- [ ] missing checksum metadata fails when local file differs from registry
+- [x] missing checksum metadata fails when local file differs from registry
   - Verify clear metadata error and lockfile unchanged.
-- [ ] new manifest file copies when target absent
+- [x] new manifest file copies when target absent
   - Verify file created and lockfile entry has checksum.
-- [ ] new manifest file fails when target exists untracked
+- [x] new manifest file fails when target exists untracked
   - Verify ambiguous-path error and target unchanged.
-- [ ] `--force` overwrites existing untracked manifest target
+- [x] `--force` overwrites existing untracked manifest target
   - Verify file becomes registry content and lockfile entry is added.
 - [x] `--skip-conflicts` skips existing untracked manifest target
   - Verify local untracked file remains unchanged and safe operations apply.
-- [ ] no-op update leaves lockfile unchanged
+- [x] no-op update leaves lockfile unchanged
   - Verify exact before/after lockfile.
-- [ ] `--check` reports planned operations without mutation
+- [x] `--check` reports planned operations without mutation
   - Verify files and lockfile unchanged for write/delete plan.
-- [ ] `--check` reports safety errors without mutation
+- [x] `--check` reports safety errors without mutation
   - Verify non-zero exit and unchanged files/lockfile.
-- [ ] successful update preserves `theme.installedAt` and sets `theme.updatedAt`
+- [x] successful update preserves `theme.installedAt` and sets `theme.updatedAt`
 - [x] successful update preserves existing `components:` lockfile metadata
-- [ ] untracked files are never deleted
-- [ ] standard validation failures mutate nothing
+- [x] untracked files are never deleted
+- [x] standard validation failures mutate nothing
   - Verify missing/invalid config, lockfile, manifest, theme block, unsafe paths, duplicate paths, and missing registry files.
 
 ---
@@ -280,7 +296,7 @@ Checksum metadata is the local-modification authority. Do not compare local file
 
 `--skip-conflicts` is non-destructive. It converts file safety conflicts into skipped plan items, but it must not suppress registry validation, unsafe path, checksum mismatch, or malformed lockfile errors.
 
-`--check` uses the same planner as update, but stops before mutation and reports the plan.
+`--check` uses the same planner as update, but stops before mutation and reports the selected registry ref plus the plan. It must not update registry metadata.
 
 ---
 

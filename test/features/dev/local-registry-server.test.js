@@ -91,13 +91,19 @@ function request(url, options = {}) {
 	});
 }
 
-function startServer(root) {
+function startServer(root, options = {}) {
 	return new Promise((resolve, reject) => {
-		const child = spawn(
-			process.execPath,
-			[devCliPath.pathname, "registry", "serve", "--root", root, "--port", "0"],
-			{ encoding: "utf8" },
-		);
+		const args = [
+			devCliPath.pathname,
+			"registry",
+			"serve",
+			"--root",
+			root,
+			"--port",
+			"0",
+		];
+		if (options.gitRefs) args.push("--git-refs");
+		const child = spawn(process.execPath, args, { encoding: "utf8" });
 		children.push(child);
 		let stdout = "";
 		let stderr = "";
@@ -142,6 +148,10 @@ async function stopServer(child) {
 	return new Promise((resolve) => {
 		child.on("exit", (code) => resolve(code));
 	});
+}
+
+async function git(args, cwd) {
+	return execFileAsync("git", args, { cwd, encoding: "utf8" });
 }
 
 async function runCli(args, options = {}) {
@@ -271,6 +281,45 @@ describe("nazare-dev registry serve", () => {
 			await readFile(join(consumer, "layout", "theme.liquid"), "utf8"),
 		).toBe("layout\n");
 	}, 15_000);
+
+	it("serves files from requested stable and dev git refs", async () => {
+		const registry = await makeTempDir();
+		await writeRegistry(registry);
+		await git(["init"], registry);
+		await git(["config", "user.email", "test@example.com"], registry);
+		await git(["config", "user.name", "Test User"], registry);
+		await git(["add", "."], registry);
+		await git(["commit", "-m", "stable"], registry);
+		await git(["tag", "v0.14.0"], registry);
+		await writeFile(
+			join(registry, "components", "c-button", "c-button.liquid"),
+			"dev button\n",
+		);
+		await git(["add", "."], registry);
+		await git(["commit", "-m", "dev"], registry);
+		await git(["tag", "v0.14.1-dev.0"], registry);
+		await writeFile(
+			join(registry, "components", "c-button", "c-button.liquid"),
+			"working tree\n",
+		);
+		const server = await startServer(registry, { gitRefs: true });
+
+		expect(
+			await request(
+				`${server.url}/raw/components/c-button/c-button.liquid?ref=v0.14.0`,
+			),
+		).toMatchObject({ statusCode: 200, body: "button\n" });
+		expect(
+			await request(
+				`${server.url}/raw/components/c-button/c-button.liquid?ref=v0.14.1-dev.0`,
+			),
+		).toMatchObject({ statusCode: 200, body: "dev button\n" });
+		expect(
+			await request(
+				`${server.url}/raw/components/c-button/c-button.liquid?ref=missing`,
+			),
+		).toMatchObject({ statusCode: 404 });
+	});
 
 	it("exits cleanly on SIGTERM", async () => {
 		const registry = await makeTempDir();

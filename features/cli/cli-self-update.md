@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: cli-self-update
 title: Nazare CLI Versioning and Update
-status: done
+status: ready
 
 dependencies:
   - cli-install
@@ -11,9 +11,11 @@ dependencies:
 surfaces:
   cli:
     - nazare --version
-    - nazare self update
-    - nazare self update latest
-    - nazare self update --source <ref>
+    - nazare update self
+    - nazare update self --latest
+    - nazare update self --latest --dev
+    - nazare update self --version <version>
+    - nazare update self --source <ref>
     - nazare --help
 
 invariants:
@@ -66,9 +68,11 @@ Included:
 - npm-standard `package.json` metadata
 - generated install metadata under `~/.nazare`
 - `nazare --version` output
-- `nazare self update` command
-- `nazare self update latest` stable release channel
-- `nazare self update --source <ref>` override
+- `nazare update self` command
+- `nazare update self --latest` stable release channel
+- `nazare update self --latest --dev` dev release channel
+- `nazare update self --version <version>` tag selector
+- `nazare update self --source <ref>` override
 - README update instructions
 - reinstall/update flow for Nazare-owned installs created by `install.sh`
 - clear update failure messages
@@ -79,11 +83,13 @@ Included:
 ## Success behavior
 
 - `nazare --version` prints the installed CLI version and exits with code `0`.
-- `nazare self update` updates a Nazare-owned install using the same install source as `install.sh`.
-- `nazare self update latest` resolves the latest stable GitHub release tag, updates from that tag, and records it as the new install source.
-- `nazare self update --source <ref>` updates from the requested branch, tag, full ref, or commit SHA and records it as the new install source.
+- `nazare update self` updates a Nazare-owned install using the same install source as `install.sh`.
+- `nazare update self --latest` resolves the latest stable Git tag, updates from that tag, and records it as the new install source.
+- `nazare update self --latest --dev` resolves the latest dev prerelease Git tag, updates from that tag, and records it as the new install source.
+- `nazare update self --version <version>` updates from tag `v<version>` and records it as the new install source.
+- `nazare update self --source <ref>` updates from the requested branch, tag, full ref, or commit SHA and records it as the new install source.
 - After update, `nazare --help` works and exits with code `0`.
-- Re-running `nazare self update` is safe and leaves a working `nazare` command.
+- Re-running `nazare update self` is safe and leaves a working `nazare` command.
 - README documents the update command and Node.js requirement.
 
 ---
@@ -93,8 +99,10 @@ Included:
 - Missing Node.js runtime exits non-zero with a clear error.
 - Missing `curl` exits non-zero with a clear error.
 - Download failure exits non-zero with a clear error.
-- Latest release resolution failure exits non-zero with a clear error.
-- Missing or invalid `--source` value exits non-zero with a clear error.
+- Latest stable or dev tag resolution failure exits non-zero with a clear error.
+- Missing or invalid `--version` or `--source` value exits non-zero with a clear error.
+- `--latest`, `--version`, and `--source` are mutually exclusive.
+- `--dev` without `--latest` exits non-zero.
 - Existing non-Nazare `~/.local/bin/nazare` exits non-zero and is not overwritten.
 - Missing or invalid `package.json` version metadata exits non-zero with a clear error.
 - Invalid or missing installed CLI metadata exits non-zero with a clear error.
@@ -104,7 +112,7 @@ Included:
 
 ## Verification
 
-Result: tested and passed.
+Result: existing version/help and installer update behavior tested; unified `nazare update self` command shape pending implementation.
 
 - [x] repo has valid npm-standard `package.json` version metadata
   - Verified with `node bin/nazare.js --version` and install metadata validation.
@@ -112,14 +120,18 @@ Result: tested and passed.
   - Verified with temp `HOME` install.
 - [x] `nazare --version` prints installed version and exits with code `0`
   - Verified with local CLI entrypoint and installed shim.
-- [x] `nazare self update` leaves `nazare --help` working
-  - Verified with temp `HOME` install and local update source override.
-- [x] `nazare self update --source <ref>` updates from requested source and records it
-  - Verified with temp `HOME` install and branch/ref source override.
-- [x] `nazare self update latest` updates from latest stable release tag and records it
-  - Verified with temp `HOME` install and GitHub latest release resolution.
-- [x] repeated update remains working
-  - Verified by running update twice in temp `HOME`.
+- [ ] `nazare update self` leaves `nazare --help` working
+  - Verify with temp `HOME` install and local update source override.
+- [ ] `nazare update self --source <ref>` updates from requested source and records it
+  - Verify with temp `HOME` install and branch/ref source override.
+- [ ] `nazare update self --latest` updates from latest stable release tag and records it
+  - Verify with temp `HOME` install and GitHub tag resolution.
+- [ ] `nazare update self --latest --dev` updates from latest dev prerelease tag and records it
+  - Verify with temp `HOME` install and GitHub tag resolution.
+- [ ] `nazare update self --version <version>` updates from tag `v<version>` and records it
+  - Verify with temp `HOME` install.
+- [ ] repeated update remains working
+  - Verify by running update twice in temp `HOME`.
 - [x] update respects owned install path rules
   - Verified conflict test preserves unrelated `~/.local/bin/nazare`.
 - [x] README documents update command and Node.js requirement
@@ -138,22 +150,26 @@ Result: tested and passed.
 - `nazare --version` prints exactly the installed CLI version.
 - Installed CLI package metadata must preserve the copied `packages/nazare/package.json.version`.
 - Generated install metadata under `~/.nazare` must record installed version, originally installed ref/source, install time, and CLI source URL.
-- After `nazare self update`, installed package metadata and generated install metadata must agree on version.
+- After `nazare update self`, installed package metadata and generated install metadata must agree on version.
 - Missing or invalid version metadata is a CLI error.
 
 Installer should copy enough package metadata into the installed CLI so `nazare --version` does not need network access.
 
 Vitest is the project test harness for CLI behavior that can run locally without network access. `cli-self-update` keeps installer/update integration checks as temp `HOME` shell scenarios, while version/help smoke coverage lives in `test/` and runs via `npm test`.
 
-`nazare self update` should reuse installer ownership checks instead of introducing a second write policy.
+`nazare update self` should reuse installer ownership checks instead of introducing a second write policy.
 
-`nazare self update` should update from the originally installed ref/source recorded in install metadata.
+`nazare update self` should update from the originally installed ref/source recorded in install metadata.
 
-`nazare self update latest` should resolve the latest stable GitHub release tag, update from that tag, and store the resolved tag in generated install metadata.
+`nazare update self --latest` should resolve the latest stable Git tag, update from that tag, and store the resolved tag in generated install metadata.
 
-`latest` is a channel selector, not a stored ref. Install metadata should store the resolved tag such as `v0.1.2`.
+`nazare update self --latest --dev` should resolve the latest dev prerelease Git tag, update from that tag, and store the resolved tag in generated install metadata.
 
-`nazare self update --source <ref>` should override the update source for that update and store the new source in generated install metadata.
+`--latest` is a channel selector, not a stored ref. Install metadata should store the resolved tag such as `v0.1.2`.
+
+`nazare update self --version <version>` should normalize to tag `v<version>` and store that tag in generated install metadata.
+
+`nazare update self --source <ref>` should override the update source for that update and store the new source in generated install metadata.
 
 `--source <ref>` should accept branch names, tags, full refs, and commit SHAs. Branch names are normalized to `refs/heads/<branch>` for raw GitHub URLs.
 

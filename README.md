@@ -163,6 +163,39 @@ nazare init --repo http://127.0.0.1:7331 --ref refs/heads/main
 
 Then normal consumer commands (`nazare list`, `nazare add <component>`, `nazare theme pull`) download registry files from the local server and keep SHA-256 validation.
 
+Serve committed Git refs for local tag testing:
+
+```sh
+nazare-dev registry serve --git-refs
+```
+
+Requests like `/raw/nazare.registry.yml?ref=v0.14.1-dev.0` read from that local Git tag.
+
+## Release channels
+
+Stable channel uses tags like `v0.14.0`. Dev channel uses prerelease tags like `v0.14.1-dev.3`.
+
+Switch a theme repo registry source to the latest stable or dev tag:
+
+```sh
+nazare registry use latest
+nazare registry use latest --dev
+```
+
+Switch to an explicit source:
+
+```sh
+nazare registry use --repo github.com/fedorivanenko/nazare --ref v0.14.0
+nazare registry use --repo http://127.0.0.1:7331 --ref v0.14.1-dev.3
+```
+
+Registry source switches only update `nazare.config.yml` and `nazare.lock.yml`; apply files separately:
+
+```sh
+nazare update <component> --force
+nazare theme update --force
+```
+
 ## CLI update
 
 Update a Nazare-owned CLI install from its originally installed source:
@@ -171,10 +204,11 @@ Update a Nazare-owned CLI install from its originally installed source:
 nazare self update
 ```
 
-Update to the latest stable release:
+Update to the latest stable or dev release:
 
 ```sh
 nazare self update latest
+nazare self update latest --dev
 ```
 
 Update from a specific branch, tag, full ref, or commit SHA:

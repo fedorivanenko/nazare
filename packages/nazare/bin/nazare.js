@@ -19,7 +19,9 @@ Usage:
   nazare update <component> [--dry-run] [--force]
   nazare theme pull [--yes]
   nazare theme update [--force] [--check] [--skip-conflicts]
-  nazare self update [latest|--source <ref>]
+  nazare self update [latest [--dev]|--source <ref>]
+  nazare registry use latest [--dev]
+  nazare registry use --repo <repo> --ref <ref>
 
 Commands:
   init [directory]    Initialize Nazare relationship in a theme repo
@@ -29,6 +31,7 @@ Commands:
   theme pull          Pull registry theme scaffold into an initialized theme repo
   theme update        Safely update installed theme scaffold files
   self update         Update the Nazare CLI install from its original source, latest release, or --source override
+  registry use        Switch registry source in nazare.config.yml and nazare.lock.yml
 
 Options:
   -h, --help          Show this help
@@ -38,6 +41,7 @@ Options:
   --installed         Show installed components from nazare.lock.yml
   --dry-run           Print component update plan without changing files
   --source <ref>      Update from a branch, tag, full ref, or commit SHA
+  --dev               Select latest dev prerelease tag with latest
   --yes               Overwrite theme file conflicts without prompting
   --force             Overwrite modified theme update files
   --check             Print theme update plan without changing files
@@ -50,6 +54,9 @@ const SEMVER_PATTERN =
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,40}$/i;
 const TAG_PATTERN =
 	/^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const STABLE_TAG_PATTERN = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const DEV_TAG_PATTERN =
+	/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-dev\.(0|[1-9]\d*)$/;
 const GITHUB_REPO_PATTERN =
 	/^(?:https:\/\/github\.com\/|git@github\.com:|github\.com\/)[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?$/;
 const DEFAULT_REGISTRY = {
@@ -201,37 +208,71 @@ function fetchJson(url) {
 	});
 }
 
-async function resolveLatestReleaseRef() {
-	const release = await fetchJson(
-		"https://api.github.com/repos/fedorivanenko/nazare/releases/latest",
-	);
-
-	if (
-		typeof release.tag_name !== "string" ||
-		!TAG_PATTERN.test(release.tag_name)
-	) {
-		throw new Error("GitHub latest release has no valid SemVer tag");
+async function listGitHubTags() {
+	if (process.env.NAZARE_GITHUB_TAGS_JSON) {
+		const parsed = JSON.parse(process.env.NAZARE_GITHUB_TAGS_JSON);
+		if (!Array.isArray(parsed))
+			throw new Error("Invalid NAZARE_GITHUB_TAGS_JSON");
+		return parsed.map((tag) => (typeof tag === "string" ? tag : tag.name));
 	}
 
-	return release.tag_name;
+	const tags = await fetchJson(
+		"https://api.github.com/repos/fedorivanenko/nazare/tags?per_page=100",
+	);
+	if (!Array.isArray(tags)) {
+		throw new Error("GitHub tags response was not an array");
+	}
+	return tags.map((tag) => tag.name);
+}
+
+function compareTagVersions(left, right) {
+	const leftMatch =
+		left.match(DEV_TAG_PATTERN) ?? left.match(STABLE_TAG_PATTERN);
+	const rightMatch =
+		right.match(DEV_TAG_PATTERN) ?? right.match(STABLE_TAG_PATTERN);
+	for (let index = 1; index <= 3; index += 1) {
+		const difference = Number(leftMatch[index]) - Number(rightMatch[index]);
+		if (difference !== 0) return difference;
+	}
+	const leftDev = left.match(DEV_TAG_PATTERN);
+	const rightDev = right.match(DEV_TAG_PATTERN);
+	if (leftDev && rightDev) return Number(leftDev[4]) - Number(rightDev[4]);
+	return 0;
+}
+
+async function resolveLatestTagRef({ dev = false } = {}) {
+	const tags = (await listGitHubTags()).filter((tag) =>
+		dev ? DEV_TAG_PATTERN.test(tag) : STABLE_TAG_PATTERN.test(tag),
+	);
+	if (tags.length === 0) {
+		throw new Error(
+			dev ? "No dev release tags found" : "No stable release tags found",
+		);
+	}
+	return tags.sort(compareTagVersions).at(-1);
 }
 
 async function parseSelfUpdateArgs(args) {
-	const options = { source: undefined };
+	const options = { source: undefined, latest: false, dev: false };
 
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index];
 
 		if (arg === "latest") {
-			if (options.source) {
+			if (options.source || options.latest) {
 				throw new Error("Use either latest or --source, not both");
 			}
-			options.source = await resolveLatestReleaseRef();
+			options.latest = true;
+			continue;
+		}
+
+		if (arg === "--dev") {
+			options.dev = true;
 			continue;
 		}
 
 		if (arg === "--source") {
-			if (options.source) {
+			if (options.source || options.latest) {
 				throw new Error("Use either latest or --source, not both");
 			}
 			const value = args[index + 1];
@@ -245,6 +286,12 @@ async function parseSelfUpdateArgs(args) {
 
 		throw new Error(`Unknown self update option: ${arg}`);
 	}
+
+	if (options.dev && !options.latest) {
+		throw new Error("--dev requires latest");
+	}
+	if (options.latest)
+		options.source = await resolveLatestTagRef({ dev: options.dev });
 
 	return options;
 }
@@ -281,6 +328,26 @@ function sourceMetadata(metadata, installedRef) {
 		cliUrl: `https://raw.githubusercontent.com/fedorivanenko/nazare/${installedRef}/packages/nazare/bin/nazare.js`,
 		packageUrl: `https://raw.githubusercontent.com/fedorivanenko/nazare/${installedRef}/packages/nazare/package.json`,
 	};
+}
+
+async function verifyPackageVersionForTag(metadata) {
+	const tagMatch = String(metadata.installedRef).match(TAG_PATTERN);
+	if (!tagMatch) return;
+	const expectedVersion = metadata.installedRef.replace(/^v/, "");
+	let packageMetadata;
+	if (process.env.NAZARE_TAG_PACKAGE_VERSIONS_JSON) {
+		const versions = JSON.parse(process.env.NAZARE_TAG_PACKAGE_VERSIONS_JSON);
+		packageMetadata = { version: versions[metadata.installedRef] };
+	} else {
+		packageMetadata = JSON.parse(
+			(await fetchUrlBuffer(metadata.packageUrl)).toString("utf8"),
+		);
+	}
+	if (packageMetadata.version !== expectedVersion) {
+		throw new Error(
+			`Tag/package version mismatch: ${metadata.installedRef} expects ${expectedVersion}, package has ${packageMetadata.version}`,
+		);
+	}
 }
 
 function isHttpRegistryRepo(repo) {
@@ -380,6 +447,19 @@ function renderLockYaml(registry) {
 	return `${renderRegistryYaml(registry)}
 components: {}
 `;
+}
+
+function replaceRegistryYaml(source, registry, label) {
+	parseRegistryYaml(source, label);
+	const nextBlock = renderRegistryYaml(registry).trimEnd();
+	const replaced = source.replace(
+		/^schemaVersion:\s*1\n\nregistry:\n\s+name:\s*.+\n\s+repo:\s*.+\n\s+ref:\s*.+\n\s+manifest:\s*.+/,
+		nextBlock,
+	);
+	if (replaced === source) {
+		throw new Error(`Invalid ${label}: cannot replace registry metadata`);
+	}
+	return replaced;
 }
 
 function parseRegistryYaml(source, label) {
@@ -1844,6 +1924,58 @@ function parseThemePullArgs(args) {
 	return options;
 }
 
+function parseRegistryUseArgs(args) {
+	const options = {
+		latest: false,
+		dev: false,
+		repo: undefined,
+		ref: undefined,
+	};
+
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "latest") {
+			if (options.latest || options.ref) {
+				throw new Error("Use either latest or --repo/--ref, not both");
+			}
+			options.latest = true;
+			continue;
+		}
+		if (arg === "--dev") {
+			options.dev = true;
+			continue;
+		}
+		if (arg === "--repo") {
+			const value = args[index + 1];
+			if (!value || value.startsWith("--"))
+				throw new Error("Missing value for --repo");
+			if (!isValidRegistryRepo(value))
+				throw new Error("Invalid registry repo for --repo");
+			options.repo = value;
+			index += 1;
+			continue;
+		}
+		if (arg === "--ref") {
+			const value = args[index + 1];
+			if (!value || value.startsWith("--"))
+				throw new Error("Missing value for --ref");
+			options.ref = value;
+			index += 1;
+			continue;
+		}
+		throw new Error(`Unknown registry use option: ${arg}`);
+	}
+
+	if (options.dev && !options.latest) throw new Error("--dev requires latest");
+	if (options.latest && (options.repo || options.ref)) {
+		throw new Error("Use either latest or --repo/--ref, not both");
+	}
+	if (!options.latest && (!options.repo || !options.ref)) {
+		throw new Error("Use latest or provide both --repo and --ref");
+	}
+	return options;
+}
+
 function parseThemeUpdateArgs(args) {
 	const options = { force: false, check: false, skipConflicts: false };
 
@@ -2097,6 +2229,49 @@ async function themePull(args) {
 		return 0;
 	} catch (error) {
 		process.stderr.write(`nazare theme pull error: ${error.message}\n`);
+		return 1;
+	}
+}
+
+async function registryUse(args) {
+	let options;
+	try {
+		options = parseRegistryUseArgs(args);
+	} catch (error) {
+		process.stderr.write(`nazare registry use error: ${error.message}\n`);
+		return 1;
+	}
+
+	try {
+		const cwd = process.cwd();
+		const { configPath, lockPath, configSource, lockSource, registry } =
+			readProjectState(cwd);
+		const nextRegistry = { ...registry };
+		if (options.latest) {
+			nextRegistry.repo = DEFAULT_REGISTRY.repo;
+			nextRegistry.ref = await resolveLatestTagRef({ dev: options.dev });
+		} else {
+			nextRegistry.repo = options.repo;
+			nextRegistry.ref = options.ref;
+		}
+		const nextConfig = replaceRegistryYaml(
+			configSource,
+			nextRegistry,
+			"nazare.config.yml",
+		);
+		const nextLock = replaceRegistryYaml(
+			lockSource,
+			nextRegistry,
+			"nazare.lock.yml",
+		);
+		fs.writeFileSync(configPath, nextConfig);
+		fs.writeFileSync(lockPath, nextLock);
+		process.stdout.write(
+			`Registry source set to ${nextRegistry.repo} ${nextRegistry.ref}\n`,
+		);
+		return 0;
+	} catch (error) {
+		process.stderr.write(`nazare registry use error: ${error.message}\n`);
 		return 1;
 	}
 }
@@ -2471,6 +2646,7 @@ async function selfUpdate(args) {
 	try {
 		options = await parseSelfUpdateArgs(args);
 		metadata = sourceMetadata(readInstallMetadata(), options.source);
+		await verifyPackageVersionForTag(metadata);
 	} catch (error) {
 		process.stderr.write(`nazare self update error: ${error.message}\n`);
 		return 1;
@@ -2529,6 +2705,10 @@ async function main(argv) {
 
 	if (command === "update") {
 		return updateComponent(argv.slice(1));
+	}
+
+	if (command === "registry" && subcommand === "use") {
+		return registryUse(rest);
 	}
 
 	if (command === "theme" && subcommand === "pull") {

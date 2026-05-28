@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 
 const DEFAULT_REGISTRY_PORT = 7331;
 
@@ -10,7 +11,7 @@ const HELP = `Nazare Dev CLI
 
 Usage:
   nazare-dev --help
-  nazare-dev registry serve [--host <host>] [--port <port>] [--root <path>]
+  nazare-dev registry serve [--host <host>] [--port <port>] [--root <path>] [--git-refs]
 
 Commands:
   registry serve     Serve a local Nazare registry checkout over read-only HTTP
@@ -20,6 +21,7 @@ Options:
   --host <host>      Bind host (default: 127.0.0.1)
   --port <port>      Bind port, 0 picks a free port (default: 7331)
   --root <path>      Registry root directory (default: current directory)
+  --git-refs         Serve /raw/<path>?ref=<ref> from local Git refs
 `;
 
 function parseServeArgs(args) {
@@ -27,6 +29,7 @@ function parseServeArgs(args) {
 		host: "127.0.0.1",
 		port: DEFAULT_REGISTRY_PORT,
 		root: process.cwd(),
+		gitRefs: false,
 	};
 
 	for (let index = 0; index < args.length; index += 1) {
@@ -68,6 +71,11 @@ function parseServeArgs(args) {
 			continue;
 		}
 
+		if (arg === "--git-refs") {
+			options.gitRefs = true;
+			continue;
+		}
+
 		throw new Error(`Unknown registry serve option: ${arg}`);
 	}
 
@@ -94,7 +102,19 @@ function decodeRawPath(requestPathname) {
 	}
 }
 
-function createRegistryServer(root) {
+function readGitRefFile(root, ref, filePath) {
+	if (typeof ref !== "string" || ref.length === 0) return undefined;
+	try {
+		return execFileSync("git", ["-C", root, "show", `${ref}:${filePath}`], {
+			encoding: "buffer",
+			stdio: ["ignore", "pipe", "ignore"],
+		});
+	} catch {
+		return undefined;
+	}
+}
+
+function createRegistryServer(root, options = {}) {
 	return http.createServer((request, response) => {
 		if (request.method !== "GET") {
 			response.writeHead(405, { Allow: "GET" });
@@ -102,6 +122,7 @@ function createRegistryServer(root) {
 			return;
 		}
 
+		const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
 		const rawPathname = String(request.url ?? "").split("?")[0];
 		if (rawPathname === "/healthz") {
 			response.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
@@ -126,6 +147,21 @@ function createRegistryServer(root) {
 		if (!absolutePath.startsWith(`${root}${path.sep}`)) {
 			response.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
 			response.end("unsafe path\n");
+			return;
+		}
+
+		const ref = requestUrl.searchParams.get("ref");
+		if (options.gitRefs && ref) {
+			const content = readGitRefFile(root, ref, filePath);
+			if (content === undefined) {
+				response.writeHead(404, {
+					"Content-Type": "text/plain; charset=utf-8",
+				});
+				response.end("not found\n");
+				return;
+			}
+			response.writeHead(200, { "Content-Length": content.length });
+			response.end(content);
 			return;
 		}
 
@@ -179,7 +215,9 @@ async function serveRegistry(args) {
 		return 1;
 	}
 
-	const server = createRegistryServer(options.root);
+	const server = createRegistryServer(options.root, {
+		gitRefs: options.gitRefs,
+	});
 
 	return new Promise((resolve) => {
 		let settled = false;
@@ -248,4 +286,5 @@ module.exports = {
 	createRegistryServer,
 	isSafeRelativePath,
 	parseServeArgs,
+	readGitRefFile,
 };

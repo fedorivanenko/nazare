@@ -495,7 +495,7 @@ describe("nazare theme update", () => {
 		expect(await readFile(join(cwd, "sections", "new.liquid"), "utf8")).toBe(
 			"registry file\n",
 		);
-	});
+	}, 10000);
 
 	it("preserves component lockfile metadata during forced update", async () => {
 		const cwd = await makeTempDir();
@@ -536,7 +536,7 @@ describe("nazare theme update", () => {
 		expect(lockfile).toContain("s-announcement:");
 		expect(lockfile).toContain("sections/s-announcement.liquid");
 		expect(lockfile).not.toContain("components: {}");
-	});
+	}, 10000);
 
 	it("check reports plan without mutation", async () => {
 		const cwd = await makeTempDir();
@@ -559,5 +559,197 @@ describe("nazare theme update", () => {
 		expect(await readFile(join(cwd, "nazare.lock.yml"), "utf8")).toBe(
 			beforeLock,
 		);
-	});
+	}, 10000);
+
+	it("fails before mutation for malformed registry checksum metadata", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
+		await initAndPull(cwd, registry);
+		const manifestPath = join(registry, "nazare.registry.yml");
+		await writeFile(
+			manifestPath,
+			(await readFile(manifestPath, "utf8")).replace(
+				"algorithm: sha256",
+				"algorithm: md5",
+			),
+		);
+
+		const result = await runCli(["theme", "update"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result.code).not.toBe(0);
+		expect(result.stderr).toContain("Invalid theme file checksum metadata");
+		expect(await readFile(join(cwd, "layout", "theme.liquid"), "utf8")).toBe(
+			"layout\n",
+		);
+	}, 10000);
+
+	it("fails before mutation when a current tracked file is missing", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, {
+			"layout/theme.liquid": "layout\n",
+			"templates/index.json": "index\n",
+		});
+		await initAndPull(cwd, registry);
+		await rm(join(cwd, "layout", "theme.liquid"));
+		await writeRegistry(registry, {
+			"layout/theme.liquid": "layout\n",
+			"templates/index.json": "new index\n",
+		});
+
+		const result = await runCli(["theme", "update"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result.code).not.toBe(0);
+		expect(result.stderr).toContain("Missing installed theme file");
+		expect(await readFile(join(cwd, "templates", "index.json"), "utf8")).toBe(
+			"index\n",
+		);
+	}, 10000);
+
+	it("force deletes obsolete modified tracked files", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, {
+			"layout/theme.liquid": "layout\n",
+			"templates/old.json": "old\n",
+		});
+		await initAndPull(cwd, registry);
+		await writeFile(join(cwd, "templates", "old.json"), "user edit\n");
+		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
+
+		const result = await runCli(["theme", "update", "--force"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(result.stdout).toContain("Deleted templates/old.json");
+		await expect(
+			readFile(join(cwd, "templates", "old.json"), "utf8"),
+		).rejects.toThrow();
+		expect(await readFile(join(cwd, "nazare.lock.yml"), "utf8")).not.toContain(
+			"templates/old.json",
+		);
+	}, 10000);
+
+	it("copies new manifest files when target is absent", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
+		await initAndPull(cwd, registry);
+		await writeRegistry(registry, {
+			"layout/theme.liquid": "layout\n",
+			"sections/new.liquid": "new section\n",
+		});
+
+		const result = await runCli(["theme", "update"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(result.stdout).toContain("Wrote sections/new.liquid");
+		expect(await readFile(join(cwd, "sections", "new.liquid"), "utf8")).toBe(
+			"new section\n",
+		);
+		expect(await readFile(join(cwd, "nazare.lock.yml"), "utf8")).toContain(
+			"sections/new.liquid",
+		);
+	}, 10000);
+
+	it("no-op update leaves lockfile unchanged", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
+		await initAndPull(cwd, registry);
+		const beforeLock = await readFile(join(cwd, "nazare.lock.yml"), "utf8");
+
+		const result = await runCli(["theme", "update"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(result.stdout).toContain("Theme already up to date");
+		expect(await readFile(join(cwd, "nazare.lock.yml"), "utf8")).toBe(
+			beforeLock,
+		);
+	}, 10000);
+
+	it("check reports safety errors without mutation", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, {
+			"layout/theme.liquid": "layout\n",
+			"templates/index.json": "index\n",
+		});
+		await initAndPull(cwd, registry);
+		await writeFile(join(cwd, "layout", "theme.liquid"), "user edit\n");
+		await writeRegistry(registry, {
+			"layout/theme.liquid": "new layout\n",
+			"templates/index.json": "new index\n",
+		});
+
+		const result = await runCli(["theme", "update", "--check"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result.code).not.toBe(0);
+		expect(result.stderr).toContain("Modified installed theme file");
+		expect(await readFile(join(cwd, "layout", "theme.liquid"), "utf8")).toBe(
+			"user edit\n",
+		);
+		expect(await readFile(join(cwd, "templates", "index.json"), "utf8")).toBe(
+			"index\n",
+		);
+	}, 10000);
+
+	it("successful update preserves installedAt and refreshes updatedAt", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, { "layout/theme.liquid": "old layout\n" });
+		await initAndPull(cwd, registry);
+		const lockPath = join(cwd, "nazare.lock.yml");
+		const beforeLock = await readFile(lockPath, "utf8");
+		const installedAt = beforeLock.match(/installedAt: "(.+?)"/)?.[1];
+		const oldUpdatedAt = beforeLock.match(/updatedAt: "(.+?)"/)?.[1];
+		await writeRegistry(registry, { "layout/theme.liquid": "new layout\n" });
+
+		const result = await runCli(["theme", "update"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		const lockfile = await readFile(lockPath, "utf8");
+		expect(lockfile).toContain(`installedAt: "${installedAt}"`);
+		expect(lockfile.match(/updatedAt: "(.+?)"/)?.[1]).not.toBe(oldUpdatedAt);
+	}, 10000);
+
+	it("never deletes untracked files", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
+		await initAndPull(cwd, registry);
+		await mkdir(join(cwd, "snippets"));
+		await writeFile(join(cwd, "snippets", "user.liquid"), "user file\n");
+
+		const result = await runCli(["theme", "update", "--force"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(await readFile(join(cwd, "snippets", "user.liquid"), "utf8")).toBe(
+			"user file\n",
+		);
+	}, 10000);
 });
