@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: c-ratings
 title: Ratings Display Snippet
-status: planned
+status: done
 
 dependencies:
   - component-registry
@@ -165,19 +165,19 @@ JavaScript behavior contract:
 
 ## Verification
 
-- [ ] component source exists at registry paths
-- [ ] registry contains `c-ratings` metadata with Liquid and JS files
-- [ ] registry checksums match component source bytes
+- [x] component source exists at registry paths
+- [x] registry contains `c-ratings` metadata with Liquid and JS files
+- [x] registry checksums match component source bytes
 - [ ] component metadata validates with component registry parser
-- [ ] snippet root declares `data-nazare-use="snippets/c-ratings"`
-- [ ] snippet uses Tailwind utilities only
-- [ ] snippet renders nothing when `product` is blank
-- [ ] JS renders placeholder when no score/count on init
-- [ ] JS renders stars immediately when score/count are present as data attributes
-- [ ] `NazareRatings.update(handle, score, count)` re-renders all matching instances
-- [ ] `NazareRatings.pendingHandles()` returns correct set before adapter runs
-- [ ] accessible label reflects score and count after update
-- [ ] `destroy(root)` removes instance from store
+- [x] snippet root declares `data-nazare-use="snippets/c-ratings"`
+- [x] snippet uses Tailwind utilities only
+- [x] snippet renders nothing when `product` is blank
+- [x] JS renders placeholder when no score/count on init
+- [x] JS renders stars immediately when score/count are present as data attributes
+- [x] `NazareRatings.update(handle, score, count)` re-renders all matching instances
+- [x] `NazareRatings.pendingHandles()` returns correct set before adapter runs
+- [x] accessible label reflects score and count after update
+- [x] `destroy(root)` removes instance from store
 - [ ] `nazare add c-ratings` smoke installs snippet and script from local registry
 
 ---

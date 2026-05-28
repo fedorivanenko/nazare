@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: c-ratings-yotpo
 title: Yotpo Ratings Adapter
-status: planned
+status: done
 
 dependencies:
   - component-registry
@@ -159,21 +159,20 @@ JavaScript behavior contract:
 
 ## Verification
 
-- [ ] component source exists at registry paths
-- [ ] registry contains `c-ratings-yotpo` metadata with Liquid, JS, and c-ratings dependency
-- [ ] registry checksums match component source bytes
+- [x] component source exists at registry paths
+- [x] registry contains `c-ratings-yotpo` metadata with Liquid, JS, and c-ratings dependency
+- [x] registry checksums match component source bytes
 - [ ] component metadata validates with component registry parser
-- [ ] snippet reads app key from `shop.metafields.integrations.yotpo_app_key`
-- [ ] snippet renders nothing when metafield is blank
-- [ ] snippet renders hidden element with `data-nazare-use="snippets/c-ratings-yotpo"` when metafield is set
-- [ ] snippet renders nothing when metafield is blank
-- [ ] JS reads app key from data attribute, not a global variable
-- [ ] JS collects product handles from `[data-c-ratings-product]` elements on page
-- [ ] JS skips handles already seeded server-side via `NazareRatings.pendingHandles()`
-- [ ] JS makes no network request when no pending handles exist
-- [ ] JS calls `NazareRatings.update()` for each handle returned by Yotpo
+- [x] snippet reads app key from `shop.metafields.integrations.yotpo_app_key`
+- [x] snippet renders nothing when metafield is blank
+- [x] snippet renders hidden element with `data-nazare-use="snippets/c-ratings-yotpo"` when metafield is set
+- [x] JS reads app key from data attribute, not a global variable
+- [x] JS collects product handles from `[data-c-ratings-product]` elements on page
+- [x] JS skips handles already seeded server-side via `NazareRatings.pendingHandles()`
+- [x] JS makes no network request when no pending handles exist
+- [x] JS calls `NazareRatings.update()` for each handle returned by Yotpo
 - [ ] `c-ratings` instances update their display after adapter runs
-- [ ] blank app key data attribute exits without throwing
+- [x] blank app key data attribute exits without throwing
 - [ ] `nazare add c-ratings-yotpo` smoke installs snippet and script from local registry
 
 ---

@@ -84,6 +84,53 @@ components:
         checksum:
           algorithm: sha256
           value: ba3cde568c7d1d0d3e825a4209383b821f56b11bfff5cccdd0443390b15a3704
+  c-ratings:
+    version: 1.0.0
+    type: snippet
+    dependencies: []
+    files:
+      - from: components/c-ratings/c-ratings.liquid
+        to: snippets/c-ratings.liquid
+        checksum:
+          algorithm: sha256
+          value: 648d017d4118d7f7b2349275fba9c1ccda4395cd28ab911c0284cabf995648ca
+      - from: components/c-ratings/c-ratings.js
+        to: scripts/snippets/c-ratings.js
+        checksum:
+          algorithm: sha256
+          value: 90e8f3056aea5ef84fab5ca5c274c0e5c60fdf7c4b5a7c5fcf7c06293fb2180d
+  c-ratings-judgeme:
+    version: 1.0.0
+    type: snippet
+    dependencies:
+      - c-ratings
+    files:
+      - from: components/c-ratings-judgeme/c-ratings-judgeme.liquid
+        to: snippets/c-ratings-judgeme.liquid
+        checksum:
+          algorithm: sha256
+          value: 7b859df747da934cfcd3970ca9437fff0306aa2df931e889381378ab008efba0
+      - from: components/c-ratings-judgeme/c-ratings-judgeme.js
+        to: scripts/snippets/c-ratings-judgeme.js
+        checksum:
+          algorithm: sha256
+          value: 27d90f2434035297bd157917d355aaf74075a639c709bb485975774bedc63098
+  c-ratings-yotpo:
+    version: 1.0.0
+    type: snippet
+    dependencies:
+      - c-ratings
+    files:
+      - from: components/c-ratings-yotpo/c-ratings-yotpo.liquid
+        to: snippets/c-ratings-yotpo.liquid
+        checksum:
+          algorithm: sha256
+          value: 9bc9287af6fcce3fd54108aec79cb865b53b0415b2a723f4b543ff25cf19bf33
+      - from: components/c-ratings-yotpo/c-ratings-yotpo.js
+        to: scripts/snippets/c-ratings-yotpo.js
+        checksum:
+          algorithm: sha256
+          value: 1e457ab2b875f24b86b731c57efb1bd686884463d1fc0ba05e5bd0c36869478d
   c-bg-video:
     version: 1.0.0
     type: snippet

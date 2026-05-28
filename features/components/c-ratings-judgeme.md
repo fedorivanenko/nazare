@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: c-ratings-judgeme
 title: Judge.me Ratings Adapter
-status: planned
+status: done
 
 dependencies:
   - component-registry
@@ -148,18 +148,18 @@ JavaScript behavior contract:
 
 ## Verification
 
-- [ ] component source exists at registry paths
-- [ ] registry contains `c-ratings-judgeme` metadata with Liquid, JS, and c-ratings dependency
-- [ ] registry checksums match component source bytes
+- [x] component source exists at registry paths
+- [x] registry contains `c-ratings-judgeme` metadata with Liquid, JS, and c-ratings dependency
+- [x] registry checksums match component source bytes
 - [ ] component metadata validates with component registry parser
-- [ ] snippet renders a hidden element with `data-nazare-use="snippets/c-ratings-judgeme"`
-- [ ] snippet renders no visible output
-- [ ] JS collects product handles from `[data-c-ratings-product]` elements on page
-- [ ] JS skips handles already seeded server-side via `NazareRatings.pendingHandles()`
-- [ ] JS makes no network request when no pending handles exist
-- [ ] JS calls `NazareRatings.update()` for each handle returned by Judge.me
+- [x] snippet renders a hidden element with `data-nazare-use="snippets/c-ratings-judgeme"`
+- [x] snippet renders no visible output
+- [x] JS collects product handles from `[data-c-ratings-product]` elements on page
+- [x] JS skips handles already seeded server-side via `NazareRatings.pendingHandles()`
+- [x] JS makes no network request when no pending handles exist
+- [x] JS calls `NazareRatings.update()` for each handle returned by Judge.me
 - [ ] c-ratings instances update their display after adapter runs
-- [ ] missing `window.Shopify.shop` exits without throwing
+- [x] missing `window.Shopify.shop` exits without throwing
 - [ ] `nazare add c-ratings-judgeme` smoke installs snippet and script from local registry
 
 ---

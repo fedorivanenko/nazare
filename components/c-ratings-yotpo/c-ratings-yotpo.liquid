@@ -1,0 +1,9 @@
+{% assign app_key = shop.metafields.integrations.yotpo_app_key %}
+
+{% if app_key != blank %}
+  <div
+    data-nazare-use="snippets/c-ratings-yotpo"
+    data-c-ratings-yotpo-app-key="{{ app_key | escape }}"
+    hidden
+  ></div>
+{% endif %}

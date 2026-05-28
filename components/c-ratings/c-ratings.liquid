@@ -1,0 +1,29 @@
+{% liquid
+  assign ratings_score = score
+  assign ratings_count = count
+  assign ratings_url = url
+  assign wrapper_class = class
+%}
+
+{% if product != blank %}
+  {% if ratings_url != blank %}
+    <a
+      href="{{ ratings_url }}"
+      data-nazare-use="snippets/c-ratings"
+      data-c-ratings-product="{{ product.handle }}"
+      data-c-ratings-product-id="{{ product.id }}"
+      {% if ratings_score != blank %}data-c-ratings-score="{{ ratings_score }}"{% endif %}
+      {% if ratings_count != blank %}data-c-ratings-count="{{ ratings_count }}"{% endif %}
+      class="inline-flex items-center gap-1.5{% if wrapper_class != blank %} {{ wrapper_class }}{% endif %}"
+    ></a>
+  {% else %}
+    <div
+      data-nazare-use="snippets/c-ratings"
+      data-c-ratings-product="{{ product.handle }}"
+      data-c-ratings-product-id="{{ product.id }}"
+      {% if ratings_score != blank %}data-c-ratings-score="{{ ratings_score }}"{% endif %}
+      {% if ratings_count != blank %}data-c-ratings-count="{{ ratings_count }}"{% endif %}
+      class="inline-flex items-center gap-1.5{% if wrapper_class != blank %} {{ wrapper_class }}{% endif %}"
+    ></div>
+  {% endif %}
+{% endif %}
