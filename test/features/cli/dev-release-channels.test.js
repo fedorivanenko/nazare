@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
 	chmod,
 	mkdir,
@@ -46,6 +47,10 @@ async function runCli(args, options = {}) {
 	}
 }
 
+function sha256(value) {
+	return createHash("sha256").update(value).digest("hex");
+}
+
 async function writeFakeInstall(root) {
 	const installDir = join(root, "install");
 	const binDir = join(root, "bin");
@@ -82,6 +87,52 @@ SH
 	return { installDir, binDir };
 }
 
+async function writeRegistry(root, files) {
+	const entries = [];
+	for (const [filePath, content] of Object.entries(files)) {
+		await mkdir(
+			join(
+				root,
+				"theme",
+				"default",
+				filePath.split("/").slice(0, -1).join("/"),
+			),
+			{
+				recursive: true,
+			},
+		);
+		await writeFile(join(root, "theme", "default", filePath), content);
+		entries.push(
+			`    - from: theme/default/${filePath}\n      to: ${filePath}\n      checksum:\n        algorithm: sha256\n        value: ${sha256(content)}`,
+		);
+	}
+
+	await writeFile(
+		join(root, "nazare.registry.yml"),
+		`schemaVersion: 1
+
+registry:
+  name: nazare
+
+theme:
+  version: 1.0.0
+  source: theme/default
+  files:
+${entries.join("\n")}
+
+components: {}
+`,
+	);
+}
+
+async function initAndPull(cwd, registry) {
+	await runCli(["init"], { cwd });
+	return runCli(["theme", "pull", "--yes"], {
+		cwd,
+		env: { NAZARE_REGISTRY_DIR: registry },
+	});
+}
+
 afterEach(async () => {
 	await Promise.all(
 		tempRoots
@@ -95,7 +146,7 @@ describe("dev release channels", () => {
 		const root = await makeTempDir();
 		const { installDir, binDir } = await writeFakeInstall(root);
 
-		const result = await runCli(["self", "update", "latest"], {
+		const result = await runCli(["update", "self", "--latest"], {
 			env: {
 				NAZARE_INSTALL_DIR: installDir,
 				NAZARE_GITHUB_TAGS_JSON: JSON.stringify(["v0.14.1-dev.3", "v0.14.0"]),
@@ -116,7 +167,7 @@ describe("dev release channels", () => {
 		const root = await makeTempDir();
 		const { installDir, binDir } = await writeFakeInstall(root);
 
-		const result = await runCli(["self", "update", "latest", "--dev"], {
+		const result = await runCli(["update", "self", "--latest", "--dev"], {
 			env: {
 				NAZARE_INSTALL_DIR: installDir,
 				NAZARE_GITHUB_TAGS_JSON: JSON.stringify([
@@ -141,7 +192,7 @@ describe("dev release channels", () => {
 		const root = await makeTempDir();
 		const { installDir, binDir } = await writeFakeInstall(root);
 
-		const result = await runCli(["self", "update", "latest", "--dev"], {
+		const result = await runCli(["update", "self", "--latest", "--dev"], {
 			env: {
 				NAZARE_INSTALL_DIR: installDir,
 				NAZARE_GITHUB_TAGS_JSON: JSON.stringify(["v0.15.0-dev.0"]),
@@ -159,13 +210,16 @@ describe("dev release channels", () => {
 		).toContain('"installedRef":"v0.14.0"');
 	}, 10000);
 
-	it("registry use latest selects stable tags and ignores dev tags", async () => {
+	it("update theme --latest advances registry ref to stable tag", async () => {
 		const cwd = await makeTempDir();
-		await runCli(["init"], { cwd });
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
+		await initAndPull(cwd, registry);
 
-		const result = await runCli(["registry", "use", "latest"], {
+		const result = await runCli(["update", "theme", "--latest"], {
 			cwd,
 			env: {
+				NAZARE_REGISTRY_DIR: registry,
 				NAZARE_GITHUB_TAGS_JSON: JSON.stringify([
 					"v0.14.1-dev.3",
 					"v0.14.0",
@@ -181,15 +235,18 @@ describe("dev release channels", () => {
 		expect(await readFile(join(cwd, "nazare.lock.yml"), "utf8")).toContain(
 			"ref: v0.14.0",
 		);
-	});
+	}, 10000);
 
-	it("registry use latest --dev selects the highest dev prerelease tag", async () => {
+	it("update theme --latest --dev advances registry ref to dev tag", async () => {
 		const cwd = await makeTempDir();
-		await runCli(["init"], { cwd });
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
+		await initAndPull(cwd, registry);
 
-		const result = await runCli(["registry", "use", "latest", "--dev"], {
+		const result = await runCli(["update", "theme", "--latest", "--dev"], {
 			cwd,
 			env: {
+				NAZARE_REGISTRY_DIR: registry,
 				NAZARE_GITHUB_TAGS_JSON: JSON.stringify([
 					"v0.14.1-dev.3",
 					"v0.15.0-dev.0",
@@ -202,48 +259,60 @@ describe("dev release channels", () => {
 		expect(await readFile(join(cwd, "nazare.config.yml"), "utf8")).toContain(
 			"ref: v0.15.0-dev.0",
 		);
-	});
+		expect(await readFile(join(cwd, "nazare.lock.yml"), "utf8")).toContain(
+			"ref: v0.15.0-dev.0",
+		);
+	}, 10000);
 
-	it("registry use explicit source mutates only registry blocks", async () => {
+	it("update theme --ref preserves component lockfile metadata", async () => {
 		const cwd = await makeTempDir();
-		await runCli(["init"], { cwd });
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
+		await initAndPull(cwd, registry);
 		const lockPath = join(cwd, "nazare.lock.yml");
-		await writeFile(
-			lockPath,
-			`${await readFile(lockPath, "utf8")}components:
+		const componentBlock = `components:
   c-button:
     version: 1.0.0
-`,
+    type: snippet
+    installedAt: "2026-05-26T00:00:00.000Z"
+    updatedAt: "2026-05-26T00:00:00.000Z"
+    dependencies: []
+    files: []`;
+		await writeFile(
+			lockPath,
+			(await readFile(lockPath, "utf8")).replace(
+				"components: {}",
+				componentBlock,
+			),
 		);
 
-		const result = await runCli(
-			[
-				"registry",
-				"use",
-				"--repo",
-				"http://127.0.0.1:7331",
-				"--ref",
-				"v0.14.1-dev.3",
-			],
-			{ cwd },
-		);
+		const result = await runCli(["update", "theme", "--ref", "v0.14.1-dev.3"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
 
 		expect(result).toMatchObject({ code: 0, stderr: "" });
 		expect(await readFile(join(cwd, "nazare.config.yml"), "utf8")).toContain(
-			"repo: http://127.0.0.1:7331\n  ref: v0.14.1-dev.3",
+			"ref: v0.14.1-dev.3",
 		);
+		expect(await readFile(lockPath, "utf8")).toContain("ref: v0.14.1-dev.3");
 		expect(await readFile(lockPath, "utf8")).toContain("c-button:");
-	});
+	}, 10000);
 
-	it("failed registry source switch leaves files unchanged", async () => {
+	it("failed update theme --latest leaves files unchanged", async () => {
 		const cwd = await makeTempDir();
-		await runCli(["init"], { cwd });
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
+		await initAndPull(cwd, registry);
 		const configBefore = await readFile(join(cwd, "nazare.config.yml"), "utf8");
 		const lockBefore = await readFile(join(cwd, "nazare.lock.yml"), "utf8");
 
-		const result = await runCli(["registry", "use", "latest", "--dev"], {
+		const result = await runCli(["update", "theme", "--latest", "--dev"], {
 			cwd,
-			env: { NAZARE_GITHUB_TAGS_JSON: JSON.stringify(["v0.14.0"]) },
+			env: {
+				NAZARE_REGISTRY_DIR: registry,
+				NAZARE_GITHUB_TAGS_JSON: JSON.stringify(["v0.14.0"]),
+			},
 		});
 
 		expect(result.code).not.toBe(0);
@@ -254,5 +323,5 @@ describe("dev release channels", () => {
 		expect(await readFile(join(cwd, "nazare.lock.yml"), "utf8")).toBe(
 			lockBefore,
 		);
-	});
+	}, 10000);
 });

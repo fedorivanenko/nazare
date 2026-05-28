@@ -1,8 +1,8 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -40,12 +40,67 @@ async function runCli(args, options = {}) {
 	}
 }
 
+async function runCliWithInput(args, input, options = {}) {
+	return await new Promise((resolve) => {
+		const child = spawn(process.execPath, [cliPath.pathname, ...args], {
+			cwd: options.cwd,
+			env: {
+				...process.env,
+				NAZARE_THEME_PULL_INTERACTIVE: "1",
+				...options.env,
+			},
+		});
+		let stdout = "";
+		let stderr = "";
+		child.stdout.setEncoding("utf8");
+		child.stderr.setEncoding("utf8");
+		child.stdout.on("data", (chunk) => {
+			stdout += chunk;
+		});
+		child.stderr.on("data", (chunk) => {
+			stderr += chunk;
+		});
+		child.on("close", (code) => resolve({ code, stdout, stderr }));
+		child.stdin.end(input);
+	});
+}
+
 function sha256(value) {
 	return createHash("sha256").update(value).digest("hex");
 }
 
 async function writeRegistry(root, manifest) {
 	await writeFile(join(root, "nazare.registry.yml"), manifest);
+}
+
+async function writeThemeRegistry(root, files) {
+	const manifestFiles = [];
+	for (const file of files) {
+		const absolutePath = join(root, file.from);
+		await mkdir(dirname(absolutePath), { recursive: true });
+		await writeFile(absolutePath, file.content);
+		manifestFiles.push(`    - from: ${file.from}
+      to: ${file.to}
+      checksum:
+        algorithm: sha256
+        value: ${sha256(file.content)}`);
+	}
+	await writeRegistry(
+		root,
+		`schemaVersion: 1
+
+registry:
+  name: nazare
+
+theme:
+  version: 1.0.0
+  source: theme/default
+  files:
+${manifestFiles.join("\n")}
+
+components: {}
+`,
+	);
 }
 
 afterEach(async () => {
@@ -125,6 +180,36 @@ describe("nazare theme pull", () => {
 		expect(result.stderr).toContain("nazare.config.yml");
 	});
 
+	it("fails before writes when lockfile is missing", async () => {
+		const cwd = await makeTempDir();
+		await runCli(["init"], { cwd });
+		await rm(join(cwd, "nazare.lock.yml"));
+
+		const result = await runCli(["theme", "pull", "--yes"], { cwd });
+
+		expect(result.code).not.toBe(0);
+		expect(result.stderr).toContain("nazare.lock.yml");
+	});
+
+	it("fails before writes when config or lockfile registry metadata is invalid", async () => {
+		const cwd = await makeTempDir();
+		await runCli(["init"], { cwd });
+		await writeFile(join(cwd, "nazare.config.yml"), "schemaVersion: 1\n");
+
+		const invalidConfig = await runCli(["theme", "pull", "--yes"], { cwd });
+		expect(invalidConfig.code).not.toBe(0);
+		expect(invalidConfig.stderr).toContain("Invalid nazare.config.yml");
+
+		await runCli(["init", "fresh"], { cwd });
+		const fresh = join(cwd, "fresh");
+		await writeFile(join(fresh, "nazare.lock.yml"), "schemaVersion: 1\n");
+		const invalidLock = await runCli(["theme", "pull", "--yes"], {
+			cwd: fresh,
+		});
+		expect(invalidLock.code).not.toBe(0);
+		expect(invalidLock.stderr).toContain("Invalid nazare.lock.yml");
+	});
+
 	it("does not overwrite conflicts without --yes", async () => {
 		const cwd = await makeTempDir();
 		await runCli(["init"], { cwd });
@@ -154,9 +239,213 @@ describe("nazare theme pull", () => {
 		).toContain("{{ content_for_layout }}");
 	});
 
-	it("fails before writes for unsafe manifest paths", async () => {
+	it("can skip an interactive conflict and write non-conflicting files", async () => {
 		const cwd = await makeTempDir();
 		const registry = await makeTempDir("nazare-registry-test-");
+		await runCli(["init"], { cwd });
+		await mkdir(join(cwd, "layout"));
+		await writeFile(join(cwd, "layout", "theme.liquid"), "existing layout\n");
+		await writeThemeRegistry(registry, [
+			{
+				from: "theme/default/layout/theme.liquid",
+				to: "layout/theme.liquid",
+				content: "incoming layout\n",
+			},
+			{
+				from: "theme/default/assets/theme.css",
+				to: "assets/theme.css",
+				content: "body { color: red; }\n",
+			},
+		]);
+
+		const result = await runCliWithInput(["theme", "pull"], "skip\n", {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(result.stdout).toContain("Skipped layout/theme.liquid");
+		expect(result.stdout).toContain("Wrote assets/theme.css");
+		expect(await readFile(join(cwd, "layout", "theme.liquid"), "utf8")).toBe(
+			"existing layout\n",
+		);
+		expect(await readFile(join(cwd, "assets", "theme.css"), "utf8")).toBe(
+			"body { color: red; }\n",
+		);
+		const lockfile = await readFile(join(cwd, "nazare.lock.yml"), "utf8");
+		expect(lockfile).toContain("path: assets/theme.css");
+		expect(lockfile).not.toContain("path: layout/theme.liquid");
+	});
+
+	it("can overwrite all remaining interactive conflicts", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await runCli(["init"], { cwd });
+		await mkdir(join(cwd, "layout"));
+		await mkdir(join(cwd, "templates"));
+		await writeFile(join(cwd, "layout", "theme.liquid"), "old layout\n");
+		await writeFile(join(cwd, "templates", "index.json"), "old index\n");
+		await writeThemeRegistry(registry, [
+			{
+				from: "theme/default/layout/theme.liquid",
+				to: "layout/theme.liquid",
+				content: "new layout\n",
+			},
+			{
+				from: "theme/default/templates/index.json",
+				to: "templates/index.json",
+				content: "new index\n",
+			},
+		]);
+
+		const result = await runCliWithInput(["theme", "pull"], "all\n", {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(await readFile(join(cwd, "layout", "theme.liquid"), "utf8")).toBe(
+			"new layout\n",
+		);
+		expect(await readFile(join(cwd, "templates", "index.json"), "utf8")).toBe(
+			"new index\n",
+		);
+	});
+
+	it("can skip all remaining interactive conflicts without changing lockfile", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await runCli(["init"], { cwd });
+		await mkdir(join(cwd, "layout"));
+		await mkdir(join(cwd, "templates"));
+		await writeFile(join(cwd, "layout", "theme.liquid"), "old layout\n");
+		await writeFile(join(cwd, "templates", "index.json"), "old index\n");
+		await writeThemeRegistry(registry, [
+			{
+				from: "theme/default/layout/theme.liquid",
+				to: "layout/theme.liquid",
+				content: "new layout\n",
+			},
+			{
+				from: "theme/default/templates/index.json",
+				to: "templates/index.json",
+				content: "new index\n",
+			},
+		]);
+		const lockBefore = await readFile(join(cwd, "nazare.lock.yml"), "utf8");
+
+		const result = await runCliWithInput(["theme", "pull"], "none\n", {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(await readFile(join(cwd, "layout", "theme.liquid"), "utf8")).toBe(
+			"old layout\n",
+		);
+		expect(await readFile(join(cwd, "templates", "index.json"), "utf8")).toBe(
+			"old index\n",
+		);
+		expect(await readFile(join(cwd, "nazare.lock.yml"), "utf8")).toBe(
+			lockBefore,
+		);
+	});
+
+	it("keeps theme lockfile files cumulative across repeated pulls", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await runCli(["init"], { cwd });
+		await writeThemeRegistry(registry, [
+			{
+				from: "theme/default/layout/theme.liquid",
+				to: "layout/theme.liquid",
+				content: "layout v1\n",
+			},
+		]);
+		await runCli(["theme", "pull", "--yes"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+		await writeThemeRegistry(registry, [
+			{
+				from: "theme/default/layout/theme.liquid",
+				to: "layout/theme.liquid",
+				content: "layout v2\n",
+			},
+			{
+				from: "theme/default/assets/theme.css",
+				to: "assets/theme.css",
+				content: "body { color: blue; }\n",
+			},
+		]);
+
+		const result = await runCliWithInput(["theme", "pull"], "skip\n", {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		const lockfile = await readFile(join(cwd, "nazare.lock.yml"), "utf8");
+		expect(lockfile).toContain("path: layout/theme.liquid");
+		expect(lockfile).toContain("path: assets/theme.css");
+		expect(await readFile(join(cwd, "layout", "theme.liquid"), "utf8")).toBe(
+			"layout v1\n",
+		);
+	});
+
+	it("fails before writes for missing or invalid manifest theme metadata", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await runCli(["init"], { cwd });
+
+		await writeRegistry(registry, "schemaVersion: 1\n\ncomponents: {}\n");
+		const missingTheme = await runCli(["theme", "pull", "--yes"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+		expect(missingTheme.code).not.toBe(0);
+		expect(missingTheme.stderr).toContain("no theme block");
+
+		await writeRegistry(
+			registry,
+			`schemaVersion: 1
+
+registry:
+  name: nazare
+
+theme:
+  version: nope
+  source: theme/default
+  files:
+    - from: theme/default/layout/theme.liquid
+      to: layout/theme.liquid
+      checksum:
+        algorithm: sha256
+        value: ${"a".repeat(64)}
+
+components: {}
+`,
+		);
+		const invalidVersion = await runCli(["theme", "pull", "--yes"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+		expect(invalidVersion.code).not.toBe(0);
+		expect(invalidVersion.stderr).toContain("Invalid theme.version");
+	});
+
+	it("fails before writes for unsafe, duplicate, or invalid checksum manifest paths", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await runCli(["init"], { cwd });
+		await mkdir(join(registry, "theme", "default", "layout"), {
+			recursive: true,
+		});
+		await writeFile(
+			join(registry, "theme", "default", "layout", "theme.liquid"),
+			"layout\n",
+		);
+
 		await writeRegistry(
 			registry,
 			`schemaVersion: 1
@@ -170,42 +459,78 @@ theme:
   files:
     - from: ../secret.txt
       to: layout/theme.liquid
+      checksum:
+        algorithm: sha256
+        value: ${sha256("layout\n")}
 
 components: {}
 `,
 		);
-		await writeFile(
-			join(cwd, "nazare.config.yml"),
-			`schemaVersion: 1
-
-registry:
-  name: nazare
-  repo: github.com/fedorivanenko/nazare
-  ref: refs/heads/main
-  manifest: nazare.registry.yml
-`,
-		);
-		await writeFile(
-			join(cwd, "nazare.lock.yml"),
-			`schemaVersion: 1
-
-registry:
-  name: nazare
-  repo: github.com/fedorivanenko/nazare
-  ref: refs/heads/main
-  manifest: nazare.registry.yml
-
-components: {}
-`,
-		);
-
-		const result = await runCli(["theme", "pull", "--yes"], {
+		const unsafe = await runCli(["theme", "pull", "--yes"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
+		expect(unsafe.code).not.toBe(0);
+		expect(unsafe.stderr).toContain("Unsafe theme file source path");
 
-		expect(result.code).not.toBe(0);
-		expect(result.stderr).toContain("Unsafe theme file source path");
+		await writeRegistry(
+			registry,
+			`schemaVersion: 1
+
+registry:
+  name: nazare
+
+theme:
+  version: 1.0.0
+  source: theme/default
+  files:
+    - from: theme/default/layout/theme.liquid
+      to: layout/theme.liquid
+      checksum:
+        algorithm: md5
+        value: ${sha256("layout\n")}
+
+components: {}
+`,
+		);
+		const invalidChecksum = await runCli(["theme", "pull", "--yes"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+		expect(invalidChecksum.code).not.toBe(0);
+		expect(invalidChecksum.stderr).toContain("Invalid theme file checksum");
+
+		await writeRegistry(
+			registry,
+			`schemaVersion: 1
+
+registry:
+  name: nazare
+
+theme:
+  version: 1.0.0
+  source: theme/default
+  files:
+    - from: theme/default/layout/theme.liquid
+      to: layout/theme.liquid
+      checksum:
+        algorithm: sha256
+        value: ${sha256("layout\n")}
+    - from: theme/default/layout/theme.liquid
+      to: layout/theme.liquid
+      checksum:
+        algorithm: sha256
+        value: ${sha256("layout\n")}
+
+components: {}
+`,
+		);
+		const duplicate = await runCli(["theme", "pull", "--yes"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+		expect(duplicate.code).not.toBe(0);
+		expect(duplicate.stderr).toContain("Duplicate theme file target path");
 	});
 
 	it("fails before writes when registry checksum mismatches source content", async () => {

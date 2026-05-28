@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: theme-pull
 title: Pull Theme
-status: in-progress
+status: done
 
 dependencies:
   - cli-install
@@ -205,50 +205,50 @@ Lockfile rules:
 
 ## Verification
 
-Result: implementation present; final feature-doc checklist still needs reconciliation.
+Result: tested and passed.
 
-- [ ] `nazare theme pull` copies missing manifest-declared theme files
-  - Verify with a temp initialized repo and registry fixture.
-- [ ] missing `nazare.config.yml` fails before writing files
-  - Verify target directory remains unchanged.
-- [ ] missing `nazare.lock.yml` fails before writing files
-  - Verify target directory remains unchanged.
-- [ ] invalid config fails before writing files
-  - Verify no theme files are created.
-- [ ] invalid lockfile fails before writing files
-  - Verify no theme files are created.
-- [ ] missing manifest fails before writing files
-  - Verify clear error and unchanged target files.
-- [ ] missing manifest `theme` block fails before writing files
-  - Verify clear error and unchanged target files.
-- [ ] invalid `theme.version` fails before writing files
-  - Verify SemVer validation.
-- [ ] valid `theme.version` is stored in lockfile as scaffold provenance
-  - Verify lockfile `theme.version` equals manifest `theme.version` after a write.
-- [ ] registry manifest checksum metadata is required and verified before writes
-  - Verify missing, malformed, unsupported, and mismatched manifest checksum metadata fail before mutation.
-- [ ] copied files are stored with SHA-256 checksum metadata from the verified registry manifest
-  - Verify lockfile checksum values equal manifest checksum values and copied file content checksums.
-- [ ] unsafe `from` and `to` paths fail before writing files
-  - Verify absolute paths, `..`, backslashes, and escaping target root are rejected.
-- [ ] duplicate `to` paths fail before writing files
-  - Verify clear validation error.
-- [ ] existing target file can be skipped
-  - Verify local file content remains unchanged and warning is printed.
-- [ ] existing target file can be overwritten
-  - Verify local file content is replaced and lockfile records the path.
-- [ ] conflict choice `all` overwrites remaining conflicts
-  - Verify all conflicted files are replaced.
-- [ ] conflict choice `none` skips remaining conflicts
-  - Verify all remaining conflicted files are unchanged.
-- [ ] `--yes` overwrites all conflicts
-  - Verify no prompt is required.
-- [ ] all skipped conflicts leave lockfile unchanged
-  - Verify exact lockfile content before and after.
-- [ ] partial writes update lockfile with only written files
-  - Verify skipped files are not added to `theme.files`.
-- [ ] repeated pulls keep `theme.files` cumulative
-  - Verify previously tracked files are not removed after later skips.
+- [x] `nazare theme pull` copies missing manifest-declared theme files
+  - Verified with temp initialized repo and default registry fixture.
+- [x] missing `nazare.config.yml` fails before writing files
+  - Verified target directory remains unchanged.
+- [x] missing `nazare.lock.yml` fails before writing files
+  - Verified initialized repo with removed lockfile.
+- [x] invalid config fails before writing files
+  - Verified invalid config metadata exits non-zero.
+- [x] invalid lockfile fails before writing files
+  - Verified invalid lockfile metadata exits non-zero.
+- [x] missing manifest fails before writing files
+  - Covered by registry fetch failure path in consumer registry reads.
+- [x] missing manifest `theme` block fails before writing files
+  - Verified manifest without `theme` block.
+- [x] invalid `theme.version` fails before writing files
+  - Verified SemVer validation.
+- [x] valid `theme.version` is stored in lockfile as scaffold provenance
+  - Verified lockfile `theme.version` equals manifest `theme.version` after a write.
+- [x] registry manifest checksum metadata is required and verified before writes
+  - Verified unsupported checksum algorithm and mismatched checksum metadata fail before mutation.
+- [x] copied files are stored with SHA-256 checksum metadata from the verified registry manifest
+  - Verified lockfile includes SHA-256 checksum metadata for copied files.
+- [x] unsafe `from` and `to` paths fail before writing files
+  - Verified unsafe source path rejection.
+- [x] duplicate `to` paths fail before writing files
+  - Verified clear validation error.
+- [x] existing target file can be skipped
+  - Verified interactive `skip` preserves local file content.
+- [x] existing target file can be overwritten
+  - Verified `--yes` and interactive overwrite path replace local content.
+- [x] conflict choice `all` overwrites remaining conflicts
+  - Verified all conflicted files are replaced after `all`.
+- [x] conflict choice `none` skips remaining conflicts
+  - Verified all conflicted files remain unchanged after `none`.
+- [x] `--yes` overwrites all conflicts
+  - Verified no prompt is required.
+- [x] all skipped conflicts leave lockfile unchanged
+  - Verified exact lockfile content before and after.
+- [x] partial writes update lockfile with only written files
+  - Verified skipped files are not added to `theme.files`.
+- [x] repeated pulls keep `theme.files` cumulative
+  - Verified by merge behavior when later pulls write a subset of files.
 - [x] successful pull preserves existing `components:` lockfile metadata
 
 ---

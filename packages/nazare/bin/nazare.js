@@ -16,36 +16,34 @@ Usage:
   nazare init [directory] [--repo <repo>] [--ref <ref>]
   nazare list [--installed]
   nazare add <component>
-  nazare update <component> [--dry-run] [--force]
+  nazare update self [--latest [--dev] | --version <version> | --ref <ref>]
+  nazare update theme [--latest [--dev] | --version <version> | --ref <ref>] [--force] [--check] [--skip-conflicts]
+  nazare update <component> [--latest [--dev] | --version <version> | --ref <ref>] [--dry-run] [--force]
   nazare theme pull [--yes]
-  nazare theme update [--force] [--check] [--skip-conflicts]
-  nazare self update [latest [--dev]|--source <ref>]
-  nazare registry use latest [--dev]
-  nazare registry use --repo <repo> --ref <ref>
 
 Commands:
   init [directory]    Initialize Nazare relationship in a theme repo
   list                List registry components or installed components
   add <component>     Install a registry component and its dependencies
+  update self         Update the Nazare CLI install from its original source, latest release, or explicit ref
+  update theme        Safely update installed theme scaffold files
   update <component>  Update an installed registry component
   theme pull          Pull registry theme scaffold into an initialized theme repo
-  theme update        Safely update installed theme scaffold files
-  self update         Update the Nazare CLI install from its original source, latest release, or --source override
-  registry use        Switch registry source in nazare.config.yml and nazare.lock.yml
 
 Options:
-  -h, --help          Show this help
-  -v, --version       Show CLI version
-  --repo <repo>       Registry GitHub repo for init
-  --ref <ref>         Registry ref for init
-  --installed         Show installed components from nazare.lock.yml
-  --dry-run           Print component update plan without changing files
-  --source <ref>      Update from a branch, tag, full ref, or commit SHA
-  --dev               Select latest dev prerelease tag with latest
-  --yes               Overwrite theme file conflicts without prompting
-  --force             Overwrite modified theme update files
-  --check             Print theme update plan without changing files
-  --skip-conflicts    Skip modified or conflicting theme files during update
+  -h, --help                 Show this help
+  -v, --version              Show CLI version
+  --repo <repo>              Registry GitHub repo for init
+  --ref <ref>                Registry ref for init or update from explicit ref, tag, branch, or commit SHA
+  --installed                Show installed components from nazare.lock.yml
+  --latest                   Resolve latest stable (or dev with --dev) registry tag
+  --version <version>        Update from tag v<version>
+  --dev                      Select latest dev prerelease tag with --latest
+  --dry-run                  Print component update plan without changing files
+  --yes                      Overwrite theme file conflicts without prompting
+  --force                    Overwrite modified theme update files
+  --check                    Print theme update plan without changing files
+  --skip-conflicts           Skip modified or conflicting theme files during update
 `;
 
 const SEMVER_PATTERN =
@@ -208,7 +206,7 @@ function fetchJson(url) {
 	});
 }
 
-async function listGitHubTags() {
+async function listGitHubTags(repoSlug = "fedorivanenko/nazare") {
 	if (process.env.NAZARE_GITHUB_TAGS_JSON) {
 		const parsed = JSON.parse(process.env.NAZARE_GITHUB_TAGS_JSON);
 		if (!Array.isArray(parsed))
@@ -217,7 +215,7 @@ async function listGitHubTags() {
 	}
 
 	const tags = await fetchJson(
-		"https://api.github.com/repos/fedorivanenko/nazare/tags?per_page=100",
+		`https://api.github.com/repos/${repoSlug}/tags?per_page=100`,
 	);
 	if (!Array.isArray(tags)) {
 		throw new Error("GitHub tags response was not an array");
@@ -240,8 +238,8 @@ function compareTagVersions(left, right) {
 	return 0;
 }
 
-async function resolveLatestTagRef({ dev = false } = {}) {
-	const tags = (await listGitHubTags()).filter((tag) =>
+async function resolveLatestTagRef({ dev = false, repoSlug } = {}) {
+	const tags = (await listGitHubTags(repoSlug)).filter((tag) =>
 		dev ? DEV_TAG_PATTERN.test(tag) : STABLE_TAG_PATTERN.test(tag),
 	);
 	if (tags.length === 0) {
@@ -250,50 +248,6 @@ async function resolveLatestTagRef({ dev = false } = {}) {
 		);
 	}
 	return tags.sort(compareTagVersions).at(-1);
-}
-
-async function parseSelfUpdateArgs(args) {
-	const options = { source: undefined, latest: false, dev: false };
-
-	for (let index = 0; index < args.length; index += 1) {
-		const arg = args[index];
-
-		if (arg === "latest") {
-			if (options.source || options.latest) {
-				throw new Error("Use either latest or --source, not both");
-			}
-			options.latest = true;
-			continue;
-		}
-
-		if (arg === "--dev") {
-			options.dev = true;
-			continue;
-		}
-
-		if (arg === "--source") {
-			if (options.source || options.latest) {
-				throw new Error("Use either latest or --source, not both");
-			}
-			const value = args[index + 1];
-			if (!value || value.startsWith("--")) {
-				throw new Error("Missing value for --source");
-			}
-			options.source = normalizeSourceRef(value);
-			index += 1;
-			continue;
-		}
-
-		throw new Error(`Unknown self update option: ${arg}`);
-	}
-
-	if (options.dev && !options.latest) {
-		throw new Error("--dev requires latest");
-	}
-	if (options.latest)
-		options.source = await resolveLatestTagRef({ dev: options.dev });
-
-	return options;
 }
 
 function normalizeSourceRef(source) {
@@ -1200,33 +1154,133 @@ async function readCurrentComponentsWithSources(registry, ids) {
 }
 
 function parseUpdateArgs(args) {
-	const options = { dryRun: false, force: false, component: undefined };
-	for (const arg of args) {
-		if (arg === "--dry-run") {
-			if (options.dryRun) throw new Error("Duplicate update option: --dry-run");
-			options.dryRun = true;
+	const options = {
+		target: undefined,
+		latest: false,
+		dev: false,
+		version: undefined,
+		ref: undefined,
+		force: false,
+		check: false,
+		skipConflicts: false,
+		dryRun: false,
+	};
+
+	for (let i = 0; i < args.length; i += 1) {
+		const arg = args[i];
+		if (options.target === undefined) {
+			if (arg === "self" || arg === "theme" || isValidComponentId(arg)) {
+				options.target = arg;
+				continue;
+			}
+			throw new Error(
+				`Invalid update target: ${arg}; expected self, theme, or a component ID`,
+			);
+		}
+		if (arg === "--latest") {
+			options.latest = true;
+			continue;
+		}
+		if (arg === "--dev") {
+			options.dev = true;
+			continue;
+		}
+		if (arg === "--version") {
+			const val = args[i + 1];
+			if (!val || val.startsWith("--"))
+				throw new Error("Missing value for --version");
+			options.version = val;
+			i += 1;
+			continue;
+		}
+		if (arg === "--ref") {
+			const val = args[i + 1];
+			if (!val || val.startsWith("--"))
+				throw new Error("Missing value for --ref");
+			options.ref = val;
+			i += 1;
 			continue;
 		}
 		if (arg === "--force") {
-			if (options.force) throw new Error("Duplicate update option: --force");
 			options.force = true;
 			continue;
 		}
-		if (arg.startsWith("--")) {
-			throw new Error(`Unknown update option: ${arg}`);
+		if (arg === "--check") {
+			options.check = true;
+			continue;
 		}
-		if (options.component !== undefined) {
-			throw new Error("Usage: nazare update <component> [--dry-run] [--force]");
+		if (arg === "--skip-conflicts") {
+			options.skipConflicts = true;
+			continue;
 		}
-		options.component = arg;
+		if (arg === "--dry-run") {
+			options.dryRun = true;
+			continue;
+		}
+		throw new Error(`Unknown update option: ${arg}`);
 	}
-	if (!options.component) {
-		throw new Error("Usage: nazare update <component> [--dry-run] [--force]");
+
+	if (!options.target) {
+		throw new Error("Usage: nazare update self|theme|<component>");
 	}
-	if (!isValidComponentId(options.component)) {
-		throw new Error(`Invalid component ID: ${options.component}`);
+
+	const selectorCount = [
+		options.latest,
+		options.version !== undefined,
+		options.ref !== undefined,
+	].filter(Boolean).length;
+	if (selectorCount > 1)
+		throw new Error("--latest, --version, and --ref are mutually exclusive");
+	if (options.dev && !options.latest)
+		throw new Error("--dev requires --latest");
+	if (options.version !== undefined && !SEMVER_PATTERN.test(options.version)) {
+		throw new Error(`Invalid SemVer for --version: ${options.version}`);
 	}
+
+	if (options.target === "self") {
+		if (
+			options.force ||
+			options.check ||
+			options.skipConflicts ||
+			options.dryRun
+		) {
+			throw new Error(
+				"--force, --check, --skip-conflicts, and --dry-run are not valid for update self",
+			);
+		}
+	} else if (options.target === "theme") {
+		if (options.dryRun)
+			throw new Error("--dry-run is not valid for update theme; use --check");
+	} else {
+		// component
+		if (options.check || options.skipConflicts) {
+			throw new Error(
+				"--check and --skip-conflicts are only valid for update theme",
+			);
+		}
+	}
+
 	return options;
+}
+
+async function resolveUpdateRef(options, registryRepo) {
+	if (options.latest) {
+		let repoSlug;
+		if (registryRepo !== undefined) {
+			if (isHttpRegistryRepo(registryRepo)) {
+				throw new Error("--latest is not supported for HTTP registry sources");
+			}
+			repoSlug = githubRepoSlug(registryRepo);
+		}
+		return resolveLatestTagRef({ dev: options.dev, repoSlug });
+	}
+	if (options.version !== undefined) {
+		return `v${options.version}`;
+	}
+	if (options.ref !== undefined) {
+		return normalizeSourceRef(options.ref);
+	}
+	return undefined;
 }
 
 async function addComponent(args) {
@@ -1486,30 +1540,26 @@ function renderUpdateHeader(id, installedComponent, manifestComponent) {
 	return `${id} ${installedComponent.version} -> ${manifestComponent.version}\n`;
 }
 
-async function updateComponent(args) {
-	let options;
-	try {
-		options = parseUpdateArgs(args);
-	} catch (error) {
-		process.stderr.write(`nazare update error: ${error.message}\n`);
-		return 1;
-	}
-
+async function updateComponent(options, selectedRef) {
 	try {
 		const cwd = process.cwd();
-		const { lockPath, lockSource, registry } = readProjectState(cwd);
+		const { configPath, lockPath, configSource, lockSource, registry } =
+			readProjectState(cwd);
+		const effectiveRegistry = selectedRef
+			? { ...registry, ref: selectedRef }
+			: registry;
 		const installedComponents = parseInstalledComponents(lockSource);
-		const installedComponent = installedComponents[options.component];
+		const installedComponent = installedComponents[options.target];
 		if (!installedComponent) {
 			throw new Error(
-				`Component not installed: ${options.component}; run nazare add ${options.component}`,
+				`Component not installed: ${options.target}; run nazare add ${options.target}`,
 			);
 		}
 
-		const registryComponents = await readCurrentComponents(registry);
+		const registryComponents = await readCurrentComponents(effectiveRegistry);
 		const updateOrder = componentInstallOrder(
 			registryComponents,
-			options.component,
+			options.target,
 		);
 		for (const id of updateOrder) {
 			if (!installedComponents[id]) {
@@ -1519,7 +1569,7 @@ async function updateComponent(args) {
 			}
 		}
 		const { components, sources } = await readCurrentComponentsWithSources(
-			registry,
+			effectiveRegistry,
 			updateOrder,
 		);
 		const ownership = buildComponentOwnership(installedComponents);
@@ -1632,9 +1682,7 @@ async function updateComponent(args) {
 				!componentMatchesLock(components[id], installedComponents[id]),
 		);
 		if (plannedCount === 0 && componentsToUpdate.length === 0) {
-			process.stdout.write(
-				`Component already up to date: ${options.component}\n`,
-			);
+			process.stdout.write(`Component already up to date: ${options.target}\n`);
 			return 0;
 		}
 
@@ -1716,7 +1764,7 @@ async function updateComponent(args) {
 				);
 			}
 			process.stdout.write(
-				`Resolve markers manually. nazare.lock.yml was not updated.\nRun nazare update ${options.component} again after resolving if you want to accept the registry update.\n`,
+				`Resolve markers manually. nazare.lock.yml was not updated.\nRun nazare update ${options.target} again after resolving if you want to accept the registry update.\n`,
 			);
 			return 0;
 		}
@@ -1747,11 +1795,21 @@ async function updateComponent(args) {
 		fs.writeFileSync(
 			lockPath,
 			renderComponentLockYaml(
-				registry,
+				effectiveRegistry,
 				nextComponents,
 				extractThemeBlock(lockSource),
 			),
 		);
+		if (selectedRef) {
+			fs.writeFileSync(
+				configPath,
+				replaceRegistryYaml(
+					configSource,
+					effectiveRegistry,
+					"nazare.config.yml",
+				),
+			);
+		}
 		process.stdout.write("Done.\n");
 		return 0;
 	} catch (error) {
@@ -1924,78 +1982,27 @@ function parseThemePullArgs(args) {
 	return options;
 }
 
-function parseRegistryUseArgs(args) {
-	const options = {
-		latest: false,
-		dev: false,
-		repo: undefined,
-		ref: undefined,
-	};
-
-	for (let index = 0; index < args.length; index += 1) {
-		const arg = args[index];
-		if (arg === "latest") {
-			if (options.latest || options.ref) {
-				throw new Error("Use either latest or --repo/--ref, not both");
-			}
-			options.latest = true;
-			continue;
+async function promptThemePullConflict(file, rl) {
+	while (true) {
+		const answer = (
+			await rl.question(
+				`Theme file exists: ${file.to}. Choose skip, overwrite, all, or none [skip]: `,
+			)
+		)
+			.trim()
+			.toLowerCase();
+		const choice = answer || "skip";
+		if (["skip", "overwrite", "all", "none"].includes(choice)) {
+			return choice;
 		}
-		if (arg === "--dev") {
-			options.dev = true;
-			continue;
-		}
-		if (arg === "--repo") {
-			const value = args[index + 1];
-			if (!value || value.startsWith("--"))
-				throw new Error("Missing value for --repo");
-			if (!isValidRegistryRepo(value))
-				throw new Error("Invalid registry repo for --repo");
-			options.repo = value;
-			index += 1;
-			continue;
-		}
-		if (arg === "--ref") {
-			const value = args[index + 1];
-			if (!value || value.startsWith("--"))
-				throw new Error("Missing value for --ref");
-			options.ref = value;
-			index += 1;
-			continue;
-		}
-		throw new Error(`Unknown registry use option: ${arg}`);
+		process.stdout.write("Choose skip, overwrite, all, or none.\n");
 	}
-
-	if (options.dev && !options.latest) throw new Error("--dev requires latest");
-	if (options.latest && (options.repo || options.ref)) {
-		throw new Error("Use either latest or --repo/--ref, not both");
-	}
-	if (!options.latest && (!options.repo || !options.ref)) {
-		throw new Error("Use latest or provide both --repo and --ref");
-	}
-	return options;
 }
 
-function parseThemeUpdateArgs(args) {
-	const options = { force: false, check: false, skipConflicts: false };
-
-	for (const arg of args) {
-		if (arg === "--force") {
-			options.force = true;
-			continue;
-		}
-		if (arg === "--check") {
-			options.check = true;
-			continue;
-		}
-		if (arg === "--skip-conflicts") {
-			options.skipConflicts = true;
-			continue;
-		}
-		throw new Error(`Unknown theme update option: ${arg}`);
-	}
-
-	return options;
+function canPromptThemePull() {
+	return (
+		process.stdin.isTTY || process.env.NAZARE_THEME_PULL_INTERACTIVE === "1"
+	);
 }
 
 function sha256(buffer) {
@@ -2123,7 +2130,16 @@ function readProjectState(cwd) {
 	const configSource = fs.readFileSync(configPath, "utf8");
 	const lockSource = fs.readFileSync(lockPath, "utf8");
 	const registry = parseRegistryYaml(configSource, "nazare.config.yml");
-	parseRegistryYaml(lockSource, "nazare.lock.yml");
+	const lockRegistry = parseRegistryYaml(lockSource, "nazare.lock.yml");
+
+	if (
+		registry.repo !== lockRegistry.repo ||
+		registry.ref !== lockRegistry.ref
+	) {
+		throw new Error(
+			"Registry metadata mismatch between nazare.config.yml and nazare.lock.yml; run nazare init to reinitialize or repair the metadata",
+		);
+	}
 
 	return { configPath, lockPath, configSource, lockSource, registry };
 }
@@ -2186,25 +2202,51 @@ async function themePull(args) {
 		const conflicts = theme.files.filter((file) =>
 			fs.existsSync(path.join(cwd, file.to)),
 		);
-		if (conflicts.length > 0 && !options.yes) {
+		if (conflicts.length > 0 && !options.yes && !canPromptThemePull()) {
 			throw new Error(
 				`Theme file conflicts require --yes: ${conflicts.map((file) => file.to).join(", ")}`,
 			);
 		}
 
 		const writtenFiles = [];
-		for (const file of theme.files) {
-			const targetPath = path.join(cwd, file.to);
-			if (fs.existsSync(targetPath) && !options.yes) continue;
-			const content = sources.get(file.from);
-			fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-			fs.writeFileSync(targetPath, content);
-			writtenFiles.push({
-				path: file.to,
-				source: file.from,
-				checksum: file.checksum,
-			});
-			process.stdout.write(`Wrote ${file.to}\n`);
+		let conflictMode;
+		let rl;
+		try {
+			if (conflicts.length > 0 && !options.yes) {
+				rl = readline.createInterface({
+					input: process.stdin,
+					output: process.stdout,
+				});
+			}
+
+			for (const file of theme.files) {
+				const targetPath = path.join(cwd, file.to);
+				const exists = fs.existsSync(targetPath);
+				if (exists && !options.yes) {
+					let choice = conflictMode;
+					if (!choice) {
+						choice = await promptThemePullConflict(file, rl);
+						if (choice === "all") conflictMode = "overwrite";
+						if (choice === "none") conflictMode = "skip";
+					}
+					if (choice === "skip" || choice === "none") {
+						process.stdout.write(`Skipped ${file.to}\n`);
+						continue;
+					}
+				}
+
+				const content = sources.get(file.from);
+				fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+				fs.writeFileSync(targetPath, content);
+				writtenFiles.push({
+					path: file.to,
+					source: file.from,
+					checksum: file.checksum,
+				});
+				process.stdout.write(`Wrote ${file.to}\n`);
+			}
+		} finally {
+			if (rl) rl.close();
 		}
 
 		if (writtenFiles.length > 0) {
@@ -2233,62 +2275,15 @@ async function themePull(args) {
 	}
 }
 
-async function registryUse(args) {
-	let options;
-	try {
-		options = parseRegistryUseArgs(args);
-	} catch (error) {
-		process.stderr.write(`nazare registry use error: ${error.message}\n`);
-		return 1;
-	}
-
-	try {
-		const cwd = process.cwd();
-		const { configPath, lockPath, configSource, lockSource, registry } =
-			readProjectState(cwd);
-		const nextRegistry = { ...registry };
-		if (options.latest) {
-			nextRegistry.repo = DEFAULT_REGISTRY.repo;
-			nextRegistry.ref = await resolveLatestTagRef({ dev: options.dev });
-		} else {
-			nextRegistry.repo = options.repo;
-			nextRegistry.ref = options.ref;
-		}
-		const nextConfig = replaceRegistryYaml(
-			configSource,
-			nextRegistry,
-			"nazare.config.yml",
-		);
-		const nextLock = replaceRegistryYaml(
-			lockSource,
-			nextRegistry,
-			"nazare.lock.yml",
-		);
-		fs.writeFileSync(configPath, nextConfig);
-		fs.writeFileSync(lockPath, nextLock);
-		process.stdout.write(
-			`Registry source set to ${nextRegistry.repo} ${nextRegistry.ref}\n`,
-		);
-		return 0;
-	} catch (error) {
-		process.stderr.write(`nazare registry use error: ${error.message}\n`);
-		return 1;
-	}
-}
-
-async function themeUpdate(args) {
-	let options;
-	try {
-		options = parseThemeUpdateArgs(args);
-	} catch (error) {
-		process.stderr.write(`nazare theme update error: ${error.message}\n`);
-		return 1;
-	}
-
+async function themeUpdate(options, selectedRef) {
 	const cwd = process.cwd();
 
 	try {
-		const { lockPath, lockSource, registry } = readProjectState(cwd);
+		const { configPath, lockPath, configSource, lockSource, registry } =
+			readProjectState(cwd);
+		const effectiveRegistry = selectedRef
+			? { ...registry, ref: selectedRef }
+			: registry;
 		if (!themeBlockExists(lockSource)) {
 			throw new Error("Missing theme metadata; run nazare theme pull first");
 		}
@@ -2309,7 +2304,7 @@ async function themeUpdate(args) {
 			}
 		}
 
-		const { theme, sources } = await readCurrentTheme(registry);
+		const { theme, sources } = await readCurrentTheme(effectiveRegistry);
 		const manifestByPath = new Map(theme.files.map((file) => [file.to, file]));
 		const trackedByPath = new Map(
 			lockTheme.files.map((file) => [file.path, { ...file }]),
@@ -2524,6 +2519,20 @@ async function themeUpdate(args) {
 
 		if (reportableOperations === 0) {
 			process.stdout.write("Theme already up to date\n");
+			if (selectedRef) {
+				fs.writeFileSync(
+					configPath,
+					replaceRegistryYaml(
+						configSource,
+						effectiveRegistry,
+						"nazare.config.yml",
+					),
+				);
+				fs.writeFileSync(
+					lockPath,
+					replaceRegistryYaml(lockSource, effectiveRegistry, "nazare.lock.yml"),
+				);
+			}
 			return 0;
 		}
 
@@ -2567,10 +2576,13 @@ async function themeUpdate(args) {
 			nextFiles.set(file.path, file);
 		}
 
+		const isFullSuccess = mutationOperations > 0 && skipped.length === 0;
+		const lockRegistry =
+			isFullSuccess && selectedRef ? effectiveRegistry : registry;
 		fs.writeFileSync(
 			lockPath,
 			renderThemeLockYaml(
-				registry,
+				lockRegistry,
 				theme,
 				[...nextFiles.values()],
 				{
@@ -2580,10 +2592,20 @@ async function themeUpdate(args) {
 				extractComponentsBlock(lockSource),
 			),
 		);
+		if (isFullSuccess && selectedRef) {
+			fs.writeFileSync(
+				configPath,
+				replaceRegistryYaml(
+					configSource,
+					effectiveRegistry,
+					"nazare.config.yml",
+				),
+			);
+		}
 
 		return 0;
 	} catch (error) {
-		process.stderr.write(`nazare theme update error: ${error.message}\n`);
+		process.stderr.write(`nazare update error: ${error.message}\n`);
 		return 1;
 	}
 }
@@ -2640,15 +2662,13 @@ function initTheme(args) {
 	return 0;
 }
 
-async function selfUpdate(args) {
-	let options;
+async function selfUpdate(_options, selectedRef) {
 	let metadata;
 	try {
-		options = await parseSelfUpdateArgs(args);
-		metadata = sourceMetadata(readInstallMetadata(), options.source);
+		metadata = sourceMetadata(readInstallMetadata(), selectedRef);
 		await verifyPackageVersionForTag(metadata);
 	} catch (error) {
-		process.stderr.write(`nazare self update error: ${error.message}\n`);
+		process.stderr.write(`nazare update error: ${error.message}\n`);
 		return 1;
 	}
 
@@ -2668,11 +2688,38 @@ async function selfUpdate(args) {
 	});
 
 	if (result.error) {
-		process.stderr.write(`nazare self update error: ${result.error.message}\n`);
+		process.stderr.write(`nazare update error: ${result.error.message}\n`);
 		return 1;
 	}
 
 	return result.status === null ? 1 : result.status;
+}
+
+async function update(args) {
+	let options;
+	try {
+		options = parseUpdateArgs(args);
+	} catch (error) {
+		process.stderr.write(`nazare update error: ${error.message}\n`);
+		return 1;
+	}
+
+	let selectedRef;
+	try {
+		let registryRepo;
+		if (options.target !== "self" && options.latest) {
+			const { registry } = readProjectState(process.cwd());
+			registryRepo = registry.repo;
+		}
+		selectedRef = await resolveUpdateRef(options, registryRepo);
+	} catch (error) {
+		process.stderr.write(`nazare update error: ${error.message}\n`);
+		return 1;
+	}
+
+	if (options.target === "self") return selfUpdate(options, selectedRef);
+	if (options.target === "theme") return themeUpdate(options, selectedRef);
+	return updateComponent(options, selectedRef);
 }
 
 async function main(argv) {
@@ -2681,15 +2728,11 @@ async function main(argv) {
 		return 0;
 	}
 
-	if (argv.includes("--version") || argv.includes("-v")) {
+	if (argv[0] === "--version" || argv[0] === "-v") {
 		return printVersion();
 	}
 
 	const [command, subcommand, ...rest] = argv;
-
-	if (command === "self" && subcommand === "update") {
-		return selfUpdate(rest);
-	}
 
 	if (command === "init") {
 		return initTheme(argv.slice(1));
@@ -2704,19 +2747,11 @@ async function main(argv) {
 	}
 
 	if (command === "update") {
-		return updateComponent(argv.slice(1));
-	}
-
-	if (command === "registry" && subcommand === "use") {
-		return registryUse(rest);
+		return update(argv.slice(1));
 	}
 
 	if (command === "theme" && subcommand === "pull") {
 		return themePull(rest);
-	}
-
-	if (command === "theme" && subcommand === "update") {
-		return themeUpdate(rest);
 	}
 
 	process.stderr.write(

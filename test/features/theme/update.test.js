@@ -106,7 +106,7 @@ describe("nazare theme update", () => {
 		await initAndPull(cwd, registry);
 		await writeRegistry(registry, { "layout/theme.liquid": "new layout\n" });
 
-		const result = await runCli(["theme", "update"], {
+		const result = await runCli(["update", "theme"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -135,7 +135,7 @@ describe("nazare theme update", () => {
 			),
 		);
 
-		const result = await runCli(["theme", "update", "--check"], {
+		const result = await runCli(["update", "theme", "--check"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -145,7 +145,7 @@ describe("nazare theme update", () => {
 			"Would update metadata layout/theme.liquid",
 		);
 
-		const update = await runCli(["theme", "update"], {
+		const update = await runCli(["update", "theme"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -163,7 +163,7 @@ describe("nazare theme update", () => {
 		await writeRegistry(registry, { "vite.config.js": "new config\n" });
 		await writeFile(join(cwd, "vite.config.js"), "new config\n");
 
-		const result = await runCli(["theme", "update", "--force"], {
+		const result = await runCli(["update", "theme", "--force"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -197,7 +197,7 @@ describe("nazare theme update", () => {
 		);
 		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
 
-		const result = await runCli(["theme", "update"], {
+		const result = await runCli(["update", "theme"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -230,7 +230,7 @@ describe("nazare theme update", () => {
 			),
 		);
 
-		const result = await runCli(["theme", "update"], {
+		const result = await runCli(["update", "theme"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -256,7 +256,7 @@ describe("nazare theme update", () => {
 			"templates/index.json": "new index\n",
 		});
 
-		const result = await runCli(["theme", "update"], {
+		const result = await runCli(["update", "theme"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -285,7 +285,7 @@ describe("nazare theme update", () => {
 			"templates/index.json": "new index\n",
 		});
 
-		const result = await runCli(["theme", "update", "--skip-conflicts"], {
+		const result = await runCli(["update", "theme", "--skip-conflicts"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -318,7 +318,7 @@ describe("nazare theme update", () => {
 			"templates/index.json": "new index\n",
 		});
 
-		const result = await runCli(["theme", "update", "--skip-conflicts"], {
+		const result = await runCli(["update", "theme", "--skip-conflicts"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -342,7 +342,7 @@ describe("nazare theme update", () => {
 		await writeFile(join(cwd, "layout", "theme.liquid"), "user edit\n");
 		await writeRegistry(registry, { "layout/theme.liquid": "new layout\n" });
 
-		const result = await runCli(["theme", "update", "--force"], {
+		const result = await runCli(["update", "theme", "--force"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -360,7 +360,7 @@ describe("nazare theme update", () => {
 		await initAndPull(cwd, registry);
 		await rm(join(cwd, "layout", "theme.liquid"));
 
-		const result = await runCli(["theme", "update", "--force"], {
+		const result = await runCli(["update", "theme", "--force"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -381,7 +381,7 @@ describe("nazare theme update", () => {
 		await initAndPull(cwd, registry);
 		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
 
-		const result = await runCli(["theme", "update"], {
+		const result = await runCli(["update", "theme"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -407,7 +407,7 @@ describe("nazare theme update", () => {
 		await writeFile(join(cwd, "templates", "old.json"), "user edit\n");
 		await writeRegistry(registry, { "layout/theme.liquid": "new layout\n" });
 
-		const result = await runCli(["theme", "update"], {
+		const result = await runCli(["update", "theme"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -433,7 +433,7 @@ describe("nazare theme update", () => {
 		await writeFile(join(cwd, "templates", "old.json"), "user edit\n");
 		await writeRegistry(registry, { "layout/theme.liquid": "new layout\n" });
 
-		const result = await runCli(["theme", "update", "--skip-conflicts"], {
+		const result = await runCli(["update", "theme", "--skip-conflicts"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -461,7 +461,7 @@ describe("nazare theme update", () => {
 			"sections/new.liquid": "registry file\n",
 		});
 
-		const result = await runCli(["theme", "update"], {
+		const result = await runCli(["update", "theme"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -472,7 +472,7 @@ describe("nazare theme update", () => {
 			"user file\n",
 		);
 
-		const skipped = await runCli(["theme", "update", "--skip-conflicts"], {
+		const skipped = await runCli(["update", "theme", "--skip-conflicts"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -486,7 +486,7 @@ describe("nazare theme update", () => {
 			"sections/new.liquid",
 		);
 
-		const forced = await runCli(["theme", "update", "--force"], {
+		const forced = await runCli(["update", "theme", "--force"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -526,7 +526,7 @@ describe("nazare theme update", () => {
 		await writeFile(join(cwd, "layout", "theme.liquid"), "user edit\n");
 		await writeRegistry(registry, { "layout/theme.liquid": "new layout\n" });
 
-		const result = await runCli(["theme", "update", "--force"], {
+		const result = await runCli(["update", "theme", "--force"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -546,7 +546,7 @@ describe("nazare theme update", () => {
 		const beforeLock = await readFile(join(cwd, "nazare.lock.yml"), "utf8");
 		await writeRegistry(registry, { "layout/theme.liquid": "new layout\n" });
 
-		const result = await runCli(["theme", "update", "--check"], {
+		const result = await runCli(["update", "theme", "--check"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -575,7 +575,7 @@ describe("nazare theme update", () => {
 			),
 		);
 
-		const result = await runCli(["theme", "update"], {
+		const result = await runCli(["update", "theme"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -601,7 +601,7 @@ describe("nazare theme update", () => {
 			"templates/index.json": "new index\n",
 		});
 
-		const result = await runCli(["theme", "update"], {
+		const result = await runCli(["update", "theme"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -624,7 +624,7 @@ describe("nazare theme update", () => {
 		await writeFile(join(cwd, "templates", "old.json"), "user edit\n");
 		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
 
-		const result = await runCli(["theme", "update", "--force"], {
+		const result = await runCli(["update", "theme", "--force"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -649,7 +649,7 @@ describe("nazare theme update", () => {
 			"sections/new.liquid": "new section\n",
 		});
 
-		const result = await runCli(["theme", "update"], {
+		const result = await runCli(["update", "theme"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -671,7 +671,7 @@ describe("nazare theme update", () => {
 		await initAndPull(cwd, registry);
 		const beforeLock = await readFile(join(cwd, "nazare.lock.yml"), "utf8");
 
-		const result = await runCli(["theme", "update"], {
+		const result = await runCli(["update", "theme"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -697,7 +697,7 @@ describe("nazare theme update", () => {
 			"templates/index.json": "new index\n",
 		});
 
-		const result = await runCli(["theme", "update", "--check"], {
+		const result = await runCli(["update", "theme", "--check"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -723,7 +723,7 @@ describe("nazare theme update", () => {
 		const oldUpdatedAt = beforeLock.match(/updatedAt: "(.+?)"/)?.[1];
 		await writeRegistry(registry, { "layout/theme.liquid": "new layout\n" });
 
-		const result = await runCli(["theme", "update"], {
+		const result = await runCli(["update", "theme"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -742,7 +742,7 @@ describe("nazare theme update", () => {
 		await mkdir(join(cwd, "snippets"));
 		await writeFile(join(cwd, "snippets", "user.liquid"), "user file\n");
 
-		const result = await runCli(["theme", "update", "--force"], {
+		const result = await runCli(["update", "theme", "--force"], {
 			cwd,
 			env: { NAZARE_REGISTRY_DIR: registry },
 		});
@@ -750,6 +750,82 @@ describe("nazare theme update", () => {
 		expect(result).toMatchObject({ code: 0, stderr: "" });
 		expect(await readFile(join(cwd, "snippets", "user.liquid"), "utf8")).toBe(
 			"user file\n",
+		);
+	}, 10000);
+
+	it("update theme --ref advances registry ref in config and lock", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
+		await initAndPull(cwd, registry);
+		await writeRegistry(registry, { "layout/theme.liquid": "new layout\n" });
+
+		const result = await runCli(
+			["update", "theme", "--ref", "refs/heads/new-branch"],
+			{
+				cwd,
+				env: { NAZARE_REGISTRY_DIR: registry },
+			},
+		);
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(await readFile(join(cwd, "nazare.config.yml"), "utf8")).toContain(
+			"ref: refs/heads/new-branch",
+		);
+		expect(await readFile(join(cwd, "nazare.lock.yml"), "utf8")).toContain(
+			"ref: refs/heads/new-branch",
+		);
+	}, 10000);
+
+	it("update theme --version advances registry ref in config and lock", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, { "layout/theme.liquid": "layout\n" });
+		await initAndPull(cwd, registry);
+
+		const result = await runCli(["update", "theme", "--version", "9.9.9"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registry },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(await readFile(join(cwd, "nazare.config.yml"), "utf8")).toContain(
+			"ref: v9.9.9",
+		);
+		expect(await readFile(join(cwd, "nazare.lock.yml"), "utf8")).toContain(
+			"ref: v9.9.9",
+		);
+	}, 10000);
+
+	it("partial update with --skip-conflicts preserves registry ref", async () => {
+		const cwd = await makeTempDir();
+		const registry = await makeTempDir("nazare-registry-test-");
+		await writeRegistry(registry, {
+			"layout/theme.liquid": "old layout\n",
+			"templates/index.json": "old index\n",
+		});
+		await initAndPull(cwd, registry);
+		await writeFile(join(cwd, "layout", "theme.liquid"), "user edit\n");
+		await writeRegistry(registry, {
+			"layout/theme.liquid": "new layout\n",
+			"templates/index.json": "new index\n",
+		});
+
+		const result = await runCli(
+			["update", "theme", "--ref", "refs/heads/other", "--skip-conflicts"],
+			{
+				cwd,
+				env: { NAZARE_REGISTRY_DIR: registry },
+			},
+		);
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(result.stdout).toContain("Skipped layout/theme.liquid");
+		expect(await readFile(join(cwd, "nazare.config.yml"), "utf8")).toContain(
+			"ref: refs/heads/main",
+		);
+		expect(await readFile(join(cwd, "nazare.lock.yml"), "utf8")).toContain(
+			"ref: refs/heads/main",
 		);
 	}, 10000);
 });

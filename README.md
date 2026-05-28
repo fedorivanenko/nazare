@@ -169,7 +169,24 @@ Serve committed Git refs for local tag testing:
 nazare-dev registry serve --git-refs
 ```
 
-Requests like `/raw/nazare.registry.yml?ref=v0.14.1-dev.0` read from that local Git tag.
+With `--git-refs`, requests like `/raw/nazare.registry.yml?ref=v0.14.1-dev.0` read from that local Git tag instead of the working tree. Refs not present in the local repo return `404`.
+
+To test a specific tag against a consumer theme repo, initialize the consumer against the local server, then use `update theme --ref` to select the tag:
+
+```sh
+# In the registry checkout
+nazare-dev registry serve --git-refs
+
+# In a consumer theme repo (separate terminal)
+nazare init --repo http://127.0.0.1:7331 --ref v0.14.0
+nazare theme pull --yes
+
+# Preview what the next tag would change
+nazare update theme --ref v0.14.1-dev.0 --check
+
+# Apply it
+nazare update theme --ref v0.14.1-dev.0 --force
+```
 
 ## Release channels and CLI update
 
@@ -181,27 +198,44 @@ Update a Nazare-owned CLI install from its originally installed source:
 nazare update self
 ```
 
-Update the CLI to latest stable, latest dev, a specific version, or an explicit source:
+Update the CLI to latest stable, latest dev, a specific version, or an explicit ref:
 
 ```sh
 nazare update self --latest
 nazare update self --latest --dev
 nazare update self --version 0.15.0
-nazare update self --source feat/my-branch
+nazare update self --ref feat/my-branch
 ```
 
-Update theme or components from stable, dev, a specific version, or an explicit source:
+Update theme or components from stable, dev, a specific version, or an explicit ref:
 
 ```sh
 nazare update theme --latest --force
 nazare update theme --latest --dev --force
 nazare update theme --version 0.15.0 --check
+nazare update theme --ref v0.15.1-dev.0 --skip-conflicts
 nazare update c-button --latest --force
 nazare update c-button --latest --dev --force
 nazare update c-button --version 0.15.0 --dry-run
+nazare update c-button --ref v0.15.1-dev.0
 ```
 
-Theme/component update commands advance `nazare.config.yml` and `nazare.lock.yml` registry metadata only after the selected file update succeeds.
+Theme/component update commands use the registry repo recorded in `nazare.lock.yml`. They advance `nazare.config.yml` and `nazare.lock.yml` registry ref metadata only after the selected file update succeeds.
+
+To downgrade the CLI to a previous version:
+
+```sh
+nazare update self --version 0.14.0
+```
+
+To downgrade theme or component files to a previous version:
+
+```sh
+nazare update theme --version 0.14.0 --force
+nazare update c-button --version 0.14.0 --force
+```
+
+`--version` accepts any valid SemVer. The same update mechanics apply — checksums are verified, user-modified files are protected unless `--force` is passed.
 
 Verify update:
 
