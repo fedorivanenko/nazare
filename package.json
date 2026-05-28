@@ -1,9 +1,14 @@
 {
 	"name": "nazare-workspace",
 	"private": true,
+	"packageManager": "pnpm@10.14.0",
 	"workspaces": [
 		"packages/*"
 	],
+	"scripts": {
+		"nazare": "node packages/nazare/bin/nazare.js",
+		"nazare-dev": "node packages/nazare-dev/bin/nazare-dev.js"
+	},
 	"devDependencies": {
 		"vitest": "^4.1.7"
 	}
