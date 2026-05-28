@@ -181,16 +181,16 @@ Update a Nazare-owned CLI install from its originally installed source:
 nazare update self
 ```
 
-Update the CLI to latest stable, latest dev, a specific version, or an explicit source:
+Update the CLI to latest stable, latest dev, a specific version, or an explicit ref:
 
 ```sh
 nazare update self --latest
 nazare update self --latest --dev
 nazare update self --version 0.15.0
-nazare update self --source feat/my-branch
+nazare update self --ref feat/my-branch
 ```
 
-Update theme or components from stable, dev, a specific version, or an explicit source:
+Update theme or components from stable, dev, a specific version, or an explicit ref:
 
 ```sh
 nazare update theme --latest --force
@@ -201,7 +201,7 @@ nazare update c-button --latest --dev --force
 nazare update c-button --version 0.15.0 --dry-run
 ```
 
-Theme/component update commands advance `nazare.config.yml` and `nazare.lock.yml` registry metadata only after the selected file update succeeds.
+Theme/component update commands use the registry repo recorded in `nazare.lock.yml`. They advance `nazare.config.yml` and `nazare.lock.yml` registry ref metadata only after the selected file update succeeds.
 
 Verify update:
 

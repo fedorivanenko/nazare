@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: update
 title: Unified Update Command
-status: blocked
+status: in-progress
 
 dependencies:
   - cli-install
@@ -394,35 +394,33 @@ Failed theme/component updates must not mutate files, config registry metadata, 
 
 ## Verification
 
-Result: blocked until `theme-pull` reaches a settled `done` contract or this feature is split into smaller implementation features.
-
-- [ ] `nazare --version` prints installed CLI version.
-- [ ] `nazare update self` updates from original install source.
-- [ ] `nazare update self --latest` stores stable resolved tag in install metadata.
-- [ ] `nazare update self --latest --dev` stores dev resolved tag in install metadata.
-- [ ] `nazare update self --version <version>` updates from tag `v<version>`.
-- [ ] `nazare update self --ref <ref>` updates from explicit ref.
-- [ ] CLI update rejects tag/package version mismatch.
-- [ ] Stable tag resolver ignores dev prerelease tags.
-- [ ] Dev tag resolver selects highest valid `*-dev.N` prerelease tag.
-- [ ] `nazare update theme --latest` applies stable-tag theme changes and records registry metadata only after success.
-- [ ] `nazare update theme --latest --dev` applies dev-tag theme changes and records registry metadata only after success.
-- [ ] `nazare update theme --version <version>` applies version-tag theme changes and records registry metadata only after success.
-- [ ] `nazare update theme --ref <ref>` applies explicit-ref theme changes and records registry metadata only after success.
-- [ ] Failed theme update leaves config and lockfile bytes unchanged.
-- [ ] `nazare update theme --check` prints selected ref and mutates nothing.
-- [ ] Theme update preserves existing component lockfile metadata.
-- [ ] Theme update never deletes untracked files.
-- [ ] `nazare update <component> --latest` applies stable-tag component changes and records registry metadata only after success.
-- [ ] `nazare update <component> --latest --dev` applies dev-tag component changes and records registry metadata only after success.
-- [ ] `nazare update <component> --version <version>` applies version-tag component changes and records registry metadata only after success.
-- [ ] `nazare update <component> --ref <ref>` applies explicit-ref component changes and records registry metadata only after success.
-- [ ] Failed component update leaves config and lockfile bytes unchanged unless manual conflict markers are explicitly chosen.
-- [ ] `nazare update <component> --dry-run` prints selected ref and mutates nothing.
-- [ ] Component update preserves existing theme lockfile metadata.
-- [ ] Component prompt `N` skips only the current file operation, exits `0`, records only completed safe file mutations, and does not advance registry metadata.
-- [ ] Component prompt `m` writes conflict markers only, performs no normal component mutations after marker write, exits `0`, and does not advance metadata.
-- [ ] Legacy `nazare self update`, `nazare theme update`, and `nazare registry use` are absent from help and command dispatch.
+- [x] `nazare --version` prints installed CLI version.
+- [x] `nazare update self` updates from original install source.
+- [x] `nazare update self --latest` stores stable resolved tag in install metadata.
+- [x] `nazare update self --latest --dev` stores dev resolved tag in install metadata.
+- [x] `nazare update self --version <version>` updates from tag `v<version>`.
+- [x] `nazare update self --ref <ref>` updates from explicit ref.
+- [x] CLI update rejects tag/package version mismatch.
+- [x] Stable tag resolver ignores dev prerelease tags.
+- [x] Dev tag resolver selects highest valid `*-dev.N` prerelease tag.
+- [x] `nazare update theme --latest` applies stable-tag theme changes and records registry metadata only after success.
+- [x] `nazare update theme --latest --dev` applies dev-tag theme changes and records registry metadata only after success.
+- [x] `nazare update theme --version <version>` applies version-tag theme changes and records registry metadata only after success.
+- [x] `nazare update theme --ref <ref>` applies explicit-ref theme changes and records registry metadata only after success.
+- [x] Failed theme update leaves config and lockfile bytes unchanged.
+- [x] `nazare update theme --check` prints selected ref and mutates nothing.
+- [x] Theme update preserves existing component lockfile metadata.
+- [x] Theme update never deletes untracked files.
+- [x] `nazare update <component> --latest` applies stable-tag component changes and records registry metadata only after success.
+- [x] `nazare update <component> --latest --dev` applies dev-tag component changes and records registry metadata only after success.
+- [x] `nazare update <component> --version <version>` applies version-tag component changes and records registry metadata only after success.
+- [x] `nazare update <component> --ref <ref>` applies explicit-ref component changes and records registry metadata only after success.
+- [x] Failed component update leaves config and lockfile bytes unchanged unless manual conflict markers are explicitly chosen.
+- [x] `nazare update <component> --dry-run` prints selected ref and mutates nothing.
+- [x] Component update preserves existing theme lockfile metadata.
+- [x] Component prompt `N` skips only the current file operation, exits `0`, records only completed safe file mutations, and does not advance registry metadata.
+- [x] Component prompt `m` writes conflict markers only, performs no normal component mutations after marker write, exits `0`, and does not advance metadata.
+- [x] Legacy `nazare self update`, `nazare theme update`, and `nazare registry use` are absent from help and command dispatch.
 - [ ] `nazare-dev registry serve --git-refs` serves manifest and source files from a local stable tag.
 - [ ] `nazare-dev registry serve --git-refs` serves manifest and source files from a local dev tag.
 - [ ] `nazare-dev registry serve --git-refs` returns `404` for missing refs or paths without falling back to working tree content.
