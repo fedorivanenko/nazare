@@ -1,0 +1,253 @@
+{% liquid
+  assign fp_heading = section.settings.heading
+  assign fp_body = section.settings.body
+  assign fp_primary_cta_label = section.settings.primary_cta_label
+  assign fp_primary_cta_url = section.settings.primary_cta_url
+  assign fp_primary_cta_scheme = section.settings.primary_cta_scheme | default: 'outline'
+  assign fp_secondary_cta_label = section.settings.secondary_cta_label
+  assign fp_secondary_cta_url = section.settings.secondary_cta_url
+  assign fp_secondary_cta_scheme = section.settings.secondary_cta_scheme | default: 'ghost'
+  assign fp_footnote = section.settings.footnote
+  assign fp_image = section.settings.image
+  assign fp_image_alt = section.settings.image_alt | default: ''
+  assign fp_product = section.settings.product
+  assign fp_chip_badge_label = section.settings.chip_badge_label
+  assign fp_chip_badge_style = section.settings.chip_badge_style | default: 'filled'
+  assign fp_chip_cta_label = section.settings.chip_cta_label | default: 'Shop now'
+  assign fp_content_side = section.settings.content_side | default: 'left'
+
+  if fp_image_alt == blank and fp_image.alt != blank
+    assign fp_image_alt = fp_image.alt
+  endif
+%}
+
+<section class="bg-background text-foreground">
+  <div class="grid grid-cols-1 lg:grid-cols-2">
+
+    {% if fp_content_side == 'right' %}
+      <div class="relative min-h-[50dvh] overflow-hidden">
+        {% if fp_image != blank %}
+          {{
+            fp_image
+            | image_url: width: 1200
+            | image_tag:
+              alt: fp_image_alt,
+              loading: 'lazy',
+              class: 'absolute inset-0 h-full w-full object-cover'
+          }}
+        {% endif %}
+        {% if fp_product != blank %}
+          <div class="absolute bottom-6 right-6">
+            {% render 'c-product-chip',
+              product: fp_product,
+              badge_label: fp_chip_badge_label,
+              badge_style: fp_chip_badge_style,
+              cta_label: fp_chip_cta_label
+            %}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    <div class="flex flex-col justify-center px-8 py-16 lg:px-16">
+      {% if fp_heading != blank %}
+        <h2 class="text-4xl font-bold leading-tight tracking-tight lg:text-5xl">{{ fp_heading | escape }}</h2>
+      {% endif %}
+
+      {% if fp_body != blank %}
+        <div class="mt-6 text-base leading-7 text-foreground/70 [&_a:hover]:underline [&_a]:underline-offset-2">{{ fp_body }}</div>
+      {% endif %}
+
+      {% assign fp_has_primary = false %}
+      {% assign fp_has_secondary = false %}
+      {% if fp_primary_cta_label != blank and fp_primary_cta_url != blank %}
+        {% assign fp_has_primary = true %}
+      {% endif %}
+      {% if fp_secondary_cta_label != blank and fp_secondary_cta_url != blank %}
+        {% assign fp_has_secondary = true %}
+      {% endif %}
+
+      {% if fp_has_primary or fp_has_secondary %}
+        <div class="mt-8 flex flex-wrap items-center gap-3">
+          {% if fp_has_primary %}
+            {% render 'c-button', label: fp_primary_cta_label, url: fp_primary_cta_url, scheme: fp_primary_cta_scheme %}
+          {% endif %}
+          {% if fp_has_secondary %}
+            {% render 'c-button', label: fp_secondary_cta_label, url: fp_secondary_cta_url, scheme: fp_secondary_cta_scheme %}
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {% if fp_footnote != blank %}
+        <p class="mt-4 text-xs text-foreground/50">{{ fp_footnote | escape }}</p>
+      {% endif %}
+    </div>
+
+    {% if fp_content_side == 'left' %}
+      <div class="relative min-h-[50dvh] overflow-hidden">
+        {% if fp_image != blank %}
+          {{
+            fp_image
+            | image_url: width: 1200
+            | image_tag:
+              alt: fp_image_alt,
+              loading: 'lazy',
+              class: 'absolute inset-0 h-full w-full object-cover'
+          }}
+        {% endif %}
+        {% if fp_product != blank %}
+          <div class="absolute bottom-6 right-6">
+            {% render 'c-product-chip',
+              product: fp_product,
+              badge_label: fp_chip_badge_label,
+              badge_style: fp_chip_badge_style,
+              cta_label: fp_chip_cta_label
+            %}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Feature product",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Content"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Built for your body"
+    },
+    {
+      "type": "richtext",
+      "id": "body",
+      "label": "Body text"
+    },
+    {
+      "type": "text",
+      "id": "footnote",
+      "label": "Footnote"
+    },
+    {
+      "type": "header",
+      "content": "Primary CTA"
+    },
+    {
+      "type": "url",
+      "id": "primary_cta_url",
+      "label": "Primary button URL"
+    },
+    {
+      "type": "text",
+      "id": "primary_cta_label",
+      "label": "Primary button label"
+    },
+    {
+      "type": "select",
+      "id": "primary_cta_scheme",
+      "label": "Primary button style",
+      "default": "outline",
+      "options": [
+        { "value": "solid", "label": "Solid" },
+        { "value": "outline", "label": "Outline" },
+        { "value": "ghost", "label": "Ghost" }
+      ]
+    },
+    {
+      "type": "header",
+      "content": "Secondary CTA"
+    },
+    {
+      "type": "url",
+      "id": "secondary_cta_url",
+      "label": "Secondary button URL"
+    },
+    {
+      "type": "text",
+      "id": "secondary_cta_label",
+      "label": "Secondary button label"
+    },
+    {
+      "type": "select",
+      "id": "secondary_cta_scheme",
+      "label": "Secondary button style",
+      "default": "ghost",
+      "options": [
+        { "value": "solid", "label": "Solid" },
+        { "value": "outline", "label": "Outline" },
+        { "value": "ghost", "label": "Ghost" }
+      ]
+    },
+    {
+      "type": "header",
+      "content": "Image"
+    },
+    {
+      "type": "image_picker",
+      "id": "image",
+      "label": "Lifestyle image"
+    },
+    {
+      "type": "text",
+      "id": "image_alt",
+      "label": "Image alt text"
+    },
+    {
+      "type": "header",
+      "content": "Product chip"
+    },
+    {
+      "type": "product",
+      "id": "product",
+      "label": "Product"
+    },
+    {
+      "type": "text",
+      "id": "chip_badge_label",
+      "label": "Badge label"
+    },
+    {
+      "type": "select",
+      "id": "chip_badge_style",
+      "label": "Badge style",
+      "default": "filled",
+      "options": [
+        { "value": "filled", "label": "Filled" },
+        { "value": "outline", "label": "Outline" }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "chip_cta_label",
+      "label": "Chip CTA label",
+      "default": "Shop now"
+    },
+    {
+      "type": "header",
+      "content": "Layout"
+    },
+    {
+      "type": "select",
+      "id": "content_side",
+      "label": "Content side",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "right", "label": "Right" }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Feature product"
+    }
+  ]
+}
+{% endschema %}

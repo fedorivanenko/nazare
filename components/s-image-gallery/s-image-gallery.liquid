@@ -1,0 +1,149 @@
+{% liquid
+  assign ig_mode = section.settings.mode | default: 'static'
+  assign ig_direction = section.settings.direction | default: 'left'
+  assign ig_speed = section.settings.speed | default: 'normal'
+  assign ig_pause_on_hover = section.settings.pause_on_hover
+  assign ig_ratio = section.settings.aspect_ratio | default: 'square'
+  assign ig_rendered = 0
+
+  if ig_pause_on_hover == nil
+    assign ig_pause_on_hover = true
+  endif
+
+  assign ratio_class = 'aspect-square'
+  if ig_ratio == 'portrait'
+    assign ratio_class = 'aspect-[3/4]'
+  elsif ig_ratio == 'landscape'
+    assign ratio_class = 'aspect-video'
+  endif
+%}
+
+{% capture ig_items %}
+  {% for block in section.blocks %}
+    {% if block.settings.image != blank %}
+      {% assign ig_rendered = ig_rendered | plus: 1 %}
+      <div data-c-carousel-item {{ block.shopify_attributes }} class="shrink-0 {{ ratio_class }} w-64 overflow-hidden rounded-xl">
+        {% if block.settings.link != blank %}
+          <a href="{{ block.settings.link }}" class="block size-full">
+        {% endif %}
+        {{
+          block.settings.image
+          | image_url: width: 600
+          | image_tag:
+            alt: block.settings.alt | default: block.settings.image.alt,
+            loading: 'lazy',
+            class: 'size-full object-cover'
+        }}
+        {% if block.settings.link != blank %}
+          </a>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endfor %}
+{% endcapture %}
+
+{% if ig_rendered > 0 %}
+  <section class="bg-background text-foreground">
+    <div class="py-12">
+      {% render 'c-carousel',
+        content: ig_items,
+        mode: ig_mode,
+        direction: ig_direction,
+        speed: ig_speed,
+        pause_on_hover: ig_pause_on_hover,
+        gap: 'sm'
+      %}
+    </div>
+  </section>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Image gallery",
+  "settings": [
+    {
+      "type": "select",
+      "id": "mode",
+      "label": "Mode",
+      "default": "static",
+      "options": [
+        { "value": "static", "label": "Static (drag to scroll)" },
+        { "value": "marquee", "label": "Marquee (auto-scroll)" }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "direction",
+      "label": "Marquee direction",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "right", "label": "Right" }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "speed",
+      "label": "Marquee speed",
+      "default": "normal",
+      "options": [
+        { "value": "slow", "label": "Slow" },
+        { "value": "normal", "label": "Normal" },
+        { "value": "fast", "label": "Fast" }
+      ]
+    },
+    {
+      "type": "checkbox",
+      "id": "pause_on_hover",
+      "label": "Pause on hover",
+      "default": true
+    },
+    {
+      "type": "select",
+      "id": "aspect_ratio",
+      "label": "Image aspect ratio",
+      "default": "square",
+      "options": [
+        { "value": "square", "label": "Square (1:1)" },
+        { "value": "portrait", "label": "Portrait (3:4)" },
+        { "value": "landscape", "label": "Landscape (16:9)" }
+      ]
+    }
+  ],
+  "blocks": [
+    {
+      "type": "image",
+      "name": "Image",
+      "settings": [
+        {
+          "type": "image_picker",
+          "id": "image",
+          "label": "Image"
+        },
+        {
+          "type": "text",
+          "id": "alt",
+          "label": "Alt text"
+        },
+        {
+          "type": "url",
+          "id": "link",
+          "label": "Link URL"
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Image gallery",
+      "blocks": [
+        { "type": "image" },
+        { "type": "image" },
+        { "type": "image" },
+        { "type": "image" },
+        { "type": "image" }
+      ]
+    }
+  ]
+}
+{% endschema %}

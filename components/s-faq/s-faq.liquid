@@ -1,0 +1,104 @@
+{% liquid
+  assign faq_heading = section.settings.heading
+  assign cta_label = section.settings.cta_label
+  assign cta_url = section.settings.cta_url
+  assign cta_scheme = section.settings.cta_scheme | default: 'outline'
+%}
+
+<section class="bg-background text-foreground">
+  <div class="page-width py-16 lg:py-24">
+    <div class="mx-auto max-w-3xl">
+
+      {% if faq_heading != blank %}
+        <h2 class="text-center text-3xl font-bold tracking-tight lg:text-4xl">{{ faq_heading | escape }}</h2>
+      {% endif %}
+
+      {% if cta_label != blank and cta_url != blank %}
+        <div class="mt-6 flex justify-center">
+          {% render 'c-button', label: cta_label, url: cta_url, scheme: cta_scheme %}
+        </div>
+      {% endif %}
+
+      {% if section.blocks.size > 0 %}
+        <div class="mt-12 flex flex-col gap-10">
+          {% for block in section.blocks %}
+            {% render 'c-faq-item',
+              question: block.settings.question,
+              answer: block.settings.answer
+            %}
+          {% endfor %}
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "FAQ",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Frequently asked questions"
+    },
+    {
+      "type": "header",
+      "content": "Call to action"
+    },
+    {
+      "type": "url",
+      "id": "cta_url",
+      "label": "Button URL"
+    },
+    {
+      "type": "text",
+      "id": "cta_label",
+      "label": "Button label"
+    },
+    {
+      "type": "select",
+      "id": "cta_scheme",
+      "label": "Button style",
+      "default": "outline",
+      "options": [
+        { "value": "solid", "label": "Solid" },
+        { "value": "outline", "label": "Outline" },
+        { "value": "ghost", "label": "Ghost" }
+      ]
+    }
+  ],
+  "blocks": [
+    {
+      "type": "faq",
+      "name": "FAQ item",
+      "settings": [
+        {
+          "type": "text",
+          "id": "question",
+          "label": "Question",
+          "default": "What makes this different?"
+        },
+        {
+          "type": "richtext",
+          "id": "answer",
+          "label": "Answer",
+          "default": "<p>Answer copy goes here.</p>"
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "FAQ",
+      "blocks": [
+        { "type": "faq" },
+        { "type": "faq" },
+        { "type": "faq" }
+      ]
+    }
+  ]
+}
+{% endschema %}

@@ -1,0 +1,272 @@
+{% liquid
+  assign fb_image = section.settings.image
+  assign fb_image_alt = section.settings.image_alt | default: ''
+  assign fb_image_radius = section.settings.image_radius | default: 'rounded'
+  assign fb_content_side = section.settings.content_side | default: 'right'
+  assign fb_badge_label = section.settings.badge_label
+  assign fb_badge_style = section.settings.badge_style | default: 'filled'
+  assign fb_heading = section.settings.heading
+  assign fb_body = section.settings.body
+  assign fb_primary_cta_label = section.settings.primary_cta_label
+  assign fb_primary_cta_url = section.settings.primary_cta_url
+  assign fb_primary_cta_scheme = section.settings.primary_cta_scheme | default: 'solid'
+  assign fb_secondary_cta_label = section.settings.secondary_cta_label
+  assign fb_secondary_cta_url = section.settings.secondary_cta_url
+  assign fb_secondary_cta_scheme = section.settings.secondary_cta_scheme | default: 'ghost'
+
+  if fb_image_alt == blank and fb_image.alt != blank
+    assign fb_image_alt = fb_image.alt
+  endif
+
+  assign image_radius_class = 'rounded-2xl'
+  if fb_image_radius == 'none'
+    assign image_radius_class = ''
+  endif
+%}
+
+<section class="bg-background text-foreground">
+  <div class="grid grid-cols-1 lg:grid-cols-2">
+
+    {% if fb_content_side == 'right' and fb_image != blank %}
+      <div class="overflow-hidden p-8 lg:p-12">
+        {{
+          fb_image
+          | image_url: width: 1200
+          | image_tag:
+            alt: fb_image_alt,
+            loading: 'lazy',
+            class: 'h-full w-full object-cover ' | append: image_radius_class
+        }}
+      </div>
+    {% endif %}
+
+    <div class="flex flex-col justify-center px-8 py-16 lg:px-12">
+      {% if fb_badge_label != blank %}
+        {% render 'c-badge', label: fb_badge_label, style: fb_badge_style %}
+      {% endif %}
+
+      {% if fb_heading != blank %}
+        <h2 class="mt-4 text-3xl font-bold leading-tight tracking-tight lg:text-4xl">{{ fb_heading | escape }}</h2>
+      {% endif %}
+
+      {% if fb_body != blank %}
+        <div class="mt-4 text-base leading-7 text-foreground/70 [&_a:hover]:underline [&_a]:underline-offset-2 [&_strong]:font-semibold [&_strong]:text-foreground">{{ fb_body }}</div>
+      {% endif %}
+
+      {% if section.blocks.size > 0 %}
+        <div class="mt-8 grid grid-cols-2 gap-6 lg:grid-cols-4">
+          {% for block in section.blocks %}
+            {% liquid
+              assign item_name = block.settings.name
+              if item_name == blank and block.settings.product != blank
+                assign item_name = block.settings.product.title
+              endif
+            %}
+            {% render 'c-bundle-item',
+              product: block.settings.product,
+              name: item_name,
+              benefits: block.settings.benefits
+            %}
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {% assign fb_has_primary = false %}
+      {% assign fb_has_secondary = false %}
+      {% if fb_primary_cta_label != blank and fb_primary_cta_url != blank %}
+        {% assign fb_has_primary = true %}
+      {% endif %}
+      {% if fb_secondary_cta_label != blank and fb_secondary_cta_url != blank %}
+        {% assign fb_has_secondary = true %}
+      {% endif %}
+
+      {% if fb_has_primary or fb_has_secondary %}
+        <div class="mt-8 flex flex-wrap items-center gap-3">
+          {% if fb_has_primary %}
+            {% render 'c-button', label: fb_primary_cta_label, url: fb_primary_cta_url, scheme: fb_primary_cta_scheme %}
+          {% endif %}
+          {% if fb_has_secondary %}
+            {% render 'c-button', label: fb_secondary_cta_label, url: fb_secondary_cta_url, scheme: fb_secondary_cta_scheme %}
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+
+    {% if fb_content_side == 'left' and fb_image != blank %}
+      <div class="overflow-hidden p-8 lg:p-12">
+        {{
+          fb_image
+          | image_url: width: 1200
+          | image_tag:
+            alt: fb_image_alt,
+            loading: 'lazy',
+            class: 'h-full w-full object-cover ' | append: image_radius_class
+        }}
+      </div>
+    {% endif %}
+
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Feature bundle",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Image"
+    },
+    {
+      "type": "image_picker",
+      "id": "image",
+      "label": "Lifestyle image"
+    },
+    {
+      "type": "text",
+      "id": "image_alt",
+      "label": "Image alt text"
+    },
+    {
+      "type": "select",
+      "id": "image_radius",
+      "label": "Image border radius",
+      "default": "rounded",
+      "options": [
+        { "value": "rounded", "label": "Rounded" },
+        { "value": "none", "label": "None" }
+      ]
+    },
+    {
+      "type": "header",
+      "content": "Content"
+    },
+    {
+      "type": "text",
+      "id": "badge_label",
+      "label": "Badge label",
+      "default": "Save 20%"
+    },
+    {
+      "type": "select",
+      "id": "badge_style",
+      "label": "Badge style",
+      "default": "filled",
+      "options": [
+        { "value": "filled", "label": "Filled" },
+        { "value": "outline", "label": "Outline" }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "The complete bundle"
+    },
+    {
+      "type": "richtext",
+      "id": "body",
+      "label": "Body text"
+    },
+    {
+      "type": "header",
+      "content": "Primary CTA"
+    },
+    {
+      "type": "url",
+      "id": "primary_cta_url",
+      "label": "Primary button URL"
+    },
+    {
+      "type": "text",
+      "id": "primary_cta_label",
+      "label": "Primary button label",
+      "default": "Shop the bundle"
+    },
+    {
+      "type": "select",
+      "id": "primary_cta_scheme",
+      "label": "Primary button style",
+      "default": "solid",
+      "options": [
+        { "value": "solid", "label": "Solid" },
+        { "value": "outline", "label": "Outline" },
+        { "value": "ghost", "label": "Ghost" }
+      ]
+    },
+    {
+      "type": "header",
+      "content": "Secondary CTA"
+    },
+    {
+      "type": "url",
+      "id": "secondary_cta_url",
+      "label": "Secondary button URL"
+    },
+    {
+      "type": "text",
+      "id": "secondary_cta_label",
+      "label": "Secondary button label"
+    },
+    {
+      "type": "select",
+      "id": "secondary_cta_scheme",
+      "label": "Secondary button style",
+      "default": "ghost",
+      "options": [
+        { "value": "solid", "label": "Solid" },
+        { "value": "outline", "label": "Outline" },
+        { "value": "ghost", "label": "Ghost" }
+      ]
+    },
+    {
+      "type": "header",
+      "content": "Layout"
+    },
+    {
+      "type": "select",
+      "id": "content_side",
+      "label": "Content side",
+      "default": "right",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "right", "label": "Right" }
+      ]
+    }
+  ],
+  "blocks": [
+    {
+      "type": "item",
+      "name": "Bundle item",
+      "settings": [
+        {
+          "type": "product",
+          "id": "product",
+          "label": "Product"
+        },
+        {
+          "type": "text",
+          "id": "name",
+          "label": "Name override"
+        },
+        {
+          "type": "textarea",
+          "id": "benefits",
+          "label": "Benefits",
+          "info": "One benefit per line"
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Feature bundle",
+      "blocks": [
+        { "type": "item" },
+        { "type": "item" },
+        { "type": "item" },
+        { "type": "item" }
+      ]
+    }
+  ]
+}
+{% endschema %}

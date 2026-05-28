@@ -1,0 +1,105 @@
+{% liquid
+  assign stats_heading = section.settings.heading
+  assign stats_heading_align = section.settings.heading_alignment | default: 'center'
+  assign stats_footnote = section.settings.footnote
+
+  assign heading_align_class = 'text-center'
+  if stats_heading_align == 'left'
+    assign heading_align_class = 'text-left'
+  elsif stats_heading_align == 'right'
+    assign heading_align_class = 'text-right'
+  endif
+%}
+
+{% if section.blocks.size > 0 %}
+  <section class="bg-background text-foreground">
+    <div class="page-width py-16 lg:py-24">
+
+      {% if stats_heading != blank %}
+        <h2 class="mb-12 text-3xl font-bold tracking-tight lg:text-4xl {{ heading_align_class }}">{{ stats_heading | escape }}</h2>
+      {% endif %}
+
+      <div class="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
+        {% for block in section.blocks %}
+          {% render 'c-stat',
+            label: block.settings.label,
+            value: block.settings.value,
+            description: block.settings.description
+          %}
+        {% endfor %}
+      </div>
+
+      {% if stats_footnote != blank %}
+        <p class="mt-10 text-center text-xs text-foreground/50">{{ stats_footnote | escape }}</p>
+      {% endif %}
+
+    </div>
+  </section>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Statistics",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading"
+    },
+    {
+      "type": "select",
+      "id": "heading_alignment",
+      "label": "Heading alignment",
+      "default": "center",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "center", "label": "Center" },
+        { "value": "right", "label": "Right" }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "footnote",
+      "label": "Footnote"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "stat",
+      "name": "Stat",
+      "settings": [
+        {
+          "type": "text",
+          "id": "label",
+          "label": "Category label",
+          "default": "Studies"
+        },
+        {
+          "type": "text",
+          "id": "value",
+          "label": "Value",
+          "info": "Supports suffix: %, +, x. Example: 90%, 10000+, 3x",
+          "default": "90%"
+        },
+        {
+          "type": "text",
+          "id": "description",
+          "label": "Description",
+          "default": "of participants saw improvement in 30 days"
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Statistics",
+      "blocks": [
+        { "type": "stat" },
+        { "type": "stat" },
+        { "type": "stat" },
+        { "type": "stat" }
+      ]
+    }
+  ]
+}
+{% endschema %}

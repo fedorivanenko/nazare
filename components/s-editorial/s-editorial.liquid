@@ -1,0 +1,154 @@
+{% liquid
+  assign ed_heading = section.settings.heading
+  assign ed_body = section.settings.body
+  assign cta_label = section.settings.cta_label
+  assign cta_url = section.settings.cta_url
+  assign cta_scheme = section.settings.cta_scheme | default: 'solid'
+  assign conditions_label = section.settings.conditions_label
+  assign has_conditions = false
+
+  for block in section.blocks
+    if block.type == 'condition'
+      assign has_conditions = true
+      break
+    endif
+  endfor
+%}
+
+<section class="bg-background text-foreground">
+  <div class="page-width py-16 lg:py-24">
+
+    <div class="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-16">
+      {% if ed_heading != blank %}
+        <div>
+          <h2 class="text-4xl font-bold uppercase leading-tight tracking-tight lg:text-6xl">{{ ed_heading | escape }}</h2>
+        </div>
+      {% endif %}
+
+      <div class="flex flex-col justify-center gap-6">
+        {% if ed_body != blank %}
+          <div class="text-base leading-7 text-foreground/70 [&_a:hover]:underline [&_a]:underline-offset-2">{{ ed_body }}</div>
+        {% endif %}
+
+        {% if cta_label != blank and cta_url != blank %}
+          {% render 'c-button', label: cta_label, url: cta_url, scheme: cta_scheme %}
+        {% endif %}
+      </div>
+    </div>
+
+    {% if has_conditions %}
+      <div class="mt-16 border-t border-foreground/10 pt-12">
+        {% if conditions_label != blank %}
+          <p class="mb-8 text-xs font-semibold uppercase tracking-widest text-foreground/50">{{ conditions_label | escape }}</p>
+        {% endif %}
+
+        <ul class="flex flex-wrap justify-between gap-8">
+          {% for block in section.blocks %}
+            {% if block.type == 'condition' and block.settings.label != blank %}
+              <li class="flex flex-col items-center gap-3 text-center" {{ block.shopify_attributes }}>
+                {% if block.settings.icon != blank %}
+                  <div class="size-12 overflow-hidden">
+                    {{
+                      block.settings.icon
+                      | image_url: width: 96
+                      | image_tag:
+                        alt: block.settings.icon_alt,
+                        class: 'size-full object-contain',
+                        loading: 'lazy'
+                    }}
+                  </div>
+                {% endif %}
+                <span class="text-sm font-medium">{{ block.settings.label }}</span>
+              </li>
+            {% endif %}
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Editorial",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Your solution starts here"
+    },
+    {
+      "type": "richtext",
+      "id": "body",
+      "label": "Body text",
+      "default": "<p>Supporting copy that backs up your headline claim and drives the reader toward the CTA.</p>"
+    },
+    {
+      "type": "header",
+      "content": "Call to action"
+    },
+    {
+      "type": "url",
+      "id": "cta_url",
+      "label": "Button URL"
+    },
+    {
+      "type": "text",
+      "id": "cta_label",
+      "label": "Button label"
+    },
+    {
+      "type": "select",
+      "id": "cta_scheme",
+      "label": "Button style",
+      "default": "solid",
+      "options": [
+        { "value": "solid", "label": "Solid" },
+        { "value": "outline", "label": "Outline" },
+        { "value": "ghost", "label": "Ghost" }
+      ]
+    },
+    {
+      "type": "header",
+      "content": "Conditions row"
+    },
+    {
+      "type": "text",
+      "id": "conditions_label",
+      "label": "Label above conditions",
+      "default": "WE DEAL WITH"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "condition",
+      "name": "Condition",
+      "settings": [
+        {
+          "type": "image_picker",
+          "id": "icon",
+          "label": "Icon image"
+        },
+        {
+          "type": "text",
+          "id": "icon_alt",
+          "label": "Icon alt text"
+        },
+        {
+          "type": "text",
+          "id": "label",
+          "label": "Label",
+          "default": "Acid Reflux"
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Editorial"
+    }
+  ]
+}
+{% endschema %}

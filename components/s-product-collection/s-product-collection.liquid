@@ -1,0 +1,231 @@
+{% liquid
+  assign pc_heading = section.settings.heading
+  assign pc_body = section.settings.body
+  assign cta_label = section.settings.cta_label
+  assign cta_url = section.settings.cta_url
+  assign cta_scheme = section.settings.cta_scheme | default: 'solid'
+  assign pc_source = section.settings.source_mode | default: 'collection'
+  assign pc_collection = section.settings.collection
+  assign pc_limit = section.settings.products_count | default: 8
+  assign pc_mode = section.settings.mode | default: 'static'
+  assign pc_direction = section.settings.direction | default: 'left'
+  assign pc_speed = section.settings.speed | default: 'normal'
+  assign pc_pause_on_hover = section.settings.pause_on_hover
+  assign pc_badge_tags = section.settings.badge_tags
+  assign pc_show_ratings = section.settings.show_ratings
+  assign pc_show_swatches = section.settings.show_swatches
+  assign pc_color_option = section.settings.color_option_name | default: 'Color'
+
+  if pc_pause_on_hover == nil
+    assign pc_pause_on_hover = true
+  endif
+  if pc_show_ratings == nil
+    assign pc_show_ratings = true
+  endif
+  if pc_show_swatches == nil
+    assign pc_show_swatches = true
+  endif
+
+  assign pc_products = nil
+  if pc_source == 'collection' and pc_collection != blank
+    assign pc_products = pc_collection.products | limit: pc_limit
+  elsif pc_source == 'manual'
+    assign pc_products = section.blocks | map: 'settings' | map: 'product' | compact
+  endif
+%}
+
+<section class="bg-background text-foreground">
+  <div class="page-width py-16 lg:py-24">
+
+    <div class="mb-10 flex flex-col gap-6 lg:mb-14 lg:flex-row lg:items-start lg:justify-between">
+      <div class="max-w-2xl">
+        {% if pc_heading != blank %}
+          <h2 class="text-3xl font-bold tracking-tight lg:text-4xl">{{ pc_heading | escape }}</h2>
+        {% endif %}
+        {% if pc_body != blank %}
+          <div class="mt-3 text-base leading-7 text-foreground/70">{{ pc_body }}</div>
+        {% endif %}
+      </div>
+
+      {% if cta_label != blank and cta_url != blank %}
+        <div class="shrink-0">
+          {% render 'c-button', label: cta_label, url: cta_url, scheme: cta_scheme %}
+        </div>
+      {% endif %}
+    </div>
+
+    {% if pc_products != blank and pc_products.size > 0 %}
+      {% render 'c-product-carousel',
+        products: pc_products,
+        mode: pc_mode,
+        direction: pc_direction,
+        speed: pc_speed,
+        pause_on_hover: pc_pause_on_hover,
+        badge_tags: pc_badge_tags,
+        show_ratings: pc_show_ratings,
+        show_swatches: pc_show_swatches,
+        color_option_name: pc_color_option
+      %}
+    {% endif %}
+
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Product collection",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Header"
+    },
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Shop the collection"
+    },
+    {
+      "type": "richtext",
+      "id": "body",
+      "label": "Body text"
+    },
+    {
+      "type": "url",
+      "id": "cta_url",
+      "label": "CTA URL"
+    },
+    {
+      "type": "text",
+      "id": "cta_label",
+      "label": "CTA label"
+    },
+    {
+      "type": "select",
+      "id": "cta_scheme",
+      "label": "CTA style",
+      "default": "solid",
+      "options": [
+        { "value": "solid", "label": "Solid" },
+        { "value": "outline", "label": "Outline" },
+        { "value": "ghost", "label": "Ghost" }
+      ]
+    },
+    {
+      "type": "header",
+      "content": "Products"
+    },
+    {
+      "type": "select",
+      "id": "source_mode",
+      "label": "Source",
+      "default": "collection",
+      "options": [
+        { "value": "collection", "label": "Collection" },
+        { "value": "manual", "label": "Manual" }
+      ]
+    },
+    {
+      "type": "collection",
+      "id": "collection",
+      "label": "Collection"
+    },
+    {
+      "type": "range",
+      "id": "products_count",
+      "label": "Products to show",
+      "min": 4,
+      "max": 20,
+      "step": 1,
+      "default": 8
+    },
+    {
+      "type": "header",
+      "content": "Carousel"
+    },
+    {
+      "type": "select",
+      "id": "mode",
+      "label": "Mode",
+      "default": "static",
+      "options": [
+        { "value": "static", "label": "Static (drag to scroll)" },
+        { "value": "marquee", "label": "Marquee (auto-scroll)" }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "direction",
+      "label": "Marquee direction",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "right", "label": "Right" }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "speed",
+      "label": "Marquee speed",
+      "default": "normal",
+      "options": [
+        { "value": "slow", "label": "Slow" },
+        { "value": "normal", "label": "Normal" },
+        { "value": "fast", "label": "Fast" }
+      ]
+    },
+    {
+      "type": "checkbox",
+      "id": "pause_on_hover",
+      "label": "Pause on hover",
+      "default": true
+    },
+    {
+      "type": "header",
+      "content": "Product cards"
+    },
+    {
+      "type": "text",
+      "id": "badge_tags",
+      "label": "Badge tags",
+      "info": "Comma-separated product tags to show as filled badges"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_ratings",
+      "label": "Show ratings",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_swatches",
+      "label": "Show color swatches",
+      "default": true
+    },
+    {
+      "type": "text",
+      "id": "color_option_name",
+      "label": "Color option name",
+      "default": "Color"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "product",
+      "name": "Product",
+      "settings": [
+        {
+          "type": "product",
+          "id": "product",
+          "label": "Product"
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Product collection"
+    }
+  ]
+}
+{% endschema %}

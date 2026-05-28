@@ -1,0 +1,214 @@
+{% liquid
+  assign footer_tagline = section.settings.tagline
+  assign footer_provider = section.settings.email_provider | default: 'none'
+  assign footer_list_id = section.settings.klaviyo_list_id
+  assign footer_email_heading = section.settings.email_heading
+  assign footer_email_description = section.settings.email_description
+  assign footer_email_placeholder = section.settings.email_placeholder | default: 'Email Address'
+  assign footer_email_button = section.settings.email_button_label | default: 'Sign Up'
+  assign footer_instagram = section.settings.instagram
+  assign footer_facebook = section.settings.facebook
+  assign footer_youtube = section.settings.youtube
+  assign footer_tiktok = section.settings.tiktok
+  assign footer_twitter = section.settings.twitter
+  assign footer_pinterest = section.settings.pinterest
+
+  assign footer_has_social = false
+  if footer_instagram != blank or footer_facebook != blank or footer_youtube != blank or footer_tiktok != blank or footer_twitter != blank or footer_pinterest != blank
+    assign footer_has_social = true
+  endif
+%}
+
+<footer class="bg-background text-foreground">
+  <div class="page-width py-16">
+
+    <div class="grid grid-cols-1 gap-12 lg:grid-cols-2">
+
+      <div class="grid grid-cols-2 gap-8 sm:grid-cols-4 lg:col-span-1">
+        {% for block in section.blocks %}
+          {% liquid
+            assign col_heading = block.settings.heading
+            assign col_menu = block.settings.menu
+            assign col_links = linklists[col_menu].links
+          %}
+          {% if col_links.size > 0 %}
+            <div {{ block.shopify_attributes }}>
+              {% if col_heading != blank %}
+                <p class="mb-4 text-xs font-semibold uppercase tracking-widest text-foreground/50">{{ col_heading | escape }}</p>
+              {% endif %}
+              <ul class="flex flex-col gap-2">
+                {% for link in col_links %}
+                  <li>
+                    <a href="{{ link.url }}" class="text-sm text-foreground/70 transition hover:text-foreground">{{ link.title }}</a>
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <div class="lg:col-span-1 lg:pl-12">
+        {% if footer_email_heading != blank %}
+          <h3 class="text-lg font-semibold">{{ footer_email_heading | escape }}</h3>
+        {% endif %}
+
+        {% if footer_email_description != blank %}
+          <p class="mt-2 text-sm text-foreground/70">{{ footer_email_description | escape }}</p>
+        {% endif %}
+
+        {% if footer_provider == 'klaviyo' and footer_list_id != blank %}
+          <div class="mt-4">
+            {% render 'c-email-signup-klaviyo',
+              list_id: footer_list_id,
+              placeholder: footer_email_placeholder,
+              button_label: footer_email_button
+            %}
+          </div>
+        {% endif %}
+
+        {% if footer_has_social %}
+          <div class="mt-8">
+            {% render 'c-social-links',
+              instagram: footer_instagram,
+              facebook: footer_facebook,
+              youtube: footer_youtube,
+              tiktok: footer_tiktok,
+              twitter: footer_twitter,
+              pinterest: footer_pinterest
+            %}
+          </div>
+        {% endif %}
+      </div>
+
+    </div>
+
+  </div>
+
+  {% if footer_tagline != blank %}
+    <div class="overflow-hidden border-t border-foreground/10 py-8">
+      <p class="whitespace-nowrap text-center font-black uppercase leading-none tracking-tight text-foreground/10" style="font-size: clamp(3rem, 12vw, 10rem);">{{ footer_tagline | escape }}</p>
+    </div>
+  {% endif %}
+</footer>
+
+{% schema %}
+{
+  "name": "Footer",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Tagline"
+    },
+    {
+      "type": "text",
+      "id": "tagline",
+      "label": "Brand tagline",
+      "default": "YOUR BRAND"
+    },
+    {
+      "type": "header",
+      "content": "Email signup"
+    },
+    {
+      "type": "select",
+      "id": "email_provider",
+      "label": "Email provider",
+      "default": "none",
+      "options": [
+        { "value": "none", "label": "None" },
+        { "value": "klaviyo", "label": "Klaviyo" }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "klaviyo_list_id",
+      "label": "Klaviyo list ID"
+    },
+    {
+      "type": "text",
+      "id": "email_heading",
+      "label": "Email zone heading",
+      "default": "Join the newsletter"
+    },
+    {
+      "type": "text",
+      "id": "email_description",
+      "label": "Email zone description"
+    },
+    {
+      "type": "text",
+      "id": "email_placeholder",
+      "label": "Email input placeholder",
+      "default": "Email Address"
+    },
+    {
+      "type": "text",
+      "id": "email_button_label",
+      "label": "Email button label",
+      "default": "Sign Up"
+    },
+    {
+      "type": "header",
+      "content": "Social links"
+    },
+    {
+      "type": "url",
+      "id": "instagram",
+      "label": "Instagram URL"
+    },
+    {
+      "type": "url",
+      "id": "facebook",
+      "label": "Facebook URL"
+    },
+    {
+      "type": "url",
+      "id": "youtube",
+      "label": "YouTube URL"
+    },
+    {
+      "type": "url",
+      "id": "tiktok",
+      "label": "TikTok URL"
+    },
+    {
+      "type": "url",
+      "id": "twitter",
+      "label": "X / Twitter URL"
+    },
+    {
+      "type": "url",
+      "id": "pinterest",
+      "label": "Pinterest URL"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "nav_column",
+      "name": "Nav column",
+      "settings": [
+        {
+          "type": "text",
+          "id": "heading",
+          "label": "Column heading"
+        },
+        {
+          "type": "link_list",
+          "id": "menu",
+          "label": "Menu"
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Footer",
+      "blocks": [
+        { "type": "nav_column" },
+        { "type": "nav_column" }
+      ]
+    }
+  ]
+}
+{% endschema %}

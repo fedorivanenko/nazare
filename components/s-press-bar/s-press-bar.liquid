@@ -1,0 +1,172 @@
+{% liquid
+  assign pb_heading = section.settings.heading
+  assign pb_heading_align = section.settings.heading_alignment | default: 'center'
+  assign pb_mode = section.settings.mode | default: 'marquee'
+  assign pb_direction = section.settings.direction | default: 'left'
+  assign pb_speed = section.settings.speed | default: 'normal'
+  assign pb_pause_on_hover = section.settings.pause_on_hover
+  assign pb_logo_height = section.settings.logo_height | default: 40
+  assign pb_rendered = 0
+
+  if pb_pause_on_hover == nil
+    assign pb_pause_on_hover = true
+  endif
+
+  assign heading_align_class = 'text-center'
+  if pb_heading_align == 'left'
+    assign heading_align_class = 'text-left'
+  elsif pb_heading_align == 'right'
+    assign heading_align_class = 'text-right'
+  endif
+%}
+
+{% capture pb_items %}
+  {% for block in section.blocks %}
+    {% if block.settings.logo != blank %}
+      {% assign pb_rendered = pb_rendered | plus: 1 %}
+      <div data-c-carousel-item {{ block.shopify_attributes }} class="shrink-0 flex items-center">
+        {% if block.settings.link != blank %}
+          <a href="{{ block.settings.link }}" aria-label="{{ block.settings.alt | default: block.settings.logo.alt }}">
+        {% endif %}
+        {{
+          block.settings.logo
+          | image_url: height: pb_logo_height
+          | image_tag:
+            alt: block.settings.alt | default: block.settings.logo.alt,
+            loading: 'lazy',
+            style: 'max-height: ' | append: pb_logo_height | append: 'px; width: auto; object-fit: contain'
+        }}
+        {% if block.settings.link != blank %}
+          </a>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endfor %}
+{% endcapture %}
+
+{% if pb_rendered > 0 %}
+  <section class="bg-background text-foreground">
+    <div class="page-width py-12">
+
+      {% if pb_heading != blank %}
+        <p class="mb-8 text-xs font-semibold uppercase tracking-widest text-foreground/50 {{ heading_align_class }}">{{ pb_heading | escape }}</p>
+      {% endif %}
+
+      {% render 'c-carousel',
+        content: pb_items,
+        mode: pb_mode,
+        direction: pb_direction,
+        speed: pb_speed,
+        pause_on_hover: pb_pause_on_hover,
+        gap: 'lg'
+      %}
+
+    </div>
+  </section>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Press bar",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "FEATURED IN"
+    },
+    {
+      "type": "select",
+      "id": "heading_alignment",
+      "label": "Heading alignment",
+      "default": "center",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "center", "label": "Center" },
+        { "value": "right", "label": "Right" }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "mode",
+      "label": "Mode",
+      "default": "marquee",
+      "options": [
+        { "value": "static", "label": "Static (drag to scroll)" },
+        { "value": "marquee", "label": "Marquee (auto-scroll)" }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "direction",
+      "label": "Marquee direction",
+      "default": "left",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "right", "label": "Right" }
+      ]
+    },
+    {
+      "type": "select",
+      "id": "speed",
+      "label": "Marquee speed",
+      "default": "normal",
+      "options": [
+        { "value": "slow", "label": "Slow" },
+        { "value": "normal", "label": "Normal" },
+        { "value": "fast", "label": "Fast" }
+      ]
+    },
+    {
+      "type": "checkbox",
+      "id": "pause_on_hover",
+      "label": "Pause on hover",
+      "default": true
+    },
+    {
+      "type": "range",
+      "id": "logo_height",
+      "label": "Logo max height (px)",
+      "min": 20,
+      "max": 80,
+      "step": 4,
+      "default": 40
+    }
+  ],
+  "blocks": [
+    {
+      "type": "logo",
+      "name": "Logo",
+      "settings": [
+        {
+          "type": "image_picker",
+          "id": "logo",
+          "label": "Logo image"
+        },
+        {
+          "type": "text",
+          "id": "alt",
+          "label": "Alt text"
+        },
+        {
+          "type": "url",
+          "id": "link",
+          "label": "Link URL"
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Press bar",
+      "blocks": [
+        { "type": "logo" },
+        { "type": "logo" },
+        { "type": "logo" },
+        { "type": "logo" },
+        { "type": "logo" }
+      ]
+    }
+  ]
+}
+{% endschema %}
