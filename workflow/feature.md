@@ -144,7 +144,7 @@ gh release list --limit 3
 gh release view "v$VERSION" --json tagName,name,isDraft,isPrerelease,url
 ```
 
-`nazare self update latest` resolves Git tags. Stable release workflow still creates a GitHub Release for release notes and discoverability.
+`nazare update self --latest` resolves Git tags. Stable release workflow still creates a GitHub Release for release notes and discoverability.
 
 ## Rule of thumb
 

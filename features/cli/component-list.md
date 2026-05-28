@@ -7,7 +7,6 @@ status: done
 
 dependencies:
   - cli-install
-  - cli-self-update
   - cli-init
   - component-registry
 

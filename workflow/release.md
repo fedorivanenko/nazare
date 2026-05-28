@@ -43,7 +43,7 @@ curl -fsSL \
   | python3 -c 'import sys,json; print([tag.get("name") for tag in json.load(sys.stdin)])'
 
 # smoke test
-nazare self update latest
+nazare update self --latest
 nazare --version
 ```
 

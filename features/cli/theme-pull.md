@@ -7,7 +7,6 @@ status: in-progress
 
 dependencies:
   - cli-install
-  - cli-self-update
   - cli-init
   - theme-scaffold
   - theme-build-plugin
@@ -36,7 +35,7 @@ nonGoals:
   - Implementing nazare pull <component>
   - Implementing a generic nazare pull command
   - Implementing nazare theme version
-  - Implementing nazare theme update
+  - Implementing nazare update theme
   - Component dependency resolution
   - Theme drift detection or reconciliation
   - Removing old theme files
@@ -277,7 +276,7 @@ The registry scaffold lives in this repo for the default registry but is owned b
 
 Theme files become user-owned immediately after copy. Later pulls can offer overwrite, but must not silently synchronize or reconcile drift.
 
-`nazare theme` is the theme command namespace. This feature implements only `nazare theme pull`. Future features may add `nazare theme version`; `nazare theme update` is defined separately by `theme-update`.
+`nazare theme` is the theme command namespace. This feature implements only `nazare theme pull`; unified update behavior is defined by `update`.
 
 `nazare theme pull` is canonical for theme scaffold install. Bare `nazare pull` remains out of scope to avoid ambiguity with future component install behavior.
 

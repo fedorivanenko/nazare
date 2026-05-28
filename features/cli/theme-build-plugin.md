@@ -7,7 +7,6 @@ status: in-progress
 
 dependencies:
   - cli-install
-  - cli-self-update
   - cli-init
   - theme-scaffold
 

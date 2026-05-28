@@ -10,9 +10,7 @@ dependencies:
   - component-registry
   - component-list
   - component-add
-  - component-update
   - theme-pull
-  - theme-update
 
 surfaces:
   devCli:
@@ -138,7 +136,7 @@ Path rules:
 - Server validates that `<root>/<manifest>` exists before listening.
 - Server prints the registry URL and exact `nazare init --repo ... --ref ...` command for consumers.
 - `nazare init --repo http://127.0.0.1:<chosen-port> --ref refs/heads/main` writes HTTP registry metadata.
-- `nazare list`, `nazare add <component>`, `nazare update <component>`, `nazare theme pull`, and `nazare theme update` fetch registry files from the local server when config uses an HTTP origin.
+- `nazare list`, `nazare add <component>`, `nazare update <component>`, `nazare theme pull`, and `nazare update theme` fetch registry files from the local server when config uses an HTTP origin.
 - Existing GitHub-backed registries keep existing behavior.
 - Consumer commands continue to validate registry metadata and SHA-256 checksums before mutation.
 - Server exits `0` on clean `SIGINT` or `SIGTERM` shutdown.
@@ -197,7 +195,7 @@ Keep raw-file resolution centralized so existing registry consumers call one hel
 
 `nazare init --repo` validation must accept `http://127.0.0.1:<port>`, `http://localhost:<port>`, and `https://...` HTTP registry origins while preserving existing GitHub repo validation.
 
-The server intentionally serves working tree files and ignores the semantic meaning of `ref` in v1. This keeps v1 useful for local authoring and avoids implementing Git protocol behavior. Git-ref-aware local serving is scoped separately in `dev-release-channels`.
+The server intentionally serves working tree files and ignores the semantic meaning of `ref` in v1. This keeps v1 useful for local authoring and avoids implementing Git protocol behavior. Git-ref-aware local serving is scoped in `update`.
 
 This adds a separate dev-tool package plus HTTP registry consumer support. The `nazare` consumer CLI change should be a minor release per `docs/policies/release-policy.md`.
 

@@ -24,10 +24,10 @@ Design and UX findings from the feature-design pass.
   - Report init state, installed scaffold version, registry ref, modified tracked files, missing files, and update availability.
 - Add `nazare doctor`.
   - Check Node.js, `curl`, Shopify CLI, init files, registry reachability, checksums, dependency install, and generated files.
-- Improve `nazare theme update --check` output.
+- Improve `nazare update theme --check` output.
   - Print grouped summary: writes, deletes, untracks, metadata-only changes, blockers.
-  - On unsafe update failures, suggest `nazare theme update --check`.
-- Split broad `nazare theme update --force` into narrower safety flags.
+  - On unsafe update failures, suggest `nazare update theme --check`.
+- Split broad `nazare update theme --force` into narrower safety flags.
   - Candidate flags: `--overwrite-modified`, `--restore-missing`, `--delete-obsolete`.
   - Keep `--force` as explicit all-in shortcut with warning.
 - Add vendored plugin version marker.

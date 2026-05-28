@@ -24,9 +24,9 @@ Development installs may use `refs/heads/main` while work is untagged.
 
 Stable releases use stable Git tags. Dev releases use prerelease Git tags.
 
-`nazare self update` updates from the originally installed ref/source recorded in install metadata.
-`nazare self update latest` selects the highest stable `vMAJOR.MINOR.PATCH` tag.
-`nazare self update latest --dev` selects the highest `vMAJOR.MINOR.PATCH-dev.N` prerelease tag.
+`nazare update self` updates from the originally installed ref/source recorded in install metadata.
+`nazare update self --latest` selects the highest stable `vMAJOR.MINOR.PATCH` tag.
+`nazare update self --latest --dev` selects the highest `vMAJOR.MINOR.PATCH-dev.N` prerelease tag.
 
 ## Tags
 
