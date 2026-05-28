@@ -130,6 +130,32 @@ function createRegistryServer(root, options = {}) {
 			return;
 		}
 
+		if (rawPathname === "/tags") {
+			if (!options.gitRefs) {
+				response.writeHead(501, { "Content-Type": "text/plain; charset=utf-8" });
+				response.end("--git-refs required for /tags\n");
+				return;
+			}
+			try {
+				const output = execFileSync(
+					"git",
+					["-C", root, "tag", "-l", "v*"],
+					{ encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+				);
+				const tags = output.split("\n").filter(Boolean);
+				const json = JSON.stringify(tags);
+				response.writeHead(200, {
+					"Content-Type": "application/json",
+					"Content-Length": Buffer.byteLength(json),
+				});
+				response.end(json);
+			} catch {
+				response.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+				response.end("server error\n");
+			}
+			return;
+		}
+
 		const filePath = decodeRawPath(rawPathname);
 		if (filePath === undefined) {
 			response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
