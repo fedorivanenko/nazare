@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: update
 title: Unified Update Command
-status: in-progress
+status: done
 
 dependencies:
   - cli-install
@@ -421,10 +421,10 @@ Failed theme/component updates must not mutate files, config registry metadata, 
 - [x] Component prompt `N` skips only the current file operation, exits `0`, records only completed safe file mutations, and does not advance registry metadata.
 - [x] Component prompt `m` writes conflict markers only, performs no normal component mutations after marker write, exits `0`, and does not advance metadata.
 - [x] Legacy `nazare self update`, `nazare theme update`, and `nazare registry use` are absent from help and command dispatch.
-- [ ] `nazare-dev registry serve --git-refs` serves manifest and source files from a local stable tag.
-- [ ] `nazare-dev registry serve --git-refs` serves manifest and source files from a local dev tag.
-- [ ] `nazare-dev registry serve --git-refs` returns `404` for missing refs or paths without falling back to working tree content.
-- [ ] README documents stable, dev, version, downgrade, and local-tag testing flows.
+- [x] `nazare-dev registry serve --git-refs` serves manifest and source files from a local stable tag.
+- [x] `nazare-dev registry serve --git-refs` serves manifest and source files from a local dev tag.
+- [x] `nazare-dev registry serve --git-refs` returns `404` for missing refs or paths without falling back to working tree content.
+- [x] README documents stable, dev, version, downgrade, and local-tag testing flows.
 
 ---
 
