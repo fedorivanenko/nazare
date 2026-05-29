@@ -60,7 +60,7 @@ theme:
 
 components:
   c-button:
-    version: 1.0.3
+    version: 1.0.4
     type: snippet
     dependencies: []
     files:
@@ -68,7 +68,7 @@ components:
         to: snippets/c-button.liquid
         checksum:
           algorithm: sha256
-          value: 35a8f399c46de649af838dd9310d5c5db4a432e2ec5f826b52d0a52391700d6e
+          value: c787d91efcf5f7ba08c1c9e55bbb3a2176bb5b90d83ae2800d11e869a69ab75c
   c-video:
     version: 1.0.1
     type: snippet
