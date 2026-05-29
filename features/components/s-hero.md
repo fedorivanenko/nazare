@@ -97,7 +97,7 @@ components:
         to: sections/s-hero.liquid
         checksum:
           algorithm: sha256
-          value: a527366a55654a5d643832781b0ae564ad4d040898f7ce5cb86b88f9641426e6
+          value: 18e178c3bfeb70ae28b855014ebf15808b718f14ce9de5616b5c3d45d1ccdafa
 ```
 
 Section render contract:
