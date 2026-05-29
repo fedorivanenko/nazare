@@ -317,6 +317,7 @@ function sourceMetadata(metadata, installedRef, registryRepo) {
 async function verifyPackageVersionForTag(metadata) {
 	const tagMatch = String(metadata.installedRef).match(TAG_PATTERN);
 	if (!tagMatch) return;
+	if (isHttpRegistryRepo(new URL(metadata.packageUrl).origin)) return;
 	const expectedVersion = metadata.installedRef.replace(/^v/, "");
 	let packageMetadata;
 	if (process.env.NAZARE_TAG_PACKAGE_VERSIONS_JSON) {
