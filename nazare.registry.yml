@@ -512,4 +512,4 @@ components:
         to: sections/s-footer.liquid
         checksum:
           algorithm: sha256
-          value: d9d42dd073312b58dbc4f6becff416c8db2d3752fd4d702e67651802cc514f31
+          value: 90bba695a2944846457f0f03d4924e28bdb3689299dc90c194492eec3020a5d3

@@ -52,7 +52,7 @@
           <div class="border-t border-foreground/10 lg:hidden">
             {% for column in nav_columns %}
               {% if column.links.size > 0 %}
-                <details class="group border-b border-foreground/10">
+                <details class="group border-b border-foreground/10" open>
                   <summary class="flex cursor-pointer select-none items-center justify-between py-4 text-xs font-semibold uppercase tracking-widest text-foreground/50 [&::-webkit-details-marker]:hidden">
                     {{ column.title | escape }}
                     <span class="text-xl font-light transition-transform duration-200 group-open:rotate-45">+</span>
