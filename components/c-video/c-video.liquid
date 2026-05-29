@@ -33,7 +33,7 @@
     {% if root_id != blank %}id="c-video-{{ root_id | handleize }}"{% endif %}
     data-nazare-use="snippets/c-video"
     style="--c-video-aspect-ratio: {{ resolved_aspect_ratio | escape }};"
-    class="group relative aspect-[var(--c-video-aspect-ratio)] overflow-hidden rounded-3xl bg-foreground text-background shadow-sm{% if wrapper_class != blank %} {{ wrapper_class }}{% endif %}"
+    class="group relative aspect-[var(--c-video-aspect-ratio)] overflow-hidden rounded-xl bg-foreground text-background shadow-sm{% if wrapper_class != blank %} {{ wrapper_class }}{% endif %}"
   >
     {{ video_media | video_tag: image_size: '1600x', autoplay: false, loop: should_loop, muted: true, controls: false, class: 'h-full w-full bg-foreground object-cover' }}
 
@@ -49,24 +49,33 @@
       </button>
     {% endif %}
 
-    <div class="absolute inset-x-4 bottom-4 z-20 flex items-center justify-between gap-3">
-      <button
-        type="button"
-        data-c-video-play
-        class="inline-flex h-11 items-center justify-center rounded-full bg-background px-4 text-sm font-semibold text-foreground shadow-sm transition hover:bg-background/90 focus:outline-none focus:ring-2 focus:ring-background focus:ring-offset-2 focus:ring-offset-foreground"
-        aria-label="Play video"
-      >
-        <span data-c-video-play-label>Play</span>
-      </button>
+    <button
+      type="button"
+      data-c-video-play
+      class="absolute inset-0 z-20 flex items-center justify-center transition focus:outline-none"
+      aria-label="Play video"
+    >
+      <span data-c-video-play-label class="flex h-14 w-14 items-center justify-center rounded-full bg-background/80 text-foreground shadow-sm backdrop-blur transition hover:bg-background">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-6 w-6 translate-x-0.5">
+          <path d="M8 5v14l11-7z"/>
+        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="hidden h-6 w-6" data-c-video-pause-icon>
+          <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+        </svg>
+      </span>
+    </button>
 
-      <button
-        type="button"
-        data-c-video-mute
-        class="inline-flex h-11 items-center justify-center rounded-full bg-background/80 px-4 text-sm font-semibold text-foreground shadow-sm backdrop-blur transition hover:bg-background focus:outline-none focus:ring-2 focus:ring-background focus:ring-offset-2 focus:ring-offset-foreground"
-        aria-label="Unmute video"
-      >
-        <span data-c-video-mute-label>Unmute</span>
-      </button>
-    </div>
+    <button
+      type="button"
+      data-c-video-mute
+      class="absolute bottom-3 right-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-background/70 text-foreground shadow-sm backdrop-blur transition hover:bg-background focus:outline-none"
+      aria-label="Unmute video"
+    >
+      <span data-c-video-mute-label>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4">
+          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+        </svg>
+      </span>
+    </button>
   </div>
 {% endif %}

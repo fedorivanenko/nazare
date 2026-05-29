@@ -31,11 +31,11 @@
     <div class="mb-10 flex flex-col gap-6 lg:mb-14 lg:flex-row lg:items-end lg:justify-between">
       <div class="max-w-3xl">
         {% if gallery_title != blank %}
-          <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">{{ gallery_title }}</h2>
+          <h2 class="font-heading text-4xl font-bold uppercase lg:text-5xl">{{ gallery_title }}</h2>
         {% endif %}
 
         {% if gallery_description != blank %}
-          <div class="mt-4 text-base leading-7 text-foreground/70 sm:text-lg">
+          <div class="mt-3 text-sm text-foreground/70">
             {{ gallery_description }}
           </div>
         {% endif %}
@@ -67,7 +67,7 @@
         direction: vg_direction,
         speed: vg_speed,
         pause_on_hover: vg_pause_on_hover,
-        gap: 'md'
+        gap: 'sm'
       %}
     {% endif %}
 

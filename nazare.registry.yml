@@ -70,7 +70,7 @@ components:
           algorithm: sha256
           value: 3b2a2c3a342c1c4381e858dde8a7394da9f40a195e4c280fb116ad71948f7e0e
   c-video:
-    version: 1.0.1
+    version: 1.0.2
     type: snippet
     dependencies: []
     files:
@@ -78,7 +78,7 @@ components:
         to: snippets/c-video.liquid
         checksum:
           algorithm: sha256
-          value: b85c7916cf65b0afb749a4b867a3f59dc485faf06c9a13e0927bbed19e9a6bca
+          value: 8b6b129063f509f191ad9ec889261c204b4b10cdcf7facd59a51ffffa72145ed
       - from: components/c-video/c-video.js
         to: scripts/snippets/c-video.js
         checksum:
@@ -164,7 +164,7 @@ components:
           algorithm: sha256
           value: 420f8eb0e32ea9d5fcf07523580b62d3f9097fc87225249aca6e4cdf6d5385d3
   s-video-gallery:
-    version: 1.1.2-dev.0
+    version: 1.1.2
     type: section
     dependencies:
       - c-video
@@ -175,7 +175,7 @@ components:
         to: sections/s-video-gallery.liquid
         checksum:
           algorithm: sha256
-          value: 5d8bdda4829d127daadd92c0091ce9034800bb0ea8f1105a77538aa69def55bb
+          value: a8d19e0a7357c56aa9904b89d3d43bca32de8e6dadfe367b095d1b28fc2e8d64
   c-drag-scroll:
     version: 1.0.2-dev.0
     type: snippet
