@@ -12,7 +12,7 @@
 {% if button_label != blank and button_url != blank %}
   <a
     href="{{ button_url }}"
-    class="inline-flex items-center justify-center rounded-full px-15 py-4 text-sm/5 font-medium uppercase transition focus:outline-none focus:ring-2 focus:ring-offset-2 {% if button_scheme == 'outline' %}border border-current bg-transparent text-current hover:text-[var(--color-accent)] focus:ring-current{% elsif button_scheme == 'ghost' %}bg-transparent text-current underline-offset-4 hover:text-[var(--color-accent)] focus:ring-current{% else %}bg-[var(--btn-bg,var(--color-foreground))] text-[var(--btn-text,var(--color-background))] hover:bg-[var(--color-accent)] focus:ring-current{% endif %}{% if button_class != blank %} {{ button_class }}{% endif %}"
+    class="inline-flex items-center justify-center rounded-full px-15 py-4 text-sm/5 font-medium uppercase transition focus:outline-none focus:ring-2 focus:ring-offset-2 {% if button_scheme == 'outline' %}border border-current bg-transparent text-current hover:text-[var(--color-accent)] focus:ring-current{% elsif button_scheme == 'ghost' %}bg-transparent text-current underline-offset-4 hover:text-[var(--color-accent)] focus:ring-current{% else %}bg-[var(--btn-bg,var(--color-foreground))] text-[var(--btn-text,var(--color-background))] hover:bg-[var(--color-accent)] hover:text-[var(--color-accent-foreground)] focus:ring-current{% endif %}{% if button_class != blank %} {{ button_class }}{% endif %}"
   >
     {{ button_label }}
   </a>
