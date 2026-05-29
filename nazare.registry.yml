@@ -506,7 +506,7 @@ components:
         to: sections/s-product-gallery.liquid
         checksum:
           algorithm: sha256
-          value: 5c61a1e504294db9ec681f9b9c8f4bf79eb2c53f4925c1276aac4ed7b785af3b
+          value: 8a79a23d1fe0bda16bf8e5372e47917cfe39f6098f0b385dfd1f48e097c2df4b
   s-footer:
     version: 1.2.0
     type: section
