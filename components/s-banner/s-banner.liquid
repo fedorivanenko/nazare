@@ -6,14 +6,6 @@
   assign cta_label = section.settings.cta_label
   assign cta_url = section.settings.cta_url
   assign cta_scheme = section.settings.cta_scheme | default: 'solid'
-  assign banner_height = section.settings.height | default: 'md'
-
-  assign height_class = 'min-h-[40dvh]'
-  if banner_height == 'sm'
-    assign height_class = 'min-h-[25dvh]'
-  elsif banner_height == 'lg'
-    assign height_class = 'min-h-[55dvh]'
-  endif
 
   assign text_color_class = 'text-foreground'
   if banner_text_color == 'light'
@@ -21,7 +13,7 @@
   endif
 %}
 
-<section class="relative {{ height_class }} overflow-hidden">
+<section class="relative overflow-hidden py-30">
   {% if banner_image != blank %}
     {{
       banner_image
@@ -33,9 +25,9 @@
     }}
   {% endif %}
 
-  <div class="relative z-10 flex {{ height_class }} flex-col items-center justify-center px-6 py-16 text-center {{ text_color_class }}">
+  <div class="relative z-10 flex flex-col items-center justify-center px-6 py-16 text-center {{ text_color_class }}">
     {% if banner_heading != blank %}
-      <h2 class="text-4xl font-bold leading-tight lg:text-6xl">{{ banner_heading | escape }}</h2>
+      <h2 class="px-[15%] text-[90px]/[72px] font-heading font-bold uppercase mb-8 lg:text-[120px]/[96px]">{{ banner_heading | escape }}</h2>
     {% endif %}
 
     {% if cta_label != blank and cta_url != blank %}
@@ -109,21 +101,6 @@
         { "value": "ghost", "label": "Ghost" }
       ]
     },
-    {
-      "type": "header",
-      "content": "Layout"
-    },
-    {
-      "type": "select",
-      "id": "height",
-      "label": "Section height",
-      "default": "md",
-      "options": [
-        { "value": "sm", "label": "Small (25dvh)" },
-        { "value": "md", "label": "Medium (40dvh)" },
-        { "value": "lg", "label": "Large (55dvh)" }
-      ]
-    }
   ],
   "presets": [
     {
