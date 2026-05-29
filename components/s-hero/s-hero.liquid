@@ -19,7 +19,7 @@
     assign hero_image_alt = hero_image.alt
   endif
 
-  assign text_color_class = 'text-background'
+  assign text_color_class = 'text-white'
   if hero_scheme == 'light'
     assign text_color_class = 'text-foreground'
   endif
@@ -222,8 +222,8 @@
       "label": "Text color",
       "default": "dark",
       "options": [
-        { "value": "dark", "label": "White" },
-        { "value": "light", "label": "Black" }
+        { "value": "dark", "label": "Light text (for dark backgrounds)" },
+        { "value": "light", "label": "Dark text (for light backgrounds)" }
       ]
     }
   ],
