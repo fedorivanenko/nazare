@@ -13,7 +13,19 @@
       "Bash(git commit -m ' *)",
       "Bash(node_modules/.bin/biome --version)",
       "Bash(node_modules/.bin/biome format *)",
-      "Bash(pnpm install *)"
+      "Bash(pnpm install *)",
+      "Bash(shasum *)",
+      "Bash(pnpm test *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(node_modules/.bin/vitest run *)",
+      "Bash(xargs ls)",
+      "Bash(git -C /Users/fedori/Coding/personal/nazare status)",
+      "Bash(git -C /Users/fedori/Coding/personal/nazare log --oneline -3)",
+      "Bash(git -C /Users/fedori/Coding/personal/nazare add features/components/c-badge.md features/components/c-bundle-item.md features/components/c-email-signup-klaviyo.md features/components/c-email-signup.md features/components/c-faq-item.md features/components/c-person.md features/components/c-product-card.md features/components/c-product-carousel.md features/components/c-product-chip.md features/components/c-social-links.md features/components/c-stat.md features/components/c-swatch.md features/components/s-banner.md features/components/s-editorial.md features/components/s-faq.md features/components/s-feature-bundle.md features/components/s-feature-product.md features/components/s-footer.md features/components/s-image-gallery.md features/components/s-mission-statement.md features/components/s-press-bar.md features/components/s-product-collection.md features/components/s-social-gallery.md features/components/s-statistics.md features/components/s-trust-bar.md)",
+      "Bash(git -C /Users/fedori/Coding/personal/nazare commit -m ' *)",
+      "Bash(git *)",
+      "Bash(awk '{print $1}')",
+      "Bash(awk '{print $1, $2}')"
     ]
   }
 }

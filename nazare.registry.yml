@@ -408,7 +408,7 @@ components:
           algorithm: sha256
           value: 52c9b2fba852c863bb2ed0a06dfd58b4b02b01de44487f29e9e07c83326b879f
   s-faq:
-    version: 1.1.1
+    version: 1.1.2
     type: section
     dependencies:
       - c-button
@@ -418,7 +418,7 @@ components:
         to: sections/s-faq.liquid
         checksum:
           algorithm: sha256
-          value: 16735ed599210b78f1e6897e07ebd4f81328d425ec99ba0ec5fc011e7bd6386d
+          value: e4d847f7e1208068c59acef40582e085a61ced435dea487faab7136f9fb48dac
       - from: components/s-faq/s-faq.js
         to: scripts/sections/s-faq.js
         checksum:
