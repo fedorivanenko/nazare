@@ -60,7 +60,7 @@ theme:
 
 components:
   c-button:
-    version: 1.0.1
+    version: 1.0.2
     type: snippet
     dependencies: []
     files:
@@ -68,7 +68,7 @@ components:
         to: snippets/c-button.liquid
         checksum:
           algorithm: sha256
-          value: 1c6c4909c50979021ab76df938da37c86491f0f872ae80b2309aa927ebc9bdab
+          value: 61143f2b6c683db2fd71bb122234a96b33e2e8edfc533812b6bcbbf5a477f41f
   c-video:
     version: 1.0.1
     type: snippet
@@ -152,7 +152,7 @@ components:
           algorithm: sha256
           value: dd263c8fc35251cf8c72b1f622d112a8bc51fe166c6d1a06727604658887e8e0
   s-hero:
-    version: 1.1.0
+    version: 1.1.1
     type: section
     dependencies:
       - c-bg-video
@@ -162,7 +162,7 @@ components:
         to: sections/s-hero.liquid
         checksum:
           algorithm: sha256
-          value: b1a2a626dfd05c06887c4ae5748df8b016a0213d5936d878dd4942d7d329441a
+          value: a908b8aaca658a2caaed513696fc5eda7e38bc6475d754705b29981dcd908dd4
   s-video-gallery:
     version: 1.1.2-dev.0
     type: section
@@ -503,14 +503,13 @@ components:
           algorithm: sha256
           value: 5c61a1e504294db9ec681f9b9c8f4bf79eb2c53f4925c1276aac4ed7b785af3b
   s-footer:
-    version: 1.0.1
+    version: 1.1.0
     type: section
     dependencies:
       - c-email-signup-klaviyo
-      - c-social-links
     files:
       - from: components/s-footer/s-footer.liquid
         to: sections/s-footer.liquid
         checksum:
           algorithm: sha256
-          value: 2425af3eb00cc44d5d802004a86ca875c86eb2b5d6ca6ab1a484ccf9cf5f5996
+          value: 06896ba68375239ac4c9ec094c6dd07eab3c4983e73c8cf5c551a08a58e70463

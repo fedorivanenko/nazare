@@ -70,7 +70,7 @@
         {% endif %}
 
         {% if cta_label != blank and cta_url != blank or cta2_label != blank and cta2_url != blank %}
-          <div class="mt-8 flex flex-col items-stretch gap-4 sm:flex-row sm:items-center">
+          <div class="mt-8 flex flex-col items-stretch gap-4 sm:flex-row sm:items-center"{% if hero_scheme == 'dark' %} style="--btn-text: var(--foreground)"{% endif %}>
             {% if cta_label != blank and cta_url != blank %}
               {% render 'c-button', label: cta_label, url: cta_url, scheme: cta_scheme %}
             {% endif %}
