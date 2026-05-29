@@ -1,0 +1,13 @@
+[
+  {
+    "name": "Klaviyo",
+    "settings": [
+      {
+        "type": "text",
+        "id": "klaviyo_company_id",
+        "label": "Klaviyo company ID",
+        "info": "Found in Klaviyo → Settings → Account → API keys."
+      }
+    ]
+  }
+]

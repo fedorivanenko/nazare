@@ -50,9 +50,7 @@ describe("theme scaffold", () => {
 		);
 		await expect(readText(templatePath)).resolves.toContain('"type": "s-main"');
 		await expect(readText(sectionPath)).resolves.toContain("{% schema %}");
-		await expect(readText(themeSettingsPath)).resolves.toContain(
-			'"name": "Social icons"',
-		);
+		await expect(readText(themeSettingsPath)).resolves.toBe("[]\n");
 	});
 
 	it("uses one starter section only and index template points to it", async () => {

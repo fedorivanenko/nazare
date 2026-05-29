@@ -26,7 +26,7 @@ theme:
       to: config/theme.settings.json
       checksum:
         algorithm: sha256
-        value: f663406be1b73e55b96d32664ce65c551f816bd8fa1f6a8fe5ed8ca58ccc22f5
+        value: 37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570
     - from: theme/default/nazare/vite-plugin.js
       to: nazare/vite-plugin.js
       checksum:
@@ -116,7 +116,7 @@ components:
           algorithm: sha256
           value: 27d90f2434035297bd157917d355aaf74075a639c709bb485975774bedc63098
   c-ratings-yotpo:
-    version: 1.0.0
+    version: 1.0.1
     type: snippet
     dependencies:
       - c-ratings
@@ -125,12 +125,17 @@ components:
         to: snippets/c-ratings-yotpo.liquid
         checksum:
           algorithm: sha256
-          value: 9bc9287af6fcce3fd54108aec79cb865b53b0415b2a723f4b543ff25cf19bf33
+          value: 59898d291a86311e0bb2d72a0cf6917b3fcc970e77a9e01e8a5a4859977015ea
       - from: components/c-ratings-yotpo/c-ratings-yotpo.js
         to: scripts/snippets/c-ratings-yotpo.js
         checksum:
           algorithm: sha256
           value: 1e457ab2b875f24b86b731c57efb1bd686884463d1fc0ba05e5bd0c36869478d
+      - from: components/c-ratings-yotpo/c-ratings-yotpo.settings.json
+        to: config/c-ratings-yotpo.settings.json
+        checksum:
+          algorithm: sha256
+          value: 3bd8a86ec4044e60a286eddf8d7ea91ba4de67df6b92d11853f5bf4e946ca9e8
   c-bg-video:
     version: 1.0.0
     type: snippet
@@ -228,7 +233,7 @@ components:
           algorithm: sha256
           value: 2efec0bf2673906ea0fb5d78a9c1bf5d5fa232a134dcbe4ea8939437a5732b32
   c-social-links:
-    version: 1.0.1
+    version: 1.0.2
     type: snippet
     dependencies: []
     files:
@@ -237,6 +242,11 @@ components:
         checksum:
           algorithm: sha256
           value: 0224714a6fd3a79d5243e080c8652814761019d4c90859fc943c7b6046277319
+      - from: components/c-social-links/c-social-links.settings.json
+        to: config/c-social-links.settings.json
+        checksum:
+          algorithm: sha256
+          value: f663406be1b73e55b96d32664ce65c551f816bd8fa1f6a8fe5ed8ca58ccc22f5
   c-faq-item:
     version: 1.0.0
     type: snippet
@@ -334,7 +344,7 @@ components:
           algorithm: sha256
           value: 13e86551f840c1df1cbd11330aa0251f172b341ef30049a2b1bc83dbb847f405
   c-email-signup-klaviyo:
-    version: 1.0.0
+    version: 1.0.1
     type: snippet
     dependencies:
       - c-email-signup
@@ -343,12 +353,17 @@ components:
         to: snippets/c-email-signup-klaviyo.liquid
         checksum:
           algorithm: sha256
-          value: 4a4340b5636f561ac596a683a8857bbca5b825a5bf46e41896962f186f2e4390
+          value: 2f29e1c55fb09da169eedcbe4fdd764523a38c5297f53cc570b1cabf1c1494e6
       - from: components/c-email-signup-klaviyo/c-email-signup-klaviyo.js
         to: scripts/snippets/c-email-signup-klaviyo.js
         checksum:
           algorithm: sha256
-          value: ca8b37369849a70092021c1cf407aceb9a06c394a0c5649aea861e0393b99359
+          value: 9b7bcb79ed08e7e3e1225362bd28bcf0e98af9c8cd6d8877e14c0468fcdf20ba
+      - from: components/c-email-signup-klaviyo/c-email-signup-klaviyo.settings.json
+        to: config/c-email-signup-klaviyo.settings.json
+        checksum:
+          algorithm: sha256
+          value: 248c6cafa67dba77539022faaccc82c75d5a4f9ba6172c635041ef34fd8c96f7
   s-trust-bar:
     version: 1.0.0
     type: section

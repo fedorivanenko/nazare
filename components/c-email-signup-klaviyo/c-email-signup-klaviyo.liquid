@@ -5,7 +5,7 @@
   assign esk_class = class
 %}
 
-{% capture esk_attrs %}data-nazare-use="snippets/c-email-signup-klaviyo" data-list-id="{{ esk_list_id | escape }}"{% endcapture %}
+{% capture esk_attrs %}data-nazare-use="snippets/c-email-signup-klaviyo" data-list-id="{{ esk_list_id | escape }}" data-company-id="{{ settings.klaviyo_company_id | escape }}"{% endcapture %}
 
 {% render 'c-email-signup',
   placeholder: esk_placeholder,

@@ -599,6 +599,7 @@ const COMPONENT_DESTINATION_ROOTS = [
 	"templates/",
 	"assets/",
 	"styles/",
+	"config/",
 	"scripts/sections/",
 	"scripts/snippets/",
 	"scripts/behaviors/",

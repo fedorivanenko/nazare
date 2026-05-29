@@ -2,8 +2,8 @@ const mounts = new WeakMap();
 
 const KLAVIYO_ENDPOINT = 'https://a.klaviyo.com/client/subscriptions/?company_id=';
 
-function getCompanyId() {
-	return window.klaviyoCompanyId ?? window._learnq?.[0]?.[1] ?? null;
+function getCompanyId(root) {
+	return root.dataset.companyId || window.klaviyoCompanyId ?? window._learnq?.[0]?.[1] ?? null;
 }
 
 export async function init(root) {
@@ -31,7 +31,7 @@ export async function init(root) {
 		if (submitBtn) submitBtn.disabled = true;
 
 		try {
-			const companyId = getCompanyId();
+			const companyId = getCompanyId(root);
 			if (!companyId) throw new Error('Klaviyo company ID not found');
 
 			const res = await fetch(KLAVIYO_ENDPOINT + encodeURIComponent(companyId), {

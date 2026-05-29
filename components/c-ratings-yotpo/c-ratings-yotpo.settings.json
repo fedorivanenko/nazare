@@ -1,0 +1,13 @@
+[
+  {
+    "name": "Yotpo",
+    "settings": [
+      {
+        "type": "text",
+        "id": "yotpo_app_key",
+        "label": "Yotpo public app key",
+        "info": "Found in Yotpo → Settings → Store → General → API credentials."
+      }
+    ]
+  }
+]
