@@ -36,15 +36,20 @@ function setButtonState(button, label) {
 	button.setAttribute("aria-label", label);
 }
 
+function toggleIcon(show, hide) {
+	if (show) show.classList.remove("hidden");
+	if (hide) hide.classList.add("hidden");
+}
+
 function update(instance) {
-	const { video, thumbnail, playButton, playLabel, muteButton, muteLabel } =
+	const { video, thumbnail, playButton, playIcon, pauseIcon, muteButton, unmutedIcon, mutedIcon } =
 		instance;
 	const isPaused = video.paused;
 	const isMuted = video.muted || video.volume === 0;
 
-	setText(playLabel, isPaused ? "Play" : "Pause");
+	toggleIcon(isPaused ? playIcon : pauseIcon, isPaused ? pauseIcon : playIcon);
 	setButtonState(playButton, isPaused ? "Play video" : "Pause video");
-	setText(muteLabel, isMuted ? "Unmute" : "Mute");
+	toggleIcon(isMuted ? mutedIcon : unmutedIcon, isMuted ? unmutedIcon : mutedIcon);
 	setButtonState(muteButton, isMuted ? "Unmute video" : "Mute video");
 
 	if (thumbnail) {
@@ -92,9 +97,11 @@ export function init(root) {
 		video,
 		thumbnail: root.querySelector("[data-c-video-thumbnail]"),
 		playButton: root.querySelector("[data-c-video-play]"),
-		playLabel: root.querySelector("[data-c-video-play-label]"),
+		playIcon: root.querySelector("[data-c-video-play-icon]"),
+		pauseIcon: root.querySelector("[data-c-video-pause-icon]"),
 		muteButton: root.querySelector("[data-c-video-mute]"),
-		muteLabel: root.querySelector("[data-c-video-mute-label]"),
+		unmutedIcon: root.querySelector("[data-c-video-unmuted-icon]"),
+		mutedIcon: root.querySelector("[data-c-video-muted-icon]"),
 		listeners: [],
 		mute() {
 			this.video.muted = true;
