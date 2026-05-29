@@ -33,7 +33,7 @@
     {% if root_id != blank %}id="c-video-{{ root_id | handleize }}"{% endif %}
     data-nazare-use="snippets/c-video"
     style="--c-video-aspect-ratio: {{ resolved_aspect_ratio | escape }};"
-    class="group relative aspect-[var(--c-video-aspect-ratio)] overflow-hidden rounded-xl bg-foreground text-background shadow-sm{% if wrapper_class != blank %} {{ wrapper_class }}{% endif %}"
+    class="group relative aspect-[var(--c-video-aspect-ratio)] overflow-hidden bg-foreground text-background shadow-sm{% if wrapper_class != blank %} {{ wrapper_class }}{% endif %}"
   >
     {{ video_media | video_tag: image_size: '1600x', autoplay: false, loop: should_loop, muted: true, controls: false, class: 'h-full w-full bg-foreground object-cover' }}
 
@@ -56,11 +56,11 @@
       aria-label="Play video"
     >
       <span data-c-video-play-label class="flex h-14 w-14 items-center justify-center rounded-full bg-background/80 text-foreground shadow-sm backdrop-blur transition hover:bg-background">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-6 w-6 translate-x-0.5">
-          <path d="M8 5v14l11-7z"/>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-6 w-6 translate-x-0.5" data-c-video-play-icon>
+          <polygon points="5 3 19 12 5 21 5 3"/>
         </svg>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="hidden h-6 w-6" data-c-video-pause-icon>
-          <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden h-6 w-6" data-c-video-pause-icon>
+          <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
         </svg>
       </span>
     </button>
@@ -71,11 +71,15 @@
       class="absolute bottom-3 right-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-background/70 text-foreground shadow-sm backdrop-blur transition hover:bg-background focus:outline-none"
       aria-label="Unmute video"
     >
-      <span data-c-video-mute-label>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-4 w-4">
-          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
-        </svg>
-      </span>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4" data-c-video-unmuted-icon>
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+      </svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden h-4 w-4" data-c-video-muted-icon>
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+        <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+      </svg>
     </button>
   </div>
 {% endif %}

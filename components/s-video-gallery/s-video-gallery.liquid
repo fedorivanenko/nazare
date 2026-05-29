@@ -27,11 +27,11 @@
 %}
 
 <section class="bg-background text-foreground">
-  <div class="page-width py-16 lg:py-24">
+  <div class="px-15 py-16 lg:py-24">
     <div class="mb-10 flex flex-col gap-6 lg:mb-14 lg:flex-row lg:items-end lg:justify-between">
       <div class="max-w-3xl">
         {% if gallery_title != blank %}
-          <h2 class="font-heading text-4xl font-bold uppercase lg:text-5xl">{{ gallery_title }}</h2>
+          <h2 class="font-heading text-4xl font-bold uppercase lg:text-5xl">{{ gallery_title | newline_to_br }}</h2>
         {% endif %}
 
         {% if gallery_description != blank %}
@@ -47,7 +47,9 @@
         </div>
       {% endif %}
     </div>
+  </div>
 
+  <div>
     {% capture carousel_items %}
       {% for block in section.blocks %}
         {% if block.settings.video != blank %}
@@ -72,7 +74,7 @@
     {% endif %}
 
     {% if rendered_videos == 0 and request.design_mode %}
-      <div class="rounded-3xl border border-dashed border-foreground/25 px-6 py-12 text-center text-sm text-foreground/60">
+      <div class="mx-15 rounded-xl border border-dashed border-foreground/25 px-6 py-12 text-center text-sm text-foreground/60">
         Add Shopify-hosted video blocks to populate this gallery.
       </div>
     {% endif %}
@@ -84,10 +86,10 @@
   "name": "Video gallery",
   "settings": [
     {
-      "type": "text",
+      "type": "textarea",
       "id": "title",
       "label": "Title",
-      "default": "Watch the collection in motion"
+      "default": "Watch the collection\nin motion"
     },
     {
       "type": "richtext",
