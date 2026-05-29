@@ -120,6 +120,51 @@ describe("theme build plugin", () => {
 		);
 	});
 
+	it("generates settings_schema.json from theme.settings.json and component settings files", async () => {
+		const root = await makeTheme();
+		await writeText(root, "sections/s-main.liquid", "<section>Main</section>\n");
+		await writeText(
+			root,
+			"config/theme.settings.json",
+			JSON.stringify([{ name: "Colors", settings: [{ type: "color", id: "bg", label: "Background" }] }]),
+		);
+		await writeText(
+			root,
+			"config/c-foo.settings.json",
+			JSON.stringify([{ name: "Foo", settings: [{ type: "text", id: "foo_label", label: "Label" }] }]),
+		);
+
+		generateThemeBuildFiles(root);
+
+		const schema = JSON.parse(await readText(root, "config/settings_schema.json"));
+		expect(schema).toEqual([
+			{ name: "Colors", settings: [{ type: "color", id: "bg", label: "Background" }] },
+			{ name: "Foo", settings: [{ type: "text", id: "foo_label", label: "Label" }] },
+		]);
+	});
+
+	it("generates empty settings_schema.json when no settings files exist", async () => {
+		const root = await makeTheme();
+		await writeText(root, "sections/s-main.liquid", "<section>Main</section>\n");
+
+		generateThemeBuildFiles(root);
+
+		const schema = JSON.parse(await readText(root, "config/settings_schema.json"));
+		expect(schema).toEqual([]);
+	});
+
+	it("rejects settings files with empty settings arrays", async () => {
+		const root = await makeTheme();
+		await writeText(root, "sections/s-main.liquid", "<section>Main</section>\n");
+		await writeText(
+			root,
+			"config/c-bad.settings.json",
+			JSON.stringify([{ name: "Bad", settings: [] }]),
+		);
+
+		expect(() => generateThemeBuildFiles(root)).toThrow("empty settings array");
+	});
+
 	it("rejects multiple module keys on one data-nazare-use attribute", async () => {
 		const root = await makeTheme();
 		await writeText(
@@ -215,12 +260,14 @@ describe("theme build plugin", () => {
 			"<section>{% render snippet_name %}</section>\n",
 		);
 		const plugin = nazareThemePlugin();
-		const config = plugin.config({ root });
+		plugin.config({ root });
+		const opts = plugin.options({});
 		const warn = vi.fn();
+		const addWatchFile = vi.fn();
 
-		plugin.buildStart.call({ warn });
+		plugin.buildStart.call({ warn, addWatchFile });
 
-		expect(config.build.rollupOptions.input).toMatchObject({
+		expect(opts.input).toMatchObject({
 			theme: "scripts/theme.js",
 			"s-main": "styles/s-main.css",
 		});

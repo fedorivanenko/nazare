@@ -258,6 +258,65 @@ export function runtimeContent() {
 	return `// ${GENERATED_MARKER}\n\nconst modules = {\n  ...import.meta.glob("./sections/*.js"),\n  ...import.meta.glob("./snippets/*.js"),\n  ...import.meta.glob("./behaviors/*.js"),\n};\n\nconst modulePromises = new Map();\nconst mounted = new WeakMap();\n\nasync function importModule(key) {\n  const load = modules[\`./\${key}.js\`];\n\n  if (!load) {\n    console.warn(\`[nazare] Missing JS module for \${key}\`);\n    return null;\n  }\n\n  try {\n    return await load();\n  } catch (error) {\n    console.warn(\`[nazare] Failed to import JS module for \${key}\`, error);\n    return null;\n  }\n}\n\nfunction nazareNodes(root) {\n  const selector = "[data-nazare-use]";\n  const nodes = [...root.querySelectorAll(selector)];\n\n  if (root.matches?.(selector)) {\n    nodes.unshift(root);\n  }\n\n  return nodes;\n}\n\nexport async function initNazare(root = document) {\n  for (const node of nazareNodes(root)) {\n    const key = node.dataset.nazareUse;\n\n    if (mounted.get(node)?.key === key) continue;\n\n    if (!modulePromises.has(key)) {\n      modulePromises.set(key, importModule(key));\n    }\n\n    const module = await modulePromises.get(key);\n    if (!module?.init) continue;\n\n    try {\n      module.init(node);\n      mounted.set(node, { key, module });\n    } catch (error) {\n      console.warn(\`[nazare] Failed to initialize JS module for \${key}\`, error);\n    }\n  }\n}\n\nexport function destroyNazare(root = document) {\n  for (const node of nazareNodes(root)) {\n    const mount = mounted.get(node);\n    if (!mount) continue;\n\n    try {\n      mount.module.destroy?.(node);\n    } catch (error) {\n      console.warn(\`[nazare] Failed to destroy JS module for \${mount.key}\`, error);\n    } finally {\n      mounted.delete(node);\n    }\n  }\n}\n\ndocument.addEventListener("shopify:section:load", (event) => {\n  initNazare(event.target);\n});\n\ndocument.addEventListener("shopify:section:unload", (event) => {\n  destroyNazare(event.target);\n});\n\ninitNazare();\n`;
 }
 
+function listSettingsFiles(root) {
+	const configDir = path.join(root, "config");
+	if (!pathExists(configDir)) return [];
+
+	return fs
+		.readdirSync(configDir, { withFileTypes: true })
+		.filter(
+			(entry) =>
+				entry.isFile() &&
+				entry.name.endsWith(".settings.json") &&
+				entry.name !== "theme.settings.json",
+		)
+		.map((entry) => path.join(configDir, entry.name))
+		.sort();
+}
+
+function mergeSettings(root) {
+	const groups = [];
+	const configDir = path.join(root, "config");
+
+	const basePath = path.join(configDir, "theme.settings.json");
+	if (pathExists(basePath)) {
+		const base = JSON.parse(readText(basePath));
+		if (!Array.isArray(base)) {
+			throw new Error("config/theme.settings.json must be a JSON array");
+		}
+		for (const group of base) {
+			if (Array.isArray(group.settings) && group.settings.length === 0) {
+				throw new Error(
+					`config/theme.settings.json: group "${group.name}" has empty settings array`,
+				);
+			}
+			groups.push(group);
+		}
+	}
+
+	for (const filePath of listSettingsFiles(root)) {
+		const relativePath = slash(path.relative(root, filePath));
+		const content = JSON.parse(readText(filePath));
+		if (!Array.isArray(content)) {
+			throw new Error(`${relativePath} must be a JSON array`);
+		}
+		for (const group of content) {
+			if (Array.isArray(group.settings) && group.settings.length === 0) {
+				throw new Error(
+					`${relativePath}: group "${group.name}" has empty settings array`,
+				);
+			}
+			groups.push(group);
+		}
+	}
+
+	return groups;
+}
+
+function settingsSchemaContent(groups) {
+	return `${JSON.stringify(groups, null, 2)}\n`;
+}
+
 function removeStaleGeneratedSectionCss(root, sectionNames) {
 	const stylesDir = path.join(root, "styles");
 	if (!pathExists(stylesDir)) return;
@@ -296,6 +355,12 @@ export function generateThemeBuildFiles(root = process.cwd()) {
 		sectionCssPreloadsSnippet(graph.sections),
 	);
 
+	const settingsGroups = mergeSettings(root);
+	writeText(
+		path.join(root, "config", "settings_schema.json"),
+		settingsSchemaContent(settingsGroups),
+	);
+
 	return graph;
 }
 
@@ -332,10 +397,24 @@ export function nazareThemePlugin() {
 		buildStart() {
 			this.addWatchFile(path.join(root, "sections"));
 			this.addWatchFile(path.join(root, "snippets"));
+			this.addWatchFile(path.join(root, "config"));
 
 			for (const dir of ["sections", "snippets"]) {
 				for (const file of listLiquidFiles(path.join(root, dir))) {
 					this.addWatchFile(file);
+				}
+			}
+
+			const configDir = path.join(root, "config");
+			if (pathExists(configDir)) {
+				for (const entry of fs.readdirSync(configDir, { withFileTypes: true })) {
+					if (
+						entry.isFile() &&
+						entry.name.endsWith(".settings.json") &&
+						entry.name !== "settings_schema.json"
+					) {
+						this.addWatchFile(path.join(configDir, entry.name));
+					}
 				}
 			}
 

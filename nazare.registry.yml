@@ -4,7 +4,7 @@ registry:
   name: nazare
 
 theme:
-  version: 1.1.2-dev.0
+  version: 1.1.3-dev.0
   source: theme/default
   files:
     - from: theme/default/layout/theme.liquid
@@ -22,8 +22,8 @@ theme:
       checksum:
         algorithm: sha256
         value: 7d8ae5b53acbde38ab30c2689b1d98a77a40d613da6b74d89b1e7e597be6febf
-    - from: theme/default/config/settings_schema.json
-      to: config/settings_schema.json
+    - from: theme/default/config/theme.settings.json
+      to: config/theme.settings.json
       checksum:
         algorithm: sha256
         value: f663406be1b73e55b96d32664ce65c551f816bd8fa1f6a8fe5ed8ca58ccc22f5
@@ -31,7 +31,7 @@ theme:
       to: nazare/vite-plugin.js
       checksum:
         algorithm: sha256
-        value: 50110ff1f7de3f11a176abd5f68a8acfd300d597d492db5719f221627190712b
+        value: f2ac7556055b0e158f0aafa67aa3a61304e73798f2b92a6de6a326a7fda87ace
     - from: theme/default/package.json
       to: package.json
       checksum:

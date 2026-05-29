@@ -14,8 +14,8 @@ const sectionPath = new URL(
 	"../../../theme/default/sections/s-main.liquid",
 	import.meta.url,
 );
-const settingsSchemaPath = new URL(
-	"../../../theme/default/config/settings_schema.json",
+const themeSettingsPath = new URL(
+	"../../../theme/default/config/theme.settings.json",
 	import.meta.url,
 );
 
@@ -28,7 +28,7 @@ describe("theme scaffold", () => {
 		const manifest = await readText(manifestPath);
 
 		expect(manifest).toContain(
-			"theme:\n  version: 1.1.2-dev.0\n  source: theme/default",
+			"theme:\n  version: 1.1.3-dev.0\n  source: theme/default",
 		);
 		expect(manifest).toContain(
 			"- from: theme/default/layout/theme.liquid\n      to: layout/theme.liquid",
@@ -40,7 +40,7 @@ describe("theme scaffold", () => {
 			"- from: theme/default/sections/s-main.liquid\n      to: sections/s-main.liquid",
 		);
 		expect(manifest).toContain(
-			"- from: theme/default/config/settings_schema.json\n      to: config/settings_schema.json",
+			"- from: theme/default/config/theme.settings.json\n      to: config/theme.settings.json",
 		);
 	});
 
@@ -50,8 +50,8 @@ describe("theme scaffold", () => {
 		);
 		await expect(readText(templatePath)).resolves.toContain('"type": "s-main"');
 		await expect(readText(sectionPath)).resolves.toContain("{% schema %}");
-		await expect(readText(settingsSchemaPath)).resolves.toContain(
-			'"name": "Theme settings"',
+		await expect(readText(themeSettingsPath)).resolves.toContain(
+			'"name": "Social icons"',
 		);
 	});
 
