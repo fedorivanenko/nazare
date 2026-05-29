@@ -54,11 +54,16 @@ export function attachDrag(el, { onStart, onDelta, onEnd } = {}) {
 		}
 	}
 
+	function onDragStart(e) {
+		e.preventDefault();
+	}
+
 	el.addEventListener("pointerdown", onPointerDown);
 	el.addEventListener("pointermove", onPointerMove);
 	el.addEventListener("pointerup", onPointerUp);
 	el.addEventListener("pointercancel", onPointerUp);
 	el.addEventListener("click", onClickCapture, true);
+	el.addEventListener("dragstart", onDragStart);
 
 	return function destroy() {
 		el.removeEventListener("pointerdown", onPointerDown);
@@ -66,6 +71,7 @@ export function attachDrag(el, { onStart, onDelta, onEnd } = {}) {
 		el.removeEventListener("pointerup", onPointerUp);
 		el.removeEventListener("pointercancel", onPointerUp);
 		el.removeEventListener("click", onClickCapture, true);
+		el.removeEventListener("dragstart", onDragStart);
 		el.classList.remove("cursor-grab", "cursor-grabbing");
 	};
 }

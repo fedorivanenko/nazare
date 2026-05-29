@@ -167,6 +167,7 @@ nazare update c-button
 | ID | Description | Dependencies |
 |---|---|---|
 | `s-announcement` | Announcement bar | — |
+| `s-statistics` | Stats grid with optional heading, per-stat label/value/description, and footnote | `c-stat` |
 | `s-hero` | Full-bleed hero with optional background video, image, overlay, and CTA | `c-bg-video`, `c-button` |
 | `s-video-gallery` | Video gallery with grid, carousel, and marquee layouts | `c-video`, `c-button`, `c-carousel` |
 

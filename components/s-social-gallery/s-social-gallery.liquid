@@ -35,21 +35,23 @@
   {% for block in section.blocks %}
     {% if block.settings.image != blank %}
       {% assign sg_rendered = sg_rendered | plus: 1 %}
-      <div data-c-carousel-item {{ block.shopify_attributes }} class="shrink-0 {{ ratio_class }} w-64 overflow-hidden">
-        {% if block.settings.link != blank %}
-          <a href="{{ block.settings.link }}" class="block size-full">
-        {% endif %}
-        {{
-          block.settings.image
-          | image_url: width: 600
-          | image_tag:
-            alt: block.settings.alt | default: block.settings.image.alt,
-            loading: 'lazy',
-            class: 'size-full object-cover'
-        }}
-        {% if block.settings.link != blank %}
-          </a>
-        {% endif %}
+      <div data-c-carousel-item {{ block.shopify_attributes }} class="relative shrink-0 {{ ratio_class }} w-64 overflow-hidden">
+        <div class="absolute inset-0">
+          {% if block.settings.link != blank %}
+            <a href="{{ block.settings.link }}" class="absolute inset-0 z-10">
+          {% endif %}
+          <img
+            src="{{ block.settings.image | image_url: width: 600 }}"
+            alt="{{ block.settings.alt | default: block.settings.image.alt | escape }}"
+            loading="lazy"
+            width="{{ block.settings.image.width }}"
+            height="{{ block.settings.image.height }}"
+            class="size-full object-cover select-none"
+          >
+          {% if block.settings.link != blank %}
+            </a>
+          {% endif %}
+        </div>
       </div>
     {% endif %}
   {% endfor %}

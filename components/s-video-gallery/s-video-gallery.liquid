@@ -6,17 +6,20 @@
   assign cta_label = section.settings.cta_label
   assign cta_url = section.settings.cta_url
   assign cta_scheme = section.settings.cta_scheme
-  assign columns = section.settings.columns | default: '3'
-  assign layout_mode = section.settings.layout_mode | default: 'grid'
-  assign carousel_direction = section.settings.carousel_direction | default: 'left'
-  assign carousel_speed = section.settings.carousel_speed | default: 'normal'
-  assign carousel_pause_on_hover = section.settings.carousel_pause_on_hover
+  assign vg_mode = section.settings.mode | default: 'static'
+  assign vg_direction = section.settings.direction | default: 'left'
+  assign vg_speed = section.settings.speed | default: 'normal'
+  assign vg_pause_on_hover = section.settings.pause_on_hover
   assign has_cta = false
   assign rendered_videos = 0
 
-  unless layout_mode == 'grid' or layout_mode == 'carousel' or layout_mode == 'marquee'
-    assign layout_mode = 'grid'
+  unless vg_mode == 'static' or vg_mode == 'marquee'
+    assign vg_mode = 'static'
   endunless
+
+  if vg_pause_on_hover == nil
+    assign vg_pause_on_hover = true
+  endif
 
   if cta_label != blank and cta_url != blank
     assign has_cta = true
@@ -45,38 +48,27 @@
       {% endif %}
     </div>
 
-    {% if layout_mode == 'carousel' or layout_mode == 'marquee' %}
-      {% capture carousel_items %}
-        {% for block in section.blocks %}
-          {% if block.settings.video != blank %}
-            {% assign rendered_videos = rendered_videos | plus: 1 %}
-            <div data-c-carousel-item {{ block.shopify_attributes }} class="h-full shrink-0">
-              {% render 'c-video', video: block.settings.video, thumbnail: block.settings.thumbnail, thumbnail_alt: block.settings.thumbnail_alt, id: block.id, class: 'h-full' %}
-            </div>
-          {% endif %}
-        {% endfor %}
-      {% endcapture %}
+    {% capture carousel_items %}
+      {% for block in section.blocks %}
+        {% if block.settings.video != blank %}
+          {% assign rendered_videos = rendered_videos | plus: 1 %}
+          <div data-c-carousel-item {{ block.shopify_attributes }} class="h-full shrink-0">
+            {% render 'c-video', video: block.settings.video, thumbnail: block.settings.thumbnail, thumbnail_alt: block.settings.thumbnail_alt, id: block.id, class: 'h-full' %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    {% endcapture %}
 
-      {% if rendered_videos > 0 %}
-        {% liquid
-          assign carousel_mode = 'static'
-          if layout_mode == 'marquee'
-            assign carousel_mode = 'marquee'
-          endif
-        %}
-        {% render 'c-carousel', content: carousel_items, aria_label: gallery_title, mode: carousel_mode, direction: carousel_direction, speed: carousel_speed, pause_on_hover: carousel_pause_on_hover, gap: 'md' %}
-      {% endif %}
-    {% else %}
-      <div class="grid grid-cols-1 gap-6{% if columns == '2' %} lg:grid-cols-2{% elsif columns == '4' %} lg:grid-cols-4{% else %} lg:grid-cols-3{% endif %}">
-        {% for block in section.blocks %}
-          {% if block.settings.video != blank %}
-            {% assign rendered_videos = rendered_videos | plus: 1 %}
-            <div {{ block.shopify_attributes }} class="min-w-0">
-              {% render 'c-video', video: block.settings.video, thumbnail: block.settings.thumbnail, thumbnail_alt: block.settings.thumbnail_alt, id: block.id %}
-            </div>
-          {% endif %}
-        {% endfor %}
-      </div>
+    {% if rendered_videos > 0 %}
+      {% render 'c-carousel',
+        content: carousel_items,
+        aria_label: gallery_title,
+        mode: vg_mode,
+        direction: vg_direction,
+        speed: vg_speed,
+        pause_on_hover: vg_pause_on_hover,
+        gap: 'md'
+      %}
     {% endif %}
 
     {% if rendered_videos == 0 and request.design_mode %}
@@ -119,100 +111,50 @@
       "label": "CTA scheme",
       "default": "solid",
       "options": [
-        {
-          "value": "solid",
-          "label": "Solid"
-        },
-        {
-          "value": "outline",
-          "label": "Outline"
-        },
-        {
-          "value": "ghost",
-          "label": "Ghost"
-        }
+        { "value": "solid", "label": "Solid" },
+        { "value": "outline", "label": "Outline" },
+        { "value": "ghost", "label": "Ghost" }
       ]
     },
     {
+      "type": "header",
+      "content": "Gallery"
+    },
+    {
       "type": "select",
-      "id": "layout_mode",
-      "label": "Layout mode",
-      "default": "grid",
+      "id": "mode",
+      "label": "Mode",
+      "default": "static",
       "options": [
-        {
-          "value": "grid",
-          "label": "Grid"
-        },
-        {
-          "value": "carousel",
-          "label": "Carousel"
-        },
-        {
-          "value": "marquee",
-          "label": "Endless marquee"
-        }
+        { "value": "static", "label": "Static (drag to scroll)" },
+        { "value": "marquee", "label": "Marquee (auto-scroll)" }
       ]
     },
     {
       "type": "select",
-      "id": "columns",
-      "label": "Columns on large screens",
-      "default": "3",
-      "options": [
-        {
-          "value": "2",
-          "label": "2 columns"
-        },
-        {
-          "value": "3",
-          "label": "3 columns"
-        },
-        {
-          "value": "4",
-          "label": "4 columns"
-        }
-      ]
-    },
-    {
-      "type": "select",
-      "id": "carousel_direction",
-      "label": "Carousel direction",
+      "id": "direction",
+      "label": "Marquee direction",
       "default": "left",
       "options": [
-        {
-          "value": "left",
-          "label": "Left"
-        },
-        {
-          "value": "right",
-          "label": "Right"
-        }
+        { "value": "left", "label": "Left" },
+        { "value": "right", "label": "Right" }
       ]
     },
     {
       "type": "select",
-      "id": "carousel_speed",
-      "label": "Carousel speed",
+      "id": "speed",
+      "label": "Marquee speed",
       "default": "normal",
       "options": [
-        {
-          "value": "slow",
-          "label": "Slow"
-        },
-        {
-          "value": "normal",
-          "label": "Normal"
-        },
-        {
-          "value": "fast",
-          "label": "Fast"
-        }
+        { "value": "slow", "label": "Slow" },
+        { "value": "normal", "label": "Normal" },
+        { "value": "fast", "label": "Fast" }
       ]
     },
     {
       "type": "checkbox",
-      "id": "carousel_pause_on_hover",
-      "label": "Pause carousel on hover or focus",
+      "id": "pause_on_hover",
+      "label": "Pause on hover",
       "default": true
     }
   ],
@@ -243,15 +185,9 @@
     {
       "name": "Video gallery",
       "blocks": [
-        {
-          "type": "video"
-        },
-        {
-          "type": "video"
-        },
-        {
-          "type": "video"
-        }
+        { "type": "video" },
+        { "type": "video" },
+        { "type": "video" }
       ]
     }
   ]

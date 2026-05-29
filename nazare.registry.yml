@@ -11,7 +11,7 @@ theme:
       to: layout/theme.liquid
       checksum:
         algorithm: sha256
-        value: 4db8dc3fd1a68099723f50cc0d086ded4175ef950bd77feaf0ce11d240d5986b
+        value: f91a4a48831eabbe47004047a6492cc21a6f40b12c30c3e3a059042508ae13ca
     - from: theme/default/templates/index.json
       to: templates/index.json
       checksum:
@@ -26,12 +26,12 @@ theme:
       to: config/settings_schema.json
       checksum:
         algorithm: sha256
-        value: e2eb618c1a894a638d2bb201924ad47960e3c642c9f1b55d8ebe9f7998e1c6cb
+        value: f663406be1b73e55b96d32664ce65c551f816bd8fa1f6a8fe5ed8ca58ccc22f5
     - from: theme/default/nazare/vite-plugin.js
       to: nazare/vite-plugin.js
       checksum:
         algorithm: sha256
-        value: ee204ffd729de83fa8ad1a18c0ce09ad4231f97013f026c0d76b768444525293
+        value: 50110ff1f7de3f11a176abd5f68a8acfd300d597d492db5719f221627190712b
     - from: theme/default/package.json
       to: package.json
       checksum:
@@ -46,7 +46,7 @@ theme:
       to: styles/base.css
       checksum:
         algorithm: sha256
-        value: b4096845e4b5b4fd72206de5113d4d208428096ee23efebdf327309ef57575f0
+        value: 199796ed9f269abfadcfcc51534c5d73663fefafa5cc966cf626a6c0e4018d5b
     - from: theme/default/.gitignore
       to: .gitignore
       checksum:
@@ -159,7 +159,7 @@ components:
           algorithm: sha256
           value: a527366a55654a5d643832781b0ae564ad4d040898f7ce5cb86b88f9641426e6
   s-video-gallery:
-    version: 1.1.1-dev.0
+    version: 1.1.2-dev.0
     type: section
     dependencies:
       - c-video
@@ -170,9 +170,9 @@ components:
         to: sections/s-video-gallery.liquid
         checksum:
           algorithm: sha256
-          value: 172452c06ccc39525a4cdc0e1f6386d87e0b544e1883eb1cb1d40022d28da055
+          value: 5d8bdda4829d127daadd92c0091ce9034800bb0ea8f1105a77538aa69def55bb
   c-drag-scroll:
-    version: 1.0.1-dev.0
+    version: 1.0.2-dev.0
     type: snippet
     dependencies: []
     files:
@@ -180,9 +180,9 @@ components:
         to: scripts/snippets/c-drag-scroll.js
         checksum:
           algorithm: sha256
-          value: 3ee270db4f7eb0facec7529d8ce76c4a26975ce137c2a9b352f5d2180ae4f208
+          value: 68510520dfe8752d32bc7f0429011f7414bfb398bf8bcf7a8c850cad0f0e961b
   c-carousel:
-    version: 1.0.7-dev.0
+    version: 1.0.8-dev.0
     type: snippet
     dependencies:
       - c-drag-scroll
@@ -191,7 +191,7 @@ components:
         to: snippets/c-carousel.liquid
         checksum:
           algorithm: sha256
-          value: e79b73a91c21ee1eafe27a6accb65448f303939fd8f24827ac9df9794cf94529
+          value: cf13fbb853455e566ef0792032154a5886cf28b708f50ac65a61ed02fcefe93b
       - from: components/c-carousel/c-carousel.js
         to: scripts/snippets/c-carousel.js
         checksum:
@@ -228,7 +228,7 @@ components:
           algorithm: sha256
           value: 2efec0bf2673906ea0fb5d78a9c1bf5d5fa232a134dcbe4ea8939437a5732b32
   c-social-links:
-    version: 1.0.0
+    version: 1.0.1
     type: snippet
     dependencies: []
     files:
@@ -236,7 +236,7 @@ components:
         to: snippets/c-social-links.liquid
         checksum:
           algorithm: sha256
-          value: f3b903087b0507a8e72f9ca4506bd5c04b7cec8d7ae9dfbfd335d1e0b6b6f3de
+          value: 0224714a6fd3a79d5243e080c8652814761019d4c90859fc943c7b6046277319
   c-faq-item:
     version: 1.0.0
     type: snippet
@@ -278,10 +278,10 @@ components:
           algorithm: sha256
           value: dd720cc331a1949d6fb236d50100cda22a4e6abcbc079ff54a9f4341d1fae319
       - from: components/c-stat/c-stat.js
-        to: assets/c-stat.js
+        to: scripts/snippets/c-stat.js
         checksum:
           algorithm: sha256
-          value: df00c5cf682b718cae0e29255f73333f6c9bafbeafd1e1fc8ce058bbd73fc85d
+          value: 69cfdf5414e4bc2c4dd84a13a26c0503b4e295158f1479b8a24b4af785508a5f
   c-swatch:
     version: 1.0.0
     type: snippet
@@ -293,7 +293,7 @@ components:
           algorithm: sha256
           value: fff591f74caac4302d8a1c39bc89c926310fe9110acf1ebed7a81a731ce2a05b
       - from: components/c-swatch/c-swatch.js
-        to: assets/c-swatch.js
+        to: scripts/snippets/c-swatch.js
         checksum:
           algorithm: sha256
           value: 2897a05c0112a58e2379d2fe24bb3e43de0aa4c2d9673bd4179f8ef83c24f317
@@ -345,7 +345,7 @@ components:
           algorithm: sha256
           value: 4a4340b5636f561ac596a683a8857bbca5b825a5bf46e41896962f186f2e4390
       - from: components/c-email-signup-klaviyo/c-email-signup-klaviyo.js
-        to: assets/c-email-signup-klaviyo.js
+        to: scripts/snippets/c-email-signup-klaviyo.js
         checksum:
           algorithm: sha256
           value: ca8b37369849a70092021c1cf407aceb9a06c394a0c5649aea861e0393b99359
@@ -391,7 +391,7 @@ components:
         to: sections/s-statistics.liquid
         checksum:
           algorithm: sha256
-          value: 327e01efb9f72b01033b9a598044515c4ede060f7150153ef346a83aee59115e
+          value: 52c9b2fba852c863bb2ed0a06dfd58b4b02b01de44487f29e9e07c83326b879f
   s-faq:
     version: 1.0.0
     type: section
@@ -416,7 +416,7 @@ components:
           algorithm: sha256
           value: 325b973d3ab549476668956a8ddda1402f182e09f8206d845f3edf13953c73dc
   s-image-gallery:
-    version: 1.0.0
+    version: 1.0.5
     type: section
     dependencies:
       - c-carousel
@@ -425,9 +425,9 @@ components:
         to: sections/s-image-gallery.liquid
         checksum:
           algorithm: sha256
-          value: 9e192ce97d450ddfccbe4c6e82e141636d81a4c6c18f484a5d44e32e119ad256
+          value: 58b528acc9ee2f894a0ea62f65790f9594763207a44085ef0bb44b50dd932ae1
   s-social-gallery:
-    version: 1.0.0
+    version: 1.0.6
     type: section
     dependencies:
       - c-carousel
@@ -437,7 +437,7 @@ components:
         to: sections/s-social-gallery.liquid
         checksum:
           algorithm: sha256
-          value: 48d0d3e1cf082923060c4024b1bb043ff933e79702fef6c3920ec667a7e74b0a
+          value: 7aa7bed006c61831bb87d30c29f45e473cae0c3642712974cb27c6a24cd2d95e
   s-feature-product:
     version: 1.0.0
     type: section
@@ -463,18 +463,18 @@ components:
         checksum:
           algorithm: sha256
           value: 1182f4c489977effe7dde1a5ed1fea238c8d5d8a91ffa44056a6cbb6ef992d9d
-  s-mission-statement:
+  s-statement:
     version: 1.0.0
     type: section
     dependencies:
       - c-button
       - c-person
     files:
-      - from: components/s-mission-statement/s-mission-statement.liquid
-        to: sections/s-mission-statement.liquid
+      - from: components/s-statement/s-statement.liquid
+        to: sections/s-statement.liquid
         checksum:
           algorithm: sha256
-          value: cb5c05c5dbf4fd3093d9477280ab2a42488d251655052e90a4305fd4b09e5454
+          value: cf451fc67211142c8428af9cd5755930f53263233fa9e298f07f76af59653fbb
   s-product-collection:
     version: 1.0.0
     type: section

@@ -14,41 +14,65 @@
 %}
 
 {% if sl_has_any %}
-  <div class="flex items-center gap-2{% if sl_class != blank %} {{ sl_class }}{% endif %}">
+  <div class="flex items-center gap-4{% if sl_class != blank %} {{ sl_class }}{% endif %}">
 
     {% if sl_instagram != blank %}
-      <a href="{{ sl_instagram }}" target="_blank" rel="noopener" aria-label="Instagram" class="flex size-9 items-center justify-center rounded-full border border-current transition hover:bg-foreground hover:text-background focus:outline-none focus:ring-2 focus:ring-current focus:ring-offset-2">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="20" x="2" y="2" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>
+      <a href="{{ sl_instagram }}" target="_blank" rel="noopener" aria-label="Instagram" class="block opacity-60 transition hover:opacity-100 focus:outline-none focus:opacity-100">
+        {% if settings.social_icon_instagram != blank %}
+          <img src="{{ settings.social_icon_instagram | image_url: width: 48 }}" alt="" loading="lazy" width="20" height="20" class="size-5 object-contain">
+        {% else %}
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="20" x="2" y="2" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" x2="17.51" y1="6.5" y2="6.5"/></svg>
+        {% endif %}
       </a>
     {% endif %}
 
     {% if sl_facebook != blank %}
-      <a href="{{ sl_facebook }}" target="_blank" rel="noopener" aria-label="Facebook" class="flex size-9 items-center justify-center rounded-full border border-current transition hover:bg-foreground hover:text-background focus:outline-none focus:ring-2 focus:ring-current focus:ring-offset-2">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+      <a href="{{ sl_facebook }}" target="_blank" rel="noopener" aria-label="Facebook" class="block opacity-60 transition hover:opacity-100 focus:outline-none focus:opacity-100">
+        {% if settings.social_icon_facebook != blank %}
+          <img src="{{ settings.social_icon_facebook | image_url: width: 48 }}" alt="" loading="lazy" width="20" height="20" class="size-5 object-contain">
+        {% else %}
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+        {% endif %}
       </a>
     {% endif %}
 
     {% if sl_youtube != blank %}
-      <a href="{{ sl_youtube }}" target="_blank" rel="noopener" aria-label="YouTube" class="flex size-9 items-center justify-center rounded-full border border-current transition hover:bg-foreground hover:text-background focus:outline-none focus:ring-2 focus:ring-current focus:ring-offset-2">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17"/><path d="m10 15 5-3-5-3z"/></svg>
+      <a href="{{ sl_youtube }}" target="_blank" rel="noopener" aria-label="YouTube" class="block opacity-60 transition hover:opacity-100 focus:outline-none focus:opacity-100">
+        {% if settings.social_icon_youtube != blank %}
+          <img src="{{ settings.social_icon_youtube | image_url: width: 48 }}" alt="" loading="lazy" width="20" height="20" class="size-5 object-contain">
+        {% else %}
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 17a24.12 24.12 0 0 1 0-10 2 2 0 0 1 1.4-1.4 49.56 49.56 0 0 1 16.2 0A2 2 0 0 1 21.5 7a24.12 24.12 0 0 1 0 10 2 2 0 0 1-1.4 1.4 49.55 49.55 0 0 1-16.2 0A2 2 0 0 1 2.5 17"/><path d="m10 15 5-3-5-3z"/></svg>
+        {% endif %}
       </a>
     {% endif %}
 
     {% if sl_tiktok != blank %}
-      <a href="{{ sl_tiktok }}" target="_blank" rel="noopener" aria-label="TikTok" class="flex size-9 items-center justify-center rounded-full border border-current transition hover:bg-foreground hover:text-background focus:outline-none focus:ring-2 focus:ring-current focus:ring-offset-2">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>
+      <a href="{{ sl_tiktok }}" target="_blank" rel="noopener" aria-label="TikTok" class="block opacity-60 transition hover:opacity-100 focus:outline-none focus:opacity-100">
+        {% if settings.social_icon_tiktok != blank %}
+          <img src="{{ settings.social_icon_tiktok | image_url: width: 48 }}" alt="" loading="lazy" width="20" height="20" class="size-5 object-contain">
+        {% else %}
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>
+        {% endif %}
       </a>
     {% endif %}
 
     {% if sl_twitter != blank %}
-      <a href="{{ sl_twitter }}" target="_blank" rel="noopener" aria-label="X / Twitter" class="flex size-9 items-center justify-center rounded-full border border-current transition hover:bg-foreground hover:text-background focus:outline-none focus:ring-2 focus:ring-current focus:ring-offset-2">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.748l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+      <a href="{{ sl_twitter }}" target="_blank" rel="noopener" aria-label="X / Twitter" class="block opacity-60 transition hover:opacity-100 focus:outline-none focus:opacity-100">
+        {% if settings.social_icon_twitter != blank %}
+          <img src="{{ settings.social_icon_twitter | image_url: width: 48 }}" alt="" loading="lazy" width="20" height="20" class="size-5 object-contain">
+        {% else %}
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.748l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+        {% endif %}
       </a>
     {% endif %}
 
     {% if sl_pinterest != blank %}
-      <a href="{{ sl_pinterest }}" target="_blank" rel="noopener" aria-label="Pinterest" class="flex size-9 items-center justify-center rounded-full border border-current transition hover:bg-foreground hover:text-background focus:outline-none focus:ring-2 focus:ring-current focus:ring-offset-2">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 12a4 4 0 1 0 8 0 4 4 0 0 0-8 0"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      <a href="{{ sl_pinterest }}" target="_blank" rel="noopener" aria-label="Pinterest" class="block opacity-60 transition hover:opacity-100 focus:outline-none focus:opacity-100">
+        {% if settings.social_icon_pinterest != blank %}
+          <img src="{{ settings.social_icon_pinterest | image_url: width: 48 }}" alt="" loading="lazy" width="20" height="20" class="size-5 object-contain">
+        {% else %}
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 12a4 4 0 1 0 8 0 4 4 0 0 0-8 0"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        {% endif %}
       </a>
     {% endif %}
 

@@ -169,6 +169,36 @@ describe("committed component install smoke", () => {
 		expect(lock).toContain("path: scripts/snippets/c-carousel.js");
 	});
 
+	it("installs s-statistics and c-stat dependency from local registry", async () => {
+		const cwd = await makeTempDir();
+		await initProject(cwd);
+
+		const result = await runCli(["add", "s-statistics"], {
+			cwd,
+			env: { NAZARE_REGISTRY_DIR: registryRoot },
+		});
+
+		expect(result).toMatchObject({ code: 0, stderr: "" });
+		expect(result.stdout).toContain("Wrote snippets/c-stat.liquid");
+		expect(result.stdout).toContain("Wrote scripts/snippets/c-stat.js");
+		expect(result.stdout).toContain("Wrote sections/s-statistics.liquid");
+		expect(result.stdout).toContain("s-statistics");
+		const section = await readFile(
+			join(cwd, "sections", "s-statistics.liquid"),
+			"utf8",
+		);
+		expect(section).toContain(
+			"{% render 'section-css', section_name: 's-statistics' %}",
+		);
+		expect(section).toContain("{% render 'c-stat'");
+		expect(section).toContain("section.blocks.size > 0");
+		const lock = await readLock(cwd);
+		expect(lock).toContain("c-stat:");
+		expect(lock).toContain("s-statistics:");
+		expect(lock).toContain("    dependencies: \n      - c-stat");
+		expect(lock).toContain("path: sections/s-statistics.liquid");
+	});
+
 	it("installs s-video-gallery and dependencies from local registry", async () => {
 		const cwd = await makeTempDir();
 		await initProject(cwd);

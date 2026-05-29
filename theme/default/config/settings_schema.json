@@ -1,6 +1,41 @@
 [
   {
-    "name": "Theme settings",
-    "settings": []
+    "name": "Social icons",
+    "settings": [
+      {
+        "type": "paragraph",
+        "content": "Upload custom icons for each platform. Falls back to built-in icons when left empty."
+      },
+      {
+        "type": "image_picker",
+        "id": "social_icon_instagram",
+        "label": "Instagram icon"
+      },
+      {
+        "type": "image_picker",
+        "id": "social_icon_facebook",
+        "label": "Facebook icon"
+      },
+      {
+        "type": "image_picker",
+        "id": "social_icon_youtube",
+        "label": "YouTube icon"
+      },
+      {
+        "type": "image_picker",
+        "id": "social_icon_tiktok",
+        "label": "TikTok icon"
+      },
+      {
+        "type": "image_picker",
+        "id": "social_icon_twitter",
+        "label": "X / Twitter icon"
+      },
+      {
+        "type": "image_picker",
+        "id": "social_icon_pinterest",
+        "label": "Pinterest icon"
+      }
+    ]
   }
 ]

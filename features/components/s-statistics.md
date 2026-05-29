@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: s-statistics
 title: Statistics Section
-status: planned
+status: implemented
 
 dependencies:
   - component-registry
@@ -126,17 +126,17 @@ components:
 
 ## Verification
 
-- [ ] component source exists at registry path
-- [ ] registry contains `s-statistics` metadata with c-stat dependency
-- [ ] registry checksum matches component source bytes
-- [ ] component metadata validates with component registry parser
-- [ ] zero blocks renders nothing
-- [ ] heading renders when non-empty, absent otherwise
-- [ ] each stat block renders via c-stat with correct label, value, description
-- [ ] stat grid is 4 columns on desktop, 2 on tablet, 1 on mobile
-- [ ] footnote renders in small centered type when non-empty, absent otherwise
-- [ ] section uses Tailwind utilities only
-- [ ] `nazare add s-statistics` smoke installs section and c-stat
+- [x] component source exists at registry path
+- [x] registry contains `s-statistics` metadata with c-stat dependency
+- [x] registry checksum matches component source bytes
+- [x] component metadata validates with component registry parser
+- [x] zero blocks renders nothing
+- [x] heading renders when non-empty, absent otherwise
+- [x] each stat block renders via c-stat with correct label, value, description
+- [x] stat grid is 4 columns on desktop, 2 on tablet, 1 on mobile
+- [x] footnote renders in small centered type when non-empty, absent otherwise
+- [x] section uses Tailwind utilities only
+- [x] `nazare add s-statistics` smoke installs section and c-stat
 
 ---
 

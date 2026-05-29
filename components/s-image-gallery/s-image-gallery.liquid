@@ -22,21 +22,23 @@
   {% for block in section.blocks %}
     {% if block.settings.image != blank %}
       {% assign ig_rendered = ig_rendered | plus: 1 %}
-      <div data-c-carousel-item {{ block.shopify_attributes }} class="shrink-0 {{ ratio_class }} w-64 overflow-hidden rounded-xl">
-        {% if block.settings.link != blank %}
-          <a href="{{ block.settings.link }}" class="block size-full">
-        {% endif %}
-        {{
-          block.settings.image
-          | image_url: width: 600
-          | image_tag:
-            alt: block.settings.alt | default: block.settings.image.alt,
-            loading: 'lazy',
-            class: 'size-full object-cover'
-        }}
-        {% if block.settings.link != blank %}
-          </a>
-        {% endif %}
+      <div data-c-carousel-item {{ block.shopify_attributes }} class="relative shrink-0 {{ ratio_class }} w-64 overflow-hidden rounded-xl">
+        <div class="absolute inset-0">
+          {% if block.settings.link != blank %}
+            <a href="{{ block.settings.link }}" class="absolute inset-0 z-10">
+          {% endif %}
+          <img
+            src="{{ block.settings.image | image_url: width: 600 }}"
+            alt="{{ block.settings.alt | default: block.settings.image.alt | escape }}"
+            loading="lazy"
+            width="{{ block.settings.image.width }}"
+            height="{{ block.settings.image.height }}"
+            class="size-full object-cover select-none"
+          >
+          {% if block.settings.link != blank %}
+            </a>
+          {% endif %}
+        </div>
       </div>
     {% endif %}
   {% endfor %}
@@ -61,6 +63,21 @@
 {
   "name": "Image gallery",
   "settings": [
+    {
+      "type": "header",
+      "content": "Image strip"
+    },
+    {
+      "type": "select",
+      "id": "aspect_ratio",
+      "label": "Image aspect ratio",
+      "default": "square",
+      "options": [
+        { "value": "square", "label": "Square (1:1)" },
+        { "value": "portrait", "label": "Portrait (3:4)" },
+        { "value": "landscape", "label": "Landscape (16:9)" }
+      ]
+    },
     {
       "type": "select",
       "id": "mode",
@@ -97,17 +114,6 @@
       "id": "pause_on_hover",
       "label": "Pause on hover",
       "default": true
-    },
-    {
-      "type": "select",
-      "id": "aspect_ratio",
-      "label": "Image aspect ratio",
-      "default": "square",
-      "options": [
-        { "value": "square", "label": "Square (1:1)" },
-        { "value": "portrait", "label": "Portrait (3:4)" },
-        { "value": "landscape", "label": "Landscape (16:9)" }
-      ]
     }
   ],
   "blocks": [

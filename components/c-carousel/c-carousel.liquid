@@ -43,7 +43,7 @@
   >
     <div
       data-c-carousel-viewport
-      class="h-full {% if carousel_mode == 'marquee' %}overflow-hidden{% else %}overflow-x-auto overflow-y-hidden{% endif %}"
+      class="h-full {% if carousel_mode == 'marquee' %}overflow-hidden{% else %}overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden{% endif %}"
     >
       <div
         data-c-carousel-track

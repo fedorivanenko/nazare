@@ -200,12 +200,32 @@ export function scanTheme(root = process.cwd()) {
 	};
 }
 
-function sectionCssContent(section) {
+const LIQUID_FILTER_CLASS_PATTERN = /\bclass:\s*['"]([^'"]+)['"]/g;
+
+function extractFilterClasses(root, sources) {
+	const classes = new Set();
+	for (const sourcePath of sources) {
+		const filePath = path.join(root, sourcePath);
+		if (!pathExists(filePath)) continue;
+		for (const match of readText(filePath).matchAll(LIQUID_FILTER_CLASS_PATTERN)) {
+			for (const cls of match[1].trim().split(/\s+/)) {
+				if (cls) classes.add(cls);
+			}
+		}
+	}
+	return [...classes];
+}
+
+function sectionCssContent(section, inlineClasses = []) {
 	const sources = section.sources
 		.map((source) => `@source "../${source}";`)
 		.join("\n");
 
-	return `/* ${GENERATED_MARKER} */\n@import "tailwindcss/theme" source(none);\n@import "tailwindcss/utilities" source(none);\n\n${sources}\n`;
+	const inline = inlineClasses.length > 0
+		? `\n@source inline("${inlineClasses.join(" ")}");`
+		: "";
+
+	return `/* ${GENERATED_MARKER} */\n@import "tailwindcss/theme" source(none);\n@import "tailwindcss/utilities" source(none);\n\n${sources}${inline}\n`;
 }
 
 function sectionCssSnippet(sections) {
@@ -262,7 +282,7 @@ export function generateThemeBuildFiles(root = process.cwd()) {
 	for (const section of graph.sections) {
 		writeText(
 			path.join(root, "styles", `${section.name}.css`),
-			sectionCssContent(section),
+			sectionCssContent(section, extractFilterClasses(root, section.sources)),
 		);
 	}
 
@@ -298,18 +318,28 @@ export function nazareThemePlugin() {
 		name: "nazare-theme-plugin",
 		config(userConfig = {}) {
 			root = path.resolve(userConfig.root ?? process.cwd());
+		},
+		options(opts) {
 			const graph = generateThemeBuildFiles(root);
-
-			return {
-				build: {
-					rollupOptions: {
-						input: rollupInput(graph),
-					},
-				},
-			};
+			const ourInput = rollupInput(graph);
+			const existing =
+				typeof opts.input === "object" && !Array.isArray(opts.input)
+					? opts.input
+					: {};
+			opts.input = { ...existing, ...ourInput };
+			return opts;
 		},
 		buildStart() {
-			const graph = generateThemeBuildFiles(root);
+			this.addWatchFile(path.join(root, "sections"));
+			this.addWatchFile(path.join(root, "snippets"));
+
+			for (const dir of ["sections", "snippets"]) {
+				for (const file of listLiquidFiles(path.join(root, dir))) {
+					this.addWatchFile(file);
+				}
+			}
+
+			const graph = scanTheme(root);
 			for (const warning of graph.warnings) {
 				this.warn(warning);
 			}

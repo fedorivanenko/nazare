@@ -39,6 +39,18 @@ const announcementPath = new URL(
 	"../../../components/s-announcement/s-announcement.liquid",
 	import.meta.url,
 );
+const statisticsPath = new URL(
+	"../../../components/s-statistics/s-statistics.liquid",
+	import.meta.url,
+);
+const statSnippetPath = new URL(
+	"../../../components/c-stat/c-stat.liquid",
+	import.meta.url,
+);
+const statScriptPath = new URL(
+	"../../../components/c-stat/c-stat.js",
+	import.meta.url,
+);
 
 function sha256(value) {
 	return createHash("sha256").update(value).digest("hex");
@@ -283,6 +295,76 @@ describe("component registry metadata", () => {
 		expect(source).toContain('"id": "link_url"');
 		expect(source).toContain('"id": "link_label"');
 		expect(source).toContain("if link_url != blank and link_label != blank");
+	});
+
+	it("declares committed s-statistics metadata with matching checksum", async () => {
+		const manifest = await readFile(manifestPath, "utf8");
+		const source = await readFile(statisticsPath, "utf8");
+		const components = parseComponentManifest(manifest);
+
+		expect(() => validateComponentMetadata(components)).not.toThrow();
+		expect(components["s-statistics"]).toMatchObject({
+			version: "1.0.0",
+			type: "section",
+			dependencies: ["c-stat"],
+			files: [
+				{
+					from: "components/s-statistics/s-statistics.liquid",
+					to: "sections/s-statistics.liquid",
+					checksum: {
+						algorithm: "sha256",
+						value: sha256(source),
+					},
+				},
+			],
+		});
+		expect(source).toContain(
+			"{% render 'section-css', section_name: 's-statistics' %}",
+		);
+		expect(source).toContain("{% render 'c-stat'");
+		expect(source).toContain('"id": "heading"');
+		expect(source).toContain('"id": "heading_alignment"');
+		expect(source).toContain('"id": "footnote"');
+		expect(source).toContain('"id": "label"');
+		expect(source).toContain('"id": "value"');
+		expect(source).toContain('"id": "description"');
+		expect(source).toContain("section.blocks.size > 0");
+	});
+
+	it("declares committed c-stat metadata with matching checksums", async () => {
+		const manifest = await readFile(manifestPath, "utf8");
+		const snippet = await readFile(statSnippetPath, "utf8");
+		const script = await readFile(statScriptPath, "utf8");
+		const components = parseComponentManifest(manifest);
+
+		expect(() => validateComponentMetadata(components)).not.toThrow();
+		expect(components["c-stat"]).toMatchObject({
+			version: "1.0.0",
+			type: "snippet",
+			dependencies: [],
+			files: [
+				{
+					from: "components/c-stat/c-stat.liquid",
+					to: "snippets/c-stat.liquid",
+					checksum: {
+						algorithm: "sha256",
+						value: sha256(snippet),
+					},
+				},
+				{
+					from: "components/c-stat/c-stat.js",
+					to: "scripts/snippets/c-stat.js",
+					checksum: {
+						algorithm: "sha256",
+						value: sha256(script),
+					},
+				},
+			],
+		});
+		expect(snippet).toContain('data-nazare-use="snippets/c-stat"');
+		expect(snippet).toContain("data-c-stat-target");
+		expect(snippet).toContain("data-c-stat-suffix");
+		expect(script).toContain("export function init(root)");
 	});
 
 	it("parses valid component metadata", () => {

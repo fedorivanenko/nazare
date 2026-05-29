@@ -5,19 +5,25 @@ function easeOut(t) {
 	return 1 - Math.pow(1 - t, 3);
 }
 
-function animate(el, target, suffix) {
+function animate(el, target, suffix, mount) {
 	const start = performance.now();
+	let rafId;
 
 	function tick(now) {
+		if (!mount.active) return;
 		const elapsed = now - start;
 		const progress = Math.min(elapsed / DURATION, 1);
-		const value = Math.round(easeOut(progress) * target);
-		el.textContent = value + suffix;
-		if (progress < 1) requestAnimationFrame(tick);
-		else el.textContent = target + suffix;
+		el.textContent = Math.round(easeOut(progress) * target) + suffix;
+		if (progress < 1) {
+			rafId = requestAnimationFrame(tick);
+		} else {
+			el.textContent = target + suffix;
+			mount.cancelAnimation = null;
+		}
 	}
 
-	requestAnimationFrame(tick);
+	mount.cancelAnimation = () => cancelAnimationFrame(rafId);
+	rafId = requestAnimationFrame(tick);
 }
 
 export function init(root) {
@@ -28,7 +34,8 @@ export function init(root) {
 
 	if (isNaN(target)) return;
 
-	mounts.set(root, true);
+	const mount = { active: true, observer: null, cancelAnimation: null };
+	mounts.set(root, mount);
 
 	if (!('IntersectionObserver' in window)) {
 		root.textContent = target + suffix;
@@ -40,15 +47,22 @@ export function init(root) {
 			for (const entry of entries) {
 				if (!entry.isIntersecting) continue;
 				observer.disconnect();
-				animate(root, target, suffix);
+				mount.observer = null;
+				animate(root, target, suffix, mount);
 			}
 		},
 		{ threshold: 0.3 },
 	);
 
+	mount.observer = observer;
 	observer.observe(root);
 }
 
 export function destroy(root) {
+	const mount = mounts.get(root);
+	if (!mount) return;
+	mount.active = false;
+	mount.observer?.disconnect();
+	mount.cancelAnimation?.();
 	mounts.delete(root);
 }

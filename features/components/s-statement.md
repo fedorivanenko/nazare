@@ -1,8 +1,8 @@
 ---
 schemaVersion: 1
 
-id: s-mission-statement
-title: Mission Statement Section
+id: s-statement
+title: Statement Section
 status: planned
 
 dependencies:
@@ -14,11 +14,11 @@ dependencies:
 
 surfaces:
   storefront:
-    - sections/s-mission-statement.liquid
+    - sections/s-statement.liquid
 
 invariants:
-  - Component ID is s-mission-statement
-  - Installs through nazare add s-mission-statement
+  - Component ID is s-statement
+  - Installs through nazare add s-statement
   - Registry metadata includes checksum for every component file
   - Uses Tailwind utilities for all styling
   - Does not require JavaScript
@@ -39,9 +39,9 @@ nonGoals:
 codebaseOwnership:
   owns:
     repo:
-      - components/s-mission-statement/**
-      - nazare.registry.yml s-mission-statement metadata
-      - test/ registry component validation for s-mission-statement
+      - components/s-statement/**
+      - nazare.registry.yml s-statement metadata
+      - test/ registry component validation for s-statement
 
   mustNotModify:
     - theme/default/ scaffold source content
@@ -50,13 +50,13 @@ codebaseOwnership:
     - existing component source files
 ---
 
-# Mission Statement Section
+# Statement Section
 
 ## Goal
 
 Add an installable Shopify section that places bold brand narrative over a full-bleed background image, with an optional floating quote card attributed to a founder or spokesperson.
 
-The section is designed for brand storytelling — the left side delivers the mission (heading, body, CTA) and the right side gives a personal human voice to the story through a quoted founder card. The quote card uses `c-person` for the attribution; the section owns the card shell and the background image layout.
+The section is designed for brand storytelling — the left side delivers the statement (heading, body, CTA) and the right side gives a personal human voice to the story through a quoted founder card. The quote card uses `c-person` for the attribution; the section owns the card shell and the background image layout.
 
 ---
 
@@ -64,10 +64,10 @@ The section is designed for brand storytelling — the left side delivers the mi
 
 Included:
 
-- `components/s-mission-statement/s-mission-statement.liquid`
-- `nazare.registry.yml` component metadata for `s-mission-statement`
+- `components/s-statement/s-statement.liquid`
+- `nazare.registry.yml` component metadata for `s-statement`
 - checksum validation coverage for committed component source files
-- smoke coverage that `nazare add s-mission-statement` installs the section from the local registry
+- smoke coverage that `nazare add s-statement` installs the section from the local registry
 - configurable section settings:
   - background image (required display)
   - background image alt text (optional)
@@ -98,15 +98,15 @@ Component metadata:
 
 ```yaml
 components:
-  s-mission-statement:
+  s-statement:
     version: 1.0.0
     type: section
     dependencies:
       - c-button
       - c-person
     files:
-      - from: components/s-mission-statement/s-mission-statement.liquid
-        to: sections/s-mission-statement.liquid
+      - from: components/s-statement/s-statement.liquid
+        to: sections/s-statement.liquid
         checksum:
           algorithm: sha256
           value: ""
@@ -116,8 +116,8 @@ components:
 
 ## Success behavior
 
-- `nazare list` shows `s-mission-statement` as available after registry update.
-- `nazare add s-mission-statement` installs `sections/s-mission-statement.liquid` and transitively installs `c-button` and `c-person`.
+- `nazare list` shows `s-statement` as available after registry update.
+- `nazare add s-statement` installs `sections/s-statement.liquid` and transitively installs `c-button` and `c-person`.
 - Background image always renders as full-bleed section background.
 - Heading always renders over the background.
 - Body text renders when non-empty; absent otherwise.
@@ -143,7 +143,7 @@ components:
 ## Verification
 
 - [ ] component source exists at registry path
-- [ ] registry contains `s-mission-statement` metadata with c-button and c-person dependencies
+- [ ] registry contains `s-statement` metadata with c-button and c-person dependencies
 - [ ] registry checksum matches component source bytes
 - [ ] component metadata validates with component registry parser
 - [ ] background image renders full-bleed
@@ -154,7 +154,7 @@ components:
 - [ ] c-person renders inside card when name or image present
 - [ ] quote card absent when quote_text empty regardless of person settings
 - [ ] section uses Tailwind utilities only
-- [ ] `nazare add s-mission-statement` smoke installs section and transitive dependencies
+- [ ] `nazare add s-statement` smoke installs section and transitive dependencies
 
 ---
 
