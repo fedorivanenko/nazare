@@ -408,7 +408,7 @@ components:
           algorithm: sha256
           value: 52c9b2fba852c863bb2ed0a06dfd58b4b02b01de44487f29e9e07c83326b879f
   s-faq:
-    version: 1.0.0
+    version: 1.1.0
     type: section
     dependencies:
       - c-button
@@ -418,7 +418,12 @@ components:
         to: sections/s-faq.liquid
         checksum:
           algorithm: sha256
-          value: 3dd8b16e916c12ab017d1890f3612970186bca5c49d7764da297b19014c18a63
+          value: 68c36fd3f7886b22f97862dc18749a1bcc3ada3b633997f019382e264ec42fc8
+      - from: components/s-faq/s-faq.js
+        to: scripts/sections/s-faq.js
+        checksum:
+          algorithm: sha256
+          value: aa8f7319c73f2b762b8e51498de3fec159ef521249cf6f6ad1e84e3faa1f03df
   s-press-bar:
     version: 1.0.0
     type: section
@@ -512,4 +517,4 @@ components:
         to: sections/s-footer.liquid
         checksum:
           algorithm: sha256
-          value: 90bba695a2944846457f0f03d4924e28bdb3689299dc90c194492eec3020a5d3
+          value: deade3d2fe0cea5a630dd489f32c0606cfcf567fa85942a046be74835448bec8

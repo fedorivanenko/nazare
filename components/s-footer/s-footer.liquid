@@ -48,16 +48,15 @@
       {% if nav_columns.size > 0 %}
         <div class="lg:order-1 lg:col-span-1">
 
-          <!-- Mobile: native accordion -->
-          <div class="border-t border-foreground/10 lg:hidden">
+          <div class="border-t border-foreground/10 lg:border-0 lg:grid lg:grid-cols-2 lg:gap-8 xl:grid-cols-4">
             {% for column in nav_columns %}
               {% if column.links.size > 0 %}
-                <details class="group border-b border-foreground/10" open>
-                  <summary class="flex cursor-pointer select-none items-center justify-between py-4 text-xs font-semibold uppercase tracking-widest text-foreground/50 [&::-webkit-details-marker]:hidden">
+                <details class="group border-b border-foreground/10 lg:border-0" open>
+                  <summary class="flex cursor-pointer select-none items-center justify-between py-4 text-xs font-semibold uppercase tracking-widest text-foreground/50 [&::-webkit-details-marker]:hidden lg:pointer-events-none lg:cursor-default lg:py-0 lg:mb-4">
                     {{ column.title | escape }}
-                    <span class="text-xl font-light transition-transform duration-200 group-open:rotate-45">+</span>
+                    <span class="text-xl font-light transition-transform duration-200 group-open:rotate-45 lg:hidden">+</span>
                   </summary>
-                  <ul class="flex flex-col gap-2 pb-4">
+                  <ul class="flex flex-col gap-2 pb-4 lg:pb-0">
                     {% for link in column.links %}
                       <li>
                         <a href="{{ link.url }}" class="text-sm text-foreground/70 transition hover:text-foreground">{{ link.title }}</a>
@@ -65,24 +64,6 @@
                     {% endfor %}
                   </ul>
                 </details>
-              {% endif %}
-            {% endfor %}
-          </div>
-
-          <!-- Desktop: grid columns -->
-          <div class="hidden lg:grid lg:grid-cols-2 lg:gap-8 xl:grid-cols-4">
-            {% for column in nav_columns %}
-              {% if column.links.size > 0 %}
-                <div>
-                  <p class="mb-4 text-xs font-semibold uppercase tracking-widest text-foreground/50">{{ column.title | escape }}</p>
-                  <ul class="flex flex-col gap-2">
-                    {% for link in column.links %}
-                      <li>
-                        <a href="{{ link.url }}" class="text-sm text-foreground/70 transition hover:text-foreground">{{ link.title }}</a>
-                      </li>
-                    {% endfor %}
-                  </ul>
-                </div>
               {% endif %}
             {% endfor %}
           </div>
