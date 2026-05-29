@@ -11,7 +11,7 @@ const HELP = `Nazare Dev CLI
 
 Usage:
   nazare-dev --help
-  nazare-dev registry serve [--host <host>] [--port <port>] [--root <path>] [--git-refs]
+  nazare-dev registry serve [--host <host>] [--port <port>] [--root <path>] [--no-git-refs]
 
 Commands:
   registry serve     Serve a local Nazare registry checkout over read-only HTTP
@@ -21,7 +21,7 @@ Options:
   --host <host>      Bind host (default: 127.0.0.1)
   --port <port>      Bind port, 0 picks a free port (default: 7331)
   --root <path>      Registry root directory (default: current directory)
-  --git-refs         Serve /raw/<path>?ref=<ref> from local Git refs
+  --no-git-refs      Disable Git ref serving and /tags endpoint
 `;
 
 function parseServeArgs(args) {
@@ -29,7 +29,7 @@ function parseServeArgs(args) {
 		host: "127.0.0.1",
 		port: DEFAULT_REGISTRY_PORT,
 		root: process.cwd(),
-		gitRefs: false,
+		gitRefs: true,
 	};
 
 	for (let index = 0; index < args.length; index += 1) {
@@ -71,8 +71,8 @@ function parseServeArgs(args) {
 			continue;
 		}
 
-		if (arg === "--git-refs") {
-			options.gitRefs = true;
+		if (arg === "--no-git-refs") {
+			options.gitRefs = false;
 			continue;
 		}
 
@@ -132,8 +132,8 @@ function createRegistryServer(root, options = {}) {
 
 		if (rawPathname === "/tags") {
 			if (!options.gitRefs) {
-				response.writeHead(501, { "Content-Type": "text/plain; charset=utf-8" });
-				response.end("--git-refs required for /tags\n");
+				response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+				response.end("not found\n");
 				return;
 			}
 			try {
