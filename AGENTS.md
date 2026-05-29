@@ -16,3 +16,16 @@ For component features, also read `docs/policies/naming-policy.md` and existing 
 ## Versioning
 
 Follow `docs/policies/release-policy.md` for CLI versioning and releases
+
+## Updating component files
+
+When a component source file changes, you must:
+
+1. Apply the fix to the source file under `components/<component-id>/`.
+2. Recompute its SHA-256: `shasum -a 256 components/<component-id>/<file>`.
+3. Update the `checksum.value` for that file in `nazare.registry.yml`.
+4. Bump the component `version` (patch for bug fixes) in `nazare.registry.yml`.
+
+Consumers run `nazare update <component-id>` to pull the new version — the CLI rejects installs where the local file SHA doesn't match the registry entry, so both the SHA and version must be updated before pushing.
+
+**Dev server note:** `nazare-dev registry serve` reads files via `git show <ref>:<path>`, not from the working tree. Uncommitted changes to component sources or `nazare.registry.yml` are invisible to consumers. Commit before running `nazare update` against the local dev server.

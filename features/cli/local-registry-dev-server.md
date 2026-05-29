@@ -118,7 +118,7 @@ Required server routes:
 - `GET /healthz` returns `200 OK` with plain text `ok`
 - `GET /raw/<path>?ref=<encoded-ref>` returns the file bytes from `<root>/<path>`
 
-`ref` is accepted for compatibility with the existing registry contract, but v1 serves the working tree at `--root`; it does not check out or emulate Git refs.
+`ref` is resolved via `git show <ref>:<path>` by default. Uncommitted changes are not served — consumers must commit registry and component source changes before running `nazare update` against the dev server. Pass `--no-git-refs` to serve the working tree directly and bypass git ref resolution.
 
 Path rules:
 
@@ -195,7 +195,7 @@ Keep raw-file resolution centralized so existing registry consumers call one hel
 
 `nazare init --repo` validation must accept `http://127.0.0.1:<port>`, `http://localhost:<port>`, and `https://...` HTTP registry origins while preserving existing GitHub repo validation.
 
-The server intentionally serves working tree files and ignores the semantic meaning of `ref` in v1. This keeps v1 useful for local authoring and avoids implementing Git protocol behavior. Git-ref-aware local serving is scoped in `update`.
+The server resolves `?ref=` via `git show <ref>:<path>` by default, so consumers see the committed registry state. Use `--no-git-refs` to serve working tree files directly (ignores `ref`), which is useful for rapid local iteration before committing.
 
 This adds a separate dev-tool package plus HTTP registry consumer support. The `nazare` consumer CLI change should be a minor release per `docs/policies/release-policy.md`.
 

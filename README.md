@@ -201,13 +201,21 @@ nazare init --repo http://127.0.0.1:7331 --ref refs/heads/main
 
 Then normal consumer commands (`nazare list`, `nazare add <component>`, `nazare theme pull`) download registry files from the local server and keep SHA-256 validation.
 
+The dev server reads files via `git show <ref>:<path>` by default — not from the working tree. **Commit changes before running `nazare update` or `nazare add` against the local server.** Uncommitted edits to `nazare.registry.yml` or component sources are not served.
+
+Use `--no-git-refs` to serve the working tree directly (ignores the `?ref=` parameter):
+
+```sh
+nazare-dev registry serve --no-git-refs
+```
+
 Serve committed Git refs for local tag testing:
 
 ```sh
-nazare-dev registry serve --git-refs
+nazare-dev registry serve
 ```
 
-With `--git-refs`, requests like `/raw/nazare.registry.yml?ref=v0.14.1-dev.0` read from that local Git tag instead of the working tree. Refs not present in the local repo return `404`.
+Requests like `/raw/nazare.registry.yml?ref=v0.14.1-dev.0` read from that local Git ref. Refs not present in the local repo return `404`.
 
 To test a specific tag against a consumer theme repo, initialize the consumer against the local server, then use `update theme --ref` to select the tag:
 
