@@ -10,7 +10,6 @@ dependencies:
   - component-list
   - component-add
   - c-email-signup-klaviyo
-  - c-social-links
 
 surfaces:
   storefront:
@@ -23,7 +22,7 @@ invariants:
   - Uses Tailwind utilities for all styling
   - Does not require JavaScript beyond what the email signup provider provides
   - Brand tagline is always rendered
-  - Nav columns, email signup zone, and social links are each optional
+  - Nav columns and email signup zone are each optional
   - Nav column renders only when its linked menu has at least one link
   - Email signup zone renders only when the email provider setting is configured
   - Does not mutate theme scaffold source
@@ -68,14 +67,13 @@ Included:
 - checksum validation coverage for committed component source files
 - smoke coverage that `nazare add s-footer` installs the section from the local registry
 - configurable section settings:
-  - brand tagline text (required display; plain text)
+  - brand tagline image (image_picker; optional)
   - email provider: `klaviyo` or `none`, default `none`
   - Klaviyo list ID (active when provider is `klaviyo`)
   - email zone heading (optional)
   - email zone description (optional)
   - email input placeholder, default `Email Address`
   - email button label, default `Sign Up`
-  - social links: instagram, facebook, youtube, tiktok, twitter, pinterest URLs (all optional; forwarded to `c-social-links`)
 - navigation menu: single `link_list` setting (`nav_menu`); top-level links become column headings, their child links become the column items
 
 Layout contract:

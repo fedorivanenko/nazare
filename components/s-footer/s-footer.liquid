@@ -1,23 +1,12 @@
 {% comment %}nazare:layout footer{% endcomment %}
 {% liquid
-  assign footer_tagline = section.settings.tagline
+  assign footer_tagline_image = section.settings.tagline_image
   assign footer_provider = section.settings.email_provider | default: 'none'
   assign footer_list_id = section.settings.klaviyo_list_id
   assign footer_email_heading = section.settings.email_heading
   assign footer_email_description = section.settings.email_description
   assign footer_email_placeholder = section.settings.email_placeholder | default: 'Email Address'
   assign footer_email_button = section.settings.email_button_label | default: 'Sign Up'
-  assign footer_instagram = section.settings.instagram
-  assign footer_facebook = section.settings.facebook
-  assign footer_youtube = section.settings.youtube
-  assign footer_tiktok = section.settings.tiktok
-  assign footer_twitter = section.settings.twitter
-  assign footer_pinterest = section.settings.pinterest
-
-  assign footer_has_social = false
-  if footer_instagram != blank or footer_facebook != blank or footer_youtube != blank or footer_tiktok != blank or footer_twitter != blank or footer_pinterest != blank
-    assign footer_has_social = true
-  endif
 
   assign nav_menu = section.settings.nav_menu
   assign nav_columns = linklists[nav_menu].links
@@ -65,28 +54,22 @@
             %}
           </div>
         {% endif %}
-
-        {% if footer_has_social %}
-          <div class="mt-8">
-            {% render 'c-social-links',
-              instagram: footer_instagram,
-              facebook: footer_facebook,
-              youtube: footer_youtube,
-              tiktok: footer_tiktok,
-              twitter: footer_twitter,
-              pinterest: footer_pinterest
-            %}
-          </div>
-        {% endif %}
       </div>
 
     </div>
 
   </div>
 
-  {% if footer_tagline != blank %}
+  {% if footer_tagline_image != blank %}
     <div class="overflow-hidden border-t border-foreground/10 py-8">
-      <p class="whitespace-nowrap text-center font-black uppercase leading-none tracking-tight text-foreground/10" style="font-size: clamp(3rem, 12vw, 10rem);">{{ footer_tagline | escape }}</p>
+      <img
+        src="{{ footer_tagline_image | image_url: width: 2000 }}"
+        alt="{{ footer_tagline_image.alt | escape }}"
+        width="{{ footer_tagline_image.width }}"
+        height="{{ footer_tagline_image.height }}"
+        loading="lazy"
+        class="mx-auto w-full max-w-none px-8 object-contain"
+      >
     </div>
   {% endif %}
 </footer>
@@ -110,10 +93,9 @@
       "content": "Tagline"
     },
     {
-      "type": "text",
-      "id": "tagline",
-      "label": "Brand tagline",
-      "default": "YOUR BRAND"
+      "type": "image_picker",
+      "id": "tagline_image",
+      "label": "Brand tagline image"
     },
     {
       "type": "header",
@@ -132,64 +114,35 @@
     {
       "type": "text",
       "id": "klaviyo_list_id",
-      "label": "Klaviyo list ID"
+      "label": "Klaviyo list ID",
+      "visible_if": "{{- section.settings.email_provider == 'klaviyo' -}}"
     },
     {
       "type": "text",
       "id": "email_heading",
       "label": "Email zone heading",
-      "default": "Join the newsletter"
+      "default": "Join the newsletter",
+      "visible_if": "{{- section.settings.email_provider != 'none' -}}"
     },
     {
       "type": "text",
       "id": "email_description",
-      "label": "Email zone description"
+      "label": "Email zone description",
+      "visible_if": "{{- section.settings.email_provider != 'none' -}}"
     },
     {
       "type": "text",
       "id": "email_placeholder",
       "label": "Email input placeholder",
-      "default": "Email Address"
+      "default": "Email Address",
+      "visible_if": "{{- section.settings.email_provider != 'none' -}}"
     },
     {
       "type": "text",
       "id": "email_button_label",
       "label": "Email button label",
-      "default": "Sign Up"
-    },
-    {
-      "type": "header",
-      "content": "Social links"
-    },
-    {
-      "type": "url",
-      "id": "instagram",
-      "label": "Instagram URL"
-    },
-    {
-      "type": "url",
-      "id": "facebook",
-      "label": "Facebook URL"
-    },
-    {
-      "type": "url",
-      "id": "youtube",
-      "label": "YouTube URL"
-    },
-    {
-      "type": "url",
-      "id": "tiktok",
-      "label": "TikTok URL"
-    },
-    {
-      "type": "url",
-      "id": "twitter",
-      "label": "X / Twitter URL"
-    },
-    {
-      "type": "url",
-      "id": "pinterest",
-      "label": "Pinterest URL"
+      "default": "Sign Up",
+      "visible_if": "{{- section.settings.email_provider != 'none' -}}"
     }
   ],
   "presets": [
