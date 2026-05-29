@@ -1,8 +1,8 @@
 ---
 schemaVersion: 1
 
-id: s-product-collection
-title: Product Collection Section
+id: s-product-gallery
+title: Product Gallery Section
 status: planned
 
 dependencies:
@@ -14,11 +14,11 @@ dependencies:
 
 surfaces:
   storefront:
-    - sections/s-product-collection.liquid
+    - sections/s-product-gallery.liquid
 
 invariants:
-  - Component ID is s-product-collection
-  - Installs through nazare add s-product-collection
+  - Component ID is s-product-gallery
+  - Installs through nazare add s-product-gallery
   - Registry metadata includes checksum for every component file
   - Uses Tailwind utilities for all styling
   - Does not require JavaScript beyond what c-product-carousel dependencies provide
@@ -40,9 +40,9 @@ nonGoals:
 codebaseOwnership:
   owns:
     repo:
-      - components/s-product-collection/**
-      - nazare.registry.yml s-product-collection metadata
-      - test/ registry component validation for s-product-collection
+      - components/s-product-gallery/**
+      - nazare.registry.yml s-product-gallery metadata
+      - test/ registry component validation for s-product-gallery
 
   mustNotModify:
     - theme/default/ scaffold source content
@@ -51,7 +51,7 @@ codebaseOwnership:
     - existing component source files
 ---
 
-# Product Collection Section
+# Product Gallery Section
 
 ## Goal
 
@@ -65,10 +65,10 @@ The section gives merchants a high-converting collection placement: a bold headl
 
 Included:
 
-- `components/s-product-collection/s-product-collection.liquid`
-- `nazare.registry.yml` component metadata for `s-product-collection`
+- `components/s-product-gallery/s-product-gallery.liquid`
+- `nazare.registry.yml` component metadata for `s-product-gallery`
 - checksum validation coverage for committed component source files
-- smoke coverage that `nazare add s-product-collection` installs the section from the local registry
+- smoke coverage that `nazare add s-product-gallery` installs the section from the local registry
 - configurable section settings:
   - heading text (required display; plain text)
   - body text (optional; rich text)
@@ -103,15 +103,15 @@ Component metadata:
 
 ```yaml
 components:
-  s-product-collection:
+  s-product-gallery:
     version: 1.0.0
     type: section
     dependencies:
       - c-button
       - c-product-carousel
     files:
-      - from: components/s-product-collection/s-product-collection.liquid
-        to: sections/s-product-collection.liquid
+      - from: components/s-product-gallery/s-product-gallery.liquid
+        to: sections/s-product-gallery.liquid
         checksum:
           algorithm: sha256
           value: ""
@@ -121,8 +121,8 @@ components:
 
 ## Success behavior
 
-- `nazare list` shows `s-product-collection` as available after registry update.
-- `nazare add s-product-collection` installs `sections/s-product-collection.liquid` and transitively installs `c-button`, `c-product-carousel`, `c-carousel`, `c-product-card`, `c-badge`, `c-ratings`, and `c-swatch`.
+- `nazare list` shows `s-product-gallery` as available after registry update.
+- `nazare add s-product-gallery` installs `sections/s-product-gallery.liquid` and transitively installs `c-button`, `c-product-carousel`, `c-carousel`, `c-product-card`, `c-badge`, `c-ratings`, and `c-swatch`.
 - Heading renders for any non-empty heading setting.
 - Body text renders when non-empty; absent otherwise.
 - CTA renders when both URL and label are set; absent otherwise.
@@ -153,7 +153,7 @@ components:
 ## Verification
 
 - [ ] component source exists at registry path
-- [ ] registry contains `s-product-collection` metadata with c-button and c-product-carousel dependencies
+- [ ] registry contains `s-product-gallery` metadata with c-button and c-product-carousel dependencies
 - [ ] registry checksum matches component source bytes
 - [ ] component metadata validates with component registry parser
 - [ ] heading renders for non-empty setting
@@ -169,7 +169,7 @@ components:
 - [ ] zero products renders no carousel zone
 - [ ] swatch selection swaps correct card image without affecting other cards
 - [ ] section uses Tailwind utilities only
-- [ ] `nazare add s-product-collection` smoke installs section and all transitive dependencies
+- [ ] `nazare add s-product-gallery` smoke installs section and all transitive dependencies
 
 ---
 

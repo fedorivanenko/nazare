@@ -495,15 +495,15 @@ components:
         checksum:
           algorithm: sha256
           value: cf451fc67211142c8428af9cd5755930f53263233fa9e298f07f76af59653fbb
-  s-product-collection:
+  s-product-gallery:
     version: 1.0.0
     type: section
     dependencies:
       - c-button
       - c-product-carousel
     files:
-      - from: components/s-product-collection/s-product-collection.liquid
-        to: sections/s-product-collection.liquid
+      - from: components/s-product-gallery/s-product-gallery.liquid
+        to: sections/s-product-gallery.liquid
         checksum:
           algorithm: sha256
           value: 5c61a1e504294db9ec681f9b9c8f4bf79eb2c53f4925c1276aac4ed7b785af3b
