@@ -1,0 +1,233 @@
+snippets:
+
+  # — Navigation & Layout —
+  - id: snp-breadcrumbs
+    title: Breadcrumbs
+    sections:
+      - s-breadcrumbs
+      - s-bundle-hero
+
+  - id: snp-social-icons
+    title: Social Icons
+    sections:
+      - s-ugc-gallery
+      - s-article-hero
+      - s-footer
+
+  - id: snp-pagination
+    title: Pagination
+    sections:
+      - s-reviews
+      - s-community-carousel
+      - s-article-grid
+
+  # — Product —
+  - id: snp-product-card
+    title: Product Card
+    sections:
+      - s-featured-products
+      - s-product-grid
+      - s-related-products
+      - s-bundle-save
+
+  - id: snp-image-gallery
+    title: Image Gallery
+    sections:
+      - s-product-hero
+      - s-bundle-hero
+
+  - id: snp-variant-swatches
+    title: Variant Swatches
+    sections:
+      - s-product-hero
+      - s-bundle-hero
+      - s-featured-products
+      - s-product-grid
+      - s-related-products
+
+  - id: snp-buy-box
+    title: Buy Box
+    sections:
+      - s-product-hero
+      - s-bundle-hero
+
+  - id: snp-subscribe-save
+    title: Subscribe & Save Toggle
+    sections:
+      - s-product-hero
+      - s-bundle-hero
+
+  - id: snp-rating-stars
+    title: Star Rating
+    sections:
+      - s-product-hero
+      - s-bundle-hero
+      - s-reviews
+      - s-featured-products
+      - s-product-grid
+      - s-related-products
+
+  - id: snp-trust-badges
+    title: Trust Badges
+    sections:
+      - s-product-hero
+      - s-bundle-hero
+      - s-featured-products
+      - s-trust-bar
+
+  - id: snp-ingredient-card
+    title: Ingredient Card
+    sections:
+      - s-ingredients-spotlight
+
+  - id: snp-stat-block
+    title: Stat Block
+    sections:
+      - s-stats-bar
+      - s-stat-banner
+
+  - id: snp-routine-step
+    title: Routine Step Card
+    sections:
+      - s-routine
+
+  # — Reviews —
+  - id: snp-review-card
+    title: Review Card
+    sections:
+      - s-reviews
+
+  - id: snp-rating-summary
+    title: Rating Summary Bar
+    sections:
+      - s-reviews
+
+  # — Bundles —
+  - id: snp-bundle-card
+    title: Bundle Card
+    sections:
+      - s-bundle-save
+      - s-bundle-system
+      - s-bundle-hero
+
+  - id: snp-bundle-product-block
+    title: Bundle Product Block
+    sections:
+      - s-bundle-contents
+
+  # — Blog & Editorial —
+  - id: snp-article-card
+    title: Article Card
+    sections:
+      - s-article-grid
+      - s-blog-featured-hero
+      - s-related-articles
+      - s-blog-cards
+
+  - id: snp-featured-badge
+    title: Featured Badge
+    sections:
+      - s-blog-featured-hero
+      - s-article-hero
+      - s-article-grid
+
+  - id: snp-category-tag
+    title: Category Tag
+    sections:
+      - s-blog-featured-hero
+      - s-article-hero
+      - s-article-grid
+      - s-product-grid
+      - s-product-hero
+
+  - id: snp-inline-product-card
+    title: Inline Product Card
+    sections:
+      - s-article-body
+
+  - id: snp-pull-quote
+    title: Pull Quote Block
+    sections:
+      - s-article-body
+      - s-quote-proof
+      - s-hp-mission
+      - s-proof
+
+  - id: snp-editorial-card
+    title: Editorial / Promo Card
+    sections:
+      - s-product-grid
+      - s-article-grid
+
+  # — Filtering & Sorting —
+  - id: snp-filter-pill
+    title: Filter Pill
+    sections:
+      - s-filter-sort
+      - s-blog-filter-sort
+
+  - id: snp-sort-dropdown
+    title: Sort Dropdown
+    sections:
+      - s-filter-sort
+      - s-blog-filter-sort
+
+  - id: snp-filter-tab
+    title: Filter Tab
+    sections:
+      - s-featured-products
+
+  # — Social Proof & Community —
+  - id: snp-press-logo
+    title: Press Logo
+    sections:
+      - s-press-logos
+
+  - id: snp-doctor-card
+    title: Doctor / Expert Card
+    sections:
+      - s-product-hero
+      - s-social-proof-strip
+
+  - id: snp-ugc-tile
+    title: UGC Photo Tile
+    sections:
+      - s-ugc-gallery
+      - s-community-carousel
+
+  - id: snp-resource-card
+    title: Resource Card
+    sections:
+      - s-resources
+
+  - id: snp-symptom-icon
+    title: Symptom Icon
+    sections:
+      - s-sold-a-lie
+      - s-category-strip
+
+  # — FAQ —
+  - id: snp-accordion-item
+    title: Accordion Item
+    sections:
+      - s-product-accordion
+      - s-faq-content
+      - s-hp-faq
+      - s-bundle-certifications
+      - s-footer
+
+  - id: snp-faq-category-nav
+    title: FAQ Category Nav
+    sections:
+      - s-faq-content
+
+  # — Footer —
+  - id: snp-footer-nav-column
+    title: Footer Nav Column
+    sections:
+      - s-footer
+
+  - id: snp-newsletter-form
+    title: Newsletter Signup Form
+    sections:
+      - s-footer

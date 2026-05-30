@@ -1,0 +1,163 @@
+sections:
+
+  # — Shared / Global —
+  - id: s-announcement-bar
+    title: Announcement Bar
+
+  - id: s-header
+    title: Site Header
+
+  - id: s-promo-banner
+    title: Promo Banner
+
+  - id: s-breadcrumbs
+    title: Breadcrumbs
+
+  - id: s-gut-check-cta
+    title: Gut Check CTA Banner
+
+  - id: s-ugc-gallery
+    title: UGC / Social Gallery
+
+  - id: s-footer
+    title: Footer
+
+  # — Homepage —
+  - id: s-hp-hero
+    title: Hero Banner
+
+  - id: s-community-strip
+    title: Community Strip
+
+  - id: s-sold-a-lie
+    title: You've Been Sold a Lie
+
+  - id: s-featured-products
+    title: Featured Products
+
+  - id: s-bundle-system
+    title: Bundle / System
+
+  - id: s-press-logos
+    title: Press Logo Bar
+
+  - id: s-proof
+    title: Proof Section
+
+  - id: s-stats-bar
+    title: Stats Bar
+
+  - id: s-hp-mission
+    title: Mission Section
+
+  - id: s-hp-faq
+    title: FAQ Teaser
+
+  # — PDP —
+  - id: s-product-hero
+    title: Product Hero
+
+  - id: s-product-accordion
+    title: Product Accordion
+
+  - id: s-stat-banner
+    title: Stat Banner
+
+  - id: s-routine
+    title: Routine Section
+
+  - id: s-trust-bar
+    title: Trust Bar
+
+  - id: s-bundle-save
+    title: Bundle & Save
+
+  - id: s-ingredients-spotlight
+    title: Ingredients Spotlight
+
+  - id: s-comparison-table
+    title: Comparison Table
+
+  - id: s-reviews
+    title: Reviews
+
+  - id: s-related-products
+    title: Related Products
+
+  # — PLP —
+  - id: s-plp-hero
+    title: PLP Hero Banner
+
+  - id: s-filter-sort
+    title: Filter + Sort Bar
+
+  - id: s-product-grid
+    title: Product Grid
+
+  - id: s-category-strip
+    title: Category Navigation Strip
+
+  - id: s-show-more
+    title: Show More
+
+  # — About —
+  - id: s-about-hero
+    title: About Hero Banner
+
+  - id: s-about-mission
+    title: About Mission Section
+
+  - id: s-origin-story
+    title: Origin Story Section
+
+  - id: s-quote-proof
+    title: Quote / Proof Section
+
+  - id: s-community-carousel
+    title: Community Carousel
+
+  - id: s-resources
+    title: Resources Section
+
+  # — Blog Landing —
+  - id: s-blog-featured-hero
+    title: Featured Article Hero
+
+  - id: s-blog-filter-sort
+    title: Blog Filter + Sort Bar
+
+  - id: s-article-grid
+    title: Article Grid
+
+  # — Blog Detail —
+  - id: s-article-hero
+    title: Article Hero
+
+  - id: s-article-body
+    title: Article Body
+
+  - id: s-related-articles
+    title: Related Articles
+
+  # — FAQ —
+  - id: s-faq-header
+    title: FAQ Page Header
+
+  - id: s-faq-content
+    title: FAQ Content Area
+
+  # — Bundle —
+  - id: s-bundle-hero
+    title: Bundle Hero
+
+  - id: s-social-proof-strip
+    title: Social Proof Strip
+
+  - id: s-bundle-certifications
+    title: Quality & Certifications Accordion
+
+  - id: s-bundle-contents
+    title: Bundle Contents
+
+  - id: s-blog-cards
+    title: Blog / Editorial Cards
