@@ -13,6 +13,7 @@ snippets:
     title: Social Icons
     description: Row of social platform icon links (Instagram, Facebook, YouTube).
     status: planned
+    file: components/c-social-links.md
     sections:
       - s-social-gallery
       - s-article-hero
@@ -32,6 +33,7 @@ snippets:
     title: Product Card
     description: Product tile with image, badge, rating, title, price, swatches, and optional CTA.
     status: planned
+    file: components/c-product-card.md
     sections:
       - s-feature-product
       - s-product-gallery
@@ -50,6 +52,7 @@ snippets:
     title: Variant Swatches
     description: Color or flavor dot selector that updates the displayed variant.
     status: planned
+    file: components/c-swatch.md
     sections:
       - s-product-hero
       - s-bundle-hero
@@ -77,6 +80,7 @@ snippets:
     title: Star Rating
     description: Star display with numeric rating and review count; supports Judgeme and Yotpo.
     status: done
+    file: components/c-ratings.md
     sections:
       - s-product-hero
       - s-bundle-hero
@@ -106,6 +110,7 @@ snippets:
     title: Stat Block
     description: Large percentage or number with a short descriptor label below.
     status: planned
+    file: components/c-stat.md
     sections:
       - s-statistics
       - s-statement
@@ -137,6 +142,7 @@ snippets:
     title: Bundle Card
     description: Bundle tile with product image, name, included items summary, and price.
     status: planned
+    file: components/c-bundle-item.md
     sections:
       - s-bundle-save
       - s-feature-bundle
@@ -164,6 +170,7 @@ snippets:
     title: Badge
     description: Small pill label for status or category (e.g. Featured, Bestseller, % Off).
     status: planned
+    file: components/c-badge.md
     sections:
       - s-blog-featured-hero
       - s-article-hero
@@ -241,6 +248,7 @@ snippets:
     title: Person Card
     description: Headshot photo with name, credential, and optional short quote.
     status: planned
+    file: components/c-person.md
     sections:
       - s-product-hero
       - s-social-proof-strip
@@ -273,6 +281,7 @@ snippets:
     title: Accordion Item
     description: Expandable row with a question header and collapsible answer body.
     status: planned
+    file: components/c-faq-item.md
     sections:
       - s-product-accordion
       - s-faq
@@ -299,5 +308,6 @@ snippets:
     title: Newsletter Signup Form
     description: Email input and submit button for newsletter or waitlist signup.
     status: planned
+    file: components/c-email-signup.md
     sections:
       - s-footer

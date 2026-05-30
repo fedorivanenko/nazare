@@ -5,6 +5,7 @@ sections:
     title: Announcement Bar
     description: Thin full-width top bar for promotional text or sitewide alerts.
     status: done
+    file: components/s-announcement.md
 
   - id: s-header
     title: Site Header
@@ -30,17 +31,20 @@ sections:
     title: UGC / Social Gallery
     description: Instagram handle heading, social icons, and a grid of user-generated photos.
     status: planned
+    file: components/s-social-gallery.md
 
   - id: s-footer
     title: Footer
     description: Nav columns, newsletter signup, brand display headline, and legal bar.
     status: planned
+    file: components/s-footer.md
 
   # — Homepage —
   - id: s-hero
     title: Hero Banner
     description: Full-width above-the-fold section with brand headline and primary CTA.
     status: done
+    file: components/s-hero.md
 
   - id: s-community-strip
     title: Community Strip
@@ -56,16 +60,19 @@ sections:
     title: Featured Products
     description: Filterable product card row with category tabs and a trust badge strip.
     status: planned
+    file: components/s-feature-product.md
 
   - id: s-feature-bundle
     title: Bundle / System
     description: Split editorial section promoting the product system with a bundle CTA.
     status: planned
+    file: components/s-feature-bundle.md
 
   - id: s-press-bar
     title: Press Logo Bar
     description: Horizontal row of press publication logos with a "Featured In" label.
     status: planned
+    file: components/s-press-bar.md
 
   - id: s-proof
     title: Proof Section
@@ -76,6 +83,7 @@ sections:
     title: Stats Bar
     description: Row of large percentage stat blocks showing product outcome data.
     status: implemented
+    file: components/s-statistics.md
 
   - id: s-hp-mission
     title: Mission Section
@@ -102,6 +110,7 @@ sections:
     title: Stat Banner
     description: Full-width proof section pairing a bold headline with a large percentage stat.
     status: planned
+    file: components/s-statement.md
 
   - id: s-routine
     title: Routine Section
@@ -112,6 +121,7 @@ sections:
     title: Trust Bar
     description: Horizontal strip of certification and claim icons (vegan, organic, doctor-formulated, etc.).
     status: planned
+    file: components/s-trust-bar.md
 
   - id: s-bundle-save
     title: Bundle & Save
@@ -153,6 +163,7 @@ sections:
     title: Product Grid
     description: Responsive grid of product cards with an optional inline editorial card.
     status: planned
+    file: components/s-product-gallery.md
 
   - id: s-category-strip
     title: Category Navigation Strip
@@ -221,6 +232,7 @@ sections:
     title: Article Body
     description: Rich article content — paragraphs, subheadings, images, pull quotes, and inline product cards.
     status: planned
+    file: components/s-editorial.md
 
   - id: s-related-articles
     title: Related Articles
@@ -237,6 +249,7 @@ sections:
     title: FAQ Content Area
     description: Category sidebar nav (desktop) or tab strip (mobile) with an accordion Q&A list.
     status: planned
+    file: components/s-faq.md
 
   # — Bundle —
   - id: s-bundle-hero
@@ -269,13 +282,16 @@ sections:
     title: Banner
     description: General-purpose full-width image or color banner with optional headline and CTA.
     status: planned
+    file: components/s-banner.md
 
   - id: s-video-gallery
     title: Video Gallery
     description: Grid or carousel of video thumbnails with play button overlays.
     status: done
+    file: components/s-video-gallery.md
 
   - id: s-image-gallery
     title: Image Gallery
     description: Grid or carousel of images for editorial or product photography.
     status: planned
+    file: components/s-image-gallery.md
