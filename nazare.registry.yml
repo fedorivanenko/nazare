@@ -162,7 +162,7 @@ components:
           algorithm: sha256
           value: dd263c8fc35251cf8c72b1f622d112a8bc51fe166c6d1a06727604658887e8e0
   s-hero:
-    version: 1.2.0
+    version: 1.2.1
     type: section
     dependencies:
       - c-bg-video
@@ -173,7 +173,7 @@ components:
         to: sections/s-hero.liquid
         checksum:
           algorithm: sha256
-          value: 23b62481e22fc0719fe77bfe9e8810fbe5e886f023698ebb2271924c9eb78092
+          value: e8b0ebf0fc35ccc160df1976d58b457c035cfd016666c90116c247c0682cd71c
   c-drag-scroll:
     version: 1.0.2-dev.0
     type: snippet

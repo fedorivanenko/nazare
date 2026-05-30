@@ -89,7 +89,7 @@
             <div class="mb-8 text-[14px]/[20px] opacity-90 lg:text-[16px]/[20px] [&_a:hover]:underline [&_a]:underline-offset-2">{{ hero_body }}</div>
           {% endif %}
           {% if cta_label != blank and cta_url != blank or cta2_label != blank and cta2_url != blank %}
-            <div class="mt-8 flex flex-col items-stretch gap-4 sm:flex-row sm:items-center" style="{% if hero_scheme == 'light' %}--btn-bg: var(--color-foreground); --btn-text: var(--color-background){% else %}--btn-bg: var(--color-background); --btn-text: var(--color-foreground){% endif %}">
+            <div class="mt-8 flex flex-col items-stretch gap-4 sm:flex-row" style="{% if hero_scheme == 'light' %}--btn-bg: var(--color-foreground); --btn-text: var(--color-background){% else %}--btn-bg: var(--color-background); --btn-text: var(--color-foreground){% endif %}">
               {% if cta_label != blank and cta_url != blank %}
                 {% render 'c-button', label: cta_label, url: cta_url, scheme: cta_scheme %}
               {% endif %}
@@ -101,7 +101,7 @@
         </div>
 
       {% else %}
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 lg:px-15">
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 lg:px-15">
           <div class="{{ text_color_class }}">
             {% if hero_eyebrow != blank %}
               <p class="text-xs font-semibold uppercase tracking-widest opacity-75">{{ hero_eyebrow | escape }}</p>
@@ -111,7 +111,7 @@
               <div class="mb-8 text-[14px]/[20px] opacity-90 lg:text-[16px]/[20px] [&_a:hover]:underline [&_a]:underline-offset-2">{{ hero_body }}</div>
             {% endif %}
             {% if cta_label != blank and cta_url != blank or cta2_label != blank and cta2_url != blank %}
-              <div class="mt-8 flex flex-col items-stretch gap-4 sm:flex-row sm:items-center" style="{% if hero_scheme == 'light' %}--btn-bg: var(--color-foreground); --btn-text: var(--color-background){% else %}--btn-bg: var(--color-background); --btn-text: var(--color-foreground){% endif %}">
+              <div class="mt-8 flex flex-col items-stretch gap-4 sm:flex-row" style="{% if hero_scheme == 'light' %}--btn-bg: var(--color-foreground); --btn-text: var(--color-background){% else %}--btn-bg: var(--color-background); --btn-text: var(--color-foreground){% endif %}">
                 {% if cta_label != blank and cta_url != blank %}
                   {% render 'c-button', label: cta_label, url: cta_url, scheme: cta_scheme %}
                 {% endif %}
