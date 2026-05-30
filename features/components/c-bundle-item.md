@@ -154,7 +154,7 @@ Snippet render contract:
 
 Benefits are passed as a newline-separated string rather than a Liquid array because Shopify section block settings do not support arrays. Callers (sections) store benefits in a `textarea` setting and pass the raw value; the snippet splits on `\n` using Liquid's `split` filter.
 
-Checkmark icons are inline SVG in the Liquid loop — one `<svg>` per benefit line — consistent with `s-trust-bar`. No asset request, no snippet dependency.
+Checkmark icons are inline SVG in the Liquid loop — one `<svg>` per benefit line. No asset request, no snippet dependency.
 
 The snippet has no link to the product page by design. Bundle items are presented as components of an offer, not as individual purchase targets. Callers that need a linked version should use `c-product-chip` instead.
 
