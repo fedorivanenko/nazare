@@ -200,6 +200,18 @@ components:
         checksum:
           algorithm: sha256
           value: b1b7065580dce53f81a2ac3a627dc36061fdd607536699e989551ff69bdbc6d2
+  c-video-gallery:
+    version: 1.0.0
+    type: snippet
+    dependencies:
+      - c-carousel
+      - c-video
+    files:
+      - from: components/c-video-gallery/c-video-gallery.liquid
+        to: snippets/c-video-gallery.liquid
+        checksum:
+          algorithm: sha256
+          value: 45cf75bc81c21934ddb23ef8dc27e67e8d26138e815e75e56a7d7d65cdcdae63
   s-announcement:
     version: 1.0.2-dev.0
     type: section

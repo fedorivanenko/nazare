@@ -9,13 +9,12 @@ dependencies:
   - component-registry
   - component-list
   - component-add
-  - s-video-gallery
+  - c-video-gallery
 
 surfaces:
   storefront:
     - snippets/c-carousel.liquid
     - scripts/snippets/c-carousel.js
-    - sections/s-video-gallery.liquid
 
 invariants:
   - Component ID is c-carousel
@@ -23,7 +22,7 @@ invariants:
   - Registry metadata includes checksum for every component file
   - Uses Tailwind utilities for all styling
   - Accepts caller-rendered item markup instead of owning Shopify section blocks
-  - s-video-gallery is first consuming section and remains owner of its video block markup
+  - c-video-gallery is first consuming snippet and remains owner of its video block markup
   - Endless marquee moves existing item elements through the track instead of cloning or duplicating them
   - JavaScript handles carousel scrolling, marquee motion, item reordering, pause state, resize handling, and pointer drag
   - Drag is provided by c-drag-scroll; c-carousel owns only the callbacks that translate drag delta into scroll or transform
@@ -33,7 +32,7 @@ invariants:
   - Does not mutate theme scaffold source
 
 nonGoals:
-  - Shopify section schema beyond s-video-gallery carousel settings
+  - Shopify section schema
   - Owning video, product, collection, or card markup
   - Duplicating slide markup for seamless looping
   - Pagination dots
@@ -48,18 +47,14 @@ codebaseOwnership:
   owns:
     repo:
       - components/c-carousel/**
-      - components/s-video-gallery/s-video-gallery.liquid carousel integration
       - nazare.registry.yml c-carousel metadata
-      - nazare.registry.yml s-video-gallery dependency/checksum update
       - test/ registry component validation for c-carousel
-      - test/ s-video-gallery carousel integration coverage
-      - README.md default component notes if needed
 
   mustNotModify:
     - theme/default/ scaffold source content
     - bin/nazare.js command behavior
     - install metadata
-    - existing component source files except components/s-video-gallery/s-video-gallery.liquid
+    - existing component source files
 ---
 
 # Carousel Snippet
@@ -81,8 +76,6 @@ Included:
 - `nazare.registry.yml` component metadata for `c-carousel`
 - checksum validation coverage for committed component source files
 - smoke coverage that `nazare add c-carousel` installs the snippet and script from the local registry
-- `s-video-gallery` integration that uses `c-carousel` when a carousel layout is selected
-- smoke coverage that `nazare add s-video-gallery` installs `c-carousel` as a dependency
 - snippet parameters:
   - `content`: required pre-rendered item markup from caller
   - `aria_label`: optional accessible label for the carousel region
@@ -93,12 +86,6 @@ Included:
   - `gap`: `sm`, `md`, or `lg`
   - `class`: optional root classes
   - `track_class`: optional track classes
-- `s-video-gallery` settings added:
-  - `layout_mode`: `grid`, `carousel`, or `marquee`
-  - `carousel_direction`: `left` or `right`
-  - `carousel_speed`: `slow`, `normal`, or `fast`
-  - `carousel_pause_on_hover`: boolean
-
 Component metadata:
 
 ```yaml
@@ -116,19 +103,6 @@ components:
           value: <sha256>
       - from: components/c-carousel/c-carousel.js
         to: scripts/snippets/c-carousel.js
-        checksum:
-          algorithm: sha256
-          value: <sha256>
-  s-video-gallery:
-    version: 1.1.1-dev.0
-    type: section
-    dependencies:
-      - c-video
-      - c-button
-      - c-carousel
-    files:
-      - from: components/s-video-gallery/s-video-gallery.liquid
-        to: sections/s-video-gallery.liquid
         checksum:
           algorithm: sha256
           value: <sha256>
@@ -162,15 +136,6 @@ Snippet render contract:
 - `gap` maps to Tailwind gap utilities and defaults to `md` when blank or unknown.
 - `pause_on_hover` pauses marquee on pointer hover and keyboard focus when enabled.
 
-`s-video-gallery` render contract:
-
-- Existing grid behavior remains default through `layout_mode: grid`.
-- `layout_mode: carousel` captures valid video blocks once, wraps each valid block in `data-c-carousel-item`, and renders `c-carousel` with `mode: static`.
-- `layout_mode: marquee` captures valid video blocks once, wraps each valid block in `data-c-carousel-item`, and renders `c-carousel` with `mode: marquee`.
-- Missing video blocks are omitted before capture so carousel receives no empty items.
-- CTA, title, description, `c-video` rendering, and empty theme-editor state keep existing behavior.
-- `s-video-gallery` declares dependency on `c-carousel` so `nazare add s-video-gallery` installs snippet and script.
-
 JavaScript behavior contract:
 
 - `init(root)` initializes one instance for one carousel root.
@@ -191,7 +156,6 @@ JavaScript behavior contract:
 
 - `nazare list` shows `c-carousel` as available after registry update.
 - `nazare add c-carousel` installs `snippets/c-carousel.liquid` and `scripts/snippets/c-carousel.js`.
-- `nazare add s-video-gallery` installs `sections/s-video-gallery.liquid`, `c-video`, `c-button`, and `c-carousel` dependencies.
 - A section can capture block markup once and render it through `c-carousel`.
 - Rendered `content` appears exactly once in initial HTML.
 - Static mode shows a horizontal overflow ribbon with caller-owned items.
@@ -200,8 +164,6 @@ JavaScript behavior contract:
 - Hover or focus pauses marquee when `pause_on_hover` is enabled.
 - Missing or invalid options fall back to safe defaults.
 - Blank content renders no empty carousel shell.
-- `s-video-gallery` default grid layout remains unchanged unless merchant selects carousel or marquee.
-- `s-video-gallery` carousel and marquee layouts render each valid video block exactly once in initial HTML.
 - Component source checksums match registry metadata.
 
 ---
@@ -214,7 +176,6 @@ JavaScript behavior contract:
 - Content without at least two `data-c-carousel-item` elements remains static and does not throw.
 - Measurement failure, zero-width items, or hidden root disables marquee and leaves content visible.
 - JavaScript initialization failure leaves static horizontal content visible and logs through existing Nazare runtime warning path.
-- `s-video-gallery` keeps grid fallback available when carousel JavaScript is unavailable.
 - Failure cases must not clone item markup, duplicate Shopify block attributes, or mutate unrelated user files.
 
 ---
@@ -237,11 +198,6 @@ Result: done.
 - [x] `destroy(root)` stops animation and removes listeners
 - [x] resize handling remeasures without duplicating items
 - [x] `nazare add c-carousel` smoke installs snippet and script from local registry
-- [x] `s-video-gallery` registry metadata depends on `c-carousel`
-- [x] `nazare add s-video-gallery` smoke installs `c-carousel` dependency
-- [x] `s-video-gallery` default grid layout remains unchanged
-- [x] `s-video-gallery` carousel layout captures and renders each valid video block once
-- [x] `s-video-gallery` marquee layout passes existing block markup into `c-carousel` without duplication
 
 ---
 
@@ -249,7 +205,7 @@ Result: done.
 
 Keep `c-carousel` as layout and motion primitive only. Sections own item data, Shopify blocks, and card markup. This keeps `c-carousel` reusable for videos, products, logos, testimonials, and other future components.
 
-Wire first into `s-video-gallery` without moving video-card ownership into `c-carousel`. `s-video-gallery` should keep rendering `c-video` inside each Shopify video block, capture those rendered blocks once, then hand the captured markup to `c-carousel`.
+Wire first into `c-video-gallery` without moving video-card ownership into `c-carousel`. `c-video-gallery` keeps rendering `c-video` inside each Shopify video block, captures those rendered blocks once, then hands the captured markup to `c-carousel`.
 
 Endless marquee must avoid common clone-based marquee patterns. Cloning would duplicate Shopify block DOM, duplicate IDs or `shopify_attributes`, and risk duplicated media playback or analytics events. Use a moving-window model instead: animate one track, move existing child nodes from one edge to the other after they fully leave the viewport, then compensate transform offset.
 

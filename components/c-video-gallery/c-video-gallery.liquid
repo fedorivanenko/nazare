@@ -1,0 +1,45 @@
+{% liquid
+  assign vg_mode = mode | default: 'static'
+  assign vg_direction = direction | default: 'left'
+  assign vg_speed = speed | default: 'normal'
+  assign vg_pause_on_hover = pause_on_hover
+  assign vg_aria_label = aria_label
+  assign rendered_videos = 0
+
+  unless vg_mode == 'static' or vg_mode == 'marquee'
+    assign vg_mode = 'static'
+  endunless
+
+  if vg_pause_on_hover == nil
+    assign vg_pause_on_hover = true
+  endif
+%}
+
+{% capture carousel_items %}
+  {% for block in blocks %}
+    {% if block.settings.video != blank %}
+      {% assign rendered_videos = rendered_videos | plus: 1 %}
+      <div data-c-carousel-item {{ block.shopify_attributes }} class="h-full shrink-0">
+        {% render 'c-video', video: block.settings.video, thumbnail: block.settings.thumbnail, thumbnail_alt: block.settings.thumbnail_alt, id: block.id, class: 'h-full' %}
+      </div>
+    {% endif %}
+  {% endfor %}
+{% endcapture %}
+
+{% if rendered_videos > 0 %}
+  {% render 'c-carousel',
+    content: carousel_items,
+    aria_label: vg_aria_label,
+    mode: vg_mode,
+    direction: vg_direction,
+    speed: vg_speed,
+    pause_on_hover: vg_pause_on_hover,
+    gap: 'sm'
+  %}
+{% endif %}
+
+{% if rendered_videos == 0 and request.design_mode %}
+  <div class="mx-15 rounded-xl border border-dashed border-foreground/25 px-6 py-12 text-center text-sm text-foreground/60">
+    Add Shopify-hosted video blocks to populate this gallery.
+  </div>
+{% endif %}
