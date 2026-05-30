@@ -1,18 +1,28 @@
 # Agent Instructions
 
-## Design spec → registry → feature pipeline
+## Feature registries — source of truth
 
-Design screenshots are analysed into page specs (`docs/*-spec.md`).
-Those specs feed the YAML registries in `features/`:
+The YAML files in `features/` are the single source of truth for all features in this codebase. Before starting any feature-related task, look up the feature here first.
 
-- `features/sections.yaml` — every section discovered from the specs (`s-*` IDs)
-- `features/snippets.yaml` — every reusable snippet/component (`c-*` IDs)
+| File | Covers | ID prefix |
+|---|---|---|
+| `features/cli.yaml` | CLI commands and build tooling | `cli-*`, `component-*`, `theme-*`, `update` |
+| `features/sections.yaml` | Shopify theme sections | `s-*` |
+| `features/snippets.yaml` | Shopify theme snippets / components | `c-*` |
 
-Each YAML entry carries `id`, `title`, `description`, `status`, and (for snippets) a `sections` list of where it is used.
-When an entry has been scoped for build, it gains a `file:` pointer to its feature MD (`features/components/<id>.md`).
-Entries without `file:` are spec-discovered but not yet implemented (`status: not-started`).
+**Workflow for any feature task:**
+1. Find the feature entry in the relevant YAML by `id`.
+2. Check its `status` and `file:` field.
+3. If `file:` exists, read that MD for the full spec — goal, scope, invariants, dependencies, success/failure behavior, verification checklist.
+4. Use `dependencies` and `sections` fields in the MD/YAML to understand related features and files before making changes.
 
-Flow: `docs/*-spec.md` → `features/*.yaml` (registry) → `features/components/*.md` (build spec)
+Each YAML entry carries: `id`, `title`, `description`, `status`, and a `file:` pointer to its feature MD when one exists. Entries without `file:` are spec-discovered but not yet scoped for build (`status: not-started`).
+
+**Design spec → registry → feature pipeline:**
+
+Design screenshots are analysed into page specs (`docs/*-spec.md`). Those feed the YAML registries. When a feature is scoped for build, a `file:` pointer is added linking to `features/components/<id>.md` or `features/cli/<id>.md`.
+
+Flow: `docs/*-spec.md` → `features/*.yaml` (registry) → `features/{cli,components}/*.md` (build spec)
 
 ---
 
