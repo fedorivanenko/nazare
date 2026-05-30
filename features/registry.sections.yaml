@@ -17,11 +17,6 @@ sections:
     description: Dismissible full-width banner for time-sensitive promotions below the header.
     status: not-started
 
-  - id: s-breadcrumbs
-    title: Breadcrumbs
-    description: Single-line path showing the current page location within the site hierarchy.
-    status: not-started
-
   - id: s-gut-check
     title: Gut Check CTA Banner
     description: Full-width editorial banner with headline and CTA linking to the reflux quiz.

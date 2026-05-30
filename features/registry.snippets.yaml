@@ -1,14 +1,6 @@
 snippets:
 
   # — Navigation & Layout —
-  - id: c-breadcrumbs
-    title: Breadcrumbs
-    description: Single-line navigation path showing the current page location.
-    status: not-started
-    sections:
-      - s-breadcrumbs
-      - s-bundle-hero
-
   - id: c-social-links
     title: Social Icons
     description: Row of social platform icon links (Instagram, Facebook, YouTube).
