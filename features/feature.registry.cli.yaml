@@ -30,6 +30,12 @@ cli:
     status: done
     file: cli/component-add.md
 
+  - id: component-remove
+    title: Remove Component
+    description: Uninstalls an installed component, deleting its owned files and removing its lockfile entry. No cascade.
+    status: planned
+    file: cli/component-remove.md
+
   - id: update
     title: Unified Update Command
     description: Updates installed components and CLI tooling to their latest registry versions.
