@@ -396,19 +396,6 @@ components:
         checksum:
           algorithm: sha256
           value: 248c6cafa67dba77539022faaccc82c75d5a4f9ba6172c635041ef34fd8c96f7
-  s-sold-a-lie:
-    version: 1.0.0
-    type: section
-    dependencies:
-      - c-heading
-      - c-button
-      - c-icon-list
-    files:
-      - from: components/s-sold-a-lie/s-sold-a-lie.liquid
-        to: sections/s-sold-a-lie.liquid
-        checksum:
-          algorithm: sha256
-          value: 9bb9dbc9f476fb8a2e8f083eff85f63df30a64d1a5a8a5ca598561f194d39b54
   s-footer:
     version: 1.2.1
     type: section
