@@ -210,21 +210,20 @@ snippets:
       - s-article-grid
 
   # — Filtering & Sorting —
-  - id: c-filter-pill
-    title: Filter Pill
-    description: Toggleable pill button for filtering a grid by category.
+  - id: c-filter-sort
+    title: Filter + Sort Bar
+    description: Row of category filter pills and a sort dropdown for controlling a product grid.
     status: not-started
     sections:
-      - s-filter-sort
+      - s-plp-grid
       - s-blog-filter-sort
 
-  - id: c-sort-dropdown
-    title: Sort Dropdown
-    description: Dropdown selector for choosing grid sort order (e.g. Bestselling, Newest).
+  - id: c-show-more
+    title: Show More
+    description: Centered button that loads additional items into the grid.
     status: not-started
     sections:
-      - s-filter-sort
-      - s-blog-filter-sort
+      - s-plp-grid
 
   - id: c-filter-tab
     title: Filter Tab

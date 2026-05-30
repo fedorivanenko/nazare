@@ -117,21 +117,16 @@ sections:
     description: Full-width editorial hero image with the collection title overlaid.
     status: not-started
 
-  - id: s-filter-sort
-    title: Filter + Sort Bar
-    description: Category filter pills and a sort dropdown for controlling the product grid.
+  - id: s-plp-grid
+    title: PLP Grid
+    description: Filterable, sortable product grid with filter pills, sort dropdown, inline editorial card, and show more.
     status: not-started
-
 
   - id: s-category-strip
     title: Category Navigation Strip
     description: Full-width row of lifestyle image tiles linking to product categories.
     status: not-started
 
-  - id: s-show-more
-    title: Show More
-    description: Centered button that loads or reveals additional products in the grid.
-    status: not-started
 
   # — About —
   - id: s-about-hero
