@@ -92,7 +92,7 @@ components:
           algorithm: sha256
           value: 4993e180ec8026ffea0bb8153cfac72e0dcd46d5b2ff44ad4ff005cd7c156aca
   c-heading:
-    version: 1.0.0
+    version: 1.1.0
     type: snippet
     dependencies: []
     files:
@@ -100,7 +100,7 @@ components:
         to: snippets/c-heading.liquid
         checksum:
           algorithm: sha256
-          value: 9559ae1b78dde72291e08692f2a312331a61aa9cddca9d33e76ace19e90d5a3d
+          value: 0990343118aa480eb7d712643667965dd3c0c4861c2f83c02456e238de6816d3
   c-video:
     version: 1.0.4
     type: snippet
@@ -396,6 +396,19 @@ components:
         checksum:
           algorithm: sha256
           value: 248c6cafa67dba77539022faaccc82c75d5a4f9ba6172c635041ef34fd8c96f7
+  s-sold-a-lie:
+    version: 1.0.0
+    type: section
+    dependencies:
+      - c-heading
+      - c-button
+      - c-icon-list
+    files:
+      - from: components/s-sold-a-lie/s-sold-a-lie.liquid
+        to: sections/s-sold-a-lie.liquid
+        checksum:
+          algorithm: sha256
+          value: 9bb9dbc9f476fb8a2e8f083eff85f63df30a64d1a5a8a5ca598561f194d39b54
   s-footer:
     version: 1.2.1
     type: section

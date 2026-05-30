@@ -30,10 +30,10 @@
 %}
 
 {% if heading_text != blank %}
-  {% if heading_tag == 'h1' %}<h1 class="{{ base_classes }}">{{ heading_text | escape }}</h1>
-  {% elsif heading_tag == 'h3' %}<h3 class="{{ base_classes }}">{{ heading_text | escape }}</h3>
-  {% elsif heading_tag == 'h4' %}<h4 class="{{ base_classes }}">{{ heading_text | escape }}</h4>
-  {% elsif heading_tag == 'p' %}<p class="{{ base_classes }}">{{ heading_text | escape }}</p>
-  {% else %}<h2 class="{{ base_classes }}">{{ heading_text | escape }}</h2>
+  {% if heading_tag == 'h1' %}<h1 class="{{ base_classes }}">{{ heading_text }}</h1>
+  {% elsif heading_tag == 'h3' %}<h3 class="{{ base_classes }}">{{ heading_text }}</h3>
+  {% elsif heading_tag == 'h4' %}<h4 class="{{ base_classes }}">{{ heading_text }}</h4>
+  {% elsif heading_tag == 'p' %}<p class="{{ base_classes }}">{{ heading_text }}</p>
+  {% else %}<h2 class="{{ base_classes }}">{{ heading_text }}</h2>
   {% endif %}
 {% endif %}
