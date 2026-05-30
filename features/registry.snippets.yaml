@@ -270,7 +270,7 @@ snippets:
     status: not-started
     sections:
       - s-editorial
-      - s-category-strip
+      - s-collection-strip
 
   # — FAQ —
   - id: c-faq-item

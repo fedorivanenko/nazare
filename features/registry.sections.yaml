@@ -122,8 +122,8 @@ sections:
     description: Filterable, sortable product grid with filter pills, sort dropdown, inline editorial card, and show more.
     status: not-started
 
-  - id: s-category-strip
-    title: Category Navigation Strip
+  - id: s-collection-strip
+    title: Collection Strip
     description: Full-width row of lifestyle image tiles linking to product categories.
     status: not-started
 
