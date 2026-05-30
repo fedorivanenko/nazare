@@ -1,0 +1,73 @@
+cli:
+
+  - id: cli-install
+    title: Install Nazare CLI
+    description: Installs the nazare CLI globally via npm/pnpm and validates the environment.
+    status: done
+    file: cli/cli-install.md
+
+  - id: cli-init
+    title: Initialize Nazare Theme Repo
+    description: Scaffolds a new Nazare-managed Shopify theme repo with config, workspace, and registry wiring.
+    status: done
+    file: cli/cli-init.md
+
+  - id: component-registry
+    title: Component Registry Contract
+    description: Defines the declarative manifest format for component metadata, file sources, destinations, and SHA-256 checksums.
+    status: done
+    file: cli/component-registry.md
+
+  - id: component-list
+    title: List Components
+    description: Lists all components available in the registry with their install status and version.
+    status: done
+    file: cli/component-list.md
+
+  - id: component-add
+    title: Add Component
+    description: Installs a component from the registry into the theme, resolving and installing dependencies transitively.
+    status: done
+    file: cli/component-add.md
+
+  - id: update
+    title: Unified Update Command
+    description: Updates installed components and CLI tooling to their latest registry versions.
+    status: done
+    file: cli/update.md
+
+  - id: theme-scaffold
+    title: Minimal Theme Scaffold
+    description: Provides the minimal Shopify theme file structure that all Nazare components install into.
+    status: in-progress
+    file: cli/theme-scaffold.md
+
+  - id: theme-pull
+    title: Pull Theme
+    description: Pulls the latest theme source from Shopify into the local repo, preserving component-managed files.
+    status: done
+    file: cli/theme-pull.md
+
+  - id: theme-design-tokens
+    title: Theme Design Tokens
+    description: Defines and compiles design tokens (colors, typography, spacing) into CSS variables consumed by the theme.
+    status: done
+    file: cli/theme-design-tokens.md
+
+  - id: theme-build-plugin
+    title: Theme Build Plugin
+    description: Vite/esbuild plugin that hooks into the theme build to process Liquid, CSS, and JS component sources.
+    status: in-progress
+    file: cli/theme-build-plugin.md
+
+  - id: theme-build-pipeline
+    title: Theme Build Pipeline
+    description: End-to-end build pipeline wiring scaffold, plugin, tokens, and component sources into deployable theme assets.
+    status: in-progress
+    file: cli/theme-build-pipeline.md
+
+  - id: local-registry-dev-server
+    title: Local Registry Dev Server
+    description: Local dev server that serves the component registry over HTTP so nazare CLI commands can consume it during development.
+    status: done
+    file: cli/local-registry-dev-server.md
