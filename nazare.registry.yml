@@ -92,7 +92,7 @@ components:
           algorithm: sha256
           value: 4993e180ec8026ffea0bb8153cfac72e0dcd46d5b2ff44ad4ff005cd7c156aca
   c-heading:
-    version: 1.1.0
+    version: 1.1.1
     type: snippet
     dependencies: []
     files:
@@ -100,7 +100,7 @@ components:
         to: snippets/c-heading.liquid
         checksum:
           algorithm: sha256
-          value: 0990343118aa480eb7d712643667965dd3c0c4861c2f83c02456e238de6816d3
+          value: 7c38f1aecea78006a9d7c72ab3138e23c666ae3335dd55eab4080c61f5b055e6
   c-video:
     version: 1.0.4
     type: snippet
