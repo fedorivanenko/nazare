@@ -1,0 +1,68 @@
+schemaVersion: 1
+
+registryDocument:
+  filePattern: "features/feature.registry.{cli,sections,snippets}.yaml"
+  purpose: "Single source of truth for all features in the codebase. Entry point for any feature-related task."
+
+  topLevelKey:
+    description: "Each registry file has one top-level key matching its surface."
+    allowedValues:
+      - cli
+      - sections
+      - snippets
+
+entry:
+  description: "One entry per feature, keyed under the top-level surface array."
+  fields:
+    id:
+      required: true
+      type: string
+      rules:
+        - "Use lowercase letters, numbers, and hyphens only."
+        - "Sections use s-* prefix. Snippets/components use c-* prefix. CLI features use cli-* or component-* or theme-* or update-* prefixes."
+        - "Must match the file name (without extension) of the linked feature doc when file: is present."
+
+    title:
+      required: true
+      type: string
+      rules:
+        - "Short human-readable label for the feature."
+
+    description:
+      required: true
+      type: string
+      rules:
+        - "One sentence describing what the feature does."
+
+    status:
+      required: true
+      type: string
+      allowedValues:
+        - not-started
+        - planned
+        - implemented
+        - done
+      rules:
+        - "not-started: identified from design but not yet scoped."
+        - "planned: feature doc exists at file: path."
+        - "implemented: code exists, may have open polish tasks."
+        - "done: shipped, verified, and stable."
+
+    file:
+      required: false
+      type: string
+      rules:
+        - "Relative path to the feature doc from the repo root."
+        - "Required when status is planned, implemented, or done."
+        - "Omit when status is not-started."
+        - "CLI features resolve to features/cli/<id>.md."
+        - "Storefront features resolve to features/components/<id>.md."
+
+    sections:
+      required: false
+      type: array
+      itemType: string
+      rules:
+        - "Snippets registry only. Lists Nazare-owned section IDs that use this snippet."
+        - "Only reference sections present in feature.registry.sections.yaml."
+        - "Omit when no Nazare-owned section uses this snippet."

@@ -6,9 +6,9 @@ The YAML files in `features/` are the single source of truth for all features in
 
 | File | Covers | ID prefix |
 |---|---|---|
-| `features/registry.cli.yaml` | CLI commands and build tooling | `cli-*`, `component-*`, `theme-*`, `update` |
-| `features/registry.sections.yaml` | Shopify theme sections | `s-*` |
-| `features/registry.snippets.yaml` | Shopify theme snippets / components | `c-*` |
+| `features/feature.registry.cli.yaml` | CLI commands and build tooling | `cli-*`, `component-*`, `theme-*`, `update` |
+| `features/feature.registry.sections.yaml` | Shopify theme sections | `s-*` |
+| `features/feature.registry.snippets.yaml` | Shopify theme snippets / components | `c-*` |
 
 **Workflow for any feature task:**
 1. Find the feature entry in the relevant YAML by `id`.
