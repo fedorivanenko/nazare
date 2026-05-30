@@ -110,10 +110,6 @@ sections:
     description: Aggregate rating summary and paginated individual review cards.
     status: not-started
 
-  - id: s-related-products
-    title: Related Products
-    description: Horizontally scrollable carousel of related or recommended products.
-    status: not-started
 
   # — PLP —
   - id: s-plp-hero

@@ -36,7 +36,7 @@ snippets:
     file: components/c-product-card.md
     sections:
       - s-product-gallery
-      - s-related-products
+      - s-product-gallery
       - s-bundle-gallery
 
   - id: c-image-gallery
@@ -56,7 +56,7 @@ snippets:
       - s-product-hero
       - s-bundle-hero
       - s-product-gallery
-      - s-related-products
+      - s-product-gallery
 
   - id: c-buy-box
     title: Buy Box
@@ -84,7 +84,7 @@ snippets:
       - s-bundle-hero
       - s-reviews
       - s-product-gallery
-      - s-related-products
+      - s-product-gallery
 
   - id: c-trust-badges
     title: Trust Badges
