@@ -3,225 +3,279 @@ sections:
   # — Shared / Global —
   - id: s-announcement
     title: Announcement Bar
+    description: Thin full-width top bar for promotional text or sitewide alerts.
     status: done
 
   - id: s-header
     title: Site Header
+    description: Logo, primary nav links, and icon actions (search, account, cart).
     status: not-started
 
   - id: s-promo-banner
     title: Promo Banner
+    description: Dismissible full-width banner for time-sensitive promotions below the header.
     status: not-started
 
   - id: s-breadcrumbs
     title: Breadcrumbs
+    description: Single-line path showing the current page location within the site hierarchy.
     status: not-started
 
   - id: s-gut-check
     title: Gut Check CTA Banner
+    description: Full-width editorial banner with headline and CTA linking to the reflux quiz.
     status: not-started
 
   - id: s-social-gallery
     title: UGC / Social Gallery
+    description: Instagram handle heading, social icons, and a grid of user-generated photos.
     status: planned
 
   - id: s-footer
     title: Footer
+    description: Nav columns, newsletter signup, brand display headline, and legal bar.
     status: planned
 
   # — Homepage —
   - id: s-hero
     title: Hero Banner
+    description: Full-width above-the-fold section with brand headline and primary CTA.
     status: done
 
   - id: s-community-strip
     title: Community Strip
+    description: Horizontally scrollable strip of community member portrait photos.
     status: not-started
 
   - id: s-sold-a-lie
     title: You've Been Sold a Lie
+    description: Bold editorial claim with body copy, CTA, and a symptom icon row.
     status: not-started
 
   - id: s-feature-product
     title: Featured Products
+    description: Filterable product card row with category tabs and a trust badge strip.
     status: planned
 
   - id: s-feature-bundle
     title: Bundle / System
+    description: Split editorial section promoting the product system with a bundle CTA.
     status: planned
 
   - id: s-press-bar
     title: Press Logo Bar
+    description: Horizontal row of press publication logos with a "Featured In" label.
     status: planned
 
   - id: s-proof
     title: Proof Section
+    description: Split layout with a product lifestyle image and a stat-driven proof claim.
     status: not-started
 
   - id: s-statistics
     title: Stats Bar
+    description: Row of large percentage stat blocks showing product outcome data.
     status: implemented
 
   - id: s-hp-mission
     title: Mission Section
+    description: Dark-background section with brand mission copy and a founder pull quote.
     status: not-started
 
   - id: s-hp-faq
     title: FAQ Teaser
+    description: Accordion preview of frequently asked questions with a "See More" CTA.
     status: not-started
 
   # — PDP —
   - id: s-product-hero
     title: Product Hero
+    description: Main product section — gallery, title, variants, buy box, and trust badges.
     status: not-started
 
   - id: s-product-accordion
     title: Product Accordion
+    description: Collapsible panels for How To Use, Ingredients, and Quality & Certifications.
     status: not-started
 
   - id: s-statement
     title: Stat Banner
+    description: Full-width proof section pairing a bold headline with a large percentage stat.
     status: planned
 
   - id: s-routine
     title: Routine Section
+    description: Numbered step cards showing the recommended daily product routine.
     status: not-started
 
   - id: s-trust-bar
     title: Trust Bar
+    description: Horizontal strip of certification and claim icons (vegan, organic, doctor-formulated, etc.).
     status: planned
 
   - id: s-bundle-save
     title: Bundle & Save
+    description: Horizontally scrollable carousel of bundle offers with pricing.
     status: not-started
 
   - id: s-ingredients-spotlight
     title: Ingredients Spotlight
+    description: Grid of key ingredient cards each with an image, name, and benefit copy.
     status: not-started
 
   - id: s-comparison-table
     title: Comparison Table
+    description: Feature comparison table pitting the product against competitor categories.
     status: not-started
 
   - id: s-reviews
     title: Reviews
+    description: Aggregate rating summary and paginated individual review cards.
     status: not-started
 
   - id: s-related-products
     title: Related Products
+    description: Horizontally scrollable carousel of related or recommended products.
     status: not-started
 
   # — PLP —
   - id: s-plp-hero
     title: PLP Hero Banner
+    description: Full-width editorial hero image with the collection title overlaid.
     status: not-started
 
   - id: s-filter-sort
     title: Filter + Sort Bar
+    description: Category filter pills and a sort dropdown for controlling the product grid.
     status: not-started
 
   - id: s-product-gallery
     title: Product Grid
+    description: Responsive grid of product cards with an optional inline editorial card.
     status: planned
 
   - id: s-category-strip
     title: Category Navigation Strip
+    description: Full-width row of lifestyle image tiles linking to product categories.
     status: not-started
 
   - id: s-show-more
     title: Show More
+    description: Centered button that loads or reveals additional products in the grid.
     status: not-started
 
   # — About —
   - id: s-about-hero
     title: About Hero Banner
+    description: Full-width editorial hero image with brand tagline overlaid.
     status: not-started
 
   - id: s-about-mission
     title: About Mission Section
+    description: Split layout with founder portrait and brand mission heading and copy.
     status: not-started
 
   - id: s-origin-story
     title: Origin Story Section
+    description: Centered heading, body copy, and a media image telling the founder's story.
     status: not-started
 
   - id: s-quote-proof
     title: Quote / Proof Section
+    description: Split layout with a product lifestyle image and a founder pull quote.
     status: not-started
 
   - id: s-community-carousel
     title: Community Carousel
+    description: Horizontally scrollable carousel of UGC video and photo testimonials.
     status: not-started
 
   - id: s-resources
     title: Resources Section
+    description: Grid of editorial resource cards linking to coaching, academy, and content.
     status: not-started
 
   # — Blog Landing —
   - id: s-blog-featured-hero
     title: Featured Article Hero
+    description: Split hero highlighting the featured article with title, tags, and a read CTA.
     status: not-started
 
   - id: s-blog-filter-sort
     title: Blog Filter + Sort Bar
+    description: Category filter pills and sort dropdown for the article grid.
     status: not-started
 
   - id: s-article-grid
     title: Article Grid
+    description: Responsive grid of article cards with an optional inline featured card.
     status: not-started
 
   # — Blog Detail —
   - id: s-article-hero
     title: Article Hero
+    description: Full-width hero image with article title, author, date, and share icons.
     status: not-started
 
   - id: s-editorial
     title: Article Body
+    description: Rich article content — paragraphs, subheadings, images, pull quotes, and inline product cards.
     status: planned
 
   - id: s-related-articles
     title: Related Articles
+    description: Row of article cards linking to additional content on the same topic.
     status: not-started
 
   # — FAQ —
   - id: s-faq-header
     title: FAQ Page Header
+    description: Page title, subtext, and a contact link for unanswered questions.
     status: not-started
 
   - id: s-faq
     title: FAQ Content Area
+    description: Category sidebar nav (desktop) or tab strip (mobile) with an accordion Q&A list.
     status: planned
 
   # — Bundle —
   - id: s-bundle-hero
     title: Bundle Hero
+    description: Bundle product section — gallery, title, per-product variant selectors, and buy box.
     status: not-started
 
   - id: s-social-proof-strip
     title: Social Proof Strip
+    description: Horizontal strip of doctor or expert headshots with names and credentials.
     status: not-started
 
   - id: s-bundle-certifications
     title: Quality & Certifications Accordion
+    description: Collapsible panel listing quality standards and certifications for the bundle.
     status: not-started
 
   - id: s-bundle-contents
     title: Bundle Contents
+    description: Grid of individual product blocks showing benefits, usage, and key ingredients.
     status: not-started
 
   - id: s-blog-cards
     title: Blog / Editorial Cards
+    description: Row of article preview cards linking to related blog content.
     status: not-started
 
   # — Standalone —
   - id: s-banner
     title: Banner
+    description: General-purpose full-width image or color banner with optional headline and CTA.
     status: planned
 
   - id: s-video-gallery
     title: Video Gallery
+    description: Grid or carousel of video thumbnails with play button overlays.
     status: done
 
   - id: s-image-gallery
     title: Image Gallery
+    description: Grid or carousel of images for editorial or product photography.
     status: planned

@@ -3,6 +3,7 @@ snippets:
   # — Navigation & Layout —
   - id: c-breadcrumbs
     title: Breadcrumbs
+    description: Single-line navigation path showing the current page location.
     status: not-started
     sections:
       - s-breadcrumbs
@@ -10,6 +11,7 @@ snippets:
 
   - id: c-social-links
     title: Social Icons
+    description: Row of social platform icon links (Instagram, Facebook, YouTube).
     status: planned
     sections:
       - s-social-gallery
@@ -18,6 +20,7 @@ snippets:
 
   - id: c-pagination
     title: Pagination
+    description: Dot or arrow controls for navigating between pages of a list or carousel.
     status: not-started
     sections:
       - s-reviews
@@ -27,6 +30,7 @@ snippets:
   # — Product —
   - id: c-product-card
     title: Product Card
+    description: Product tile with image, badge, rating, title, price, swatches, and optional CTA.
     status: planned
     sections:
       - s-feature-product
@@ -36,6 +40,7 @@ snippets:
 
   - id: c-image-gallery
     title: Image Gallery
+    description: Primary product image with thumbnail strip; swipeable carousel on mobile.
     status: not-started
     sections:
       - s-product-hero
@@ -43,6 +48,7 @@ snippets:
 
   - id: c-swatch
     title: Variant Swatches
+    description: Color or flavor dot selector that updates the displayed variant.
     status: planned
     sections:
       - s-product-hero
@@ -53,6 +59,7 @@ snippets:
 
   - id: c-buy-box
     title: Buy Box
+    description: Quantity selector, price display, and Add to Cart CTA button.
     status: not-started
     sections:
       - s-product-hero
@@ -60,6 +67,7 @@ snippets:
 
   - id: c-subscribe-save
     title: Subscribe & Save Toggle
+    description: One-time vs. subscription purchase toggle with discount callout.
     status: not-started
     sections:
       - s-product-hero
@@ -67,6 +75,7 @@ snippets:
 
   - id: c-ratings
     title: Star Rating
+    description: Star display with numeric rating and review count; supports Judgeme and Yotpo.
     status: done
     sections:
       - s-product-hero
@@ -78,6 +87,7 @@ snippets:
 
   - id: c-trust-badges
     title: Trust Badges
+    description: Row of small icon and text badges communicating product claims and certifications.
     status: not-started
     sections:
       - s-product-hero
@@ -87,12 +97,14 @@ snippets:
 
   - id: c-ingredient-card
     title: Ingredient Card
+    description: Single ingredient tile with image, name, and short benefit description.
     status: not-started
     sections:
       - s-ingredients-spotlight
 
   - id: c-stat
     title: Stat Block
+    description: Large percentage or number with a short descriptor label below.
     status: planned
     sections:
       - s-statistics
@@ -100,6 +112,7 @@ snippets:
 
   - id: c-routine-step
     title: Routine Step Card
+    description: Numbered step card with a full-bleed image and short instructional copy.
     status: not-started
     sections:
       - s-routine
@@ -107,12 +120,14 @@ snippets:
   # — Reviews —
   - id: c-review-card
     title: Review Card
+    description: Individual review with reviewer name, star rating, date, body text, and verified badge.
     status: not-started
     sections:
       - s-reviews
 
   - id: c-rating-summary
     title: Rating Summary Bar
+    description: Aggregate score, histogram breakdown, and Write a Review CTA.
     status: not-started
     sections:
       - s-reviews
@@ -120,6 +135,7 @@ snippets:
   # — Bundles —
   - id: c-bundle-item
     title: Bundle Card
+    description: Bundle tile with product image, name, included items summary, and price.
     status: planned
     sections:
       - s-bundle-save
@@ -128,6 +144,7 @@ snippets:
 
   - id: c-bundle-product-block
     title: Bundle Product Block
+    description: Expanded product block within a bundle showing benefits, usage, and key ingredients.
     status: not-started
     sections:
       - s-bundle-contents
@@ -135,6 +152,7 @@ snippets:
   # — Blog & Editorial —
   - id: c-article-card
     title: Article Card
+    description: Article preview tile with cover image, category tag, read time, and title.
     status: not-started
     sections:
       - s-article-grid
@@ -143,7 +161,8 @@ snippets:
       - s-blog-cards
 
   - id: c-badge
-    title: Featured Badge
+    title: Badge
+    description: Small pill label for status or category (e.g. Featured, Bestseller, % Off).
     status: planned
     sections:
       - s-blog-featured-hero
@@ -152,6 +171,7 @@ snippets:
 
   - id: c-category-tag
     title: Category Tag
+    description: Outlined pill label identifying the product or content category.
     status: not-started
     sections:
       - s-blog-featured-hero
@@ -162,12 +182,14 @@ snippets:
 
   - id: c-inline-product-card
     title: Inline Product Card
+    description: Mid-article product recommendation with image, rating, price, and Add to Cart.
     status: not-started
     sections:
       - s-editorial
 
   - id: c-pull-quote
     title: Pull Quote Block
+    description: Styled large-format quote with attribution name and title.
     status: not-started
     sections:
       - s-editorial
@@ -177,6 +199,7 @@ snippets:
 
   - id: c-editorial-card
     title: Editorial / Promo Card
+    description: Full-bleed image card with headline overlay and CTA, inserted inline in a grid.
     status: not-started
     sections:
       - s-product-gallery
@@ -185,6 +208,7 @@ snippets:
   # — Filtering & Sorting —
   - id: c-filter-pill
     title: Filter Pill
+    description: Toggleable pill button for filtering a grid by category.
     status: not-started
     sections:
       - s-filter-sort
@@ -192,6 +216,7 @@ snippets:
 
   - id: c-sort-dropdown
     title: Sort Dropdown
+    description: Dropdown selector for choosing grid sort order (e.g. Bestselling, Newest).
     status: not-started
     sections:
       - s-filter-sort
@@ -199,6 +224,7 @@ snippets:
 
   - id: c-filter-tab
     title: Filter Tab
+    description: Tab-style selector for switching between product category sets.
     status: not-started
     sections:
       - s-feature-product
@@ -206,12 +232,14 @@ snippets:
   # — Social Proof & Community —
   - id: c-press-logo
     title: Press Logo
+    description: Single publication logo image used in the press logo bar.
     status: not-started
     sections:
       - s-press-bar
 
   - id: c-person
-    title: Doctor / Expert Card
+    title: Person Card
+    description: Headshot photo with name, credential, and optional short quote.
     status: planned
     sections:
       - s-product-hero
@@ -219,6 +247,7 @@ snippets:
 
   - id: c-ugc-tile
     title: UGC Photo Tile
+    description: Single user-generated photo tile linking to the social profile.
     status: not-started
     sections:
       - s-social-gallery
@@ -226,12 +255,14 @@ snippets:
 
   - id: c-resource-card
     title: Resource Card
+    description: Editorial card with full-bleed image, title overlay, and a CTA button.
     status: not-started
     sections:
       - s-resources
 
   - id: c-symptom-icon
     title: Symptom Icon
+    description: Small icon with label representing a health symptom or product category.
     status: not-started
     sections:
       - s-sold-a-lie
@@ -240,6 +271,7 @@ snippets:
   # — FAQ —
   - id: c-faq-item
     title: Accordion Item
+    description: Expandable row with a question header and collapsible answer body.
     status: planned
     sections:
       - s-product-accordion
@@ -250,6 +282,7 @@ snippets:
 
   - id: c-faq-category-nav
     title: FAQ Category Nav
+    description: Vertical sidebar (desktop) or horizontal tab strip (mobile) for filtering FAQ by category.
     status: not-started
     sections:
       - s-faq
@@ -257,12 +290,14 @@ snippets:
   # — Footer —
   - id: c-footer-nav-column
     title: Footer Nav Column
+    description: Grouped set of footer links under a category label; collapses to accordion on mobile.
     status: not-started
     sections:
       - s-footer
 
   - id: c-email-signup
     title: Newsletter Signup Form
+    description: Email input and submit button for newsletter or waitlist signup.
     status: planned
     sections:
       - s-footer
