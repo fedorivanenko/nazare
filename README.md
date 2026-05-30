@@ -1,6 +1,18 @@
 # Nazare
 
-Opinionated Shopify Liquid theme and component registry built for speed.
+A Shopify component library and CLI. Components first.
+
+## What is Nazare
+
+Nazare is a registry of reusable Shopify Liquid components installable into any theme via the `nazare` CLI.
+
+**Components (`c-*`)** are the core of the library — layout-agnostic, independently versioned, and composable. A component knows nothing about the section or page it lands on. It renders a product card, a rating, a swatch, a badge. Nothing more.
+
+**Sections (`s-*`)** are layout containers owned by the theme. They define page regions, Shopify section schemas, and slot structure. The theme composes Nazare components into sections — Nazare does not dictate how.
+
+A small set of foundational sections ships with Nazare because they are complex, universal, and expensive to rebuild per project: `s-header`, `s-footer`, `s-hero`, `s-announcement`, `s-promo-banner`, and `s-plp-grid`. Everything else is theme-owned.
+
+---
 
 ## Versioning
 
