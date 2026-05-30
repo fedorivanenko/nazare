@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: c-icon
 title: Icon Snippet
-status: planned
+status: done
 
 dependencies:
   - component-registry
@@ -152,16 +152,16 @@ components:
 
 Result: planned.
 
-- [ ] component source exists at registry path
-- [ ] registry contains `c-icon` metadata
-- [ ] registry checksum matches component source bytes
-- [ ] blank icon renders nothing
-- [ ] blank label renders no empty element
-- [ ] all three sizes apply correct max-height
-- [ ] layout: vertical stacks icon above label
-- [ ] layout: horizontal places icon beside label
-- [ ] link wraps content in anchor
-- [ ] snippet uses Tailwind utilities only
+- [x] component source exists at registry path
+- [x] registry contains `c-icon` metadata
+- [x] registry checksum matches component source bytes
+- [x] blank icon renders nothing
+- [x] blank label renders no empty element
+- [x] all three sizes apply correct max-height
+- [x] layout: vertical stacks icon above label
+- [x] layout: horizontal places icon beside label
+- [x] link wraps content in anchor
+- [x] snippet uses Tailwind utilities only
 
 ---
 

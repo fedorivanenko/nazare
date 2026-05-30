@@ -69,6 +69,28 @@ components:
         checksum:
           algorithm: sha256
           value: 3b2a2c3a342c1c4381e858dde8a7394da9f40a195e4c280fb116ad71948f7e0e
+  c-icon:
+    version: 1.0.0
+    type: snippet
+    dependencies: []
+    files:
+      - from: components/c-icon/c-icon.liquid
+        to: snippets/c-icon.liquid
+        checksum:
+          algorithm: sha256
+          value: 66658aa90d1236559c402124041412ea9b49bfb4643e021c4913cc427dda5ec8
+  c-icon-list:
+    version: 1.0.0
+    type: snippet
+    dependencies:
+      - c-icon
+      - c-carousel
+    files:
+      - from: components/c-icon-list/c-icon-list.liquid
+        to: snippets/c-icon-list.liquid
+        checksum:
+          algorithm: sha256
+          value: 4993e180ec8026ffea0bb8153cfac72e0dcd46d5b2ff44ad4ff005cd7c156aca
   c-heading:
     version: 1.0.0
     type: snippet

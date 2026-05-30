@@ -3,7 +3,7 @@ schemaVersion: 1
 
 id: c-icon-list
 title: Icon List Snippet
-status: planned
+status: done
 
 dependencies:
   - component-registry
@@ -161,17 +161,17 @@ components:
 
 Result: planned.
 
-- [ ] component source exists at registry path
-- [ ] registry contains `c-icon-list` metadata with c-icon and c-carousel deps
-- [ ] registry checksum matches component source bytes
-- [ ] blocks without icon are skipped
-- [ ] each valid block rendered via c-icon inside data-c-carousel-item
-- [ ] carousel renders when icon blocks are present
-- [ ] empty state renders in design mode only
-- [ ] icon_size forwarded to c-icon
-- [ ] layout forwarded to c-icon
-- [ ] mode: marquee auto-scrolls
-- [ ] snippet uses Tailwind utilities only
+- [x] component source exists at registry path
+- [x] registry contains `c-icon-list` metadata with c-icon and c-carousel deps
+- [x] registry checksum matches component source bytes
+- [x] blocks without icon are skipped
+- [x] each valid block rendered via c-icon inside data-c-carousel-item
+- [x] carousel renders when icon blocks are present
+- [x] empty state renders in design mode only
+- [x] icon_size forwarded to c-icon
+- [x] layout forwarded to c-icon
+- [x] mode: marquee auto-scrolls
+- [x] snippet uses Tailwind utilities only
 
 ---
 

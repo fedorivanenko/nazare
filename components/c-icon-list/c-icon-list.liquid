@@ -1,0 +1,55 @@
+{% liquid
+  assign il_mode = mode | default: 'static'
+  assign il_direction = direction | default: 'left'
+  assign il_speed = speed | default: 'normal'
+  assign il_pause_on_hover = pause_on_hover
+  assign il_aria_label = aria_label
+  assign il_icon_size = icon_size | default: 'md'
+  assign il_layout = layout | default: 'horizontal'
+  assign il_gap = gap | default: 'md'
+  assign il_rendered = 0
+
+  unless il_mode == 'static' or il_mode == 'marquee'
+    assign il_mode = 'static'
+  endunless
+
+  if il_pause_on_hover == nil
+    assign il_pause_on_hover = true
+  endif
+%}
+
+{% capture carousel_items %}
+  {% for block in blocks %}
+    {% if block.settings.icon != blank %}
+      {% assign il_rendered = il_rendered | plus: 1 %}
+      <div data-c-carousel-item {{ block.shopify_attributes }} class="shrink-0">
+        {% render 'c-icon',
+          icon: block.settings.icon,
+          label: block.settings.label,
+          link: block.settings.link,
+          alt: block.settings.alt,
+          icon_size: il_icon_size,
+          layout: il_layout
+        %}
+      </div>
+    {% endif %}
+  {% endfor %}
+{% endcapture %}
+
+{% if il_rendered > 0 %}
+  {% render 'c-carousel',
+    content: carousel_items,
+    aria_label: il_aria_label,
+    mode: il_mode,
+    direction: il_direction,
+    speed: il_speed,
+    pause_on_hover: il_pause_on_hover,
+    gap: il_gap
+  %}
+{% endif %}
+
+{% if il_rendered == 0 and request.design_mode %}
+  <div class="mx-15 rounded-xl border border-dashed border-foreground/25 px-6 py-12 text-center text-sm text-foreground/60">
+    Add icon blocks to populate this list.
+  </div>
+{% endif %}

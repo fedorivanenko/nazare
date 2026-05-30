@@ -1,0 +1,41 @@
+{% liquid
+  assign icon_size = icon_size | default: 'md'
+  assign layout = layout | default: 'horizontal'
+
+  unless icon_size == 'sm' or icon_size == 'md' or icon_size == 'lg'
+    assign icon_size = 'md'
+  endunless
+
+  unless layout == 'horizontal' or layout == 'vertical'
+    assign layout = 'horizontal'
+  endunless
+
+  case icon_size
+    when 'sm'
+      assign icon_height = '24px'
+    when 'lg'
+      assign icon_height = '64px'
+    else
+      assign icon_height = '40px'
+  endcase
+
+  assign resolved_alt = alt | default: icon.alt
+
+  assign layout_class = 'flex items-center gap-2'
+  if layout == 'vertical'
+    assign layout_class = 'flex flex-col items-center gap-3 text-center'
+  endif
+
+  if class != blank
+    assign layout_class = layout_class | append: ' ' | append: class
+  endif
+
+  assign icon_style = 'max-height: ' | append: icon_height | append: '; width: auto; object-fit: contain'
+%}
+
+{% if icon != blank %}
+  {% if link != blank %}<a href="{{ link }}" class="{{ layout_class }}">{% else %}<div class="{{ layout_class }}">{% endif %}
+    {{ icon | image_url: height: 128 | image_tag: alt: resolved_alt, loading: 'lazy', style: icon_style }}
+    {% if label != blank %}<span class="text-sm font-medium">{{ label | escape }}</span>{% endif %}
+  {% if link != blank %}</a>{% else %}</div>{% endif %}
+{% endif %}
