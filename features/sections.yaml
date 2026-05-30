@@ -1,0 +1,227 @@
+sections:
+
+  # — Shared / Global —
+  - id: s-announcement
+    title: Announcement Bar
+    status: done
+
+  - id: s-header
+    title: Site Header
+    status: not-started
+
+  - id: s-promo-banner
+    title: Promo Banner
+    status: not-started
+
+  - id: s-breadcrumbs
+    title: Breadcrumbs
+    status: not-started
+
+  - id: s-gut-check
+    title: Gut Check CTA Banner
+    status: not-started
+
+  - id: s-social-gallery
+    title: UGC / Social Gallery
+    status: planned
+
+  - id: s-footer
+    title: Footer
+    status: planned
+
+  # — Homepage —
+  - id: s-hero
+    title: Hero Banner
+    status: done
+
+  - id: s-community-strip
+    title: Community Strip
+    status: not-started
+
+  - id: s-sold-a-lie
+    title: You've Been Sold a Lie
+    status: not-started
+
+  - id: s-feature-product
+    title: Featured Products
+    status: planned
+
+  - id: s-feature-bundle
+    title: Bundle / System
+    status: planned
+
+  - id: s-press-bar
+    title: Press Logo Bar
+    status: planned
+
+  - id: s-proof
+    title: Proof Section
+    status: not-started
+
+  - id: s-statistics
+    title: Stats Bar
+    status: implemented
+
+  - id: s-hp-mission
+    title: Mission Section
+    status: not-started
+
+  - id: s-hp-faq
+    title: FAQ Teaser
+    status: not-started
+
+  # — PDP —
+  - id: s-product-hero
+    title: Product Hero
+    status: not-started
+
+  - id: s-product-accordion
+    title: Product Accordion
+    status: not-started
+
+  - id: s-statement
+    title: Stat Banner
+    status: planned
+
+  - id: s-routine
+    title: Routine Section
+    status: not-started
+
+  - id: s-trust-bar
+    title: Trust Bar
+    status: planned
+
+  - id: s-bundle-save
+    title: Bundle & Save
+    status: not-started
+
+  - id: s-ingredients-spotlight
+    title: Ingredients Spotlight
+    status: not-started
+
+  - id: s-comparison-table
+    title: Comparison Table
+    status: not-started
+
+  - id: s-reviews
+    title: Reviews
+    status: not-started
+
+  - id: s-related-products
+    title: Related Products
+    status: not-started
+
+  # — PLP —
+  - id: s-plp-hero
+    title: PLP Hero Banner
+    status: not-started
+
+  - id: s-filter-sort
+    title: Filter + Sort Bar
+    status: not-started
+
+  - id: s-product-gallery
+    title: Product Grid
+    status: planned
+
+  - id: s-category-strip
+    title: Category Navigation Strip
+    status: not-started
+
+  - id: s-show-more
+    title: Show More
+    status: not-started
+
+  # — About —
+  - id: s-about-hero
+    title: About Hero Banner
+    status: not-started
+
+  - id: s-about-mission
+    title: About Mission Section
+    status: not-started
+
+  - id: s-origin-story
+    title: Origin Story Section
+    status: not-started
+
+  - id: s-quote-proof
+    title: Quote / Proof Section
+    status: not-started
+
+  - id: s-community-carousel
+    title: Community Carousel
+    status: not-started
+
+  - id: s-resources
+    title: Resources Section
+    status: not-started
+
+  # — Blog Landing —
+  - id: s-blog-featured-hero
+    title: Featured Article Hero
+    status: not-started
+
+  - id: s-blog-filter-sort
+    title: Blog Filter + Sort Bar
+    status: not-started
+
+  - id: s-article-grid
+    title: Article Grid
+    status: not-started
+
+  # — Blog Detail —
+  - id: s-article-hero
+    title: Article Hero
+    status: not-started
+
+  - id: s-editorial
+    title: Article Body
+    status: planned
+
+  - id: s-related-articles
+    title: Related Articles
+    status: not-started
+
+  # — FAQ —
+  - id: s-faq-header
+    title: FAQ Page Header
+    status: not-started
+
+  - id: s-faq
+    title: FAQ Content Area
+    status: planned
+
+  # — Bundle —
+  - id: s-bundle-hero
+    title: Bundle Hero
+    status: not-started
+
+  - id: s-social-proof-strip
+    title: Social Proof Strip
+    status: not-started
+
+  - id: s-bundle-certifications
+    title: Quality & Certifications Accordion
+    status: not-started
+
+  - id: s-bundle-contents
+    title: Bundle Contents
+    status: not-started
+
+  - id: s-blog-cards
+    title: Blog / Editorial Cards
+    status: not-started
+
+  # — Standalone —
+  - id: s-banner
+    title: Banner
+    status: planned
+
+  - id: s-video-gallery
+    title: Video Gallery
+    status: done
+
+  - id: s-image-gallery
+    title: Image Gallery
+    status: planned

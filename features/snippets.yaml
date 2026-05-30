@@ -1,0 +1,268 @@
+snippets:
+
+  # — Navigation & Layout —
+  - id: c-breadcrumbs
+    title: Breadcrumbs
+    status: not-started
+    sections:
+      - s-breadcrumbs
+      - s-bundle-hero
+
+  - id: c-social-links
+    title: Social Icons
+    status: planned
+    sections:
+      - s-social-gallery
+      - s-article-hero
+      - s-footer
+
+  - id: c-pagination
+    title: Pagination
+    status: not-started
+    sections:
+      - s-reviews
+      - s-community-carousel
+      - s-article-grid
+
+  # — Product —
+  - id: c-product-card
+    title: Product Card
+    status: planned
+    sections:
+      - s-feature-product
+      - s-product-gallery
+      - s-related-products
+      - s-bundle-save
+
+  - id: c-image-gallery
+    title: Image Gallery
+    status: not-started
+    sections:
+      - s-product-hero
+      - s-bundle-hero
+
+  - id: c-swatch
+    title: Variant Swatches
+    status: planned
+    sections:
+      - s-product-hero
+      - s-bundle-hero
+      - s-feature-product
+      - s-product-gallery
+      - s-related-products
+
+  - id: c-buy-box
+    title: Buy Box
+    status: not-started
+    sections:
+      - s-product-hero
+      - s-bundle-hero
+
+  - id: c-subscribe-save
+    title: Subscribe & Save Toggle
+    status: not-started
+    sections:
+      - s-product-hero
+      - s-bundle-hero
+
+  - id: c-ratings
+    title: Star Rating
+    status: done
+    sections:
+      - s-product-hero
+      - s-bundle-hero
+      - s-reviews
+      - s-feature-product
+      - s-product-gallery
+      - s-related-products
+
+  - id: c-trust-badges
+    title: Trust Badges
+    status: not-started
+    sections:
+      - s-product-hero
+      - s-bundle-hero
+      - s-feature-product
+      - s-trust-bar
+
+  - id: c-ingredient-card
+    title: Ingredient Card
+    status: not-started
+    sections:
+      - s-ingredients-spotlight
+
+  - id: c-stat
+    title: Stat Block
+    status: planned
+    sections:
+      - s-statistics
+      - s-statement
+
+  - id: c-routine-step
+    title: Routine Step Card
+    status: not-started
+    sections:
+      - s-routine
+
+  # — Reviews —
+  - id: c-review-card
+    title: Review Card
+    status: not-started
+    sections:
+      - s-reviews
+
+  - id: c-rating-summary
+    title: Rating Summary Bar
+    status: not-started
+    sections:
+      - s-reviews
+
+  # — Bundles —
+  - id: c-bundle-item
+    title: Bundle Card
+    status: planned
+    sections:
+      - s-bundle-save
+      - s-feature-bundle
+      - s-bundle-hero
+
+  - id: c-bundle-product-block
+    title: Bundle Product Block
+    status: not-started
+    sections:
+      - s-bundle-contents
+
+  # — Blog & Editorial —
+  - id: c-article-card
+    title: Article Card
+    status: not-started
+    sections:
+      - s-article-grid
+      - s-blog-featured-hero
+      - s-related-articles
+      - s-blog-cards
+
+  - id: c-badge
+    title: Featured Badge
+    status: planned
+    sections:
+      - s-blog-featured-hero
+      - s-article-hero
+      - s-article-grid
+
+  - id: c-category-tag
+    title: Category Tag
+    status: not-started
+    sections:
+      - s-blog-featured-hero
+      - s-article-hero
+      - s-article-grid
+      - s-product-gallery
+      - s-product-hero
+
+  - id: c-inline-product-card
+    title: Inline Product Card
+    status: not-started
+    sections:
+      - s-editorial
+
+  - id: c-pull-quote
+    title: Pull Quote Block
+    status: not-started
+    sections:
+      - s-editorial
+      - s-quote-proof
+      - s-hp-mission
+      - s-proof
+
+  - id: c-editorial-card
+    title: Editorial / Promo Card
+    status: not-started
+    sections:
+      - s-product-gallery
+      - s-article-grid
+
+  # — Filtering & Sorting —
+  - id: c-filter-pill
+    title: Filter Pill
+    status: not-started
+    sections:
+      - s-filter-sort
+      - s-blog-filter-sort
+
+  - id: c-sort-dropdown
+    title: Sort Dropdown
+    status: not-started
+    sections:
+      - s-filter-sort
+      - s-blog-filter-sort
+
+  - id: c-filter-tab
+    title: Filter Tab
+    status: not-started
+    sections:
+      - s-feature-product
+
+  # — Social Proof & Community —
+  - id: c-press-logo
+    title: Press Logo
+    status: not-started
+    sections:
+      - s-press-bar
+
+  - id: c-person
+    title: Doctor / Expert Card
+    status: planned
+    sections:
+      - s-product-hero
+      - s-social-proof-strip
+
+  - id: c-ugc-tile
+    title: UGC Photo Tile
+    status: not-started
+    sections:
+      - s-social-gallery
+      - s-community-carousel
+
+  - id: c-resource-card
+    title: Resource Card
+    status: not-started
+    sections:
+      - s-resources
+
+  - id: c-symptom-icon
+    title: Symptom Icon
+    status: not-started
+    sections:
+      - s-sold-a-lie
+      - s-category-strip
+
+  # — FAQ —
+  - id: c-faq-item
+    title: Accordion Item
+    status: planned
+    sections:
+      - s-product-accordion
+      - s-faq
+      - s-hp-faq
+      - s-bundle-certifications
+      - s-footer
+
+  - id: c-faq-category-nav
+    title: FAQ Category Nav
+    status: not-started
+    sections:
+      - s-faq
+
+  # — Footer —
+  - id: c-footer-nav-column
+    title: Footer Nav Column
+    status: not-started
+    sections:
+      - s-footer
+
+  - id: c-email-signup
+    title: Newsletter Signup Form
+    status: planned
+    sections:
+      - s-footer
