@@ -83,15 +83,15 @@ snippets:
       - s-reviews
       - s-product-gallery
 
-  - id: c-trust-badges
-    title: Trust Badges
-    description: Row of small icon and text badges communicating product claims and certifications.
+  - id: c-icon-item
+    title: Icon Item
+    description: Single icon + label pair used in rows. Covers symptom icons, trust badges, and press logos.
     status: not-started
     sections:
       - s-product-hero
       - s-bundle-hero
       - s-product-gallery
-      - s-trust-bar
+      - s-icon-row
 
   - id: c-ingredient-card
     title: Ingredient Card
@@ -229,12 +229,6 @@ snippets:
       - s-product-gallery
 
   # — Social Proof & Community —
-  - id: c-press-logo
-    title: Press Logo
-    description: Single publication logo image used in the press logo bar.
-    status: not-started
-    sections:
-      - s-press-bar
 
   - id: c-person
     title: Person Card
@@ -260,13 +254,6 @@ snippets:
     sections:
       - s-resources
 
-  - id: c-symptom-icon
-    title: Symptom Icon
-    description: Small icon with label representing a health symptom or product category.
-    status: not-started
-    sections:
-      - s-editorial
-      - s-collection-strip
 
   # — FAQ —
   - id: c-faq-item

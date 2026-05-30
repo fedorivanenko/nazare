@@ -57,11 +57,10 @@ sections:
     status: planned
     file: components/s-feature-bundle.md
 
-  - id: s-press-bar
-    title: Press Logo Bar
-    description: Horizontal row of press publication logos with a "Featured In" label.
-    status: implemented
-    file: components/s-press-bar.md
+  - id: s-icon-row
+    title: Icon Row
+    description: Horizontal row of repeating icon + label items. Supports symptom icons, trust badges, and press logos via item_type option.
+    status: not-started
 
   - id: s-feature-product
     title: Feature Product
@@ -90,11 +89,6 @@ sections:
     description: Numbered card sequence for presenting ordered steps, routines, or processes.
     status: not-started
 
-  - id: s-trust-bar
-    title: Trust Bar
-    description: Horizontal strip of certification and claim icons (vegan, organic, doctor-formulated, etc.).
-    status: planned
-    file: components/s-trust-bar.md
 
   - id: s-bundle-gallery
     title: Bundle Gallery
