@@ -16,6 +16,7 @@ Usage:
   nazare init [directory] [--repo <repo>] [--ref <ref>]
   nazare list [--installed]
   nazare add <component>
+  nazare remove <component> [--force] [--dry-run]
   nazare update self [--latest [--dev] | --version <version> | --ref <ref>]
   nazare update theme [--latest [--dev] | --version <version> | --ref <ref>] [--force] [--check] [--skip-conflicts]
   nazare update <component> [--latest [--dev] | --version <version> | --ref <ref>] [--dry-run] [--force]
@@ -25,6 +26,7 @@ Commands:
   init [directory]    Initialize Nazare relationship in a theme repo
   list                List registry components or installed components
   add <component>     Install a registry component and its dependencies
+  remove <component>  Uninstall an installed component and remove its owned files
   update self         Update the Nazare CLI install from its original source, latest release, or explicit ref
   update theme        Safely update installed theme scaffold files
   update <component>  Update an installed registry component
@@ -39,9 +41,9 @@ Options:
   --latest                   Resolve latest stable (or dev with --dev) registry tag
   --version <version>        Update from tag v<version>
   --dev                      Select latest dev prerelease tag with --latest
-  --dry-run                  Print component update plan without changing files
+  --dry-run                  Print component update or remove plan without changing files
   --yes                      Overwrite theme file conflicts without prompting
-  --force                    Overwrite modified theme update files
+  --force                    Overwrite modified theme update files; delete modified component files on remove
   --check                    Print theme update plan without changing files
   --skip-conflicts           Skip modified or conflicting theme files during update
 `;
@@ -1395,6 +1397,148 @@ async function addComponent(args) {
 		return 0;
 	} catch (error) {
 		process.stderr.write(`nazare add error: ${error.message}\n`);
+		return 1;
+	}
+}
+
+function parseRemoveArgs(args) {
+	const options = { id: undefined, force: false, dryRun: false };
+	let idSet = false;
+	for (const arg of args) {
+		if (arg === "--force") {
+			if (options.force) throw new Error("Duplicate remove option: --force");
+			options.force = true;
+			continue;
+		}
+		if (arg === "--dry-run") {
+			if (options.dryRun) throw new Error("Duplicate remove option: --dry-run");
+			options.dryRun = true;
+			continue;
+		}
+		if (!idSet) {
+			if (!isValidComponentId(arg)) throw new Error(`Invalid component ID: ${arg}`);
+			options.id = arg;
+			idSet = true;
+			continue;
+		}
+		throw new Error(`Unknown remove option: ${arg}`);
+	}
+	if (!options.id) throw new Error("Usage: nazare remove <component>");
+	return options;
+}
+
+async function removeComponent(args) {
+	let options;
+	try {
+		options = parseRemoveArgs(args);
+	} catch (error) {
+		process.stderr.write(`nazare remove error: ${error.message}\n`);
+		return 1;
+	}
+
+	const cwd = process.cwd();
+	let lockPath, lockSource, registry;
+	try {
+		({ lockPath, lockSource, registry } = readProjectState(cwd));
+	} catch (error) {
+		process.stderr.write(`nazare remove error: ${error.message}\n`);
+		return 1;
+	}
+
+	try {
+		const installedComponents = parseInstalledComponents(lockSource);
+		const { id, force, dryRun } = options;
+
+		if (!installedComponents[id]) {
+			throw new Error(`Component not installed: ${id}`);
+		}
+
+		const component = installedComponents[id];
+
+		const dependents = Object.entries(installedComponents)
+			.filter(([otherId, other]) => otherId !== id && other.dependencies.includes(id))
+			.map(([otherId]) => otherId)
+			.sort();
+
+		if (dependents.length > 0 && !force) {
+			if (!process.stdin.isTTY || !process.stdout.isTTY) {
+				throw new Error(
+					`Cannot remove ${id}: ${dependents.join(", ")} depend${dependents.length === 1 ? "s" : ""} on it. Remove dependents first or pass --force.`,
+				);
+			}
+			process.stdout.write(
+				`Warning: the following installed components depend on ${id}:\n${dependents.map((d) => `  - ${d}`).join("\n")}\n`,
+			);
+			const rl = readline.createInterface({
+				input: process.stdin,
+				output: process.stdout,
+			});
+			let answer;
+			try {
+				answer = (await rl.question(`Remove ${id} anyway? [y/N] `)).trim().toLowerCase();
+			} finally {
+				rl.close();
+			}
+			if (answer !== "y" && answer !== "yes") {
+				process.stdout.write("Aborted.\n");
+				return 0;
+			}
+		}
+
+		const files = component.files ?? [];
+		const toDelete = [];
+		const modifiedFiles = [];
+
+		for (const file of files) {
+			const targetPath = path.join(cwd, file.path);
+			if (!fs.existsSync(targetPath)) {
+				if (dryRun) process.stdout.write(`Already gone  ${file.path}\n`);
+			} else if (sha256(fs.readFileSync(targetPath)) === file.checksum.value) {
+				toDelete.push({ file, targetPath });
+			} else {
+				modifiedFiles.push({ file, targetPath });
+			}
+		}
+
+		if (dryRun) {
+			for (const { file } of toDelete) {
+				process.stdout.write(`Would delete  ${file.path}\n`);
+			}
+			for (const { file } of modifiedFiles) {
+				process.stdout.write(`Would skip    ${file.path} (modified)\n`);
+			}
+			process.stdout.write(`Would remove component: ${id}\n`);
+			return 0;
+		}
+
+		for (const { file, targetPath } of toDelete) {
+			fs.rmSync(targetPath);
+			process.stdout.write(`Deleted ${file.path}\n`);
+		}
+
+		if (force) {
+			for (const { file, targetPath } of modifiedFiles) {
+				fs.rmSync(targetPath);
+				process.stdout.write(`Deleted ${file.path} (modified)\n`);
+			}
+		} else {
+			for (const { file } of modifiedFiles) {
+				process.stderr.write(`Skipped ${file.path} (modified; pass --force to delete)\n`);
+			}
+		}
+
+		const nextComponents = { ...installedComponents };
+		delete nextComponents[id];
+
+		fs.writeFileSync(
+			lockPath,
+			renderComponentLockYaml(registry, nextComponents, extractThemeBlock(lockSource)),
+		);
+
+		process.stdout.write(`Removed component: ${id}\n`);
+		return 0;
+	} catch (error) {
+		process.stderr.write(`nazare remove error: ${error.message}\n`);
 		return 1;
 	}
 }
@@ -2779,6 +2923,10 @@ async function main(argv) {
 		return addComponent(argv.slice(1));
 	}
 
+	if (command === "remove") {
+		return removeComponent(argv.slice(1));
+	}
+
 	if (command === "update") {
 		return update(argv.slice(1));
 	}
@@ -2810,4 +2958,6 @@ module.exports = {
 	parseInstalledComponents,
 	validateComponentMetadata,
 	validateInstalledComponentMetadata,
+	parseRemoveArgs,
+	removeComponent,
 };
