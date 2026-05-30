@@ -39,11 +39,11 @@ sections:
 
 
 
-  - id: s-feature-product
-    title: Featured Products
-    description: Filterable product card row with category tabs and a trust badge strip.
+  - id: s-product-gallery
+    title: Product Gallery
+    description: Filterable product card grid with category tabs and a trust badge strip.
     status: planned
-    file: components/s-feature-product.md
+    file: components/s-product-gallery.md
 
   - id: s-feature-bundle
     title: Bundle / System
@@ -54,13 +54,14 @@ sections:
   - id: s-press-bar
     title: Press Logo Bar
     description: Horizontal row of press publication logos with a "Featured In" label.
-    status: planned
+    status: implemented
     file: components/s-press-bar.md
 
-  - id: s-proof
-    title: Proof Section
-    description: Split layout with a product lifestyle image and a stat-driven proof claim.
-    status: not-started
+  - id: s-feature-product
+    title: Feature Product
+    description: Split layout spotlighting a single product with lifestyle image and proof claim.
+    status: planned
+    file: components/s-feature-product.md
 
   - id: s-statistics
     title: Stats Bar
@@ -68,15 +69,7 @@ sections:
     status: implemented
     file: components/s-statistics.md
 
-  - id: s-hp-mission
-    title: Mission Section
-    description: Dark-background section with brand mission copy and a founder pull quote.
-    status: not-started
 
-  - id: s-hp-faq
-    title: FAQ Teaser
-    description: Accordion preview of frequently asked questions with a "See More" CTA.
-    status: not-started
 
   # — PDP —
   - id: s-product-hero
@@ -142,11 +135,6 @@ sections:
     description: Category filter pills and a sort dropdown for controlling the product grid.
     status: not-started
 
-  - id: s-product-gallery
-    title: Product Grid
-    description: Responsive grid of product cards with an optional inline editorial card.
-    status: planned
-    file: components/s-product-gallery.md
 
   - id: s-category-strip
     title: Category Navigation Strip

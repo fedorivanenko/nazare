@@ -27,7 +27,6 @@ snippets:
     status: planned
     file: components/c-product-card.md
     sections:
-      - s-feature-product
       - s-product-gallery
       - s-related-products
       - s-bundle-save
@@ -48,7 +47,6 @@ snippets:
     sections:
       - s-product-hero
       - s-bundle-hero
-      - s-feature-product
       - s-product-gallery
       - s-related-products
 
@@ -77,7 +75,6 @@ snippets:
       - s-product-hero
       - s-bundle-hero
       - s-reviews
-      - s-feature-product
       - s-product-gallery
       - s-related-products
 
@@ -88,7 +85,7 @@ snippets:
     sections:
       - s-product-hero
       - s-bundle-hero
-      - s-feature-product
+      - s-product-gallery
       - s-trust-bar
 
   - id: c-ingredient-card
@@ -193,8 +190,8 @@ snippets:
     sections:
       - s-editorial
       - s-quote-proof
-      - s-hp-mission
-      - s-proof
+      - s-statement
+      - s-feature-product
 
   - id: c-editorial-card
     title: Editorial / Promo Card
@@ -226,7 +223,7 @@ snippets:
     description: Tab-style selector for switching between product category sets.
     status: not-started
     sections:
-      - s-feature-product
+      - s-product-gallery
 
   # — Social Proof & Community —
   - id: c-press-logo
@@ -277,7 +274,7 @@ snippets:
     sections:
       - s-product-accordion
       - s-faq
-      - s-hp-faq
+      - s-faq
       - s-bundle-certifications
       - s-footer
 
