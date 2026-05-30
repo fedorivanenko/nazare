@@ -167,11 +167,6 @@ sections:
     description: Full-width hero image with article title, author, date, and share icons.
     status: not-started
 
-  - id: s-editorial
-    title: Article Body
-    description: Rich article content — paragraphs, subheadings, images, pull quotes, and inline product cards.
-    status: planned
-    file: components/s-editorial.md
 
   - id: s-related-articles
     title: Related Articles

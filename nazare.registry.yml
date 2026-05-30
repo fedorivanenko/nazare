@@ -364,16 +364,6 @@ components:
         checksum:
           algorithm: sha256
           value: 248c6cafa67dba77539022faaccc82c75d5a4f9ba6172c635041ef34fd8c96f7
-  s-trust-bar:
-    version: 1.0.0
-    type: section
-    dependencies: []
-    files:
-      - from: components/s-trust-bar/s-trust-bar.liquid
-        to: sections/s-trust-bar.liquid
-        checksum:
-          algorithm: sha256
-          value: 0043e79d053a446b58cac067fdc6c7caf30ff1ec49accf21d0f542f90e609171
   s-banner:
     version: 1.0.1
     type: section
@@ -385,17 +375,6 @@ components:
         checksum:
           algorithm: sha256
           value: 0f0ce8982c977163afaf07b4186748ab11e267766962101e537061731b897247
-  s-editorial:
-    version: 1.1.0
-    type: section
-    dependencies:
-      - c-button
-    files:
-      - from: components/s-editorial/s-editorial.liquid
-        to: sections/s-editorial.liquid
-        checksum:
-          algorithm: sha256
-          value: f1b5b1a94017b9368465d22502ec332832189995785281a6ef05139e6211d66a
   s-statistics:
     version: 1.0.0
     type: section
@@ -424,17 +403,6 @@ components:
         checksum:
           algorithm: sha256
           value: aa8f7319c73f2b762b8e51498de3fec159ef521249cf6f6ad1e84e3faa1f03df
-  s-press-bar:
-    version: 1.0.0
-    type: section
-    dependencies:
-      - c-carousel
-    files:
-      - from: components/s-press-bar/s-press-bar.liquid
-        to: sections/s-press-bar.liquid
-        checksum:
-          algorithm: sha256
-          value: 325b973d3ab549476668956a8ddda1402f182e09f8206d845f3edf13953c73dc
   s-image-gallery:
     version: 1.0.5
     type: section

@@ -185,14 +185,14 @@ snippets:
     description: Mid-article product recommendation with image, rating, price, and Add to Cart.
     status: not-started
     sections:
-      - s-editorial
+      - s-article-hero
 
   - id: c-pull-quote
     title: Pull Quote Block
     description: Styled large-format quote with attribution name and title.
     status: not-started
     sections:
-      - s-editorial
+      - s-article-hero
       - s-split
       - s-statistics
       - s-feature-product
