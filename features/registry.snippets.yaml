@@ -36,7 +36,6 @@ snippets:
     file: components/c-product-card.md
     sections:
       - s-product-gallery
-      - s-product-gallery
       - s-bundle-gallery
 
   - id: c-image-gallery
@@ -55,7 +54,6 @@ snippets:
     sections:
       - s-product-hero
       - s-bundle-hero
-      - s-product-gallery
       - s-product-gallery
 
   - id: c-buy-box
@@ -84,7 +82,6 @@ snippets:
       - s-bundle-hero
       - s-reviews
       - s-product-gallery
-      - s-product-gallery
 
   - id: c-trust-badges
     title: Trust Badges
@@ -109,7 +106,6 @@ snippets:
     status: planned
     file: components/c-stat.md
     sections:
-      - s-statistics
       - s-statistics
 
   - id: c-routine-step
@@ -197,7 +193,7 @@ snippets:
     status: not-started
     sections:
       - s-editorial
-      - s-quote-proof
+      - s-split
       - s-statistics
       - s-feature-product
 

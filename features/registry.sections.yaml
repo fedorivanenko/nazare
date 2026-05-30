@@ -124,9 +124,9 @@ sections:
 
 
   # — About —
-  - id: s-about-mission
-    title: About Mission Section
-    description: Split layout with founder portrait and brand mission heading and copy.
+  - id: s-split
+    title: Split
+    description: Two-column split layout pairing an image with a heading, copy, and optional CTA.
     status: not-started
 
   - id: s-origin-story
@@ -134,10 +134,6 @@ sections:
     description: Centered heading, body copy, and a media image telling the founder's story.
     status: not-started
 
-  - id: s-quote-proof
-    title: Quote / Proof Section
-    description: Split layout with a product lifestyle image and a founder pull quote.
-    status: not-started
 
   - id: s-community-carousel
     title: Community Carousel
