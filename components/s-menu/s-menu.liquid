@@ -1,0 +1,416 @@
+{% comment %}nazare:layout header{% endcomment %}
+{% liquid
+  assign logo         = section.settings.logo
+  assign logo_width   = section.settings.logo_width | default: 160
+  assign logo_alt     = section.settings.logo_alt | default: shop.name
+  assign main_menu    = section.settings.main_menu | default: 'main-menu'
+  assign mega_slot_1  = section.settings.mega_slot_1_title | handleize
+  assign mega_slot_2  = section.settings.mega_slot_2_title | handleize
+  assign mega_slot_3  = section.settings.mega_slot_3_title | handleize
+%}
+
+<header
+  class="sticky top-0 z-50 bg-background border-b border-foreground/10"
+  data-nazare-use="sections/s-menu"
+>
+  <div class="page-width px-4 lg:px-15">
+    <div class="grid grid-cols-3 items-center h-15">
+
+      {% comment %} Left: main nav {% endcomment %}
+      <nav class="flex items-center gap-8" aria-label="Main navigation">
+        {% for nav_link in linklists[main_menu].links %}
+          {% liquid
+            assign nav_handle = nav_link.title | handleize
+            assign nav_slot   = '0'
+            if nav_handle == mega_slot_1
+              assign nav_slot = '1'
+            endif
+            if nav_handle == mega_slot_2
+              assign nav_slot = '2'
+            endif
+            if nav_handle == mega_slot_3
+              assign nav_slot = '3'
+            endif
+
+            assign has_panel = false
+            if nav_slot != '0'
+              for block in section.blocks
+                if block.settings.nav_slot == nav_slot
+                  assign has_panel = true
+                  break
+                endif
+              endfor
+            endif
+          %}
+          {% if has_panel %}
+            <button
+              class="text-sm font-medium hover:underline underline-offset-4 data-[active]:underline"
+              data-menu-trigger="{{ nav_slot }}"
+              aria-expanded="false"
+              aria-haspopup="true"
+            >{{ nav_link.title }}</button>
+          {% else %}
+            <a
+              href="{{ nav_link.url }}"
+              class="text-sm font-medium hover:underline underline-offset-4{% if nav_link.active %} underline{% endif %}"
+            >{{ nav_link.title }}</a>
+          {% endif %}
+        {% endfor %}
+      </nav>
+
+      {% comment %} Center: logo {% endcomment %}
+      <div class="flex justify-center">
+        <a href="{{ routes.root_url }}" class="block">
+          {% if logo != blank %}
+            {{
+              logo
+              | image_url: width: logo_width
+              | image_tag:
+                alt: logo_alt,
+                loading: 'eager',
+                style: 'max-width: ' | append: logo_width | append: 'px; width: 100%; height: auto;'
+            }}
+          {% else %}
+            <span class="text-base font-bold tracking-tight">{{ shop.name }}</span>
+          {% endif %}
+        </a>
+      </div>
+
+      {% comment %} Right: search / account / cart {% endcomment %}
+      <div class="flex items-center justify-end gap-6">
+        <button class="text-foreground hover:opacity-70 transition-opacity" aria-label="Search">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="m21 21-4.35-4.35"/>
+          </svg>
+        </button>
+        <a href="{{ routes.account_url }}" class="text-sm font-medium hover:underline underline-offset-4">Account</a>
+        <a href="{{ routes.cart_url }}" class="text-sm font-medium hover:underline underline-offset-4">Cart</a>
+      </div>
+
+    </div>
+  </div>
+
+  {% comment %} Mega panels {% endcomment %}
+  {% for nav_link in linklists[main_menu].links %}
+    {% liquid
+      assign nav_handle = nav_link.title | handleize
+      assign nav_slot   = '0'
+      if nav_handle == mega_slot_1
+        assign nav_slot = '1'
+      endif
+      if nav_handle == mega_slot_2
+        assign nav_slot = '2'
+      endif
+      if nav_handle == mega_slot_3
+        assign nav_slot = '3'
+      endif
+    %}
+    {% if nav_slot != '0' %}
+      <div
+        data-menu-panel="{{ nav_slot }}"
+        class="hidden absolute left-0 right-0 top-full bg-background border-b border-foreground/10 shadow-sm"
+        aria-hidden="true"
+      >
+        <div class="page-width px-4 lg:px-15 py-6">
+
+          {% comment %} Tab pills {% endcomment %}
+          {% assign tab_i = 0 %}
+          <div class="flex gap-8 border-b border-foreground/10 mb-6 overflow-x-auto">
+            {% for block in section.blocks %}
+              {% if block.settings.nav_slot == nav_slot and block.settings.tab_label != blank %}
+                {% assign tab_i = tab_i | plus: 1 %}
+                <button
+                  class="pb-4 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors border-transparent text-foreground/50 hover:text-foreground data-[active]:border-foreground data-[active]:text-foreground"
+                  data-tab-trigger="{{ nav_slot }}-{{ tab_i }}"
+                  {% if tab_i == 1 %}data-active{% endif %}
+                >{{ block.settings.tab_label | escape }}</button>
+              {% endif %}
+            {% endfor %}
+          </div>
+
+          {% comment %} Tab panels {% endcomment %}
+          {% assign tab_i = 0 %}
+          {% for block in section.blocks %}
+            {% if block.settings.nav_slot == nav_slot %}
+              {% assign tab_i = tab_i | plus: 1 %}
+              <div
+                data-tab-panel="{{ nav_slot }}-{{ tab_i }}"
+                {% if tab_i != 1 %}class="hidden"{% endif %}
+              >
+                <div class="grid grid-cols-4 gap-4">
+
+                  {% comment %} Product slots 1–3 {% endcomment %}
+                  {% assign product_slots = block.settings.product_1, block.settings.product_2, block.settings.product_3 %}
+                  {% for tab_product in product_slots %}
+                    {% if tab_product != blank %}
+                      {% assign tab_variant = tab_product.selected_or_first_available_variant %}
+                      <div class="flex flex-col gap-3">
+                        <a href="{{ tab_product.url }}" class="block aspect-square overflow-hidden rounded-xl bg-foreground/5">
+                          {% if tab_product.featured_image != blank %}
+                            {{
+                              tab_product.featured_image
+                              | image_url: width: 600
+                              | image_tag:
+                                alt: tab_product.featured_image.alt,
+                                class: 'size-full object-cover',
+                                loading: 'lazy'
+                            }}
+                          {% endif %}
+                        </a>
+                        <div>
+                          <div class="flex items-baseline justify-between gap-2">
+                            <p class="text-sm font-semibold">{{ tab_product.title | escape }}</p>
+                            {% if tab_variant.compare_at_price > tab_variant.price %}
+                              <div class="flex items-baseline gap-1 shrink-0">
+                                <span class="text-xs text-foreground/50 line-through">{{ tab_variant.compare_at_price | money }}</span>
+                                <span class="text-sm font-semibold text-blue-600">{{ tab_variant.price | money }}</span>
+                              </div>
+                            {% else %}
+                              <span class="text-sm font-semibold shrink-0">{{ tab_variant.price | money }}</span>
+                            {% endif %}
+                          </div>
+                          {% if tab_product.description != blank %}
+                            <p class="mt-0.5 text-xs text-foreground/60 line-clamp-1">{{ tab_product.description | strip_html }}</p>
+                          {% endif %}
+                        </div>
+                      </div>
+                    {% else %}
+                      <div></div>
+                    {% endif %}
+                  {% endfor %}
+
+                  {% comment %} Slot 4: editorial card or product_4 {% endcomment %}
+                  {% if block.settings.editorial_image != blank %}
+                    <a
+                      href="{{ block.settings.editorial_url }}"
+                      class="relative block aspect-square overflow-hidden rounded-xl"
+                    >
+                      {{
+                        block.settings.editorial_image
+                        | image_url: width: 600
+                        | image_tag:
+                          alt: block.settings.editorial_heading,
+                          class: 'size-full object-cover',
+                          loading: 'lazy'
+                      }}
+                      <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex flex-col justify-end p-5">
+                        {% if block.settings.editorial_eyebrow != blank %}
+                          <p class="text-white text-xs font-semibold uppercase tracking-widest mb-1">{{ block.settings.editorial_eyebrow | escape }}</p>
+                        {% endif %}
+                        {% if block.settings.editorial_heading != blank %}
+                          <p class="text-white font-bold text-xl uppercase leading-tight font-heading">{{ block.settings.editorial_heading | escape }}</p>
+                        {% endif %}
+                      </div>
+                    </a>
+                  {% elsif block.settings.product_4 != blank %}
+                    {% assign tab_product4  = block.settings.product_4 %}
+                    {% assign tab_variant4  = tab_product4.selected_or_first_available_variant %}
+                    <div class="flex flex-col gap-3">
+                      <a href="{{ tab_product4.url }}" class="block aspect-square overflow-hidden rounded-xl bg-foreground/5">
+                        {% if tab_product4.featured_image != blank %}
+                          {{
+                            tab_product4.featured_image
+                            | image_url: width: 600
+                            | image_tag:
+                              alt: tab_product4.featured_image.alt,
+                              class: 'size-full object-cover',
+                              loading: 'lazy'
+                          }}
+                        {% endif %}
+                      </a>
+                      <div>
+                        <div class="flex items-baseline justify-between gap-2">
+                          <p class="text-sm font-semibold">{{ tab_product4.title | escape }}</p>
+                          {% if tab_variant4.compare_at_price > tab_variant4.price %}
+                            <div class="flex items-baseline gap-1 shrink-0">
+                              <span class="text-xs text-foreground/50 line-through">{{ tab_variant4.compare_at_price | money }}</span>
+                              <span class="text-sm font-semibold text-blue-600">{{ tab_variant4.price | money }}</span>
+                            </div>
+                          {% else %}
+                            <span class="text-sm font-semibold shrink-0">{{ tab_variant4.price | money }}</span>
+                          {% endif %}
+                        </div>
+                        {% if tab_product4.description != blank %}
+                          <p class="mt-0.5 text-xs text-foreground/60 line-clamp-1">{{ tab_product4.description | strip_html }}</p>
+                        {% endif %}
+                      </div>
+                    </div>
+                  {% else %}
+                    <div></div>
+                  {% endif %}
+
+                </div>
+
+                {% comment %} CTA {% endcomment %}
+                {% if block.settings.cta_label != blank and block.settings.cta_url != blank %}
+                  <div class="flex justify-center mt-6">
+                    {% render 'c-button', label: block.settings.cta_label, url: block.settings.cta_url, scheme: 'outline' %}
+                  </div>
+                {% endif %}
+
+              </div>
+            {% endif %}
+          {% endfor %}
+
+        </div>
+      </div>
+    {% endif %}
+  {% endfor %}
+
+</header>
+
+{% schema %}
+{
+  "name": "Menu",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Logo"
+    },
+    {
+      "type": "image_picker",
+      "id": "logo",
+      "label": "Logo image"
+    },
+    {
+      "type": "text",
+      "id": "logo_alt",
+      "label": "Logo alt text"
+    },
+    {
+      "type": "range",
+      "id": "logo_width",
+      "label": "Logo width",
+      "min": 80,
+      "max": 240,
+      "step": 4,
+      "unit": "px",
+      "default": 160
+    },
+    {
+      "type": "header",
+      "content": "Navigation"
+    },
+    {
+      "type": "link_list",
+      "id": "main_menu",
+      "label": "Main menu",
+      "default": "main-menu"
+    },
+    {
+      "type": "header",
+      "content": "Mega menu slots",
+      "info": "Enter the exact title of each nav link that should open a mega menu panel. Blocks reference these by slot number."
+    },
+    {
+      "type": "text",
+      "id": "mega_slot_1_title",
+      "label": "Slot 1 — nav link title"
+    },
+    {
+      "type": "text",
+      "id": "mega_slot_2_title",
+      "label": "Slot 2 — nav link title"
+    },
+    {
+      "type": "text",
+      "id": "mega_slot_3_title",
+      "label": "Slot 3 — nav link title"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "mega_tab",
+      "name": "Mega tab",
+      "settings": [
+        {
+          "type": "select",
+          "id": "nav_slot",
+          "label": "Belongs to mega menu",
+          "info": "Match the slot number to the nav link title configured in section settings.",
+          "default": "1",
+          "options": [
+            { "value": "1", "label": "Slot 1" },
+            { "value": "2", "label": "Slot 2" },
+            { "value": "3", "label": "Slot 3" }
+          ]
+        },
+        {
+          "type": "text",
+          "id": "tab_label",
+          "label": "Tab label"
+        },
+        {
+          "type": "header",
+          "content": "Products"
+        },
+        {
+          "type": "product",
+          "id": "product_1",
+          "label": "Product 1"
+        },
+        {
+          "type": "product",
+          "id": "product_2",
+          "label": "Product 2"
+        },
+        {
+          "type": "product",
+          "id": "product_3",
+          "label": "Product 3"
+        },
+        {
+          "type": "product",
+          "id": "product_4",
+          "label": "Product 4",
+          "info": "Ignored when an editorial image is set."
+        },
+        {
+          "type": "header",
+          "content": "Editorial card (slot 4)"
+        },
+        {
+          "type": "image_picker",
+          "id": "editorial_image",
+          "label": "Editorial image"
+        },
+        {
+          "type": "text",
+          "id": "editorial_eyebrow",
+          "label": "Eyebrow"
+        },
+        {
+          "type": "text",
+          "id": "editorial_heading",
+          "label": "Heading"
+        },
+        {
+          "type": "url",
+          "id": "editorial_url",
+          "label": "Link URL"
+        },
+        {
+          "type": "header",
+          "content": "Call to action"
+        },
+        {
+          "type": "text",
+          "id": "cta_label",
+          "label": "Button label"
+        },
+        {
+          "type": "url",
+          "id": "cta_url",
+          "label": "Button URL"
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Menu"
+    }
+  ]
+}
+{% endschema %}

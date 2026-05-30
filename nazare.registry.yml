@@ -396,6 +396,22 @@ components:
         checksum:
           algorithm: sha256
           value: 248c6cafa67dba77539022faaccc82c75d5a4f9ba6172c635041ef34fd8c96f7
+  s-menu:
+    version: 1.0.0
+    type: section
+    dependencies:
+      - c-button
+    files:
+      - from: components/s-menu/s-menu.liquid
+        to: sections/s-menu.liquid
+        checksum:
+          algorithm: sha256
+          value: 323aa9cb054ea9becf8a6b1e141727bd44754dea08f91822a0d4974b1819ac39
+      - from: components/s-menu/s-menu.js
+        to: scripts/sections/s-menu.js
+        checksum:
+          algorithm: sha256
+          value: fc86f8fe8ed558ae9cce13569e04a0afde19e5804c0a8450abfb4e66621e1201
   s-footer:
     version: 1.2.1
     type: section
