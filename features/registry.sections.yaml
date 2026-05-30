@@ -1,6 +1,12 @@
 sections:
 
   # — Shared / Global —
+  - id: s-heading
+    title: Heading
+    description: Heading + optional subtext + optional CTA. Layout options — heading/CTA split, heading/copy split, or stacked.
+    status: not-started
+
+
   - id: s-announcement
     title: Announcement Bar
     description: Thin full-width top bar for promotional text or sitewide alerts.
