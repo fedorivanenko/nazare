@@ -33,7 +33,7 @@ sections:
   # — Homepage —
   - id: s-hero
     title: Hero Banner
-    description: Full-width above-the-fold section with brand headline and primary CTA.
+    description: Full-width background image or video with headline, optional subtext, and CTA. Used across HP, PLP, About, and other page headers.
     status: done
     file: components/s-hero.md
 
@@ -112,11 +112,6 @@ sections:
 
 
   # — PLP —
-  - id: s-plp-hero
-    title: PLP Hero Banner
-    description: Full-width editorial hero image with the collection title overlaid.
-    status: not-started
-
   - id: s-plp-grid
     title: PLP Grid
     description: Filterable, sortable product grid with filter pills, sort dropdown, inline editorial card, and show more.
@@ -129,11 +124,6 @@ sections:
 
 
   # — About —
-  - id: s-about-hero
-    title: About Hero Banner
-    description: Full-width editorial hero image with brand tagline overlaid.
-    status: not-started
-
   - id: s-about-mission
     title: About Mission Section
     description: Split layout with founder portrait and brand mission heading and copy.
