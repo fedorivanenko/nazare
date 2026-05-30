@@ -1,5 +1,21 @@
 # Agent Instructions
 
+## Design spec → registry → feature pipeline
+
+Design screenshots are analysed into page specs (`docs/*-spec.md`).
+Those specs feed the YAML registries in `features/`:
+
+- `features/sections.yaml` — every section discovered from the specs (`s-*` IDs)
+- `features/snippets.yaml` — every reusable snippet/component (`c-*` IDs)
+
+Each YAML entry carries `id`, `title`, `description`, `status`, and (for snippets) a `sections` list of where it is used.
+When an entry has been scoped for build, it gains a `file:` pointer to its feature MD (`features/components/<id>.md`).
+Entries without `file:` are spec-discovered but not yet implemented (`status: not-started`).
+
+Flow: `docs/*-spec.md` → `features/*.yaml` (registry) → `features/components/*.md` (build spec)
+
+---
+
 ## Feature scoping
 
 When asked to scope, plan, or describe a feature, read `workflow/feature.md` and `features/feature.schema.yaml` before drafting.
