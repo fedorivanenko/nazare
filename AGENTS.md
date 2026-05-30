@@ -6,9 +6,9 @@ The YAML files in `features/` are the single source of truth for all features in
 
 | File | Covers | ID prefix |
 |---|---|---|
-| `features/cli.yaml` | CLI commands and build tooling | `cli-*`, `component-*`, `theme-*`, `update` |
-| `features/sections.yaml` | Shopify theme sections | `s-*` |
-| `features/snippets.yaml` | Shopify theme snippets / components | `c-*` |
+| `features/registry.cli.yaml` | CLI commands and build tooling | `cli-*`, `component-*`, `theme-*`, `update` |
+| `features/registry.sections.yaml` | Shopify theme sections | `s-*` |
+| `features/registry.snippets.yaml` | Shopify theme snippets / components | `c-*` |
 
 **Workflow for any feature task:**
 1. Find the feature entry in the relevant YAML by `id`.
@@ -22,7 +22,7 @@ Each YAML entry carries: `id`, `title`, `description`, `status`, and a `file:` p
 
 Design screenshots are analysed into page specs (`docs/*-spec.md`). Those feed the YAML registries. When a feature is scoped for build, a `file:` pointer is added linking to `features/components/<id>.md` or `features/cli/<id>.md`.
 
-Flow: `docs/*-spec.md` → `features/*.yaml` (registry) → `features/{cli,components}/*.md` (build spec)
+Flow: `docs/*-spec.md` → `features/registry.*.yaml` (registry) → `features/{cli,components}/*.md` (build spec)
 
 ---
 
