@@ -1,0 +1,14 @@
+{
+  "name": "nazare-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "typecheck": "tsc -b",
+    "format": "biome format --write .",
+    "lint": "biome check ."
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "@studio/product-card",
+  "version": "0.1.0",
+  "entry": "snippets/product-card.liquid",
+  "props": {
+    "product": { "type": "ShopifyProduct", "required": true },
+    "variant": { "type": "string", "default": "default" }
+  },
+  "files": [
+    "snippets/product-card.liquid",
+    "assets/product-card.css"
+  ]
+}
