@@ -7,5 +7,9 @@
   "types": "dist/index.d.ts",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nazare/core": "workspace:^",
+    "@shopify/liquid-html-parser": "^2.9.2"
   }
 }
