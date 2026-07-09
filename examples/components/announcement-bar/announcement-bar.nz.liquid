@@ -1,0 +1,25 @@
+{% import Link from "@nazare/link" %}
+
+{% props {
+  text: string.setting({
+    label: "Text",
+    default: "Free shipping on orders over $50",
+  }),
+  link: url.setting({
+    label: "Link",
+  }),
+} %}
+
+<section class="nazare-announcement-bar">
+  {% if section.settings.link != blank %}
+    {% render Link {
+      href: section.settings.link,
+      text: section.settings.text,
+      class: "nazare-announcement-bar__link",
+    } %}
+  {% else %}
+    <span class="nazare-announcement-bar__text">
+      {{ section.settings.text }}
+    </span>
+  {% endif %}
+</section>

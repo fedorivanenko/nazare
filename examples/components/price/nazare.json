@@ -1,0 +1,12 @@
+{
+  "id": "@nazare/price",
+  "version": "0.1.0",
+  "kind": "snippet",
+  "entry": "price.nz.liquid",
+  "dependencies": {},
+  "files": [
+    "price.nz.liquid",
+    "price.css",
+    "price.js"
+  ]
+}

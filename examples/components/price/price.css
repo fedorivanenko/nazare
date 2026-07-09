@@ -1,0 +1,9 @@
+.price {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.price__compare {
+  color: rgb(107 114 128);
+}

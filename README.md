@@ -2,6 +2,10 @@
 
 Cloud-first v0 reboot.
 
+## Core principle
+
+Every valid Shopify theme should be at least partially readable by Nazare without rewrite.
+
 ## Repository layout
 
 ```txt

@@ -1,0 +1,9 @@
+{% props {
+  href: url.required(),
+  text: string.required(),
+  class: string.optional(),
+} %}
+
+<a href="{{ href }}"{% if class != blank %} class="{{ class }}"{% endif %}>
+  {{ text }}
+</a>

@@ -1,0 +1,16 @@
+{% import "./price.css" %}
+{% import "./price.js" %}
+
+{% props {
+  price: Money.required(),
+  compare_at_price: Money.optional(),
+  show_compare_at: boolean.default(true),
+} %}
+
+<span class="price" data-price>
+  <span class="price__current">{{ price | money }}</span>
+
+  {% if show_compare_at and compare_at_price and compare_at_price > price %}
+    <s class="price__compare">{{ compare_at_price | money }}</s>
+  {% endif %}
+</span>
