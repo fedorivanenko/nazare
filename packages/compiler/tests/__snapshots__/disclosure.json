@@ -121,7 +121,7 @@
       {
         "id": "syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1",
         "kind": "expression",
-        "source": "section.settings.label",
+        "source": "props.label",
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
@@ -130,7 +130,7 @@
           },
           "end": {
             "line": 9,
-            "column": 64
+            "column": 53
           }
         }
       },
@@ -355,7 +355,7 @@
       {
         "kind": "symbol-reference",
         "expressionId": "syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1",
-        "symbolId": "symbol:setting:examples/components/disclosure/disclosure.nz.liquid#default.label"
+        "symbolId": "symbol:prop:examples/components/disclosure/disclosure.nz.liquid#default.label"
       },
       {
         "kind": "ref-binding",
@@ -486,7 +486,7 @@
       {
         "id": "syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1",
         "kind": "expression",
-        "name": "section.settings.label",
+        "name": "props.label",
         "layer": "syntax",
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
@@ -496,7 +496,7 @@
           },
           "end": {
             "line": 9,
-            "column": 64
+            "column": 53
           }
         }
       },
@@ -791,10 +791,10 @@
         "origin": "resolved"
       },
       {
-        "id": "edge:resolved:references:syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1->symbol:setting:examples/components/disclosure/disclosure.nz.liquid#default.label",
+        "id": "edge:resolved:references:syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1->symbol:prop:examples/components/disclosure/disclosure.nz.liquid#default.label",
         "kind": "references",
         "from": "syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1",
-        "to": "symbol:setting:examples/components/disclosure/disclosure.nz.liquid#default.label",
+        "to": "symbol:prop:examples/components/disclosure/disclosure.nz.liquid#default.label",
         "origin": "resolved"
       },
       {
@@ -840,7 +840,7 @@
         },
         "end": {
           "line": 9,
-          "column": 76
+          "column": 65
         }
       }
     }

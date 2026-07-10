@@ -198,7 +198,7 @@
       {
         "id": "syntax:expression:examples/components/price/price.nz.liquid:output:1",
         "kind": "expression",
-        "source": "price | money",
+        "source": "props.price | money",
         "span": {
           "file": "examples/components/price/price.nz.liquid",
           "start": {
@@ -207,14 +207,14 @@
           },
           "end": {
             "line": 11,
-            "column": 48
+            "column": 54
           }
         }
       },
       {
         "id": "syntax:expression:examples/components/price/price.nz.liquid:output:2",
         "kind": "expression",
-        "source": "compare_at_price | money",
+        "source": "props.compare_at_price | money",
         "span": {
           "file": "examples/components/price/price.nz.liquid",
           "start": {
@@ -223,7 +223,7 @@
           },
           "end": {
             "line": 14,
-            "column": 58
+            "column": 64
           }
         }
       }
@@ -493,7 +493,7 @@
       {
         "id": "syntax:expression:examples/components/price/price.nz.liquid:output:1",
         "kind": "expression",
-        "name": "price | money",
+        "name": "props.price | money",
         "layer": "syntax",
         "span": {
           "file": "examples/components/price/price.nz.liquid",
@@ -503,14 +503,14 @@
           },
           "end": {
             "line": 11,
-            "column": 48
+            "column": 54
           }
         }
       },
       {
         "id": "syntax:expression:examples/components/price/price.nz.liquid:output:2",
         "kind": "expression",
-        "name": "compare_at_price | money",
+        "name": "props.compare_at_price | money",
         "layer": "syntax",
         "span": {
           "file": "examples/components/price/price.nz.liquid",
@@ -520,7 +520,7 @@
           },
           "end": {
             "line": 14,
-            "column": 58
+            "column": 64
           }
         }
       },
@@ -702,7 +702,7 @@
         },
         "end": {
           "line": 11,
-          "column": 58
+          "column": 64
         }
       }
     },
@@ -714,7 +714,7 @@
         "file": "examples/components/price/price.nz.liquid",
         "start": {
           "line": 13,
-          "column": 77
+          "column": 101
         },
         "end": {
           "line": 15,

@@ -6,7 +6,7 @@
 } %}
 
 <div ref="root" class="nazare-disclosure">
-  <button ref="trigger" type="button">{{ section.settings.label }}</button>
+  <button ref="trigger" type="button">{{ props.label }}</button>
   <div ref="panel" hidden>
     <slot></slot>
   </div>

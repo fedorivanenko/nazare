@@ -76,6 +76,20 @@ export function parseInvalidRefAttribute(
 	};
 }
 
+export function unknownPropsReference(
+	propName: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_UNKNOWN_PROPS_REFERENCE",
+		message: `Expression references props.${propName} but no prop ${propName} is declared`,
+		nodeId,
+		span,
+	};
+}
+
 export function unknownRef(
 	refName: string,
 	nodeId: Id,

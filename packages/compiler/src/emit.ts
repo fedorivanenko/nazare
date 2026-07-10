@@ -164,6 +164,7 @@ function emitLiquid(
 	}
 
 	let liquid = applyEdits(source, edits);
+	liquid = lowerPropsReads(liquid, compiled.ir);
 	liquid = `${liquid.replace(/\n{3,}/g, "\n\n").trim()}\n`;
 
 	if (hasStyle) {
@@ -181,6 +182,28 @@ function emitLiquid(
 	}
 
 	return liquid;
+}
+
+/**
+ * Lowers canonical props.x reads to their provenance: setting props read
+ * section.settings.x, render-passed props read the bare argument name.
+ * Textual over the whole output so control-flow Liquid (which Nazare does
+ * not model) lowers too; undeclared names are left for check to report.
+ */
+function lowerPropsReads(liquid: string, ir: ArtifactIR): string {
+	const accessByProp = new Map<string, string>();
+	for (const node of ir.syntax) {
+		if (node.kind !== "prop-declaration") continue;
+		accessByProp.set(
+			node.name,
+			node.typeInfo.setting ? `section.settings.${node.name}` : node.name,
+		);
+	}
+
+	return liquid.replace(
+		/\bprops\.([A-Za-z_$][\w$]*)/g,
+		(match, name: string) => accessByProp.get(name) ?? match,
+	);
 }
 
 /** Offset just before the closing ">" of the first top-level element's start tag. */

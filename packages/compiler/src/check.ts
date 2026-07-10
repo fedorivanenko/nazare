@@ -18,6 +18,7 @@ import {
 	propValueOutOfRange,
 	requiredPropMissing,
 	unknownPropArgument,
+	unknownPropsReference,
 	unknownRef,
 	unresolvedExternalContract,
 	unusedRef,
@@ -38,6 +39,9 @@ export function checkArtifactIR(
 			.filter((symbol) => symbol.kind === "setting")
 			.map((symbol) => [symbol.name, symbol.semanticType]),
 	);
+	for (const node of index.nodesOfKind("prop-declaration")) {
+		settingTypesByName.set(`props.${node.name}`, node.typeInfo.valueType);
+	}
 
 	for (const node of index.nodesOfKind("render-site")) {
 		const [renderTarget] = index.renderTargetsBySiteId.get(node.id) ?? [];
@@ -57,6 +61,28 @@ export function checkArtifactIR(
 	}
 
 	issues.push(...checkRefs(index));
+	issues.push(...checkPropsReferences(index));
+
+	return issues;
+}
+
+/** Every props.<name> read in a modeled expression must be declared. */
+function checkPropsReferences(index: ArtifactIRIndex): Diagnostic[] {
+	const issues: Diagnostic[] = [];
+	const declared = new Set(
+		index.nodesOfKind("prop-declaration").map((node) => node.name),
+	);
+
+	for (const expression of index.nodesOfKind("expression")) {
+		for (const match of expression.source.matchAll(
+			/\bprops\.([A-Za-z_$][\w$]*)/g,
+		)) {
+			if (declared.has(match[1])) continue;
+			issues.push(
+				unknownPropsReference(match[1], expression.id, expression.span),
+			);
+		}
+	}
 
 	return issues;
 }

@@ -4,6 +4,6 @@
   class: string.optional(),
 } %}
 
-<a href="{{ href }}"{% if class != blank %} class="{{ class }}"{% endif %}>
-  {{ text }}
+<a href="{{ props.href }}"{% if props.class != blank %} class="{{ props.class }}"{% endif %}>
+  {{ props.text }}
 </a>

@@ -177,7 +177,7 @@
           },
           "end": {
             "line": 16,
-            "column": 34
+            "column": 23
           }
         }
       },
@@ -206,7 +206,7 @@
           },
           "end": {
             "line": 17,
-            "column": 34
+            "column": 23
           }
         }
       },
@@ -242,7 +242,7 @@
       {
         "id": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href",
         "kind": "expression",
-        "source": "section.settings.link",
+        "source": "props.link",
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
@@ -251,14 +251,14 @@
           },
           "end": {
             "line": 16,
-            "column": 34
+            "column": 23
           }
         }
       },
       {
         "id": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text",
         "kind": "expression",
-        "source": "section.settings.text",
+        "source": "props.text",
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
@@ -267,7 +267,7 @@
           },
           "end": {
             "line": 17,
-            "column": 34
+            "column": 23
           }
         }
       },
@@ -294,7 +294,7 @@
       {
         "id": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:output:1",
         "kind": "expression",
-        "source": "section.settings.text",
+        "source": "props.text",
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
@@ -303,7 +303,7 @@
           },
           "end": {
             "line": 22,
-            "column": 31
+            "column": 20
           }
         }
       }
@@ -489,17 +489,17 @@
       {
         "kind": "symbol-reference",
         "expressionId": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href",
-        "symbolId": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link"
+        "symbolId": "symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link"
       },
       {
         "kind": "symbol-reference",
         "expressionId": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text",
-        "symbolId": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text"
+        "symbolId": "symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text"
       },
       {
         "kind": "symbol-reference",
         "expressionId": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:output:1",
-        "symbolId": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text"
+        "symbolId": "symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text"
       }
     ]
   },
@@ -637,7 +637,7 @@
           },
           "end": {
             "line": 16,
-            "column": 34
+            "column": 23
           }
         }
       },
@@ -654,7 +654,7 @@
           },
           "end": {
             "line": 17,
-            "column": 34
+            "column": 23
           }
         }
       },
@@ -678,7 +678,7 @@
       {
         "id": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href",
         "kind": "expression",
-        "name": "section.settings.link",
+        "name": "props.link",
         "layer": "syntax",
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
@@ -688,14 +688,14 @@
           },
           "end": {
             "line": 16,
-            "column": 34
+            "column": 23
           }
         }
       },
       {
         "id": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text",
         "kind": "expression",
-        "name": "section.settings.text",
+        "name": "props.text",
         "layer": "syntax",
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
@@ -705,7 +705,7 @@
           },
           "end": {
             "line": 17,
-            "column": 34
+            "column": 23
           }
         }
       },
@@ -729,7 +729,7 @@
       {
         "id": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:output:1",
         "kind": "expression",
-        "name": "section.settings.text",
+        "name": "props.text",
         "layer": "syntax",
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
@@ -739,7 +739,7 @@
           },
           "end": {
             "line": 22,
-            "column": 31
+            "column": 20
           }
         }
       },
@@ -1009,24 +1009,24 @@
         "origin": "resolved"
       },
       {
-        "id": "edge:resolved:references:syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href->symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
+        "id": "edge:resolved:references:syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href->symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
         "kind": "references",
         "from": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href",
-        "to": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
+        "to": "symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
         "origin": "resolved"
       },
       {
-        "id": "edge:resolved:references:syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text->symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
+        "id": "edge:resolved:references:syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text->symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "kind": "references",
         "from": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text",
-        "to": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
+        "to": "symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "origin": "resolved"
       },
       {
-        "id": "edge:resolved:references:syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:output:1->symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
+        "id": "edge:resolved:references:syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:output:1->symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "kind": "references",
         "from": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:output:1",
-        "to": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
+        "to": "symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "origin": "resolved"
       }
     ]
@@ -1040,7 +1040,7 @@
         "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
         "start": {
           "line": 14,
-          "column": 42
+          "column": 31
         },
         "end": {
           "line": 20,

@@ -8,9 +8,9 @@
 } %}
 
 <span class="price" data-price>
-  <span class="price__current">{{ price | money }}</span>
+  <span class="price__current">{{ props.price | money }}</span>
 
-  {% if show_compare_at and compare_at_price and compare_at_price > price %}
-    <s class="price__compare">{{ compare_at_price | money }}</s>
+  {% if props.show_compare_at and props.compare_at_price and props.compare_at_price > props.price %}
+    <s class="price__compare">{{ props.compare_at_price | money }}</s>
   {% endif %}
 </span>

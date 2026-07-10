@@ -124,6 +124,12 @@ export function bindArtifactIR(
 			const scope = scopes.forPropsInterfaceId(node.propsInterfaceId);
 			const propSymbol = symbolForPropDeclaration(node, scope);
 			const settingSymbol = settingSymbolForPropDeclaration(node, scope);
+			// props.x is the canonical read; section.settings.x stays resolvable
+			// for themes not yet migrated.
+			settingSymbolsByPath.set(`props.${node.name}`, {
+				id: propSymbol.id,
+				semanticType: propSymbol.semanticType,
+			});
 			settingSymbolsByPath.set(`section.settings.${node.name}`, {
 				id: settingSymbol.id,
 				semanticType: settingSymbol.semanticType,

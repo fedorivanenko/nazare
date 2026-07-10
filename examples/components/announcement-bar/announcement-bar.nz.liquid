@@ -11,15 +11,15 @@
 } %}
 
 <section class="nazare-announcement-bar">
-  {% if section.settings.link != blank %}
+  {% if props.link != blank %}
     {% render Link {
-      href: section.settings.link,
-      text: section.settings.text,
+      href: props.link,
+      text: props.text,
       class: "nazare-announcement-bar__link",
     } %}
   {% else %}
     <span class="nazare-announcement-bar__text">
-      {{ section.settings.text }}
+      {{ props.text }}
     </span>
   {% endif %}
 </section>
