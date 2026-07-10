@@ -488,105 +488,105 @@
     ],
     "edges": [
       {
-        "id": "edge:1",
+        "id": "edge:syntax:declares:syntax:file:examples/components/link/link.nz.liquid->syntax:component:examples/components/link/link.nz.liquid",
         "kind": "declares",
         "from": "syntax:file:examples/components/link/link.nz.liquid",
         "to": "syntax:component:examples/components/link/link.nz.liquid",
         "origin": "syntax"
       },
       {
-        "id": "edge:2",
+        "id": "edge:syntax:declares:syntax:component:examples/components/link/link.nz.liquid->syntax:props-interface:examples/components/link/link.nz.liquid",
         "kind": "declares",
         "from": "syntax:component:examples/components/link/link.nz.liquid",
         "to": "syntax:props-interface:examples/components/link/link.nz.liquid",
         "origin": "syntax"
       },
       {
-        "id": "edge:3",
+        "id": "edge:syntax:declares:syntax:props-interface:examples/components/link/link.nz.liquid->syntax:prop-declaration:examples/components/link/link.nz.liquid:href",
         "kind": "declares",
         "from": "syntax:props-interface:examples/components/link/link.nz.liquid",
         "to": "syntax:prop-declaration:examples/components/link/link.nz.liquid:href",
         "origin": "syntax"
       },
       {
-        "id": "edge:4",
+        "id": "edge:syntax:declares:syntax:props-interface:examples/components/link/link.nz.liquid->syntax:prop-declaration:examples/components/link/link.nz.liquid:text",
         "kind": "declares",
         "from": "syntax:props-interface:examples/components/link/link.nz.liquid",
         "to": "syntax:prop-declaration:examples/components/link/link.nz.liquid:text",
         "origin": "syntax"
       },
       {
-        "id": "edge:5",
+        "id": "edge:syntax:declares:syntax:props-interface:examples/components/link/link.nz.liquid->syntax:prop-declaration:examples/components/link/link.nz.liquid:class",
         "kind": "declares",
         "from": "syntax:props-interface:examples/components/link/link.nz.liquid",
         "to": "syntax:prop-declaration:examples/components/link/link.nz.liquid:class",
         "origin": "syntax"
       },
       {
-        "id": "edge:6",
+        "id": "edge:resolved:resolves-to:syntax:component:examples/components/link/link.nz.liquid->symbol:component:examples/components/link/link.nz.liquid#default",
         "kind": "resolves-to",
         "from": "syntax:component:examples/components/link/link.nz.liquid",
         "to": "symbol:component:examples/components/link/link.nz.liquid#default",
         "origin": "resolved"
       },
       {
-        "id": "edge:7",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/link/link.nz.liquid:href->symbol:prop:examples/components/link/link.nz.liquid#default.href",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:href",
         "to": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
         "origin": "resolved"
       },
       {
-        "id": "edge:8",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/link/link.nz.liquid:href->symbol:setting:examples/components/link/link.nz.liquid#default.href",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:href",
         "to": "symbol:setting:examples/components/link/link.nz.liquid#default.href",
         "origin": "resolved"
       },
       {
-        "id": "edge:9",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/link/link.nz.liquid:text->symbol:prop:examples/components/link/link.nz.liquid#default.text",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:text",
         "to": "symbol:prop:examples/components/link/link.nz.liquid#default.text",
         "origin": "resolved"
       },
       {
-        "id": "edge:10",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/link/link.nz.liquid:text->symbol:setting:examples/components/link/link.nz.liquid#default.text",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:text",
         "to": "symbol:setting:examples/components/link/link.nz.liquid#default.text",
         "origin": "resolved"
       },
       {
-        "id": "edge:11",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/link/link.nz.liquid:class->symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:class",
         "to": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "origin": "resolved"
       },
       {
-        "id": "edge:12",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/link/link.nz.liquid:class->symbol:setting:examples/components/link/link.nz.liquid#default.class",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:class",
         "to": "symbol:setting:examples/components/link/link.nz.liquid#default.class",
         "origin": "resolved"
       },
       {
-        "id": "edge:13",
+        "id": "edge:resolved:materializes-as-setting:symbol:prop:examples/components/link/link.nz.liquid#default.href->symbol:setting:examples/components/link/link.nz.liquid#default.href",
         "kind": "materializes-as-setting",
         "from": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
         "to": "symbol:setting:examples/components/link/link.nz.liquid#default.href",
         "origin": "resolved"
       },
       {
-        "id": "edge:14",
+        "id": "edge:resolved:materializes-as-setting:symbol:prop:examples/components/link/link.nz.liquid#default.text->symbol:setting:examples/components/link/link.nz.liquid#default.text",
         "kind": "materializes-as-setting",
         "from": "symbol:prop:examples/components/link/link.nz.liquid#default.text",
         "to": "symbol:setting:examples/components/link/link.nz.liquid#default.text",
         "origin": "resolved"
       },
       {
-        "id": "edge:15",
+        "id": "edge:resolved:materializes-as-setting:symbol:prop:examples/components/link/link.nz.liquid#default.class->symbol:setting:examples/components/link/link.nz.liquid#default.class",
         "kind": "materializes-as-setting",
         "from": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "to": "symbol:setting:examples/components/link/link.nz.liquid#default.class",

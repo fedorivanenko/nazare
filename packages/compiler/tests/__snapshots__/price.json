@@ -455,105 +455,105 @@
     ],
     "edges": [
       {
-        "id": "edge:1",
+        "id": "edge:syntax:declares:syntax:file:examples/components/price/price.nz.liquid->syntax:component:examples/components/price/price.nz.liquid",
         "kind": "declares",
         "from": "syntax:file:examples/components/price/price.nz.liquid",
         "to": "syntax:component:examples/components/price/price.nz.liquid",
         "origin": "syntax"
       },
       {
-        "id": "edge:2",
+        "id": "edge:syntax:declares:syntax:component:examples/components/price/price.nz.liquid->syntax:props-interface:examples/components/price/price.nz.liquid",
         "kind": "declares",
         "from": "syntax:component:examples/components/price/price.nz.liquid",
         "to": "syntax:props-interface:examples/components/price/price.nz.liquid",
         "origin": "syntax"
       },
       {
-        "id": "edge:3",
+        "id": "edge:syntax:declares:syntax:props-interface:examples/components/price/price.nz.liquid->syntax:prop-declaration:examples/components/price/price.nz.liquid:price",
         "kind": "declares",
         "from": "syntax:props-interface:examples/components/price/price.nz.liquid",
         "to": "syntax:prop-declaration:examples/components/price/price.nz.liquid:price",
         "origin": "syntax"
       },
       {
-        "id": "edge:4",
+        "id": "edge:syntax:declares:syntax:props-interface:examples/components/price/price.nz.liquid->syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price",
         "kind": "declares",
         "from": "syntax:props-interface:examples/components/price/price.nz.liquid",
         "to": "syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price",
         "origin": "syntax"
       },
       {
-        "id": "edge:5",
+        "id": "edge:syntax:declares:syntax:props-interface:examples/components/price/price.nz.liquid->syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at",
         "kind": "declares",
         "from": "syntax:props-interface:examples/components/price/price.nz.liquid",
         "to": "syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at",
         "origin": "syntax"
       },
       {
-        "id": "edge:6",
+        "id": "edge:resolved:resolves-to:syntax:component:examples/components/price/price.nz.liquid->symbol:component:examples/components/price/price.nz.liquid#default",
         "kind": "resolves-to",
         "from": "syntax:component:examples/components/price/price.nz.liquid",
         "to": "symbol:component:examples/components/price/price.nz.liquid#default",
         "origin": "resolved"
       },
       {
-        "id": "edge:7",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/price/price.nz.liquid:price->symbol:prop:examples/components/price/price.nz.liquid#default.price",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/price/price.nz.liquid:price",
         "to": "symbol:prop:examples/components/price/price.nz.liquid#default.price",
         "origin": "resolved"
       },
       {
-        "id": "edge:8",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/price/price.nz.liquid:price->symbol:setting:examples/components/price/price.nz.liquid#default.price",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/price/price.nz.liquid:price",
         "to": "symbol:setting:examples/components/price/price.nz.liquid#default.price",
         "origin": "resolved"
       },
       {
-        "id": "edge:9",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price->symbol:prop:examples/components/price/price.nz.liquid#default.compare_at_price",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price",
         "to": "symbol:prop:examples/components/price/price.nz.liquid#default.compare_at_price",
         "origin": "resolved"
       },
       {
-        "id": "edge:10",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price->symbol:setting:examples/components/price/price.nz.liquid#default.compare_at_price",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price",
         "to": "symbol:setting:examples/components/price/price.nz.liquid#default.compare_at_price",
         "origin": "resolved"
       },
       {
-        "id": "edge:11",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at->symbol:prop:examples/components/price/price.nz.liquid#default.show_compare_at",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at",
         "to": "symbol:prop:examples/components/price/price.nz.liquid#default.show_compare_at",
         "origin": "resolved"
       },
       {
-        "id": "edge:12",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at->symbol:setting:examples/components/price/price.nz.liquid#default.show_compare_at",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at",
         "to": "symbol:setting:examples/components/price/price.nz.liquid#default.show_compare_at",
         "origin": "resolved"
       },
       {
-        "id": "edge:13",
+        "id": "edge:resolved:materializes-as-setting:symbol:prop:examples/components/price/price.nz.liquid#default.price->symbol:setting:examples/components/price/price.nz.liquid#default.price",
         "kind": "materializes-as-setting",
         "from": "symbol:prop:examples/components/price/price.nz.liquid#default.price",
         "to": "symbol:setting:examples/components/price/price.nz.liquid#default.price",
         "origin": "resolved"
       },
       {
-        "id": "edge:14",
+        "id": "edge:resolved:materializes-as-setting:symbol:prop:examples/components/price/price.nz.liquid#default.compare_at_price->symbol:setting:examples/components/price/price.nz.liquid#default.compare_at_price",
         "kind": "materializes-as-setting",
         "from": "symbol:prop:examples/components/price/price.nz.liquid#default.compare_at_price",
         "to": "symbol:setting:examples/components/price/price.nz.liquid#default.compare_at_price",
         "origin": "resolved"
       },
       {
-        "id": "edge:15",
+        "id": "edge:resolved:materializes-as-setting:symbol:prop:examples/components/price/price.nz.liquid#default.show_compare_at->symbol:setting:examples/components/price/price.nz.liquid#default.show_compare_at",
         "kind": "materializes-as-setting",
         "from": "symbol:prop:examples/components/price/price.nz.liquid#default.show_compare_at",
         "to": "symbol:setting:examples/components/price/price.nz.liquid#default.show_compare_at",

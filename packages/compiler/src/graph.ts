@@ -20,20 +20,22 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 		),
 	];
 	const edges: ArtifactGraphEdge[] = [];
+	const edgeIds = new Set<Id>();
 
 	for (const syntaxNode of ir.syntax) {
 		if (syntaxNode.kind === "component") {
-			pushEdge(edges, "declares", syntaxNode.fileId, syntaxNode.id, "syntax");
+			pushEdge(edges, edgeIds,"declares", syntaxNode.fileId, syntaxNode.id, "syntax");
 		}
 		if (syntaxNode.kind === "import") {
-			pushEdge(edges, "declares", syntaxNode.fileId, syntaxNode.id, "syntax");
+			pushEdge(edges, edgeIds,"declares", syntaxNode.fileId, syntaxNode.id, "syntax");
 		}
 		if (syntaxNode.kind === "props-interface") {
-			pushEdge(edges, "declares", syntaxNode.ownerId, syntaxNode.id, "syntax");
+			pushEdge(edges, edgeIds,"declares", syntaxNode.ownerId, syntaxNode.id, "syntax");
 		}
 		if (syntaxNode.kind === "prop-declaration") {
 			pushEdge(
 				edges,
+				edgeIds,
 				"declares",
 				syntaxNode.propsInterfaceId,
 				syntaxNode.id,
@@ -41,10 +43,11 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 			);
 		}
 		if (syntaxNode.kind === "render-site") {
-			pushEdge(edges, "declares", syntaxNode.ownerId, syntaxNode.id, "syntax");
+			pushEdge(edges, edgeIds,"declares", syntaxNode.ownerId, syntaxNode.id, "syntax");
 			for (const argumentId of syntaxNode.argumentIds) {
 				pushEdge(
 					edges,
+					edgeIds,
 					"supplies-argument",
 					syntaxNode.id,
 					argumentId,
@@ -55,6 +58,7 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 		if (syntaxNode.kind === "prop-argument") {
 			pushEdge(
 				edges,
+				edgeIds,
 				"uses-expression",
 				syntaxNode.id,
 				syntaxNode.expressionId,
@@ -65,7 +69,7 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 
 	for (const symbol of ir.symbols) {
 		for (const declaration of symbol.declarations) {
-			pushEdge(edges, "resolves-to", declaration, symbol.id, "resolved");
+			pushEdge(edges, edgeIds,"resolves-to", declaration, symbol.id, "resolved");
 		}
 	}
 
@@ -73,6 +77,7 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 		if (resolution.kind === "setting-projection") {
 			pushEdge(
 				edges,
+				edgeIds,
 				"materializes-as-setting",
 				resolution.propSymbolId,
 				resolution.settingSymbolId,
@@ -82,6 +87,7 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 		if (resolution.kind === "alias-target") {
 			pushEdge(
 				edges,
+				edgeIds,
 				"aliases",
 				resolution.aliasSymbolId,
 				resolution.targetSymbolId,
@@ -91,6 +97,7 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 		if (resolution.kind === "import-target") {
 			pushEdge(
 				edges,
+				edgeIds,
 				"imports",
 				resolution.importId,
 				resolution.targetSymbolId,
@@ -100,6 +107,7 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 		if (resolution.kind === "render-target") {
 			pushEdge(
 				edges,
+				edgeIds,
 				"renders",
 				resolution.renderSiteId,
 				resolution.symbolId,
@@ -109,6 +117,7 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 		if (resolution.kind === "prop-binding") {
 			pushEdge(
 				edges,
+				edgeIds,
 				"expects-prop",
 				resolution.targetComponentSymbolId,
 				resolution.propSymbolId,
@@ -116,6 +125,7 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 			);
 			pushEdge(
 				edges,
+				edgeIds,
 				"binds-to",
 				resolution.argumentId,
 				resolution.propSymbolId,
@@ -125,6 +135,7 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 		if (resolution.kind === "symbol-reference") {
 			pushEdge(
 				edges,
+				edgeIds,
 				"references",
 				resolution.expressionId,
 				resolution.symbolId,
@@ -157,22 +168,16 @@ function syntaxName(node: ArtifactSyntaxNode): string {
 
 function pushEdge(
 	edges: ArtifactGraphEdge[],
+	edgeIds: Set<Id>,
 	kind: ArtifactGraphEdge["kind"],
 	from: Id,
 	to: Id,
 	origin: ArtifactGraphEdge["origin"],
 ): void {
-	if (
-		edges.some(
-			(edge) =>
-				edge.kind === kind &&
-				edge.from === from &&
-				edge.to === to &&
-				edge.origin === origin,
-		)
-	) {
-		return;
-	}
+	// Edge identity is its content, so ids stay stable across emission order.
+	const id = `edge:${origin}:${kind}:${from}->${to}`;
+	if (edgeIds.has(id)) return;
 
-	edges.push({ id: `edge:${edges.length + 1}`, kind, from, to, origin });
+	edgeIds.add(id);
+	edges.push({ id, kind, from, to, origin });
 }

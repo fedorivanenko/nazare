@@ -2,18 +2,19 @@ import type {
 	ArtifactContract,
 	ArtifactIR,
 	ExpressionSyntaxNode,
-	Id,
 	PropArgumentSyntaxNode,
 	RenderSiteSyntaxNode,
 	SemanticType,
 	ValidationIssue,
 } from "@nazare/core";
+import { type ArtifactIRIndex, indexArtifactIR } from "./ir-index.js";
 
 export function checkArtifactIR(
 	ir: ArtifactIR,
 	contracts: ArtifactContract[] = [],
 ): ValidationIssue[] {
 	const issues: ValidationIssue[] = [];
+	const index = indexArtifactIR(ir);
 	const contractsByComponentSymbolId = new Map(
 		contracts.map((contract) => [contract.componentSymbolId, contract]),
 	);
@@ -22,20 +23,12 @@ export function checkArtifactIR(
 			.filter((symbol) => symbol.kind === "setting")
 			.map((symbol) => [symbol.name, symbol.semanticType]),
 	);
-	const renderTargetsBySiteId = new Map<Id, Id>();
-	for (const resolution of ir.resolutions) {
-		if (resolution.kind === "render-target") {
-			renderTargetsBySiteId.set(resolution.renderSiteId, resolution.symbolId);
-		}
-	}
 
-	for (const node of ir.syntax) {
-		if (node.kind !== "render-site") continue;
+	for (const node of index.nodesOfKind("render-site")) {
+		const [renderTarget] = index.renderTargetsBySiteId.get(node.id) ?? [];
+		if (!renderTarget) continue;
 
-		const targetSymbolId = renderTargetsBySiteId.get(node.id);
-		if (!targetSymbolId) continue;
-
-		const contract = contractsByComponentSymbolId.get(targetSymbolId);
+		const contract = contractsByComponentSymbolId.get(renderTarget.symbolId);
 		if (!contract) {
 			issues.push({
 				severity: "warning",
@@ -48,12 +41,7 @@ export function checkArtifactIR(
 		}
 
 		issues.push(
-			...checkRenderSiteAgainstContract(
-				ir,
-				node,
-				contract,
-				settingTypesByName,
-			),
+			...checkRenderSiteAgainstContract(index, node, contract, settingTypesByName),
 		);
 	}
 
@@ -61,13 +49,18 @@ export function checkArtifactIR(
 }
 
 function checkRenderSiteAgainstContract(
-	ir: ArtifactIR,
+	index: ArtifactIRIndex,
 	renderSite: RenderSiteSyntaxNode,
 	contract: ArtifactContract,
 	settingTypesByName: Map<string, SemanticType | undefined>,
 ): ValidationIssue[] {
 	const issues: ValidationIssue[] = [];
-	const arguments_ = argumentsForRender(ir, renderSite);
+	const arguments_ = renderSite.argumentIds
+		.map((argumentId) => index.nodeById.get(argumentId))
+		.filter(
+			(node): node is PropArgumentSyntaxNode =>
+				node?.kind === "prop-argument",
+		);
 	const argumentNames = new Set(arguments_.map((argument) => argument.name));
 
 	for (const contractProp of contract.props) {
@@ -101,7 +94,11 @@ function checkRenderSiteAgainstContract(
 			continue;
 		}
 
-		const expression = expressionForArgument(ir, argument);
+		const expressionNode = index.nodeById.get(argument.expressionId);
+		const expression =
+			expressionNode?.kind === "expression"
+				? (expressionNode as ExpressionSyntaxNode)
+				: undefined;
 		const expressionType = inferExpressionType(expression, settingTypesByName);
 		if (!isAssignable(expressionType, contractProp.typeInfo.valueType)) {
 			issues.push({
@@ -117,36 +114,13 @@ function checkRenderSiteAgainstContract(
 	return issues;
 }
 
-function argumentsForRender(
-	ir: ArtifactIR,
-	renderSite: RenderSiteSyntaxNode,
-): PropArgumentSyntaxNode[] {
-	const argumentIds = new Set(renderSite.argumentIds);
-	return ir.syntax.filter(
-		(node): node is PropArgumentSyntaxNode =>
-			node.kind === "prop-argument" && argumentIds.has(node.id),
-	);
-}
-
-function expressionForArgument(
-	ir: ArtifactIR,
-	argument: PropArgumentSyntaxNode,
-): ExpressionSyntaxNode | undefined {
-	return ir.syntax.find(
-		(node): node is ExpressionSyntaxNode =>
-			node.kind === "expression" && node.id === argument.expressionId,
-	);
-}
-
 function inferExpressionType(
 	expression: ExpressionSyntaxNode | undefined,
 	settingTypesByName: Map<string, SemanticType | undefined>,
 ): SemanticType | undefined {
 	if (!expression) return { kind: "unknown" };
 	if (expression.inferredType) return expression.inferredType;
-	return (
-		settingTypesByName.get(expression.source.trim()) ?? { kind: "unknown" }
-	);
+	return settingTypesByName.get(expression.source.trim()) ?? { kind: "unknown" };
 }
 
 function isAssignable(

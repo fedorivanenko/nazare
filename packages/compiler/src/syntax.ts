@@ -12,7 +12,24 @@ import type {
 	SemanticType,
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
+import {
+	argumentExpressionSyntaxId,
+	componentSyntaxId,
+	fileSyntaxId,
+	importSyntaxId,
+	outputExpressionSyntaxId,
+	propArgumentSyntaxId,
+	propDeclarationSyntaxId,
+	propsInterfaceSyntaxId,
+	renderSiteSyntaxId,
+} from "./ids.js";
 import { spanFromOffsets } from "./source.js";
+
+export {
+	componentSyntaxId,
+	fileSyntaxId,
+	propDeclarationSyntaxId,
+} from "./ids.js";
 
 export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 	const syntax: ArtifactSyntaxNode[] = [];
@@ -46,7 +63,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 	for (const node of ast.nodes) {
 		if (node.type === "NazareImport") {
 			const importNode: ImportSyntaxNode = {
-				id: `syntax:import:${ast.file}:${node.localName}`,
+				id: importSyntaxId(ast.file, node.localName),
 				kind: "import",
 				localName: node.localName,
 				packageId: node.packageId,
@@ -58,7 +75,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 		}
 
 		if (node.type === "NazareProps") {
-			const propsInterfaceId = `syntax:props-interface:${ast.file}`;
+			const propsInterfaceId = propsInterfaceSyntaxId(ast.file);
 			const propDeclarations: PropDeclarationSyntaxNode[] = node.props.map(
 				(prop) => ({
 					id: propDeclarationSyntaxId(ast.file, prop.name),
@@ -87,7 +104,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 		if (node.type === "NazareOutputExpression") {
 			outputExpressionIndex += 1;
 			syntax.push({
-				id: `syntax:expression:${ast.file}:output:${outputExpressionIndex}`,
+				id: outputExpressionSyntaxId(ast.file, outputExpressionIndex),
 				kind: "expression",
 				source: node.expression,
 				inferredType: inferExpressionType(node.expression),
@@ -98,13 +115,21 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 
 		if (node.type === "NazareRender") {
 			renderIndex += 1;
-			const renderSiteId = `syntax:render-site:${ast.file}:${renderIndex}`;
+			const renderSiteId = renderSiteSyntaxId(ast.file, renderIndex);
 			const argumentNodes: PropArgumentSyntaxNode[] = [];
 			const expressionNodes: ExpressionSyntaxNode[] = [];
 
 			for (const prop of node.props) {
-				const expressionId = `syntax:expression:${ast.file}:${renderIndex}:${prop.name}`;
-				const argumentId = `syntax:prop-argument:${ast.file}:${renderIndex}:${prop.name}`;
+				const expressionId = argumentExpressionSyntaxId(
+					ast.file,
+					renderIndex,
+					prop.name,
+				);
+				const argumentId = propArgumentSyntaxId(
+					ast.file,
+					renderIndex,
+					prop.name,
+				);
 				expressionNodes.push({
 					id: expressionId,
 					kind: "expression",
@@ -152,14 +177,3 @@ function inferExpressionType(source: string): SemanticType | undefined {
 	return undefined;
 }
 
-export function fileSyntaxId(file: string): Id {
-	return `syntax:file:${file}`;
-}
-
-export function componentSyntaxId(file: string): Id {
-	return `syntax:component:${file}`;
-}
-
-export function propDeclarationSyntaxId(file: string, name: string): Id {
-	return `syntax:prop-declaration:${file}:${name}`;
-}

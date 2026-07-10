@@ -799,224 +799,224 @@
     ],
     "edges": [
       {
-        "id": "edge:1",
+        "id": "edge:syntax:declares:syntax:file:examples/components/announcement-bar/announcement-bar.nz.liquid->syntax:component:examples/components/announcement-bar/announcement-bar.nz.liquid",
         "kind": "declares",
         "from": "syntax:file:examples/components/announcement-bar/announcement-bar.nz.liquid",
         "to": "syntax:component:examples/components/announcement-bar/announcement-bar.nz.liquid",
         "origin": "syntax"
       },
       {
-        "id": "edge:2",
+        "id": "edge:syntax:declares:syntax:file:examples/components/announcement-bar/announcement-bar.nz.liquid->syntax:import:examples/components/announcement-bar/announcement-bar.nz.liquid:Link",
         "kind": "declares",
         "from": "syntax:file:examples/components/announcement-bar/announcement-bar.nz.liquid",
         "to": "syntax:import:examples/components/announcement-bar/announcement-bar.nz.liquid:Link",
         "origin": "syntax"
       },
       {
-        "id": "edge:3",
+        "id": "edge:syntax:declares:syntax:component:examples/components/announcement-bar/announcement-bar.nz.liquid->syntax:props-interface:examples/components/announcement-bar/announcement-bar.nz.liquid",
         "kind": "declares",
         "from": "syntax:component:examples/components/announcement-bar/announcement-bar.nz.liquid",
         "to": "syntax:props-interface:examples/components/announcement-bar/announcement-bar.nz.liquid",
         "origin": "syntax"
       },
       {
-        "id": "edge:4",
+        "id": "edge:syntax:declares:syntax:props-interface:examples/components/announcement-bar/announcement-bar.nz.liquid->syntax:prop-declaration:examples/components/announcement-bar/announcement-bar.nz.liquid:text",
         "kind": "declares",
         "from": "syntax:props-interface:examples/components/announcement-bar/announcement-bar.nz.liquid",
         "to": "syntax:prop-declaration:examples/components/announcement-bar/announcement-bar.nz.liquid:text",
         "origin": "syntax"
       },
       {
-        "id": "edge:5",
+        "id": "edge:syntax:declares:syntax:props-interface:examples/components/announcement-bar/announcement-bar.nz.liquid->syntax:prop-declaration:examples/components/announcement-bar/announcement-bar.nz.liquid:link",
         "kind": "declares",
         "from": "syntax:props-interface:examples/components/announcement-bar/announcement-bar.nz.liquid",
         "to": "syntax:prop-declaration:examples/components/announcement-bar/announcement-bar.nz.liquid:link",
         "origin": "syntax"
       },
       {
-        "id": "edge:6",
+        "id": "edge:syntax:declares:syntax:component:examples/components/announcement-bar/announcement-bar.nz.liquid->syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1",
         "kind": "declares",
         "from": "syntax:component:examples/components/announcement-bar/announcement-bar.nz.liquid",
         "to": "syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1",
         "origin": "syntax"
       },
       {
-        "id": "edge:7",
+        "id": "edge:syntax:supplies-argument:syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1->syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href",
         "kind": "supplies-argument",
         "from": "syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1",
         "to": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href",
         "origin": "syntax"
       },
       {
-        "id": "edge:8",
+        "id": "edge:syntax:supplies-argument:syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1->syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text",
         "kind": "supplies-argument",
         "from": "syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1",
         "to": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text",
         "origin": "syntax"
       },
       {
-        "id": "edge:9",
+        "id": "edge:syntax:supplies-argument:syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1->syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:class",
         "kind": "supplies-argument",
         "from": "syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1",
         "to": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:class",
         "origin": "syntax"
       },
       {
-        "id": "edge:10",
+        "id": "edge:syntax:uses-expression:syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href->syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href",
         "kind": "uses-expression",
         "from": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href",
         "to": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href",
         "origin": "syntax"
       },
       {
-        "id": "edge:11",
+        "id": "edge:syntax:uses-expression:syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text->syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text",
         "kind": "uses-expression",
         "from": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text",
         "to": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text",
         "origin": "syntax"
       },
       {
-        "id": "edge:12",
+        "id": "edge:syntax:uses-expression:syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:class->syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:class",
         "kind": "uses-expression",
         "from": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:class",
         "to": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:class",
         "origin": "syntax"
       },
       {
-        "id": "edge:13",
+        "id": "edge:resolved:resolves-to:syntax:component:examples/components/announcement-bar/announcement-bar.nz.liquid->symbol:component:examples/components/announcement-bar/announcement-bar.nz.liquid#default",
         "kind": "resolves-to",
         "from": "syntax:component:examples/components/announcement-bar/announcement-bar.nz.liquid",
         "to": "symbol:component:examples/components/announcement-bar/announcement-bar.nz.liquid#default",
         "origin": "resolved"
       },
       {
-        "id": "edge:14",
+        "id": "edge:resolved:resolves-to:syntax:import:examples/components/announcement-bar/announcement-bar.nz.liquid:Link->symbol:alias:examples/components/announcement-bar/announcement-bar.nz.liquid.Link",
         "kind": "resolves-to",
         "from": "syntax:import:examples/components/announcement-bar/announcement-bar.nz.liquid:Link",
         "to": "symbol:alias:examples/components/announcement-bar/announcement-bar.nz.liquid.Link",
         "origin": "resolved"
       },
       {
-        "id": "edge:15",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/announcement-bar/announcement-bar.nz.liquid:text->symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/announcement-bar/announcement-bar.nz.liquid:text",
         "to": "symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "origin": "resolved"
       },
       {
-        "id": "edge:16",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/announcement-bar/announcement-bar.nz.liquid:text->symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/announcement-bar/announcement-bar.nz.liquid:text",
         "to": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "origin": "resolved"
       },
       {
-        "id": "edge:17",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/announcement-bar/announcement-bar.nz.liquid:link->symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/announcement-bar/announcement-bar.nz.liquid:link",
         "to": "symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
         "origin": "resolved"
       },
       {
-        "id": "edge:18",
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/announcement-bar/announcement-bar.nz.liquid:link->symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
         "kind": "resolves-to",
         "from": "syntax:prop-declaration:examples/components/announcement-bar/announcement-bar.nz.liquid:link",
         "to": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
         "origin": "resolved"
       },
       {
-        "id": "edge:19",
+        "id": "edge:resolved:aliases:symbol:alias:examples/components/announcement-bar/announcement-bar.nz.liquid.Link->symbol:component:@nazare/link#default",
         "kind": "aliases",
         "from": "symbol:alias:examples/components/announcement-bar/announcement-bar.nz.liquid.Link",
         "to": "symbol:component:@nazare/link#default",
         "origin": "resolved"
       },
       {
-        "id": "edge:20",
+        "id": "edge:derived:imports:syntax:import:examples/components/announcement-bar/announcement-bar.nz.liquid:Link->symbol:component:@nazare/link#default",
         "kind": "imports",
         "from": "syntax:import:examples/components/announcement-bar/announcement-bar.nz.liquid:Link",
         "to": "symbol:component:@nazare/link#default",
         "origin": "derived"
       },
       {
-        "id": "edge:21",
+        "id": "edge:resolved:materializes-as-setting:symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text->symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "kind": "materializes-as-setting",
         "from": "symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "to": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "origin": "resolved"
       },
       {
-        "id": "edge:22",
+        "id": "edge:resolved:materializes-as-setting:symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link->symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
         "kind": "materializes-as-setting",
         "from": "symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
         "to": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
         "origin": "resolved"
       },
       {
-        "id": "edge:23",
+        "id": "edge:resolved:renders:syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1->symbol:component:@nazare/link#default",
         "kind": "renders",
         "from": "syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1",
         "to": "symbol:component:@nazare/link#default",
         "origin": "resolved"
       },
       {
-        "id": "edge:24",
+        "id": "edge:resolved:expects-prop:symbol:component:@nazare/link#default->symbol:prop:@nazare/link#default.href",
         "kind": "expects-prop",
         "from": "symbol:component:@nazare/link#default",
         "to": "symbol:prop:@nazare/link#default.href",
         "origin": "resolved"
       },
       {
-        "id": "edge:25",
+        "id": "edge:resolved:binds-to:syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href->symbol:prop:@nazare/link#default.href",
         "kind": "binds-to",
         "from": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href",
         "to": "symbol:prop:@nazare/link#default.href",
         "origin": "resolved"
       },
       {
-        "id": "edge:26",
+        "id": "edge:resolved:expects-prop:symbol:component:@nazare/link#default->symbol:prop:@nazare/link#default.text",
         "kind": "expects-prop",
         "from": "symbol:component:@nazare/link#default",
         "to": "symbol:prop:@nazare/link#default.text",
         "origin": "resolved"
       },
       {
-        "id": "edge:27",
+        "id": "edge:resolved:binds-to:syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text->symbol:prop:@nazare/link#default.text",
         "kind": "binds-to",
         "from": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text",
         "to": "symbol:prop:@nazare/link#default.text",
         "origin": "resolved"
       },
       {
-        "id": "edge:28",
+        "id": "edge:resolved:expects-prop:symbol:component:@nazare/link#default->symbol:prop:@nazare/link#default.class",
         "kind": "expects-prop",
         "from": "symbol:component:@nazare/link#default",
         "to": "symbol:prop:@nazare/link#default.class",
         "origin": "resolved"
       },
       {
-        "id": "edge:29",
+        "id": "edge:resolved:binds-to:syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:class->symbol:prop:@nazare/link#default.class",
         "kind": "binds-to",
         "from": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:class",
         "to": "symbol:prop:@nazare/link#default.class",
         "origin": "resolved"
       },
       {
-        "id": "edge:30",
+        "id": "edge:resolved:references:syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href->symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
         "kind": "references",
         "from": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href",
         "to": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
         "origin": "resolved"
       },
       {
-        "id": "edge:31",
+        "id": "edge:resolved:references:syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text->symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "kind": "references",
         "from": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text",
         "to": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "origin": "resolved"
       },
       {
-        "id": "edge:32",
+        "id": "edge:resolved:references:syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:output:1->symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "kind": "references",
         "from": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:output:1",
         "to": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",

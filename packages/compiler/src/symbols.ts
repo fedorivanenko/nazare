@@ -5,10 +5,17 @@ import type {
 	ArtifactSymbol,
 	ArtifactSyntaxNode,
 	Id,
-	PropArgumentSyntaxNode,
 	PropDeclarationSyntaxNode,
-	RenderSiteSyntaxNode,
 } from "@nazare/core";
+import {
+	aliasSymbolId,
+	componentSymbolId,
+	componentSymbolIdForPackage,
+	propSymbolId,
+	settingSymbolId,
+} from "./ids.js";
+
+export { componentSymbolIdForPackage } from "./ids.js";
 
 export type BindArtifactIROptions = {
 	contracts?: ArtifactContract[];
@@ -31,11 +38,12 @@ export function bindArtifactIR(
 		string,
 		{ id: Id; semanticType: ArtifactSymbol["semanticType"] }
 	>();
+	const scopes = scopeLookup(syntax);
 
 	for (const node of syntax) {
 		if (node.kind === "component") {
 			addSymbol(symbols, {
-				id: componentSymbolIdForSyntax(node.id),
+				id: componentSymbolId(scopes.forFileId(node.fileId)),
 				kind: "component",
 				name: node.name,
 				declarations: [node.id],
@@ -46,12 +54,15 @@ export function bindArtifactIR(
 		}
 
 		if (node.kind === "import") {
-			const aliasSymbolId = aliasSymbolIdForImport(node.fileId, node.localName);
+			const importAliasId = aliasSymbolId(
+				scopes.forFileId(node.fileId),
+				node.localName,
+			);
 			const targetSymbolId = componentSymbolIdForPackage(node.packageId);
 			importTargetsByLocalName.set(node.localName, targetSymbolId);
 
 			addSymbol(symbols, {
-				id: aliasSymbolId,
+				id: importAliasId,
 				kind: "alias",
 				name: node.localName,
 				declarations: [node.id],
@@ -73,21 +84,22 @@ export function bindArtifactIR(
 			});
 			resolutions.push({
 				kind: "alias-target",
-				aliasSymbolId,
+				aliasSymbolId: importAliasId,
 				targetSymbolId,
 			});
 			resolutions.push({
 				kind: "import-target",
 				importId: node.id,
-				aliasSymbolId,
+				aliasSymbolId: importAliasId,
 				targetSymbolId,
 			});
 			continue;
 		}
 
 		if (node.kind === "prop-declaration") {
-			const propSymbol = symbolForPropDeclaration(node);
-			const settingSymbol = settingSymbolForPropDeclaration(node);
+			const scope = scopes.forPropsInterfaceId(node.propsInterfaceId);
+			const propSymbol = symbolForPropDeclaration(node, scope);
+			const settingSymbol = settingSymbolForPropDeclaration(node, scope);
 			settingSymbolsByPath.set(`section.settings.${node.name}`, {
 				id: settingSymbol.id,
 				semanticType: settingSymbol.semanticType,
@@ -126,12 +138,18 @@ export function bindArtifactIR(
 		}
 	}
 
+	const argumentsById = new Map(
+		syntax
+			.filter((node) => node.kind === "prop-argument")
+			.map((node) => [node.id, node]),
+	);
+
 	for (const node of syntax) {
 		if (node.kind !== "render-site") continue;
 
 		const targetSymbolId =
 			importTargetsByLocalName.get(node.targetName) ??
-			componentSymbolIdForName(node.targetName);
+			componentSymbolId(node.targetName);
 		if (!symbols.has(targetSymbolId)) {
 			addSymbol(symbols, {
 				id: targetSymbolId,
@@ -152,7 +170,10 @@ export function bindArtifactIR(
 		const contract = contractsByComponentSymbolId.get(targetSymbolId);
 		if (!contract) continue;
 
-		for (const argument of argumentsForRender(syntax, node)) {
+		for (const argumentId of node.argumentIds) {
+			const argument = argumentsById.get(argumentId);
+			if (argument?.kind !== "prop-argument") continue;
+
 			const contractProp = contract.props.find(
 				(prop) => prop.name === argument.name,
 			);
@@ -192,7 +213,6 @@ export function contractFromIR(
 	ir: ArtifactIR,
 	packageId: string,
 ): ArtifactContract {
-	const componentSymbolId = componentSymbolIdForPackage(packageId);
 	const props = ir.syntax
 		.filter(
 			(node): node is PropDeclarationSyntaxNode =>
@@ -200,24 +220,70 @@ export function contractFromIR(
 		)
 		.map((node) => ({
 			name: node.name,
-			symbolId: propSymbolIdForComponent(componentSymbolId, node.name),
+			symbolId: propSymbolId(packageId, node.name),
 			required: node.required,
 			hasDefault: node.hasDefault,
 			typeExpression: node.typeExpression,
 			typeInfo: node.typeInfo,
 		}));
 
-	return { packageId, componentSymbolId, props };
+	return {
+		packageId,
+		componentSymbolId: componentSymbolIdForPackage(packageId),
+		props,
+	};
+}
+
+// Symbol scopes come from navigating syntax nodes (prop-declaration →
+// props-interface → component → file), never from parsing an ID string.
+type ScopeLookup = {
+	forFileId(fileId: Id): string;
+	forPropsInterfaceId(propsInterfaceId: Id): string;
+};
+
+function scopeLookup(syntax: ArtifactSyntaxNode[]): ScopeLookup {
+	const filePathByFileId = new Map<Id, string>();
+	const fileIdByComponentId = new Map<Id, Id>();
+	const ownerIdByInterfaceId = new Map<Id, Id>();
+
+	for (const node of syntax) {
+		if (node.kind === "file") filePathByFileId.set(node.id, node.path);
+		if (node.kind === "component")
+			fileIdByComponentId.set(node.id, node.fileId);
+		if (node.kind === "props-interface")
+			ownerIdByInterfaceId.set(node.id, node.ownerId);
+	}
+
+	const forFileId = (fileId: Id): string => {
+		const path = filePathByFileId.get(fileId);
+		if (path === undefined) {
+			throw new Error(`Syntax references unknown file node ${fileId}`);
+		}
+		return path;
+	};
+
+	return {
+		forFileId,
+		forPropsInterfaceId: (propsInterfaceId) => {
+			const ownerId = ownerIdByInterfaceId.get(propsInterfaceId);
+			const fileId =
+				ownerId === undefined ? undefined : fileIdByComponentId.get(ownerId);
+			if (fileId === undefined) {
+				throw new Error(
+					`Props interface ${propsInterfaceId} has no resolvable owner component`,
+				);
+			}
+			return forFileId(fileId);
+		},
+	};
 }
 
 function symbolForPropDeclaration(
 	node: PropDeclarationSyntaxNode,
+	scope: string,
 ): ArtifactSymbol {
 	return {
-		id: propSymbolIdForComponent(
-			componentSymbolIdForFile(fileFromPropsInterfaceId(node.propsInterfaceId)),
-			node.name,
-		),
+		id: propSymbolId(scope, node.name),
 		kind: "prop",
 		name: node.name,
 		declarations: [node.id],
@@ -229,12 +295,10 @@ function symbolForPropDeclaration(
 
 function settingSymbolForPropDeclaration(
 	node: PropDeclarationSyntaxNode,
+	scope: string,
 ): ArtifactSymbol {
 	return {
-		id: settingSymbolIdForComponent(
-			componentSymbolIdForFile(fileFromPropsInterfaceId(node.propsInterfaceId)),
-			node.name,
-		),
+		id: settingSymbolId(scope, node.name),
 		kind: "setting",
 		name: `section.settings.${node.name}`,
 		declarations: [node.id],
@@ -242,17 +306,6 @@ function settingSymbolForPropDeclaration(
 		source: "syntax",
 		semanticType: node.typeInfo.valueType,
 	};
-}
-
-function argumentsForRender(
-	syntax: ArtifactSyntaxNode[],
-	renderSite: RenderSiteSyntaxNode,
-): PropArgumentSyntaxNode[] {
-	const argumentIds = new Set(renderSite.argumentIds);
-	return syntax.filter(
-		(node): node is PropArgumentSyntaxNode =>
-			node.kind === "prop-argument" && argumentIds.has(node.id),
-	);
 }
 
 function addSymbol(
@@ -277,47 +330,4 @@ function addSymbol(
 			),
 		});
 	}
-}
-
-function componentSymbolIdForSyntax(syntaxId: Id): Id {
-	return componentSymbolIdForFile(fileFromComponentSyntaxId(syntaxId));
-}
-
-function componentSymbolIdForFile(file: string): Id {
-	return `symbol:component:${file}#default`;
-}
-
-export function componentSymbolIdForPackage(packageId: string): Id {
-	return `symbol:component:${packageId}#default`;
-}
-
-function componentSymbolIdForName(name: string): Id {
-	return `symbol:component:${name}#default`;
-}
-
-function propSymbolIdForComponent(componentSymbolId: Id, propName: string): Id {
-	return `symbol:prop:${componentSymbolId.replace(/^symbol:component:/, "")}.${propName}`;
-}
-
-function settingSymbolIdForComponent(
-	componentSymbolId: Id,
-	settingName: string,
-): Id {
-	return `symbol:setting:${componentSymbolId.replace(/^symbol:component:/, "")}.${settingName}`;
-}
-
-function aliasSymbolIdForImport(fileId: Id, localName: string): Id {
-	return `symbol:alias:${fileFromFileSyntaxId(fileId)}.${localName}`;
-}
-
-function fileFromComponentSyntaxId(syntaxId: Id): string {
-	return syntaxId.replace(/^syntax:component:/, "");
-}
-
-function fileFromFileSyntaxId(syntaxId: Id): string {
-	return syntaxId.replace(/^syntax:file:/, "");
-}
-
-function fileFromPropsInterfaceId(propsInterfaceId: Id): string {
-	return propsInterfaceId.replace(/^syntax:props-interface:/, "");
 }

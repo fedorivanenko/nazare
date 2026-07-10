@@ -1,18 +1,17 @@
 import type {
 	ArtifactGraph,
 	ArtifactIR,
-	ArtifactSymbol,
-	PropArgumentSyntaxNode,
-	RenderSiteSyntaxNode,
 	ValidationIssue,
 } from "@nazare/core";
+import { indexArtifactIR } from "./ir-index.js";
 
 export function validateArtifactIR(ir: ArtifactIR): ValidationIssue[] {
+	const index = indexArtifactIR(ir);
 	return [
 		...ir.diagnostics,
-		...validateRenderTargetResolutions(ir),
-		...validateArgumentBindings(ir),
-		...validatePropBindingTargets(ir),
+		...validateRenderTargetResolutions(index),
+		...validateArgumentBindings(index),
+		...validatePropBindingTargets(ir, index),
 	];
 }
 
@@ -20,23 +19,18 @@ export function validateArtifactGraph(graph: ArtifactGraph): ValidationIssue[] {
 	return validateGraphEdgeEndpoints(graph);
 }
 
-function validateRenderTargetResolutions(ir: ArtifactIR): ValidationIssue[] {
-	const issues: ValidationIssue[] = [];
-	const renderSites = ir.syntax.filter(
-		(node): node is RenderSiteSyntaxNode => node.kind === "render-site",
-	);
+type IRIndex = ReturnType<typeof indexArtifactIR>;
 
-	for (const renderSite of renderSites) {
-		const renderTargetResolutions = ir.resolutions.filter(
-			(resolution) =>
-				resolution.kind === "render-target" &&
-				resolution.renderSiteId === renderSite.id,
-		);
-		if (renderTargetResolutions.length !== 1) {
+function validateRenderTargetResolutions(index: IRIndex): ValidationIssue[] {
+	const issues: ValidationIssue[] = [];
+
+	for (const renderSite of index.nodesOfKind("render-site")) {
+		const renderTargets = index.renderTargetsBySiteId.get(renderSite.id) ?? [];
+		if (renderTargets.length !== 1) {
 			issues.push({
 				severity: "error",
 				code: "CONSTRAINT_RENDER_TARGET_RESOLUTION_COUNT",
-				message: `Render site ${renderSite.id} must resolve to exactly one component symbol; found ${renderTargetResolutions.length}`,
+				message: `Render site ${renderSite.id} must resolve to exactly one component symbol; found ${renderTargets.length}`,
 				nodeId: renderSite.id,
 				span: renderSite.span,
 			});
@@ -46,18 +40,11 @@ function validateRenderTargetResolutions(ir: ArtifactIR): ValidationIssue[] {
 	return issues;
 }
 
-function validateArgumentBindings(ir: ArtifactIR): ValidationIssue[] {
+function validateArgumentBindings(index: IRIndex): ValidationIssue[] {
 	const issues: ValidationIssue[] = [];
-	const arguments_ = ir.syntax.filter(
-		(node): node is PropArgumentSyntaxNode => node.kind === "prop-argument",
-	);
 
-	for (const argument of arguments_) {
-		const bindings = ir.resolutions.filter(
-			(resolution) =>
-				resolution.kind === "prop-binding" &&
-				resolution.argumentId === argument.id,
-		);
+	for (const argument of index.nodesOfKind("prop-argument")) {
+		const bindings = index.propBindingsByArgumentId.get(argument.id) ?? [];
 		if (bindings.length <= 1) continue;
 
 		issues.push({
@@ -72,19 +59,18 @@ function validateArgumentBindings(ir: ArtifactIR): ValidationIssue[] {
 	return issues;
 }
 
-function validatePropBindingTargets(ir: ArtifactIR): ValidationIssue[] {
+function validatePropBindingTargets(
+	ir: ArtifactIR,
+	index: IRIndex,
+): ValidationIssue[] {
 	const issues: ValidationIssue[] = [];
-	const symbolsById = symbolMap(ir.symbols);
 
 	for (const binding of ir.resolutions) {
 		if (binding.kind !== "prop-binding") continue;
 
-		const renderTarget = ir.resolutions.find(
-			(resolution) =>
-				resolution.kind === "render-target" &&
-				resolution.renderSiteId === binding.renderSiteId,
-		);
-		if (renderTarget?.kind !== "render-target") continue;
+		const [renderTarget] =
+			index.renderTargetsBySiteId.get(binding.renderSiteId) ?? [];
+		if (!renderTarget) continue;
 
 		if (binding.targetComponentSymbolId !== renderTarget.symbolId) {
 			issues.push({
@@ -95,7 +81,7 @@ function validatePropBindingTargets(ir: ArtifactIR): ValidationIssue[] {
 			});
 		}
 
-		const targetProp = symbolsById.get(binding.propSymbolId);
+		const targetProp = index.symbolById.get(binding.propSymbolId);
 		if (
 			!targetProp ||
 			targetProp.ownerSymbolId !== binding.targetComponentSymbolId ||
@@ -141,8 +127,4 @@ function validateGraphEdgeEndpoints(graph: ArtifactGraph): ValidationIssue[] {
 	}
 
 	return issues;
-}
-
-function symbolMap(symbols: ArtifactSymbol[]): Map<string, ArtifactSymbol> {
-	return new Map(symbols.map((symbol) => [symbol.id, symbol]));
 }
