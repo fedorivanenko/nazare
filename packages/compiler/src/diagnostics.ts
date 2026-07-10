@@ -1,0 +1,164 @@
+import type { Diagnostic, Id, SourceSpan } from "@nazare/core";
+
+// Every diagnostic the compiler can emit, in one place. Passes call these
+// factories instead of inlining severity/code/message at the emit site.
+
+export function parseInvalidImport(
+	markup: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_IMPORT",
+		message: `Invalid Nazare import syntax: ${markup}`,
+		span,
+	};
+}
+
+export function controlFlowNotLowered(span: SourceSpan): Diagnostic {
+	return {
+		severity: "warning",
+		code: "IR_PARTIAL_LOWERING_CONTROL_FLOW",
+		message:
+			"Control-flow omission means render-site reachability is incomplete; syntax is preserved in LiquidHTML AST",
+		span,
+	};
+}
+
+export function htmlNotPromoted(span: SourceSpan): Diagnostic {
+	return {
+		severity: "info",
+		code: "IR_NODE_NOT_PROMOTED_HTML",
+		message:
+			"HTML elements are not promoted to ArtifactIR in v0; syntax is preserved in LiquidHTML AST",
+		span,
+	};
+}
+
+export function unresolvedExternalContract(
+	targetName: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "warning",
+		code: "CONSTRAINT_UNRESOLVED_EXTERNAL_CONTRACT",
+		message: `Cannot validate props for render target ${targetName}; contract not loaded`,
+		nodeId,
+		span,
+	};
+}
+
+export function requiredPropMissing(
+	targetName: string,
+	propName: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_REQUIRED_PROP_MISSING",
+		message: `Render target ${targetName} requires prop ${propName}`,
+		nodeId,
+		span,
+	};
+}
+
+export function unknownPropArgument(
+	targetName: string,
+	argumentName: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_UNKNOWN_PROP_ARGUMENT",
+		message: `Render target ${targetName} has no prop ${argumentName}`,
+		nodeId,
+		span,
+	};
+}
+
+export function propTypeMismatch(
+	argumentName: string,
+	expectedKind: string,
+	receivedKind: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_PROP_TYPE_MISMATCH",
+		message: `Prop ${argumentName} expects ${expectedKind} but received ${receivedKind}`,
+		nodeId,
+		span,
+	};
+}
+
+export function renderTargetResolutionCount(
+	renderSiteId: Id,
+	found: number,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_RENDER_TARGET_RESOLUTION_COUNT",
+		message: `Render site ${renderSiteId} must resolve to exactly one component symbol; found ${found}`,
+		nodeId: renderSiteId,
+		span,
+	};
+}
+
+export function propArgumentAmbiguous(
+	argumentId: Id,
+	found: number,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_PROP_ARGUMENT_AMBIGUOUS",
+		message: `Prop argument ${argumentId} must have at most one prop binding; found ${found}`,
+		nodeId: argumentId,
+		span,
+	};
+}
+
+export function propBindingTargetMismatch(
+	argumentId: Id,
+	boundTargetId: Id,
+	renderTargetId: Id,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_PROP_BINDING_TARGET_MISMATCH",
+		message: `Prop binding ${argumentId} targets ${boundTargetId}, but render target is ${renderTargetId}`,
+		nodeId: argumentId,
+	};
+}
+
+export function propBindingNotContractProp(argumentId: Id): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_PROP_BINDING_TARGET_NOT_CONTRACT_PROP",
+		message: `Prop binding ${argumentId} does not target a resolved contract prop`,
+		nodeId: argumentId,
+	};
+}
+
+export function missingEdgeEndpoint(
+	edgeId: Id,
+	endpoint: "from" | "to",
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code:
+			endpoint === "from"
+				? "CONSTRAINT_MISSING_FROM_NODE"
+				: "CONSTRAINT_MISSING_TO_NODE",
+		message: `Edge ${edgeId} references missing ${endpoint} node ${nodeId}`,
+		edgeId,
+		span,
+	};
+}

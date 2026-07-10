@@ -278,7 +278,6 @@ export type ArtifactIR = {
 	syntax: ArtifactSyntaxNode[];
 	symbols: ArtifactSymbol[];
 	resolutions: ArtifactResolution[];
-	diagnostics: ValidationIssue[];
 };
 
 export type ArtifactGraphNodeKind = ArtifactSyntaxKind | ArtifactSymbolKind;
@@ -322,14 +321,19 @@ export type ArtifactGraph = {
 	edges: ArtifactGraphEdge[];
 };
 
-export type ValidationIssue = {
-	severity: "error" | "warning" | "info";
+export type DiagnosticSeverity = "error" | "warning" | "info";
+
+export type Diagnostic = {
+	severity: DiagnosticSeverity;
 	code: string;
 	message: string;
 	nodeId?: Id;
 	edgeId?: Id;
 	span?: SourceSpan;
 };
+
+/** @deprecated Use {@link Diagnostic}. */
+export type ValidationIssue = Diagnostic;
 
 export type ConstraintRule<T> = {
 	id: string;

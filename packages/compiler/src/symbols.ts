@@ -205,7 +205,6 @@ export function bindArtifactIR(
 		syntax,
 		symbols: Array.from(symbols.values()),
 		resolutions,
-		diagnostics: [],
 	};
 }
 

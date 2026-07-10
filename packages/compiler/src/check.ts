@@ -1,19 +1,25 @@
 import type {
 	ArtifactContract,
 	ArtifactIR,
+	Diagnostic,
 	ExpressionSyntaxNode,
 	PropArgumentSyntaxNode,
 	RenderSiteSyntaxNode,
 	SemanticType,
-	ValidationIssue,
 } from "@nazare/core";
+import {
+	propTypeMismatch,
+	requiredPropMissing,
+	unknownPropArgument,
+	unresolvedExternalContract,
+} from "./diagnostics.js";
 import { type ArtifactIRIndex, indexArtifactIR } from "./ir-index.js";
 
 export function checkArtifactIR(
 	ir: ArtifactIR,
 	contracts: ArtifactContract[] = [],
-): ValidationIssue[] {
-	const issues: ValidationIssue[] = [];
+): Diagnostic[] {
+	const issues: Diagnostic[] = [];
 	const index = indexArtifactIR(ir);
 	const contractsByComponentSymbolId = new Map(
 		contracts.map((contract) => [contract.componentSymbolId, contract]),
@@ -30,13 +36,9 @@ export function checkArtifactIR(
 
 		const contract = contractsByComponentSymbolId.get(renderTarget.symbolId);
 		if (!contract) {
-			issues.push({
-				severity: "warning",
-				code: "CONSTRAINT_UNRESOLVED_EXTERNAL_CONTRACT",
-				message: `Cannot validate props for render target ${node.targetName}; contract not loaded`,
-				nodeId: node.id,
-				span: node.span,
-			});
+			issues.push(
+				unresolvedExternalContract(node.targetName, node.id, node.span),
+			);
 			continue;
 		}
 
@@ -53,8 +55,8 @@ function checkRenderSiteAgainstContract(
 	renderSite: RenderSiteSyntaxNode,
 	contract: ArtifactContract,
 	settingTypesByName: Map<string, SemanticType | undefined>,
-): ValidationIssue[] {
-	const issues: ValidationIssue[] = [];
+): Diagnostic[] {
+	const issues: Diagnostic[] = [];
 	const arguments_ = renderSite.argumentIds
 		.map((argumentId) => index.nodeById.get(argumentId))
 		.filter(
@@ -70,13 +72,14 @@ function checkRenderSiteAgainstContract(
 			argumentNames.has(contractProp.name)
 		)
 			continue;
-		issues.push({
-			severity: "error",
-			code: "CONSTRAINT_REQUIRED_PROP_MISSING",
-			message: `Render target ${renderSite.targetName} requires prop ${contractProp.name}`,
-			nodeId: renderSite.id,
-			span: renderSite.span,
-		});
+		issues.push(
+			requiredPropMissing(
+				renderSite.targetName,
+				contractProp.name,
+				renderSite.id,
+				renderSite.span,
+			),
+		);
 	}
 
 	for (const argument of arguments_) {
@@ -84,13 +87,14 @@ function checkRenderSiteAgainstContract(
 			(prop) => prop.name === argument.name,
 		);
 		if (!contractProp) {
-			issues.push({
-				severity: "error",
-				code: "CONSTRAINT_UNKNOWN_PROP_ARGUMENT",
-				message: `Render target ${renderSite.targetName} has no prop ${argument.name}`,
-				nodeId: argument.id,
-				span: argument.span,
-			});
+			issues.push(
+				unknownPropArgument(
+					renderSite.targetName,
+					argument.name,
+					argument.id,
+					argument.span,
+				),
+			);
 			continue;
 		}
 
@@ -101,13 +105,15 @@ function checkRenderSiteAgainstContract(
 				: undefined;
 		const expressionType = inferExpressionType(expression, settingTypesByName);
 		if (!isAssignable(expressionType, contractProp.typeInfo.valueType)) {
-			issues.push({
-				severity: "error",
-				code: "CONSTRAINT_PROP_TYPE_MISMATCH",
-				message: `Prop ${argument.name} expects ${contractProp.typeInfo.valueType.kind} but received ${expressionType?.kind ?? "unknown"}`,
-				nodeId: argument.id,
-				span: argument.span,
-			});
+			issues.push(
+				propTypeMismatch(
+					argument.name,
+					contractProp.typeInfo.valueType.kind,
+					expressionType?.kind ?? "unknown",
+					argument.id,
+					argument.span,
+				),
+			);
 		}
 	}
 

@@ -1,12 +1,8 @@
-import type { PropTypeInfo, SourceSpan } from "@nazare/core";
+import type { Diagnostic, PropTypeInfo, SourceSpan } from "@nazare/core";
 import type { DocumentNode, LiquidHtmlNode } from "@shopify/liquid-html-parser";
 
-export type ParseDiagnostic = {
-	severity: "error" | "warning" | "info";
-	code: string;
-	message: string;
-	span?: SourceSpan;
-};
+/** @deprecated Use {@link Diagnostic} from @nazare/core. */
+export type ParseDiagnostic = Diagnostic;
 
 export type NazareImportNode = {
 	type: "NazareImport";
@@ -70,5 +66,5 @@ export type NazareAst = {
 	file: string;
 	liquidAst: DocumentNode;
 	nodes: NazareNode[];
-	diagnostics: ParseDiagnostic[];
+	diagnostics: Diagnostic[];
 };

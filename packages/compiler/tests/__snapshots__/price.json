@@ -269,8 +269,7 @@
         "propSymbolId": "symbol:prop:examples/components/price/price.nz.liquid#default.show_compare_at",
         "settingSymbolId": "symbol:setting:examples/components/price/price.nz.liquid#default.show_compare_at"
       }
-    ],
-    "diagnostics": []
+    ]
   },
   "graph": {
     "nodes": [

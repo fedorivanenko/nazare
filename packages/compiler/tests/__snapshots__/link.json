@@ -285,8 +285,7 @@
         "propSymbolId": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "settingSymbolId": "symbol:setting:examples/components/link/link.nz.liquid#default.class"
       }
-    ],
-    "diagnostics": []
+    ]
   },
   "graph": {
     "nodes": [

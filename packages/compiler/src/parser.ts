@@ -11,8 +11,12 @@ import type {
 	NazareNode,
 	NazarePassedProp,
 	NazarePropDeclaration,
-	ParseDiagnostic,
 } from "./ast.js";
+import {
+	controlFlowNotLowered,
+	htmlNotPromoted,
+	parseInvalidImport,
+} from "./diagnostics.js";
 import { spanFromOffsets } from "./source.js";
 
 const importPattern = /^([A-Za-z_$][\w$]*)\s+from\s+["']([^"']+)["']$/;
@@ -30,7 +34,7 @@ type UnsupportedSyntaxCategory = "control-flow" | "html";
 
 export function parseNazareLiquid(source: string, file: string): NazareAst {
 	const nodes: NazareNode[] = [];
-	const diagnostics: ParseDiagnostic[] = [];
+	const diagnostics: NazareAst["diagnostics"] = [];
 	const unsupportedSyntax = new Map<
 		UnsupportedSyntaxCategory,
 		LiquidHtmlNode
@@ -68,12 +72,7 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 		if (tag.name === "import") {
 			const match = tag.markup.trim().match(importPattern);
 			if (!match) {
-				diagnostics.push({
-					severity: "error",
-					code: "NAZARE_PARSE_IMPORT",
-					message: `Invalid Nazare import syntax: ${tag.markup}`,
-					span,
-				});
+				diagnostics.push(parseInvalidImport(tag.markup, span));
 				return;
 			}
 
@@ -391,31 +390,13 @@ function unsupportedSyntaxDiagnostics(
 	unsupportedSyntax: Map<UnsupportedSyntaxCategory, LiquidHtmlNode>,
 	source: string,
 	file: string,
-): ParseDiagnostic[] {
-	return Array.from(unsupportedSyntax.entries()).map(([category, node]) => ({
-		severity: unsupportedSyntaxSeverity(category),
-		code: unsupportedSyntaxCode(category),
-		message: unsupportedSyntaxMessage(category),
-		span: spanFromOffsets(source, file, node.position),
-	}));
-}
-
-function unsupportedSyntaxSeverity(
-	category: UnsupportedSyntaxCategory,
-): ParseDiagnostic["severity"] {
-	return category === "control-flow" ? "warning" : "info";
-}
-
-function unsupportedSyntaxCode(category: UnsupportedSyntaxCategory): string {
-	if (category === "control-flow") return "IR_PARTIAL_LOWERING_CONTROL_FLOW";
-	return "IR_NODE_NOT_PROMOTED_HTML";
-}
-
-function unsupportedSyntaxMessage(category: UnsupportedSyntaxCategory): string {
-	if (category === "control-flow") {
-		return "Control-flow omission means render-site reachability is incomplete; syntax is preserved in LiquidHTML AST";
-	}
-	return "HTML elements are not promoted to ArtifactIR in v0; syntax is preserved in LiquidHTML AST";
+): NazareAst["diagnostics"] {
+	return Array.from(unsupportedSyntax.entries()).map(([category, node]) => {
+		const span = spanFromOffsets(source, file, node.position);
+		return category === "control-flow"
+			? controlFlowNotLowered(span)
+			: htmlNotPromoted(span);
+	});
 }
 
 function hasDefaultValue(typeExpression: string): boolean {

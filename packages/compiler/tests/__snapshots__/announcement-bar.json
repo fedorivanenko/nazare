@@ -493,8 +493,7 @@
         "expressionId": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:output:1",
         "symbolId": "symbol:setting:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text"
       }
-    ],
-    "diagnostics": []
+    ]
   },
   "graph": {
     "nodes": [
