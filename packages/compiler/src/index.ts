@@ -36,6 +36,10 @@ export { checkArtifactIR } from "./check.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForPackage } from "./ids.js";
 export { parseNazareLiquid } from "./parser.js";
+export {
+	type ThemeSchemaFromIROptions,
+	themeSchemaFromIR,
+} from "./schema.js";
 export { bindArtifactIR, contractFromIR } from "./symbols.js";
 export { syntaxFromAst } from "./syntax.js";
 export { validateArtifactGraph, validateArtifactIR } from "./validate.js";

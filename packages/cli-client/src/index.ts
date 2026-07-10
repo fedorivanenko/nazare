@@ -5,6 +5,7 @@ import {
 	type ContractResolver,
 	compileNazareArtifact,
 	compileNazareArtifactWithResolver,
+	themeSchemaFromIR,
 } from "@nazare/compiler";
 import type { NazareManifest } from "@nazare/core";
 
@@ -65,8 +66,18 @@ try {
 		process.exit(hasErrors(result.issues) ? 1 : 0);
 	}
 
+	if (command === "schema") {
+		const schema = themeSchemaFromIR(result.ir, {
+			name: schemaName(file, packageId),
+		});
+		console.log(
+			JSON.stringify({ schema, issues: result.issues }, null, 2),
+		);
+		process.exit(hasErrors(result.issues) ? 1 : 0);
+	}
+
 	if (command === "dump") {
-		const written = await writeDumpFiles(file, result);
+		const written = await writeDumpFiles(file, result, packageId);
 		console.log(JSON.stringify({ written, issues: result.issues }, null, 2));
 		process.exit(hasErrors(result.issues) ? 1 : 0);
 	}
@@ -126,14 +137,19 @@ async function packageIdForEntry(
 async function writeDumpFiles(
 	entryFile: string,
 	result: Awaited<ReturnType<typeof compileNazareArtifactWithResolver>>,
+	packageId: string | undefined,
 ): Promise<string[]> {
 	const outputDir = ".nazare-out";
 	const base = artifactBaseName(entryFile);
+	const schema = themeSchemaFromIR(result.ir, {
+		name: schemaName(entryFile, packageId),
+	});
 	const files = [
 		[`${base}.ast.json`, { ast: result.ast, issues: result.issues }],
 		[`${base}.ir.json`, { ir: result.ir, issues: result.issues }],
 		[`${base}.graph.json`, { graph: result.graph, issues: result.issues }],
 		[`${base}.validate.json`, { issues: result.issues }],
+		[`${base}.schema.json`, { schema, issues: result.issues }],
 		[`${base}.artifact.json`, result],
 	] as const;
 
@@ -147,6 +163,10 @@ async function writeDumpFiles(
 	}
 
 	return written;
+}
+
+function schemaName(entryFile: string, packageId: string | undefined): string {
+	return packageId?.split("/").at(-1) ?? artifactBaseName(entryFile);
 }
 
 function artifactBaseName(entryFile: string): string {
@@ -182,6 +202,7 @@ function printHelp(): void {
   nazare ir <file>
   nazare graph <file>
   nazare validate <file>
+  nazare schema <file>
   nazare artifact <file>
   nazare dump <file>`);
 }

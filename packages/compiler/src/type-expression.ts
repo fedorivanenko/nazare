@@ -86,6 +86,11 @@ export function parseTypeExpression(source: string): ParsedTypeExpression {
 	const settingObject = isObject(settingArgument)
 		? (settingArgument as TypeExpressionObject)
 		: undefined;
+	const defaultCall = ast.calls.find((call) => call.name === "default");
+	const defaultCallValue =
+		defaultCall && isLiteral(defaultCall.arguments[0])
+			? defaultCall.arguments[0]
+			: undefined;
 
 	return {
 		ast,
@@ -94,7 +99,7 @@ export function parseTypeExpression(source: string): ParsedTypeExpression {
 			setting: settingCall
 				? {
 						label: stringValue(settingObject?.label),
-						default: settingObject?.default,
+						default: settingObject?.default ?? defaultCallValue,
 					}
 				: undefined,
 		},

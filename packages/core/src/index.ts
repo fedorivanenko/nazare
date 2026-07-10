@@ -11,3 +11,4 @@ export * from "./semantic.js";
 export * from "./source.js";
 export * from "./symbol.js";
 export * from "./syntax.js";
+export * from "./theme-schema.js";
