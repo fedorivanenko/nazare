@@ -58,29 +58,12 @@ function validateArgumentBindings(ir: ArtifactIR): ValidationIssue[] {
 				resolution.kind === "prop-binding" &&
 				resolution.argumentId === argument.id,
 		);
-		const hasDiagnostic = ir.diagnostics.some(
-			(diagnostic) => diagnostic.nodeId === argument.id,
-		);
-		const renderHasUnresolvedContractDiagnostic = ir.diagnostics.some(
-			(diagnostic) =>
-				diagnostic.code === "CONSTRAINT_UNRESOLVED_EXTERNAL_CONTRACT" &&
-				diagnostic.nodeId === argument.renderSiteId,
-		);
-		if (
-			bindings.length === 1 ||
-			hasDiagnostic ||
-			renderHasUnresolvedContractDiagnostic
-		) {
-			continue;
-		}
+		if (bindings.length <= 1) continue;
 
 		issues.push({
 			severity: "error",
-			code:
-				bindings.length > 1
-					? "CONSTRAINT_PROP_ARGUMENT_AMBIGUOUS"
-					: "CONSTRAINT_PROP_ARGUMENT_UNRESOLVED",
-			message: `Prop argument ${argument.id} must have exactly one prop binding or diagnostic; found ${bindings.length}`,
+			code: "CONSTRAINT_PROP_ARGUMENT_AMBIGUOUS",
+			message: `Prop argument ${argument.id} must have at most one prop binding; found ${bindings.length}`,
 			nodeId: argument.id,
 			span: argument.span,
 		});

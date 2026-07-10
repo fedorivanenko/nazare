@@ -1,4 +1,5 @@
 import type { ArtifactContract } from "@nazare/core";
+import { checkArtifactIR } from "./check.js";
 import { artifactGraphFromIR } from "./graph.js";
 import { parseNazareLiquid } from "./parser.js";
 import { bindArtifactIR, contractFromIR } from "./symbols.js";
@@ -16,6 +17,7 @@ export type {
 	NazareRenderNode,
 	ParseDiagnostic,
 } from "./ast.js";
+export { checkArtifactIR } from "./check.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { parseNazareLiquid } from "./parser.js";
 export {
@@ -48,6 +50,7 @@ export function compileNazareArtifact(
 	const graph = artifactGraphFromIR(ir);
 	const issues = [
 		...ast.diagnostics,
+		...checkArtifactIR(ir, options.contracts),
 		...validateArtifactIR(ir),
 		...validateArtifactGraph(graph),
 	];
