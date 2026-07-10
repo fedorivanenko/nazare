@@ -31,14 +31,31 @@ export type SemanticType =
 
 export const shopifyObjectTypeNames = [
 	"ShopifyArticle",
+	"ShopifyBlock",
+	"ShopifyBlog",
 	"ShopifyCart",
 	"ShopifyCollection",
 	"ShopifyCustomer",
+	"ShopifyFilter",
+	"ShopifyFont",
 	"ShopifyImage",
+	"ShopifyLineItem",
+	"ShopifyLink",
+	"ShopifyLinklist",
+	"ShopifyLocalization",
 	"ShopifyMedia",
+	"ShopifyMetafield",
+	"ShopifyMetaobject",
+	"ShopifyOrder",
 	"ShopifyPage",
+	"ShopifyPaginate",
 	"ShopifyProduct",
+	"ShopifyRoutes",
+	"ShopifySection",
+	"ShopifySellingPlan",
+	"ShopifyShop",
 	"ShopifyVariant",
+	"ShopifyVideo",
 ] as const;
 
 export type ShopifyObjectTypeName = (typeof shopifyObjectTypeNames)[number];

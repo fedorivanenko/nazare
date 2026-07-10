@@ -157,6 +157,25 @@ test("type-expression: color, richtext, and handle types", () => {
 	);
 });
 
+test("type-expression: shopify objects resolve to named object types", () => {
+	for (const name of [
+		"ShopifyBlog",
+		"ShopifyLinklist",
+		"ShopifyFont",
+		"ShopifyMetaobject",
+		"ShopifyShop",
+	]) {
+		assert.deepEqual(parseTypeExpression(name).typeInfo.valueType, {
+			kind: "object",
+			name,
+		});
+	}
+	assert.deepEqual(
+		parseTypeExpression("array(ShopifyLink)").typeInfo.valueType,
+		{ kind: "array", element: { kind: "object", name: "ShopifyLink" } },
+	);
+});
+
 test("type-expression: escaped quotes in strings", () => {
 	const parsed = parseTypeExpression(
 		`string.setting({ label: "Say \\"hi\\"" })`,
