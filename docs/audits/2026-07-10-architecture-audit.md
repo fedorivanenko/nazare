@@ -60,6 +60,23 @@ Parser + binder are exactly the code that regresses silently. `.nazare-out/*.jso
 - `unsupportedSyntax` map keeps only first node per category — later occurrences lose spans; consider collecting all, capping message count at report time.
 - README layout block is good — keep it in sync as packages become real; add one paragraph per compiler pass in `packages/compiler/README.md` (the pass pipeline is the core mental model and currently lives only in `index.ts` code).
 
+## Status (2026-07-10)
+
+All eight issues addressed same day, in commits `3da807c`..HEAD:
+
+1. ✅ ids.ts owns all ID formats; symbol scopes navigate nodes, no ID parsing
+2. ✅ bind/check split; validate.ts keeps structural invariants only
+3. ✅ single `Diagnostic` type; `diagnostics.ts` catalog of all codes
+4. ✅ `type-expression.ts` recursive-descent parser; silent skips now diagnose
+5. ✅ `ir-index.ts` indexed lookups replace linear scans
+6. ✅ core split by layer; aspirational kinds deleted
+7. ✅ `ContractResolver` in compiler; CLI fs resolver, no repo-relative path, no double compile
+8. ✅ golden tests over examples + unit tests for check/type-expression (17 tests)
+
+Smaller notes: stable content-derived edge ids ✅, explicit `CompileResult` ✅, compiler README ✅. Deferred: reachability stays in parser (fine for v0), unsupported-syntax dedup keeps first node per category.
+
+Follow-up found while testing: string literals are not assignable to `url` props — only `section.settings.*` typed `url` passes. Existing semantics, now documented by tests; decide later whether intentional.
+
 ## Suggested order
 
 1. Split binder → `bind` + `check` (issue 2) — biggest structural clarity win.
