@@ -112,7 +112,15 @@
         "typeExpression": "string.optional()",
         "typeInfo": {
           "valueType": {
-            "kind": "string"
+            "kind": "union",
+            "members": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "nil"
+              }
+            ]
           }
         },
         "required": false,
@@ -252,7 +260,15 @@
         "resolution": "local",
         "source": "syntax",
         "semanticType": {
-          "kind": "string"
+          "kind": "union",
+          "members": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "nil"
+            }
+          ]
         }
       },
       {
@@ -265,7 +281,15 @@
         "resolution": "local",
         "source": "syntax",
         "semanticType": {
-          "kind": "string"
+          "kind": "union",
+          "members": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "nil"
+            }
+          ]
         }
       }
     ],
@@ -663,7 +687,15 @@
         "typeExpression": "string.optional()",
         "typeInfo": {
           "valueType": {
-            "kind": "string"
+            "kind": "union",
+            "members": [
+              {
+                "kind": "string"
+              },
+              {
+                "kind": "nil"
+              }
+            ]
           }
         }
       }

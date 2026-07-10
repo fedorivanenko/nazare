@@ -67,6 +67,46 @@ test("type-expression: malformed input reports error, falls back to unknown", ()
 	assert.deepEqual(parsed.typeInfo.valueType, { kind: "unknown" });
 });
 
+test("type-expression: or() builds a union", () => {
+	const parsed = parseTypeExpression("url.or(string)");
+	assert.deepEqual(parsed.typeInfo.valueType, {
+		kind: "union",
+		members: [{ kind: "url" }, { kind: "string" }],
+	});
+});
+
+test("type-expression: optional() adds nil to the type", () => {
+	const parsed = parseTypeExpression("string.optional()");
+	assert.deepEqual(parsed.typeInfo.valueType, {
+		kind: "union",
+		members: [{ kind: "string" }, { kind: "nil" }],
+	});
+	assert.equal(parsed.required, false);
+});
+
+test("type-expression: enum() replaces base with literal union", () => {
+	const parsed = parseTypeExpression(`string.enum("left", "center", "right")`);
+	assert.deepEqual(parsed.typeInfo.valueType, {
+		kind: "union",
+		members: [
+			{ kind: "string-literal", value: "left" },
+			{ kind: "string-literal", value: "center" },
+			{ kind: "string-literal", value: "right" },
+		],
+	});
+});
+
+test("type-expression: chained or/optional/setting", () => {
+	const parsed = parseTypeExpression(
+		`url.or(string).optional().setting({ label: "Link" })`,
+	);
+	assert.deepEqual(parsed.typeInfo.valueType, {
+		kind: "union",
+		members: [{ kind: "url" }, { kind: "string" }, { kind: "nil" }],
+	});
+	assert.equal(parsed.typeInfo.setting?.label, "Link");
+});
+
 test("type-expression: escaped quotes in strings", () => {
 	const parsed = parseTypeExpression(
 		`string.setting({ label: "Say \\"hi\\"" })`,

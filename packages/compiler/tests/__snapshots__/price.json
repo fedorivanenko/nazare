@@ -87,7 +87,15 @@
         "typeExpression": "Money.optional()",
         "typeInfo": {
           "valueType": {
-            "kind": "money"
+            "kind": "union",
+            "members": [
+              {
+                "kind": "money"
+              },
+              {
+                "kind": "nil"
+              }
+            ]
           }
         },
         "required": false,
@@ -210,7 +218,15 @@
         "resolution": "local",
         "source": "syntax",
         "semanticType": {
-          "kind": "money"
+          "kind": "union",
+          "members": [
+            {
+              "kind": "money"
+            },
+            {
+              "kind": "nil"
+            }
+          ]
         }
       },
       {
@@ -223,7 +239,15 @@
         "resolution": "local",
         "source": "syntax",
         "semanticType": {
-          "kind": "money"
+          "kind": "union",
+          "members": [
+            {
+              "kind": "money"
+            },
+            {
+              "kind": "nil"
+            }
+          ]
         }
       },
       {
@@ -650,7 +674,15 @@
         "typeExpression": "Money.optional()",
         "typeInfo": {
           "valueType": {
-            "kind": "money"
+            "kind": "union",
+            "members": [
+              {
+                "kind": "money"
+              },
+              {
+                "kind": "nil"
+              }
+            ]
           }
         }
       },

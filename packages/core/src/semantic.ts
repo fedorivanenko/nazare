@@ -9,6 +9,8 @@ export type SemanticType =
 	| { kind: "object"; name?: string; fields?: Record<string, SemanticType> }
 	| { kind: "array"; element: SemanticType }
 	| { kind: "literal"; value: unknown }
+	| { kind: "union"; members: SemanticType[] }
+	| { kind: "nil" }
 	| { kind: "unknown" };
 
 export const shopifyObjectTypeNames = [

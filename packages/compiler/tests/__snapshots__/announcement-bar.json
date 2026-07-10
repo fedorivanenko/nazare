@@ -423,7 +423,15 @@
         "source": "compiled-contract",
         "ownerSymbolId": "symbol:component:@nazare/link#default",
         "semanticType": {
-          "kind": "string"
+          "kind": "union",
+          "members": [
+            {
+              "kind": "string"
+            },
+            {
+              "kind": "nil"
+            }
+          ]
         }
       }
     ],

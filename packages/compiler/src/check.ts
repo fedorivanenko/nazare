@@ -135,6 +135,18 @@ function isAssignable(
 ): boolean {
 	if (!from || !to) return true;
 	if (from.kind === "unknown" || to.kind === "unknown") return true;
+	if (to.kind === "union") {
+		return to.members.some((member) => isAssignable(from, member));
+	}
+	if (from.kind === "union") {
+		return from.members.every((member) => isAssignable(member, to));
+	}
+	if (from.kind === "string-literal" && to.kind === "string-literal") {
+		return from.value === to.value;
+	}
+	if (from.kind === "number-literal" && to.kind === "number-literal") {
+		return from.value === to.value;
+	}
 	if (from.kind === "string-literal" && to.kind === "string") return true;
 	if (from.kind === "number-literal" && to.kind === "number") return true;
 	if (from.kind === "literal") return true;

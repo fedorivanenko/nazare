@@ -66,6 +66,34 @@ test("check: string literal is not assignable to url prop", () => {
 	assert.ok(codes(result).includes("CONSTRAINT_PROP_TYPE_MISMATCH"));
 });
 
+test("check: union prop accepts any member type", () => {
+	const flexibleLink = compileNazareArtifact(
+		`{% props {
+  href: url.or(string).required(),
+  align: string.enum("left", "right"),
+} %}`,
+		"flexible.nz.liquid",
+		{ packageId: "@test/flexible" },
+	).contract;
+
+	const compile = (body) =>
+		compileNazareArtifact(
+			`{% import Flexible from "@test/flexible" %}
+{% render Flexible {${body}} %}`,
+			"consumer.nz.liquid",
+			{ contracts: [flexibleLink] },
+		);
+
+	const ok = compile(`href: "https://x.dev", align: "left"`);
+	assert.deepEqual(
+		codes(ok).filter((code) => code === "CONSTRAINT_PROP_TYPE_MISMATCH"),
+		[],
+	);
+
+	const badEnum = compile(`href: "https://x.dev", align: "middle"`);
+	assert.ok(codes(badEnum).includes("CONSTRAINT_PROP_TYPE_MISMATCH"));
+});
+
 test("check: unresolved contract downgrades to warning", () => {
 	const source = `{% import Card from "@test/card" %}
 {% render Card {title: "Hi"} %}`;

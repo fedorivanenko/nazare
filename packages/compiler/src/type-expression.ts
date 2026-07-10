@@ -4,6 +4,8 @@ import { shopifyObjectTypeNames } from "@nazare/core";
 // Parses the props type-expression DSL, e.g.:
 //   string.setting({ label: "Text", default: "Free shipping" })
 //   url.required()
+//   url.or(string).optional()
+//   string.enum("left", "center", "right")
 //   array(ShopifyProduct)
 //   object("ShopifyImage").optional()
 //
@@ -11,11 +13,19 @@ import { shopifyObjectTypeNames } from "@nazare/core";
 //   expression   := base call*
 //   base         := identifier [ "(" base-argument ")" ]
 //   base-argument:= identifier | string
-//   call         := "." identifier "(" [ argument ] ")"
-//   argument     := literal | object
+//   call         := "." identifier "(" [ argument ("," argument)* ] ")"
+//   argument     := literal | object | identifier   (identifier = type ref)
 //   object       := "{" [ entry ("," entry)* [","] ] "}"
 //   entry        := identifier ":" (literal | object)
 //   literal      := string | number | true | false
+//
+// Builder semantics:
+//   .required()      prop must be supplied at every render site
+//   .optional()      value may be nil; type becomes T | nil
+//   .or(type)        union with another type
+//   .enum(lit, ...)  replaces the base type with a union of literals
+//   .default(value)  prop has a default
+//   .setting({...})  prop is projected to a theme-editor setting
 
 export type TypeExpressionLiteral = string | number | boolean;
 
@@ -23,9 +33,16 @@ export type TypeExpressionObject = {
 	[key: string]: TypeExpressionLiteral | TypeExpressionObject;
 };
 
+export type TypeExpressionTypeRef = { typeRef: string };
+
+export type TypeExpressionArgument =
+	| TypeExpressionLiteral
+	| TypeExpressionObject
+	| TypeExpressionTypeRef;
+
 export type TypeExpressionCall = {
 	name: string;
-	argument?: TypeExpressionLiteral | TypeExpressionObject;
+	arguments: TypeExpressionArgument[];
 };
 
 export type TypeExpressionAst = {
@@ -56,14 +73,17 @@ export function parseTypeExpression(source: string): ParsedTypeExpression {
 	}
 
 	const settingCall = ast.calls.find((call) => call.name === "setting");
-	const settingObject = isObject(settingCall?.argument)
-		? settingCall.argument
+	const settingArgument = settingCall?.arguments[0];
+	// isObject excludes type refs at runtime; the cast is needed because a
+	// { typeRef } object is structurally assignable to the index signature.
+	const settingObject = isObject(settingArgument)
+		? (settingArgument as TypeExpressionObject)
 		: undefined;
 
 	return {
 		ast,
 		typeInfo: {
-			valueType: valueTypeFromBase(ast.base),
+			valueType: valueTypeFromAst(ast),
 			setting: settingCall
 				? {
 						label: stringValue(settingObject?.label),
@@ -74,10 +94,37 @@ export function parseTypeExpression(source: string): ParsedTypeExpression {
 		required: ast.calls.some((call) => call.name === "required"),
 		hasDefault:
 			ast.calls.some((call) => call.name === "default") ||
-			ast.calls.some(
-				(call) => isObject(call.argument) && "default" in call.argument,
+			ast.calls.some((call) =>
+				call.arguments.some(
+					(argument) => isObject(argument) && "default" in argument,
+				),
 			),
 	};
+}
+
+function valueTypeFromAst(ast: TypeExpressionAst): SemanticType {
+	let members = [valueTypeFromBase(ast.base)];
+
+	for (const call of ast.calls) {
+		if (call.name === "enum") {
+			// enum replaces the base: `string.enum("a", "b")` is "a" | "b".
+			members = call.arguments.filter(isLiteral).map(literalValueType);
+			continue;
+		}
+		if (call.name === "or") {
+			for (const argument of call.arguments) {
+				if (isTypeRef(argument)) members.push(namedValueType(argument.typeRef));
+				else if (isLiteral(argument)) members.push(literalValueType(argument));
+			}
+		}
+	}
+
+	if (ast.calls.some((call) => call.name === "optional")) {
+		members.push({ kind: "nil" });
+	}
+
+	if (members.length === 0) return { kind: "unknown" };
+	return members.length === 1 ? members[0] : { kind: "union", members };
 }
 
 function valueTypeFromBase(base: TypeExpressionAst["base"]): SemanticType {
@@ -102,6 +149,7 @@ function namedValueType(name: string): SemanticType {
 	if (name === "url") return { kind: "url" };
 	if (name === "boolean") return { kind: "boolean" };
 	if (name === "number") return { kind: "number" };
+	if (name === "nil") return { kind: "nil" };
 	if (name === "Money") return { kind: "money" };
 	if ((shopifyObjectTypeNames as readonly string[]).includes(name)) {
 		return { kind: "object", name };
@@ -110,10 +158,30 @@ function namedValueType(name: string): SemanticType {
 	return { kind: "unknown" };
 }
 
+function literalValueType(literal: TypeExpressionLiteral): SemanticType {
+	if (typeof literal === "string")
+		return { kind: "string-literal", value: literal };
+	if (typeof literal === "number")
+		return { kind: "number-literal", value: literal };
+	return { kind: "boolean" };
+}
+
 function isObject(
-	value: TypeExpressionLiteral | TypeExpressionObject | undefined,
+	value: TypeExpressionArgument | undefined,
 ): value is TypeExpressionObject {
-	return typeof value === "object" && value !== null;
+	return typeof value === "object" && value !== null && !("typeRef" in value);
+}
+
+function isTypeRef(
+	value: TypeExpressionArgument,
+): value is TypeExpressionTypeRef {
+	return typeof value === "object" && value !== null && "typeRef" in value;
+}
+
+function isLiteral(
+	value: TypeExpressionArgument,
+): value is TypeExpressionLiteral {
+	return typeof value !== "object";
 }
 
 function stringValue(
@@ -163,14 +231,29 @@ class Parser {
 		this.skipWhitespace();
 		this.expect("(");
 		this.skipWhitespace();
-		if (this.peek() === ")") {
-			this.position += 1;
-			return { name };
+		const arguments_: TypeExpressionArgument[] = [];
+		while (this.peek() !== ")") {
+			arguments_.push(this.parseArgument());
+			this.skipWhitespace();
+			if (this.peek() === ",") {
+				this.position += 1;
+				this.skipWhitespace();
+			}
 		}
-		const argument = this.parseValue();
-		this.skipWhitespace();
 		this.expect(")");
-		return { name, argument };
+		return { name, arguments: arguments_ };
+	}
+
+	private parseArgument(): TypeExpressionArgument {
+		this.skipWhitespace();
+		const char = this.peek();
+		if (char === "{") return this.parseObject();
+		if (char === '"' || char === "'") return this.parseString();
+		if (char !== undefined && /[\d-]/.test(char)) return this.parseNumber();
+		const word = this.parseIdentifier();
+		if (word === "true") return true;
+		if (word === "false") return false;
+		return { typeRef: word };
 	}
 
 	private parseValue(): TypeExpressionLiteral | TypeExpressionObject {
