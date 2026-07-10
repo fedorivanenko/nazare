@@ -188,6 +188,9 @@ function valueTypeFromBase(base: TypeExpressionAst["base"]): SemanticType {
 function namedValueType(name: string): SemanticType {
 	if (name === "string") return { kind: "string" };
 	if (name === "url") return { kind: "url" };
+	if (name === "color") return { kind: "color" };
+	if (name === "richtext") return { kind: "richtext" };
+	if (name === "handle") return { kind: "handle" };
 	if (name === "boolean") return { kind: "boolean" };
 	if (name === "number") return { kind: "number" };
 	if (name === "nil") return { kind: "nil" };

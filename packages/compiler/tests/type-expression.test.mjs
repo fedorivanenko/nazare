@@ -139,6 +139,24 @@ test("type-expression: function type with returns", () => {
 	);
 });
 
+test("type-expression: color, richtext, and handle types", () => {
+	assert.deepEqual(
+		parseTypeExpression(`color.setting({ label: "Background" })`).typeInfo
+			.valueType,
+		{ kind: "color" },
+	);
+	assert.deepEqual(parseTypeExpression("richtext").typeInfo.valueType, {
+		kind: "richtext",
+	});
+	assert.deepEqual(
+		parseTypeExpression("handle.or(string)").typeInfo.valueType,
+		{
+			kind: "union",
+			members: [{ kind: "handle" }, { kind: "string" }],
+		},
+	);
+});
+
 test("type-expression: escaped quotes in strings", () => {
 	const parsed = parseTypeExpression(
 		`string.setting({ label: "Say \\"hi\\"" })`,

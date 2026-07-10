@@ -14,6 +14,9 @@ export type SemanticType =
 	| { kind: "string" }
 	| { kind: "string-literal"; value: string }
 	| { kind: "url" }
+	| { kind: "color" }
+	| { kind: "richtext" }
+	| { kind: "handle" }
 	| { kind: "boolean" }
 	| { kind: "number"; constraints?: NumberConstraints }
 	| { kind: "number-literal"; value: number }
