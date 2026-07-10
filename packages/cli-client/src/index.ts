@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { compileNazareArtifact } from "@nazare/compiler";
-import type { ArtifactContract, NazareManifest } from "@nazare/core";
+import {
+	compileNazareArtifact,
+	compileNazareArtifactWithResolver,
+	type ContractResolver,
+} from "@nazare/compiler";
+import type { NazareManifest } from "@nazare/core";
 
 const [, , command, file] = process.argv;
 
@@ -25,9 +28,9 @@ if (!file) {
 
 try {
 	const source = await readFile(file, "utf8");
-	const initial = compileNazareArtifact(source, file);
-	const contracts = await loadContracts(initial.ir.syntax);
-	const result = compileNazareArtifact(source, file, { contracts });
+	const result = await compileNazareArtifactWithResolver(source, file, {
+		resolver: localContractResolver(file),
+	});
 
 	if (command === "ir") {
 		console.log(
@@ -56,57 +59,51 @@ try {
 	process.exit(1);
 }
 
-async function loadContracts(
-	syntax: { kind: string; packageId?: string }[],
-): Promise<ArtifactContract[]> {
-	const packageIds = Array.from(
-		new Set(
-			syntax
-				.filter((node) => node.kind === "import" && node.packageId)
-				.map((node) => node.packageId as string),
-		),
-	);
-	const contracts: ArtifactContract[] = [];
+/**
+ * Resolves package contracts from the local filesystem by searching, in
+ * order: sibling component directories of the compiled file, then
+ * examples/components under the current working directory.
+ */
+function localContractResolver(entryFile: string): ContractResolver {
+	const searchRoots = [
+		resolve(dirname(entryFile), ".."),
+		resolve(process.cwd(), "examples", "components"),
+	];
 
-	for (const packageId of packageIds) {
-		const contract = await loadLocalContract(packageId);
-		if (contract) contracts.push(contract);
-	}
+	return async (packageId) => {
+		const componentName = packageId.split("/").at(-1);
+		if (!componentName) return undefined;
 
-	return contracts;
-}
+		for (const root of searchRoots) {
+			const manifestPath = join(root, componentName, "nazare.json");
+			const manifestSource = await readOptional(manifestPath);
+			if (manifestSource === undefined) continue;
 
-async function loadLocalContract(
-	packageId: string,
-): Promise<ArtifactContract | undefined> {
-	const componentName = packageId.split("/").at(-1);
-	if (!componentName) return undefined;
+			const manifest = JSON.parse(manifestSource) as NazareManifest;
+			const entryPath = join(dirname(manifestPath), manifest.entry);
+			const entrySource = await readFile(entryPath, "utf8");
+			return compileNazareArtifact(entrySource, entryPath, {
+				packageId: manifest.id,
+			}).contract;
+		}
 
-	const manifestPath = resolveRepoPath(
-		"examples",
-		"components",
-		componentName,
-		"nazare.json",
-	);
-
-	try {
-		const manifest = JSON.parse(
-			await readFile(manifestPath, "utf8"),
-		) as NazareManifest;
-		const componentDir = dirname(manifestPath);
-		const entryPath = join(componentDir, manifest.entry);
-		const source = await readFile(entryPath, "utf8");
-		return compileNazareArtifact(source, entryPath, {
-			packageId: manifest.id,
-		}).contract;
-	} catch {
 		return undefined;
-	}
+	};
 }
 
-function resolveRepoPath(...parts: string[]): string {
-	const here = dirname(fileURLToPath(import.meta.url));
-	return resolve(here, "..", "..", "..", ...parts);
+async function readOptional(path: string): Promise<string | undefined> {
+	try {
+		return await readFile(path, "utf8");
+	} catch (error) {
+		if (
+			error instanceof Error &&
+			"code" in error &&
+			(error.code === "ENOENT" || error.code === "ENOTDIR")
+		) {
+			return undefined;
+		}
+		throw error;
+	}
 }
 
 function hasErrors(

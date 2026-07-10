@@ -6,6 +6,7 @@ import type {
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
 import { checkArtifactIR } from "./check.js";
+import { contractResolutionFailed } from "./diagnostics.js";
 import { artifactGraphFromIR } from "./graph.js";
 import { parseNazareLiquid } from "./parser.js";
 import { bindArtifactIR, contractFromIR } from "./symbols.js";
@@ -36,6 +37,19 @@ export type CompileNazareArtifactOptions = {
 	packageId?: string;
 };
 
+/**
+ * Supplies the compiled contract for an imported package, or undefined when
+ * the package is unknown. Thrown errors surface as compile diagnostics.
+ */
+export type ContractResolver = (
+	packageId: string,
+) => Promise<ArtifactContract | undefined> | ArtifactContract | undefined;
+
+export type CompileWithResolverOptions = {
+	resolver?: ContractResolver;
+	packageId?: string;
+};
+
 export type CompileResult = {
 	ast: NazareAst;
 	ir: ArtifactIR;
@@ -53,7 +67,50 @@ export function compileNazareArtifact(
 	file: string,
 	options: CompileNazareArtifactOptions = {},
 ): CompileResult {
+	return compileFromAst(parseNazareLiquid(source, file), options);
+}
+
+export async function compileNazareArtifactWithResolver(
+	source: string,
+	file: string,
+	options: CompileWithResolverOptions = {},
+): Promise<CompileResult> {
 	const ast = parseNazareLiquid(source, file);
+	const imports = ast.nodes.filter(
+		(node) => node.type === "NazareImport",
+	);
+	const contracts: ArtifactContract[] = [];
+	const resolutionIssues: Diagnostic[] = [];
+	const seen = new Set<string>();
+
+	for (const node of imports) {
+		if (!options.resolver || seen.has(node.packageId)) continue;
+		seen.add(node.packageId);
+		try {
+			const contract = await options.resolver(node.packageId);
+			if (contract) contracts.push(contract);
+		} catch (error) {
+			resolutionIssues.push(
+				contractResolutionFailed(
+					node.packageId,
+					error instanceof Error ? error.message : String(error),
+					node.span,
+				),
+			);
+		}
+	}
+
+	const result = compileFromAst(ast, {
+		contracts,
+		packageId: options.packageId,
+	});
+	return { ...result, issues: [...resolutionIssues, ...result.issues] };
+}
+
+function compileFromAst(
+	ast: NazareAst,
+	options: CompileNazareArtifactOptions,
+): CompileResult {
 	const syntax = syntaxFromAst(ast);
 	const ir = bindArtifactIR(syntax, { contracts: options.contracts });
 	const graph = artifactGraphFromIR(ir);

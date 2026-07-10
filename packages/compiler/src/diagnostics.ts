@@ -60,6 +60,19 @@ export function htmlNotPromoted(span: SourceSpan): Diagnostic {
 	};
 }
 
+export function contractResolutionFailed(
+	packageId: string,
+	reason: string,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "warning",
+		code: "CONTRACT_RESOLUTION_FAILED",
+		message: `Failed to resolve contract for ${packageId}: ${reason}`,
+		span,
+	};
+}
+
 export function unresolvedExternalContract(
 	targetName: string,
 	nodeId: Id,
