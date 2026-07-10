@@ -94,6 +94,40 @@ test("check: union prop accepts any member type", () => {
 	assert.ok(codes(badEnum).includes("CONSTRAINT_PROP_TYPE_MISMATCH"));
 });
 
+test("check: number literal checked against range constraints", () => {
+	const gauge = compileNazareArtifact(
+		`{% props {
+  size: number.min(0).max(100).step(5).required(),
+} %}`,
+		"gauge.nz.liquid",
+		{ packageId: "@test/gauge" },
+	).contract;
+
+	const compile = (body) =>
+		compileNazareArtifact(
+			`{% import Gauge from "@test/gauge" %}
+{% render Gauge {${body}} %}`,
+			"consumer.nz.liquid",
+			{ contracts: [gauge] },
+		);
+
+	assert.deepEqual(
+		codes(compile(`size: 25`)).filter((code) =>
+			code.startsWith("CONSTRAINT_"),
+		),
+		[],
+	);
+	assert.ok(
+		codes(compile(`size: 150`)).includes("CONSTRAINT_PROP_VALUE_OUT_OF_RANGE"),
+	);
+	assert.ok(
+		codes(compile(`size: 27`)).includes("CONSTRAINT_PROP_VALUE_OUT_OF_RANGE"),
+	);
+	assert.ok(
+		codes(compile(`size: -5`)).includes("CONSTRAINT_PROP_VALUE_OUT_OF_RANGE"),
+	);
+});
+
 test("check: unresolved contract downgrades to warning", () => {
 	const source = `{% import Card from "@test/card" %}
 {% render Card {title: "Hi"} %}`;

@@ -1,4 +1,8 @@
-import type { PropTypeInfo, SemanticType } from "@nazare/core";
+import type {
+	NumberConstraints,
+	PropTypeInfo,
+	SemanticType,
+} from "@nazare/core";
 import { shopifyObjectTypeNames } from "@nazare/core";
 
 // Parses the props type-expression DSL, e.g.:
@@ -26,6 +30,9 @@ import { shopifyObjectTypeNames } from "@nazare/core";
 //   .enum(lit, ...)  replaces the base type with a union of literals
 //   .default(value)  prop has a default
 //   .setting({...})  prop is projected to a theme-editor setting
+//   .min(n) .max(n) .step(n) .unit("px")
+//                    value constraints on a number base (range settings)
+//   .returns(type)   return type on a function base
 
 export type TypeExpressionLiteral = string | number | boolean;
 
@@ -102,8 +109,10 @@ export function parseTypeExpression(source: string): ParsedTypeExpression {
 	};
 }
 
+const numberConstraintCalls = ["min", "max", "step", "unit"] as const;
+
 function valueTypeFromAst(ast: TypeExpressionAst): SemanticType {
-	let members = [valueTypeFromBase(ast.base)];
+	let members = [applyBaseCalls(valueTypeFromBase(ast.base), ast.calls)];
 
 	for (const call of ast.calls) {
 		if (call.name === "enum") {
@@ -125,6 +134,38 @@ function valueTypeFromAst(ast: TypeExpressionAst): SemanticType {
 
 	if (members.length === 0) return { kind: "unknown" };
 	return members.length === 1 ? members[0] : { kind: "union", members };
+}
+
+function applyBaseCalls(
+	base: SemanticType,
+	calls: TypeExpressionCall[],
+): SemanticType {
+	if (base.kind === "number") {
+		let constraints: NumberConstraints | undefined;
+		for (const call of calls) {
+			const name = numberConstraintCalls.find((c) => c === call.name);
+			const argument = call.arguments[0];
+			if (!name || isObject(argument) || isTypeRef(argument)) continue;
+			const valid =
+				name === "unit"
+					? typeof argument === "string"
+					: typeof argument === "number";
+			if (!valid) continue;
+			constraints = { ...constraints, [name]: argument };
+		}
+		return constraints ? { kind: "number", constraints } : base;
+	}
+
+	if (base.kind === "function") {
+		const returnsCall = calls.find((call) => call.name === "returns");
+		const argument = returnsCall?.arguments[0];
+		if (argument !== undefined && isTypeRef(argument)) {
+			return { kind: "function", returns: namedValueType(argument.typeRef) };
+		}
+		return base;
+	}
+
+	return base;
 }
 
 function valueTypeFromBase(base: TypeExpressionAst["base"]): SemanticType {
@@ -150,6 +191,7 @@ function namedValueType(name: string): SemanticType {
 	if (name === "boolean") return { kind: "boolean" };
 	if (name === "number") return { kind: "number" };
 	if (name === "nil") return { kind: "nil" };
+	if (name === "function") return { kind: "function" };
 	if (name === "Money") return { kind: "money" };
 	if ((shopifyObjectTypeNames as readonly string[]).includes(name)) {
 		return { kind: "object", name };

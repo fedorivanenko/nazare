@@ -133,6 +133,22 @@ export function propTypeMismatch(
 	};
 }
 
+export function propValueOutOfRange(
+	argumentName: string,
+	value: number,
+	reason: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_PROP_VALUE_OUT_OF_RANGE",
+		message: `Prop ${argumentName} value ${value} is ${reason}`,
+		nodeId,
+		span,
+	};
+}
+
 export function renderTargetResolutionCount(
 	renderSiteId: Id,
 	found: number,

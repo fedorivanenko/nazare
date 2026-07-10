@@ -107,6 +107,38 @@ test("type-expression: chained or/optional/setting", () => {
 	assert.equal(parsed.typeInfo.setting?.label, "Link");
 });
 
+test("type-expression: number range constraints", () => {
+	const parsed = parseTypeExpression(
+		`number.min(0).max(100).step(5).unit("px").setting({ label: "Size" })`,
+	);
+	assert.deepEqual(parsed.typeInfo.valueType, {
+		kind: "number",
+		constraints: { min: 0, max: 100, step: 5, unit: "px" },
+	});
+	assert.equal(parsed.typeInfo.setting?.label, "Size");
+});
+
+test("type-expression: constrained number stays number when optional", () => {
+	const parsed = parseTypeExpression("number.min(1).optional()");
+	assert.deepEqual(parsed.typeInfo.valueType, {
+		kind: "union",
+		members: [
+			{ kind: "number", constraints: { min: 1 } },
+			{ kind: "nil" },
+		],
+	});
+});
+
+test("type-expression: function type with returns", () => {
+	assert.deepEqual(parseTypeExpression("function").typeInfo.valueType, {
+		kind: "function",
+	});
+	assert.deepEqual(
+		parseTypeExpression("function.returns(string)").typeInfo.valueType,
+		{ kind: "function", returns: { kind: "string" } },
+	);
+});
+
 test("type-expression: escaped quotes in strings", () => {
 	const parsed = parseTypeExpression(
 		`string.setting({ label: "Say \\"hi\\"" })`,

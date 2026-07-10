@@ -9,6 +9,7 @@ import type {
 } from "@nazare/core";
 import {
 	propTypeMismatch,
+	propValueOutOfRange,
 	requiredPropMissing,
 	unknownPropArgument,
 	unresolvedExternalContract,
@@ -114,6 +115,25 @@ function checkRenderSiteAgainstContract(
 					argument.span,
 				),
 			);
+			continue;
+		}
+
+		if (expressionType?.kind === "number-literal") {
+			const violation = rangeViolation(
+				expressionType.value,
+				contractProp.typeInfo.valueType,
+			);
+			if (violation) {
+				issues.push(
+					propValueOutOfRange(
+						argument.name,
+						expressionType.value,
+						violation,
+						argument.id,
+						argument.span,
+					),
+				);
+			}
 		}
 	}
 
@@ -127,6 +147,49 @@ function inferExpressionType(
 	if (!expression) return { kind: "unknown" };
 	if (expression.inferredType) return expression.inferredType;
 	return settingTypesByName.get(expression.source.trim()) ?? { kind: "unknown" };
+}
+
+/**
+ * Checks a known numeric value against the constraints of the target number
+ * type. Returns the reason the value is rejected, or undefined when the
+ * value is accepted by at least one (possibly unconstrained) number member.
+ */
+function rangeViolation(
+	value: number,
+	target: SemanticType,
+): string | undefined {
+	const numberMembers =
+		target.kind === "number"
+			? [target]
+			: target.kind === "union"
+				? target.members.filter((member) => member.kind === "number")
+				: [];
+	if (numberMembers.length === 0) return undefined;
+
+	let reason: string | undefined;
+	for (const member of numberMembers) {
+		const constraints = member.constraints;
+		if (!constraints) return undefined;
+		if (constraints.min !== undefined && value < constraints.min) {
+			reason ??= `below minimum ${constraints.min}`;
+			continue;
+		}
+		if (constraints.max !== undefined && value > constraints.max) {
+			reason ??= `above maximum ${constraints.max}`;
+			continue;
+		}
+		if (constraints.step !== undefined && constraints.step > 0) {
+			const offset = value - (constraints.min ?? 0);
+			const remainder = Math.abs(offset % constraints.step);
+			if (remainder > 1e-9 && constraints.step - remainder > 1e-9) {
+				reason ??= `not aligned to step ${constraints.step}`;
+				continue;
+			}
+		}
+		return undefined;
+	}
+
+	return reason;
 }
 
 function isAssignable(
@@ -152,6 +215,9 @@ function isAssignable(
 	if (from.kind === "literal") return true;
 	if (from.kind === "array" && to.kind === "array") {
 		return isAssignable(from.element, to.element);
+	}
+	if (from.kind === "function" && to.kind === "function") {
+		return isAssignable(from.returns, to.returns);
 	}
 	if (from.kind === "object" && to.kind === "object") {
 		return isObjectAssignable(from, to);
