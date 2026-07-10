@@ -1,3 +1,11 @@
+/**
+ * Public API of the Nazare compiler.
+ *
+ * Pipeline: parse → syntax → bind → check → graph → validate. Each pass is
+ * exported individually for tooling that needs a single stage; the
+ * compileNazareArtifact* functions run the whole pipeline. See README.md for
+ * what each pass owns.
+ */
 import type {
 	ArtifactContract,
 	ArtifactGraph,
@@ -33,7 +41,9 @@ export { syntaxFromAst } from "./syntax.js";
 export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 
 export type CompileNazareArtifactOptions = {
+	/** Contracts of imported packages; render sites are checked against them. */
 	contracts?: ArtifactContract[];
+	/** When set, the artifact's own contract is produced under this package id. */
 	packageId?: string;
 };
 
@@ -51,17 +61,24 @@ export type CompileWithResolverOptions = {
 };
 
 export type CompileResult = {
+	/** Nazare nodes plus the full LiquidHTML AST (unsupported syntax preserved). */
 	ast: NazareAst;
+	/** Flat syntax nodes, symbols, and resolutions — facts only, no judgments. */
 	ir: ArtifactIR;
+	/** IR projected into nodes and typed edges for queries and visualization. */
 	graph: ArtifactGraph;
+	/** All diagnostics from every pass; any "error" severity fails the compile. */
 	issues: Diagnostic[];
+	/** Present only when options.packageId was given. */
 	contract?: ArtifactContract;
 };
 
+/** Shortcut to a graph when diagnostics and contracts are not needed. */
 export function artifactGraphFromAst(ast: NazareAst): ArtifactGraph {
 	return artifactGraphFromIR(bindArtifactIR(syntaxFromAst(ast)));
 }
 
+/** Compiles one artifact with contracts already in hand (sync). */
 export function compileNazareArtifact(
 	source: string,
 	file: string,
@@ -70,6 +87,12 @@ export function compileNazareArtifact(
 	return compileFromAst(parseNazareLiquid(source, file), options);
 }
 
+/**
+ * Compiles one artifact, fetching each imported package's contract through
+ * the resolver first. Resolver failures do not abort the compile; they
+ * surface as CONTRACT_RESOLUTION_FAILED and the import degrades to the
+ * unresolved-contract warning.
+ */
 export async function compileNazareArtifactWithResolver(
 	source: string,
 	file: string,
