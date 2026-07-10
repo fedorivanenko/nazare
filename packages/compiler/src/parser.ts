@@ -14,11 +14,13 @@ import type {
 	NazareNode,
 	NazarePassedProp,
 	NazarePropDeclaration,
+	NazareScriptNode,
 } from "./ast.js";
 import {
 	controlFlowNotLowered,
 	htmlNotPromoted,
 	parseInvalidImport,
+	parseInvalidRefAttribute,
 	parseInvalidTypeExpression,
 	parseMalformedPropDeclaration,
 } from "./diagnostics.js";
@@ -27,6 +29,10 @@ import { parseTypeExpression } from "./type-expression.js";
 
 const importPattern = /^([A-Za-z_$][\w$]*)\s+from\s+["']([^"']+)["']$/;
 const renderPattern = /^([A-Za-z_$][\w$]*)\s*\{([\s\S]*)\}$/;
+const scriptBlockPattern =
+	/{%-?\s*script\b([^%]*?)-?%}([\s\S]*?){%-?\s*endscript\s*-?%}/g;
+const refAccessPattern = /\brefs\.([A-Za-z_$][\w$]*)/g;
+const refIdentifierPattern = /^[A-Za-z_$][\w$]*$/;
 
 type SourceRange = { start: number; end: number };
 
@@ -47,7 +53,13 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 	>();
 	const controlFlowRanges: SourceRange[] = [];
 
-	const ast = toLiquidHtmlAST(source, {
+	// Script bodies are TypeScript, which the HTML parser would misread
+	// (comparisons look like open tags). Extract them first, then blank the
+	// whole block — newlines kept — so every other span stays valid.
+	const { scripts, blankedSource } = extractScriptBlocks(source, file);
+	nodes.push(...scripts);
+
+	const ast = toLiquidHtmlAST(blankedSource, {
 		mode: "tolerant",
 		allowUnclosedDocumentNode: true,
 	});
@@ -55,6 +67,7 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 	walk(ast, (node) => {
 		collectUnsupportedSyntax(node, unsupportedSyntax);
 		collectControlFlowRange(node, controlFlowRanges);
+		collectElementRef(node, source, file, nodes, diagnostics);
 	});
 
 	walk(ast, (node) => {
@@ -134,6 +147,128 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 	);
 
 	return { file, liquidAst: ast, nodes, diagnostics };
+}
+
+function extractScriptBlocks(
+	source: string,
+	file: string,
+): { scripts: NazareScriptNode[]; blankedSource: string } {
+	const scripts: NazareScriptNode[] = [];
+	let blankedSource = source;
+
+	for (const match of source.matchAll(scriptBlockPattern)) {
+		const [block, markup, body] = match;
+		const blockStart = match.index;
+		const bodyStart = blockStart + block.indexOf(body, markup.length);
+
+		scripts.push({
+			type: "NazareScript",
+			lang: /\blang\s*=\s*["']?js["']?/.test(markup) ? "js" : "ts",
+			source: body,
+			refAccesses: Array.from(body.matchAll(refAccessPattern)).map(
+				(access) => ({
+					name: access[1],
+					span: spanFromOffsets(source, file, {
+						start: bodyStart + access.index,
+						end: bodyStart + access.index + access[0].length,
+					}),
+				}),
+			),
+			span: spanFromOffsets(source, file, {
+				start: blockStart,
+				end: blockStart + block.length,
+			}),
+		});
+
+		blankedSource =
+			blankedSource.slice(0, blockStart) +
+			block.replace(/[^\n]/g, " ") +
+			blankedSource.slice(blockStart + block.length);
+	}
+
+	return { scripts, blankedSource };
+}
+
+function collectElementRef(
+	node: LiquidHtmlNode,
+	source: string,
+	file: string,
+	nodes: NazareNode[],
+	diagnostics: NazareAst["diagnostics"],
+): void {
+	if (
+		node.type !== NodeTypes.HtmlElement &&
+		node.type !== NodeTypes.HtmlVoidElement &&
+		node.type !== NodeTypes.HtmlSelfClosingElement
+	) {
+		return;
+	}
+
+	for (const attribute of node.attributes) {
+		if (
+			attribute.type !== NodeTypes.AttrDoubleQuoted &&
+			attribute.type !== NodeTypes.AttrSingleQuoted &&
+			attribute.type !== NodeTypes.AttrUnquoted &&
+			attribute.type !== NodeTypes.AttrEmpty
+		) {
+			continue;
+		}
+		if (staticText(attribute.name) !== "ref") continue;
+
+		const span = spanFromOffsets(source, file, attribute.position);
+		const refName =
+			attribute.type === NodeTypes.AttrEmpty
+				? undefined
+				: staticText(attribute.value);
+
+		if (refName === undefined) {
+			diagnostics.push(
+				parseInvalidRefAttribute(
+					"ref value must be a static string, not Liquid output",
+					span,
+				),
+			);
+			continue;
+		}
+		if (!refIdentifierPattern.test(refName)) {
+			diagnostics.push(
+				parseInvalidRefAttribute(
+					`ref value "${refName}" is not a valid identifier`,
+					span,
+				),
+			);
+			continue;
+		}
+
+		nodes.push({
+			type: "NazareElementRef",
+			name: refName,
+			tagName: elementTagName(node),
+			span,
+		});
+	}
+}
+
+/** Joined text of a name/value node list, or undefined when any part is Liquid. */
+function staticText(
+	parts: { type: string; value?: unknown }[] | undefined,
+): string | undefined {
+	if (!parts || parts.length === 0) return undefined;
+	let text = "";
+	for (const part of parts) {
+		if (part.type !== NodeTypes.TextNode || typeof part.value !== "string") {
+			return undefined;
+		}
+		text += part.value;
+	}
+	return text;
+}
+
+function elementTagName(node: LiquidHtmlNode): string {
+	const name = (node as { name?: unknown }).name;
+	if (typeof name === "string") return name;
+	if (Array.isArray(name)) return staticText(name) ?? "unknown";
+	return "unknown";
 }
 
 function parseOutputExpression(

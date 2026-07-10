@@ -70,6 +70,12 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 				"syntax",
 			);
 		}
+		if (syntaxNode.kind === "element-ref" || syntaxNode.kind === "script") {
+			pushEdge(edges, edgeIds, "declares", syntaxNode.ownerId, syntaxNode.id, "syntax");
+		}
+		if (syntaxNode.kind === "ref-access") {
+			pushEdge(edges, edgeIds, "declares", syntaxNode.scriptId, syntaxNode.id, "syntax");
+		}
 	}
 
 	for (const symbol of ir.symbols) {
@@ -143,6 +149,16 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 				edgeIds,
 				"references",
 				resolution.expressionId,
+				resolution.symbolId,
+				"resolved",
+			);
+		}
+		if (resolution.kind === "ref-binding") {
+			pushEdge(
+				edges,
+				edgeIds,
+				"references",
+				resolution.refAccessId,
 				resolution.symbolId,
 				"resolved",
 			);

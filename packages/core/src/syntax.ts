@@ -84,6 +84,35 @@ export type ExpressionSyntaxNode = {
 	span?: SourceSpan;
 };
 
+/** An HTML element in the component's markup carrying a ref="name" attribute. */
+export type ElementRefSyntaxNode = {
+	id: Id;
+	kind: "element-ref";
+	name: string;
+	tagName: string;
+	ownerId: Id;
+	span?: SourceSpan;
+};
+
+/** A {% script %}…{% endscript %} block owning the component's behavior. */
+export type ScriptSyntaxNode = {
+	id: Id;
+	kind: "script";
+	lang: "ts" | "js";
+	source: string;
+	ownerId: Id;
+	span?: SourceSpan;
+};
+
+/** A refs.<name> access inside a script block. */
+export type RefAccessSyntaxNode = {
+	id: Id;
+	kind: "ref-access";
+	name: string;
+	scriptId: Id;
+	span?: SourceSpan;
+};
+
 export type ArtifactSyntaxNode =
 	| FileSyntaxNode
 	| ComponentSyntaxNode
@@ -92,6 +121,9 @@ export type ArtifactSyntaxNode =
 	| PropArgumentSyntaxNode
 	| RenderSiteSyntaxNode
 	| ImportSyntaxNode
-	| ExpressionSyntaxNode;
+	| ExpressionSyntaxNode
+	| ElementRefSyntaxNode
+	| ScriptSyntaxNode
+	| RefAccessSyntaxNode;
 
 export type ArtifactSyntaxKind = ArtifactSyntaxNode["kind"];

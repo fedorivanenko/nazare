@@ -5,7 +5,12 @@
 import type { Id } from "./id.js";
 import type { SemanticType } from "./semantic.js";
 
-export type ArtifactSymbolKind = "component" | "alias" | "prop" | "setting";
+export type ArtifactSymbolKind =
+	| "component"
+	| "alias"
+	| "prop"
+	| "setting"
+	| "ref";
 
 export type ArtifactSymbolResolution =
 	| "local"

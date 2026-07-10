@@ -20,13 +20,16 @@ import type { NazareAst } from "./ast.js";
 import {
 	argumentExpressionSyntaxId,
 	componentSyntaxId,
+	elementRefSyntaxId,
 	fileSyntaxId,
 	importSyntaxId,
 	outputExpressionSyntaxId,
 	propArgumentSyntaxId,
 	propDeclarationSyntaxId,
 	propsInterfaceSyntaxId,
+	refAccessSyntaxId,
 	renderSiteSyntaxId,
+	scriptSyntaxId,
 } from "./ids.js";
 import { spanFromOffsets } from "./source.js";
 
@@ -64,6 +67,8 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 
 	let renderIndex = 0;
 	let outputExpressionIndex = 0;
+	let elementRefIndex = 0;
+	let scriptIndex = 0;
 
 	for (const node of ast.nodes) {
 		if (node.type === "NazareImport") {
@@ -114,6 +119,42 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 				source: node.expression,
 				inferredType: inferExpressionType(node.expression),
 				span: node.expressionSpan,
+			});
+			continue;
+		}
+
+		if (node.type === "NazareElementRef") {
+			elementRefIndex += 1;
+			syntax.push({
+				id: elementRefSyntaxId(ast.file, elementRefIndex),
+				kind: "element-ref",
+				name: node.name,
+				tagName: node.tagName,
+				ownerId: componentId,
+				span: node.span,
+			});
+			continue;
+		}
+
+		if (node.type === "NazareScript") {
+			scriptIndex += 1;
+			const scriptId = scriptSyntaxId(ast.file, scriptIndex);
+			syntax.push({
+				id: scriptId,
+				kind: "script",
+				lang: node.lang,
+				source: node.source,
+				ownerId: componentId,
+				span: node.span,
+			});
+			node.refAccesses.forEach((access, accessIndex) => {
+				syntax.push({
+					id: refAccessSyntaxId(ast.file, scriptIndex, accessIndex + 1),
+					kind: "ref-access",
+					name: access.name,
+					scriptId,
+					span: access.span,
+				});
 			});
 			continue;
 		}

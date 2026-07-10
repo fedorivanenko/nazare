@@ -1,0 +1,22 @@
+{% props {
+  label: string.setting({
+    label: "Trigger label",
+    default: "Details",
+  }),
+} %}
+
+<div ref="root" class="nazare-disclosure">
+  <button ref="trigger" type="button">{{ section.settings.label }}</button>
+  <div ref="panel" hidden>
+    <slot></slot>
+  </div>
+</div>
+
+{% script lang="ts" %}
+export default component(({ refs }) => {
+  refs.trigger.addEventListener("click", () => {
+    refs.panel.hidden = !refs.panel.hidden;
+    refs.root.classList.toggle("nazare-disclosure--open");
+  });
+});
+{% endscript %}

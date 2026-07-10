@@ -17,6 +17,7 @@ import {
 	componentSymbolId,
 	componentSymbolIdForPackage,
 	propSymbolId,
+	refSymbolId,
 	settingSymbolId,
 } from "./ids.js";
 
@@ -101,6 +102,24 @@ export function bindArtifactIR(
 			continue;
 		}
 
+		if (node.kind === "element-ref") {
+			const symbolId = refSymbolId(scopes.forComponentId(node.ownerId), node.name);
+			const existing = symbols.get(symbolId);
+			if (existing) {
+				existing.declarations.push(node.id);
+			} else {
+				addSymbol(symbols, {
+					id: symbolId,
+					kind: "ref",
+					name: node.name,
+					declarations: [node.id],
+					resolution: "local",
+					source: "syntax",
+				});
+			}
+			continue;
+		}
+
 		if (node.kind === "prop-declaration") {
 			const scope = scopes.forPropsInterfaceId(node.propsInterfaceId);
 			const propSymbol = symbolForPropDeclaration(node, scope);
@@ -146,6 +165,11 @@ export function bindArtifactIR(
 	const argumentsById = new Map(
 		syntax
 			.filter((node) => node.kind === "prop-argument")
+			.map((node) => [node.id, node]),
+	);
+	const scriptsById = new Map(
+		syntax
+			.filter((node) => node.kind === "script")
 			.map((node) => [node.id, node]),
 	);
 
@@ -196,14 +220,30 @@ export function bindArtifactIR(
 	}
 
 	for (const node of syntax) {
-		if (node.kind !== "expression") continue;
-		const settingSymbol = settingSymbolsByPath.get(node.source.trim());
-		if (!settingSymbol) continue;
-		resolutions.push({
-			kind: "symbol-reference",
-			expressionId: node.id,
-			symbolId: settingSymbol.id,
-		});
+		if (node.kind === "expression") {
+			const settingSymbol = settingSymbolsByPath.get(node.source.trim());
+			if (!settingSymbol) continue;
+			resolutions.push({
+				kind: "symbol-reference",
+				expressionId: node.id,
+				symbolId: settingSymbol.id,
+			});
+		}
+
+		if (node.kind === "ref-access") {
+			const scriptNode = scriptsById.get(node.scriptId);
+			if (!scriptNode) continue;
+			const symbolId = refSymbolId(
+				scopes.forComponentId(scriptNode.ownerId),
+				node.name,
+			);
+			if (!symbols.has(symbolId)) continue;
+			resolutions.push({
+				kind: "ref-binding",
+				refAccessId: node.id,
+				symbolId,
+			});
+		}
 	}
 
 	return {
@@ -242,6 +282,7 @@ export function contractFromIR(
 // props-interface → component → file), never from parsing an ID string.
 type ScopeLookup = {
 	forFileId(fileId: Id): string;
+	forComponentId(componentId: Id): string;
 	forPropsInterfaceId(propsInterfaceId: Id): string;
 };
 
@@ -266,18 +307,25 @@ function scopeLookup(syntax: ArtifactSyntaxNode[]): ScopeLookup {
 		return path;
 	};
 
+	const forComponentId = (componentId: Id): string => {
+		const fileId = fileIdByComponentId.get(componentId);
+		if (fileId === undefined) {
+			throw new Error(`Unknown component syntax node ${componentId}`);
+		}
+		return forFileId(fileId);
+	};
+
 	return {
 		forFileId,
+		forComponentId,
 		forPropsInterfaceId: (propsInterfaceId) => {
 			const ownerId = ownerIdByInterfaceId.get(propsInterfaceId);
-			const fileId =
-				ownerId === undefined ? undefined : fileIdByComponentId.get(ownerId);
-			if (fileId === undefined) {
+			if (ownerId === undefined) {
 				throw new Error(
 					`Props interface ${propsInterfaceId} has no resolvable owner component`,
 				);
 			}
-			return forFileId(fileId);
+			return forComponentId(ownerId);
 		},
 	};
 }

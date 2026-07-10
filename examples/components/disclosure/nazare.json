@@ -1,0 +1,10 @@
+{
+  "id": "@nazare/disclosure",
+  "version": "0.1.0",
+  "kind": "snippet",
+  "entry": "disclosure.nz.liquid",
+  "dependencies": {},
+  "files": [
+    "disclosure.nz.liquid"
+  ]
+}

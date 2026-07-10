@@ -49,6 +49,22 @@ export function propArgumentSyntaxId(
 	return `syntax:prop-argument:${file}:${renderIndex}:${propName}`;
 }
 
+export function elementRefSyntaxId(file: string, index: number): Id {
+	return `syntax:element-ref:${file}:${index}`;
+}
+
+export function scriptSyntaxId(file: string, index: number): Id {
+	return `syntax:script:${file}:${index}`;
+}
+
+export function refAccessSyntaxId(
+	file: string,
+	scriptIndex: number,
+	index: number,
+): Id {
+	return `syntax:ref-access:${file}:${scriptIndex}:${index}`;
+}
+
 // Symbol layer. `scope` is what a component symbol is keyed by: a file path
 // for local components, a package id for external ones, or a bare target
 // name when a render site references something unknown.
@@ -71,4 +87,8 @@ export function settingSymbolId(scope: string, settingName: string): Id {
 
 export function aliasSymbolId(file: string, localName: string): Id {
 	return `symbol:alias:${file}.${localName}`;
+}
+
+export function refSymbolId(scope: string, refName: string): Id {
+	return `symbol:ref:${scope}#default.${refName}`;
 }

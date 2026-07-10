@@ -40,6 +40,11 @@ export type ArtifactResolution =
 			kind: "symbol-reference";
 			expressionId: Id;
 			symbolId: Id;
+	  }
+	| {
+			kind: "ref-binding";
+			refAccessId: Id;
+			symbolId: Id;
 	  };
 
 export type ArtifactIR = {

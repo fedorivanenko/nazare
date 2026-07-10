@@ -54,6 +54,26 @@ export type NazareOutputExpressionNode = {
 	span: SourceSpan;
 };
 
+export type NazareElementRefNode = {
+	type: "NazareElementRef";
+	name: string;
+	tagName: string;
+	span: SourceSpan;
+};
+
+export type NazareRefAccess = {
+	name: string;
+	span: SourceSpan;
+};
+
+export type NazareScriptNode = {
+	type: "NazareScript";
+	lang: "ts" | "js";
+	source: string;
+	refAccesses: NazareRefAccess[];
+	span: SourceSpan;
+};
+
 export type NazareOpaqueNode = {
 	type: "OpaqueLiquidHtml";
 	node: LiquidHtmlNode;
@@ -65,6 +85,8 @@ export type NazareNode =
 	| NazarePropsNode
 	| NazareRenderNode
 	| NazareOutputExpressionNode
+	| NazareElementRefNode
+	| NazareScriptNode
 	| NazareOpaqueNode;
 
 export type NazareAst = {

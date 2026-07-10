@@ -40,6 +40,60 @@ export function parseInvalidTypeExpression(
 	};
 }
 
+export function parseInvalidRefAttribute(
+	reason: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "warning",
+		code: "NAZARE_PARSE_REF_ATTRIBUTE",
+		message: `Ignored ref attribute: ${reason}`,
+		span,
+	};
+}
+
+export function unknownRef(
+	refName: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_UNKNOWN_REF",
+		message: `Script references ref "${refName}" but no element in the markup declares ref="${refName}"`,
+		nodeId,
+		span,
+	};
+}
+
+export function duplicateRef(
+	refName: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_DUPLICATE_REF",
+		message: `ref="${refName}" is declared by more than one element; refs must be unique within a component`,
+		nodeId,
+		span,
+	};
+}
+
+export function unusedRef(
+	refName: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "warning",
+		code: "CONSTRAINT_UNUSED_REF",
+		message: `ref="${refName}" is never accessed by the component's script`,
+		nodeId,
+		span,
+	};
+}
+
 export function controlFlowNotLowered(span: SourceSpan): Diagnostic {
 	return {
 		severity: "warning",

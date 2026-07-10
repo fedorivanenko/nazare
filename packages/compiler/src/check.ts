@@ -13,11 +13,14 @@ import type {
 	SemanticType,
 } from "@nazare/core";
 import {
+	duplicateRef,
 	propTypeMismatch,
 	propValueOutOfRange,
 	requiredPropMissing,
 	unknownPropArgument,
+	unknownRef,
 	unresolvedExternalContract,
+	unusedRef,
 } from "./diagnostics.js";
 import { type ArtifactIRIndex, indexArtifactIR } from "./ir-index.js";
 
@@ -51,6 +54,49 @@ export function checkArtifactIR(
 		issues.push(
 			...checkRenderSiteAgainstContract(index, node, contract, settingTypesByName),
 		);
+	}
+
+	issues.push(...checkRefs(index));
+
+	return issues;
+}
+
+/**
+ * The ref linkage guarantee: every refs.<name> access in a script resolves
+ * to exactly one ref="name" element in the markup, and declared refs are
+ * actually used (only warned about when the component has a script at all).
+ */
+function checkRefs(index: ArtifactIRIndex): Diagnostic[] {
+	const issues: Diagnostic[] = [];
+	const declarations = index.nodesOfKind("element-ref");
+	const accesses = index.nodesOfKind("ref-access");
+	const declaredNames = new Set(declarations.map((node) => node.name));
+	const accessedNames = new Set(accesses.map((node) => node.name));
+	const seenNames = new Set<string>();
+
+	for (const declaration of declarations) {
+		if (seenNames.has(declaration.name)) {
+			issues.push(
+				duplicateRef(declaration.name, declaration.id, declaration.span),
+			);
+			continue;
+		}
+		seenNames.add(declaration.name);
+	}
+
+	for (const access of accesses) {
+		if (declaredNames.has(access.name)) continue;
+		issues.push(unknownRef(access.name, access.id, access.span));
+	}
+
+	const hasScript = index.nodesOfKind("script").length > 0;
+	if (hasScript) {
+		for (const declaration of declarations) {
+			if (accessedNames.has(declaration.name)) continue;
+			issues.push(
+				unusedRef(declaration.name, declaration.id, declaration.span),
+			);
+		}
 	}
 
 	return issues;
