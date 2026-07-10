@@ -12,7 +12,7 @@
             "column": 1
           },
           "end": {
-            "line": 23,
+            "line": 32,
             "column": 1
           }
         }
@@ -29,7 +29,7 @@
             "column": 1
           },
           "end": {
-            "line": 23,
+            "line": 32,
             "column": 1
           }
         }
@@ -43,22 +43,22 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 15,
+            "line": 24,
             "column": 1
           },
           "end": {
-            "line": 22,
+            "line": 31,
             "column": 16
           }
         },
         "bodySpan": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 15,
+            "line": 24,
             "column": 23
           },
           "end": {
-            "line": 22,
+            "line": 31,
             "column": 1
           }
         }
@@ -71,11 +71,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 17,
+            "line": 26,
             "column": 3
           },
           "end": {
-            "line": 17,
+            "line": 26,
             "column": 15
           }
         }
@@ -88,11 +88,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 18,
+            "line": 27,
             "column": 5
           },
           "end": {
-            "line": 18,
+            "line": 27,
             "column": 15
           }
         }
@@ -105,11 +105,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 18,
+            "line": 27,
             "column": 26
           },
           "end": {
-            "line": 18,
+            "line": 27,
             "column": 36
           }
         }
@@ -122,12 +122,40 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 19,
+            "line": 28,
             "column": 5
           },
           "end": {
-            "line": 19,
+            "line": 28,
             "column": 14
+          }
+        }
+      },
+      {
+        "id": "syntax:style:examples/components/disclosure/disclosure.nz.liquid:1",
+        "kind": "style",
+        "source": "\n.nazare-disclosure {\n  display: block;\n}\n.nazare-disclosure--open > [data-nz-ref=\"panel\"] {\n  display: block;\n}\n",
+        "ownerId": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 15,
+            "column": 1
+          },
+          "end": {
+            "line": 22,
+            "column": 20
+          }
+        },
+        "bodySpan": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 15,
+            "column": 17
+          },
+          "end": {
+            "line": 22,
+            "column": 1
           }
         }
       },
@@ -365,7 +393,7 @@
             "column": 1
           },
           "end": {
-            "line": 23,
+            "line": 32,
             "column": 1
           }
         }
@@ -382,7 +410,7 @@
             "column": 1
           },
           "end": {
-            "line": 23,
+            "line": 32,
             "column": 1
           }
         }
@@ -395,11 +423,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 15,
+            "line": 24,
             "column": 1
           },
           "end": {
-            "line": 22,
+            "line": 31,
             "column": 16
           }
         }
@@ -412,11 +440,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 17,
+            "line": 26,
             "column": 3
           },
           "end": {
-            "line": 17,
+            "line": 26,
             "column": 15
           }
         }
@@ -429,11 +457,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 18,
+            "line": 27,
             "column": 5
           },
           "end": {
-            "line": 18,
+            "line": 27,
             "column": 15
           }
         }
@@ -446,11 +474,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 18,
+            "line": 27,
             "column": 26
           },
           "end": {
-            "line": 18,
+            "line": 27,
             "column": 36
           }
         }
@@ -463,12 +491,29 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 19,
+            "line": 28,
             "column": 5
           },
           "end": {
-            "line": 19,
+            "line": 28,
             "column": 14
+          }
+        }
+      },
+      {
+        "id": "syntax:style:examples/components/disclosure/disclosure.nz.liquid:1",
+        "kind": "style",
+        "name": "style",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 15,
+            "column": 1
+          },
+          "end": {
+            "line": 22,
+            "column": 20
           }
         }
       },
@@ -652,6 +697,13 @@
         "kind": "declares",
         "from": "syntax:script:examples/components/disclosure/disclosure.nz.liquid:1",
         "to": "syntax:ref-access:examples/components/disclosure/disclosure.nz.liquid:1:4",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:syntax:declares:syntax:component:examples/components/disclosure/disclosure.nz.liquid->syntax:style:examples/components/disclosure/disclosure.nz.liquid:1",
+        "kind": "declares",
+        "from": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
+        "to": "syntax:style:examples/components/disclosure/disclosure.nz.liquid:1",
         "origin": "syntax"
       },
       {

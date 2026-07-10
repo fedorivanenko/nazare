@@ -106,6 +106,16 @@ export type ScriptSyntaxNode = {
 	bodySpan?: SourceSpan;
 };
 
+/** A {% stylesheet %}…{% endstylesheet %} block owning component styles. */
+export type StyleSyntaxNode = {
+	id: Id;
+	kind: "style";
+	source: string;
+	ownerId: Id;
+	span?: SourceSpan;
+	bodySpan?: SourceSpan;
+};
+
 /** A refs.<name> access inside a script block. */
 export type RefAccessSyntaxNode = {
 	id: Id;
@@ -126,6 +136,7 @@ export type ArtifactSyntaxNode =
 	| ExpressionSyntaxNode
 	| ElementRefSyntaxNode
 	| ScriptSyntaxNode
+	| StyleSyntaxNode
 	| RefAccessSyntaxNode;
 
 export type ArtifactSyntaxKind = ArtifactSyntaxNode["kind"];

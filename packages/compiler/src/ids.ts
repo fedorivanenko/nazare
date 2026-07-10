@@ -57,6 +57,10 @@ export function scriptSyntaxId(file: string, index: number): Id {
 	return `syntax:script:${file}:${index}`;
 }
 
+export function styleSyntaxId(file: string, index: number): Id {
+	return `syntax:style:${file}:${index}`;
+}
+
 export function refAccessSyntaxId(
 	file: string,
 	scriptIndex: number,

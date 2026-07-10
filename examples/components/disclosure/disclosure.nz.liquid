@@ -12,6 +12,15 @@
   </div>
 </div>
 
+{% stylesheet %}
+.nazare-disclosure {
+  display: block;
+}
+.nazare-disclosure--open > [data-nz-ref="panel"] {
+  display: block;
+}
+{% endstylesheet %}
+
 {% script lang="ts" %}
 export default island(({ refs }) => {
   refs.trigger.addEventListener("click", () => {

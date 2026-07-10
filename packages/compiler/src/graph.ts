@@ -70,7 +70,11 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 				"syntax",
 			);
 		}
-		if (syntaxNode.kind === "element-ref" || syntaxNode.kind === "script") {
+		if (
+			syntaxNode.kind === "element-ref" ||
+			syntaxNode.kind === "script" ||
+			syntaxNode.kind === "style"
+		) {
 			pushEdge(edges, edgeIds, "declares", syntaxNode.ownerId, syntaxNode.id, "syntax");
 		}
 		if (syntaxNode.kind === "ref-access") {

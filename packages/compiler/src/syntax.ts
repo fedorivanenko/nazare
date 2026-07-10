@@ -30,6 +30,7 @@ import {
 	refAccessSyntaxId,
 	renderSiteSyntaxId,
 	scriptSyntaxId,
+	styleSyntaxId,
 } from "./ids.js";
 import { spanFromOffsets } from "./source.js";
 
@@ -69,6 +70,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 	let outputExpressionIndex = 0;
 	let elementRefIndex = 0;
 	let scriptIndex = 0;
+	let styleIndex = 0;
 
 	for (const node of ast.nodes) {
 		if (node.type === "NazareImport") {
@@ -156,6 +158,19 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 					scriptId,
 					span: access.span,
 				});
+			});
+			continue;
+		}
+
+		if (node.type === "NazareStyle") {
+			styleIndex += 1;
+			syntax.push({
+				id: styleSyntaxId(ast.file, styleIndex),
+				kind: "style",
+				source: node.source,
+				ownerId: componentId,
+				span: node.span,
+				bodySpan: node.bodySpan,
 			});
 			continue;
 		}

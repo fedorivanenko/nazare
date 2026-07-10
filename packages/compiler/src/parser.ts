@@ -15,6 +15,7 @@ import type {
 	NazarePassedProp,
 	NazarePropDeclaration,
 	NazareScriptNode,
+	NazareStyleNode,
 } from "./ast.js";
 import {
 	controlFlowNotLowered,
@@ -31,6 +32,8 @@ const importPattern = /^([A-Za-z_$][\w$]*)\s+from\s+["']([^"']+)["']$/;
 const renderPattern = /^([A-Za-z_$][\w$]*)\s*\{([\s\S]*)\}$/;
 const scriptBlockPattern =
 	/{%-?\s*script\b([^%]*?)-?%}([\s\S]*?){%-?\s*endscript\s*-?%}/g;
+const styleBlockPattern =
+	/{%-?\s*stylesheet\s*-?%}([\s\S]*?){%-?\s*endstylesheet\s*-?%}/g;
 const refAccessPattern = /\brefs\.([A-Za-z_$][\w$]*)/g;
 const refIdentifierPattern = /^[A-Za-z_$][\w$]*$/;
 
@@ -53,13 +56,19 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 	>();
 	const controlFlowRanges: SourceRange[] = [];
 
-	// Script bodies are TypeScript, which the HTML parser would misread
-	// (comparisons look like open tags). Extract them first, then blank the
-	// whole block — newlines kept — so every other span stays valid.
-	const { scripts, blankedSource } = extractScriptBlocks(source, file);
-	nodes.push(...scripts);
+	// Script and stylesheet bodies are TS/CSS, which the HTML parser would
+	// misread (comparisons look like open tags). Extract them first, then
+	// blank each block — newlines kept — so every other span stays valid.
+	const scriptExtraction = extractScriptBlocks(source, file);
+	nodes.push(...scriptExtraction.scripts);
+	const styleExtraction = extractStyleBlocks(
+		scriptExtraction.blankedSource,
+		source,
+		file,
+	);
+	nodes.push(...styleExtraction.styles);
 
-	const ast = toLiquidHtmlAST(blankedSource, {
+	const ast = toLiquidHtmlAST(styleExtraction.blankedSource, {
 		mode: "tolerant",
 		allowUnclosedDocumentNode: true,
 	});
@@ -191,6 +200,41 @@ function extractScriptBlocks(
 	}
 
 	return { scripts, blankedSource };
+}
+
+function extractStyleBlocks(
+	scanSource: string,
+	originalSource: string,
+	file: string,
+): { styles: NazareStyleNode[]; blankedSource: string } {
+	const styles: NazareStyleNode[] = [];
+	let blankedSource = scanSource;
+
+	for (const match of scanSource.matchAll(styleBlockPattern)) {
+		const [block, body] = match;
+		const blockStart = match.index;
+		const bodyStart = blockStart + block.indexOf(body);
+
+		styles.push({
+			type: "NazareStyle",
+			source: originalSource.slice(bodyStart, bodyStart + body.length),
+			span: spanFromOffsets(originalSource, file, {
+				start: blockStart,
+				end: blockStart + block.length,
+			}),
+			bodySpan: spanFromOffsets(originalSource, file, {
+				start: bodyStart,
+				end: bodyStart + body.length,
+			}),
+		});
+
+		blankedSource =
+			blankedSource.slice(0, blockStart) +
+			block.replace(/[^\n]/g, " ") +
+			blankedSource.slice(blockStart + block.length);
+	}
+
+	return { styles, blankedSource };
 }
 
 function collectElementRef(

@@ -17,6 +17,7 @@ import ts from "typescript";
 import type { NazareAst } from "./ast.js";
 import { emitScriptWithoutDefaultExport, emitScriptWithoutRoot } from "./diagnostics.js";
 import { themeSchemaFromIR } from "./schema.js";
+import { scopeCss } from "./scope-css.js";
 import { offsetFromPosition } from "./source.js";
 
 export type EmitThemeOptions = {
@@ -53,11 +54,27 @@ export function emitTheme(
 	const issues: Diagnostic[] = [];
 	const files: EmittedFile[] = [];
 	const scripts = compiled.ir.syntax.filter((node) => node.kind === "script");
+	const styles = compiled.ir.syntax.filter((node) => node.kind === "style");
 	const hasScript = scripts.length > 0;
+	const hasStyle = styles.length > 0;
 
-	const liquid = emitLiquid(source, compiled, options, hasScript, issues);
+	const liquid = emitLiquid(
+		source,
+		compiled,
+		options,
+		{ hasScript, hasStyle },
+		issues,
+	);
 	const directory = options.kind === "section" ? "sections" : "snippets";
 	files.push({ path: `${directory}/${options.name}.liquid`, contents: liquid });
+
+	if (hasStyle) {
+		const scope = `[data-nz-component="${options.name}"]`;
+		const css = styles
+			.map((style) => scopeCss(style.source, scope))
+			.join("\n\n");
+		files.push({ path: `assets/${options.name}.css`, contents: `${css}\n` });
+	}
 
 	if (hasScript) {
 		files.push({
@@ -74,7 +91,7 @@ function emitLiquid(
 	source: string,
 	compiled: CompiledComponent,
 	options: EmitThemeOptions,
-	hasScript: boolean,
+	{ hasScript, hasStyle }: { hasScript: boolean; hasStyle: boolean },
 	issues: Diagnostic[],
 ): string {
 	const edits: SourceEdit[] = [];
@@ -97,7 +114,7 @@ function emitLiquid(
 		if (node.type === "NazareProps" || node.type === "NazareImport") {
 			edits.push({ ...editRange(source, node.span), replacement: "" });
 		}
-		if (node.type === "NazareScript") {
+		if (node.type === "NazareScript" || node.type === "NazareStyle") {
 			edits.push({ ...editRange(source, node.span), replacement: "" });
 		}
 	}
@@ -130,10 +147,10 @@ function emitLiquid(
 		}
 	}
 
-	if (hasScript) {
+	if (hasScript || hasStyle) {
 		const rootTagEnd = rootElementStartTagEnd(source, compiled.ast);
 		if (rootTagEnd === undefined) {
-			issues.push(emitScriptWithoutRoot(options.name));
+			if (hasScript) issues.push(emitScriptWithoutRoot(options.name));
 		} else {
 			edits.push({
 				start: rootTagEnd,
@@ -146,6 +163,9 @@ function emitLiquid(
 	let liquid = applyEdits(source, edits);
 	liquid = `${liquid.replace(/\n{3,}/g, "\n\n").trim()}\n`;
 
+	if (hasStyle) {
+		liquid += `{{ '${options.name}.css' | asset_url | stylesheet_tag }}\n`;
+	}
 	if (hasScript) {
 		liquid +=
 			`{{ 'nazare-runtime.js' | asset_url | script_tag }}\n` +

@@ -76,6 +76,14 @@ export type NazareScriptNode = {
 	bodySpan: SourceSpan;
 };
 
+export type NazareStyleNode = {
+	type: "NazareStyle";
+	source: string;
+	span: SourceSpan;
+	/** Span of the CSS body only, excluding the {% stylesheet %} tags. */
+	bodySpan: SourceSpan;
+};
+
 export type NazareOpaqueNode = {
 	type: "OpaqueLiquidHtml";
 	node: LiquidHtmlNode;
@@ -89,6 +97,7 @@ export type NazareNode =
 	| NazareOutputExpressionNode
 	| NazareElementRefNode
 	| NazareScriptNode
+	| NazareStyleNode
 	| NazareOpaqueNode;
 
 export type NazareAst = {
