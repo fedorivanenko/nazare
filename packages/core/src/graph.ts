@@ -1,3 +1,6 @@
+// The queryable projection of an IR: every syntax node and symbol as a
+// graph node, every relationship as a typed edge. Purely derived — tools
+// (visualizers, dependency queries) consume this instead of walking the IR.
 import type { Id } from "./id.js";
 import type { SourceSpan } from "./source.js";
 import type { ArtifactSymbolKind } from "./symbol.js";

@@ -1,3 +1,6 @@
+// @nazare/core is types only: the vocabulary shared between the compiler,
+// CLI, and registry. One module per pipeline layer, ordered here roughly
+// source-to-graph. No runtime logic beyond constants.
 export * from "./contract.js";
 export * from "./diagnostic.js";
 export * from "./graph.js";

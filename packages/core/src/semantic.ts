@@ -1,3 +1,8 @@
+// The semantic type system: what a prop value can be. Types describe both
+// Liquid runtime values and theme-editor setting inputs (color, richtext,
+// range-constrained numbers). Assignability between these types is defined
+// by the compiler's check pass, not here.
+
 /**
  * Value-level constraints on a number type, mirroring Shopify range
  * settings. Constraints do not change assignability between types; they are

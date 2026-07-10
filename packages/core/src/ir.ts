@@ -1,3 +1,7 @@
+// The compiler's central data structure: syntax + symbols + resolutions.
+// Resolutions are the links binding produced (what renders what, which
+// argument feeds which prop). Kept as flat arrays so the IR serializes
+// cleanly; lookup indexes are the compiler's ir-index.ts, built on demand.
 import type { Id } from "./id.js";
 import type { ArtifactSymbol } from "./symbol.js";
 import type { ArtifactSyntaxNode } from "./syntax.js";

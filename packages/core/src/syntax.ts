@@ -1,3 +1,8 @@
+// Syntax-layer nodes: the flat, id-linked form of a parsed component that
+// the compiler's syntax pass produces and every later pass consumes. Nodes
+// record what the source literally says — no resolution, no judgment. Only
+// kinds the compiler actually produces belong here; planned ones live in
+// git history, not in the union.
 import type { Id } from "./id.js";
 import type { PropTypeInfo, SemanticType } from "./semantic.js";
 import type { SourceSpan } from "./source.js";
