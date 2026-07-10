@@ -37,6 +37,12 @@ export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForPackage } from "./ids.js";
 export { parseNazareLiquid } from "./parser.js";
 export {
+	type EmitResult,
+	type EmitThemeOptions,
+	type EmittedFile,
+	emitTheme,
+} from "./emit.js";
+export {
 	type ThemeSchemaFromIROptions,
 	themeSchemaFromIR,
 } from "./schema.js";

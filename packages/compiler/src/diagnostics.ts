@@ -203,6 +203,26 @@ export function propValueOutOfRange(
 	};
 }
 
+export function emitScriptWithoutRoot(componentName: string): Diagnostic {
+	return {
+		severity: "warning",
+		code: "EMIT_SCRIPT_WITHOUT_ROOT_ELEMENT",
+		message: `Component ${componentName} has a script but no top-level HTML element to mount it on; the script will never run`,
+	};
+}
+
+export function emitScriptWithoutDefaultExport(
+	componentName: string,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "warning",
+		code: "EMIT_SCRIPT_WITHOUT_DEFAULT_EXPORT",
+		message: `Script in ${componentName} has no "export default component(...)"; nothing will be registered`,
+		span,
+	};
+}
+
 export function renderTargetResolutionCount(
 	renderSiteId: Id,
 	found: number,

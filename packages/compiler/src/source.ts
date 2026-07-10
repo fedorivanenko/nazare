@@ -19,6 +19,21 @@ export function spanFromOffsets(
 	};
 }
 
+export function offsetFromPosition(
+	source: string,
+	position: { line: number; column: number },
+): number {
+	let line = 1;
+	let offset = 0;
+	while (line < position.line) {
+		const newline = source.indexOf("\n", offset);
+		if (newline === -1) return source.length;
+		offset = newline + 1;
+		line += 1;
+	}
+	return Math.min(offset + position.column - 1, source.length);
+}
+
 export function lineColumnFromOffset(source: string, offset: number) {
 	let line = 1;
 	let column = 1;

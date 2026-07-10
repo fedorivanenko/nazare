@@ -5,6 +5,7 @@ import {
 	type ContractResolver,
 	compileNazareArtifact,
 	compileNazareArtifactWithResolver,
+	emitTheme,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
 import type { NazareManifest } from "@nazare/core";
@@ -76,6 +77,25 @@ try {
 		process.exit(hasErrors(result.issues) ? 1 : 0);
 	}
 
+	if (command === "build") {
+		const manifest = await manifestForEntry(file);
+		const emitted = emitTheme(source, result, {
+			name: schemaName(file, packageId),
+			kind: manifest?.kind,
+		});
+		const issues = [...result.issues, ...emitted.issues];
+		const outputDir = join(".nazare-out", "theme");
+		const written: string[] = [];
+		for (const themeFile of emitted.files) {
+			const path = join(outputDir, themeFile.path);
+			await mkdir(dirname(path), { recursive: true });
+			await writeFile(path, themeFile.contents);
+			written.push(path);
+		}
+		console.log(JSON.stringify({ written, issues }, null, 2));
+		process.exit(hasErrors(issues) ? 1 : 0);
+	}
+
 	if (command === "dump") {
 		const written = await writeDumpFiles(file, result, packageId);
 		console.log(JSON.stringify({ written, issues: result.issues }, null, 2));
@@ -125,13 +145,17 @@ function localContractResolver(entryFile: string): ContractResolver {
 async function packageIdForEntry(
 	entryFile: string,
 ): Promise<string | undefined> {
+	return (await manifestForEntry(entryFile))?.id;
+}
+
+async function manifestForEntry(
+	entryFile: string,
+): Promise<NazareManifest | undefined> {
 	const manifestSource = await readOptional(
 		join(dirname(entryFile), "nazare.json"),
 	);
 	if (manifestSource === undefined) return undefined;
-
-	const manifest = JSON.parse(manifestSource) as NazareManifest;
-	return manifest.id;
+	return JSON.parse(manifestSource) as NazareManifest;
 }
 
 async function writeDumpFiles(
@@ -203,6 +227,7 @@ function printHelp(): void {
   nazare graph <file>
   nazare validate <file>
   nazare schema <file>
+  nazare build <file>
   nazare artifact <file>
   nazare dump <file>`);
 }
