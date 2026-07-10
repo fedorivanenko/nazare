@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import {
 	type ContractResolver,
+	checkComponentScripts,
 	compileNazareArtifact,
 	compileNazareArtifactWithResolver,
 	emitTheme,
@@ -58,8 +59,9 @@ try {
 	}
 
 	if (command === "validate") {
-		console.log(JSON.stringify({ issues: result.issues }, null, 2));
-		process.exit(hasErrors(result.issues) ? 1 : 0);
+		const issues = [...result.issues, ...checkComponentScripts(result.ir)];
+		console.log(JSON.stringify({ issues }, null, 2));
+		process.exit(hasErrors(issues) ? 1 : 0);
 	}
 
 	if (command === "artifact") {
@@ -83,7 +85,11 @@ try {
 			name: schemaName(file, packageId),
 			kind: manifest?.kind,
 		});
-		const issues = [...result.issues, ...emitted.issues];
+		const issues = [
+			...result.issues,
+			...checkComponentScripts(result.ir),
+			...emitted.issues,
+		];
 		const outputDir = join(".nazare-out", "theme");
 		const written: string[] = [];
 		for (const themeFile of emitted.files) {

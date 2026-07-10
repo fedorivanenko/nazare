@@ -50,6 +50,17 @@
             "line": 22,
             "column": 16
           }
+        },
+        "bodySpan": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 15,
+            "column": 23
+          },
+          "end": {
+            "line": 22,
+            "column": 1
+          }
         }
       },
       {

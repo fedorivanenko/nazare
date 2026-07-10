@@ -146,6 +146,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 				source: node.source,
 				ownerId: componentId,
 				span: node.span,
+				bodySpan: node.bodySpan,
 			});
 			node.refAccesses.forEach((access, accessIndex) => {
 				syntax.push({

@@ -178,6 +178,10 @@ function extractScriptBlocks(
 				start: blockStart,
 				end: blockStart + block.length,
 			}),
+			bodySpan: spanFromOffsets(source, file, {
+				start: bodyStart,
+				end: bodyStart + body.length,
+			}),
 		});
 
 		blankedSource =

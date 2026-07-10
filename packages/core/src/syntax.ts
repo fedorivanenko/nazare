@@ -102,6 +102,8 @@ export type ScriptSyntaxNode = {
 	source: string;
 	ownerId: Id;
 	span?: SourceSpan;
+	/** Span of the script body only, excluding the {% script %} tags. */
+	bodySpan?: SourceSpan;
 };
 
 /** A refs.<name> access inside a script block. */

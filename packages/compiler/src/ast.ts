@@ -72,6 +72,8 @@ export type NazareScriptNode = {
 	source: string;
 	refAccesses: NazareRefAccess[];
 	span: SourceSpan;
+	/** Span of the script body only, excluding the {% script %} tags. */
+	bodySpan: SourceSpan;
 };
 
 export type NazareOpaqueNode = {

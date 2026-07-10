@@ -203,6 +203,19 @@ export function propValueOutOfRange(
 	};
 }
 
+export function scriptTypeError(
+	message: string,
+	tsCode: number,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "SCRIPT_TYPE_ERROR",
+		message: `TS${tsCode}: ${message}`,
+		span,
+	};
+}
+
 export function emitScriptWithoutRoot(componentName: string): Diagnostic {
 	return {
 		severity: "warning",

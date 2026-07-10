@@ -33,6 +33,7 @@ export type {
 	ParseDiagnostic,
 } from "./ast.js";
 export { checkArtifactIR } from "./check.js";
+export { checkComponentScripts } from "./check-script.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForPackage } from "./ids.js";
 export { parseNazareLiquid } from "./parser.js";
