@@ -15,6 +15,31 @@ export function parseInvalidImport(
 	};
 }
 
+export function parseMalformedPropDeclaration(
+	entry: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_PROP_DECLARATION",
+		message: `Malformed prop declaration "${entry}"; expected "name: typeExpression"`,
+		span,
+	};
+}
+
+export function parseInvalidTypeExpression(
+	propName: string,
+	reason: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "warning",
+		code: "NAZARE_PARSE_TYPE_EXPRESSION",
+		message: `Could not parse type expression for prop ${propName}: ${reason}`,
+		span,
+	};
+}
+
 export function controlFlowNotLowered(span: SourceSpan): Diagnostic {
 	return {
 		severity: "warning",

@@ -1,5 +1,3 @@
-import type { PropTypeInfo, SemanticType } from "@nazare/core";
-import { shopifyObjectTypeNames } from "@nazare/core";
 import {
 	type LiquidHtmlNode,
 	NodeTypes,
@@ -16,8 +14,11 @@ import {
 	controlFlowNotLowered,
 	htmlNotPromoted,
 	parseInvalidImport,
+	parseInvalidTypeExpression,
+	parseMalformedPropDeclaration,
 } from "./diagnostics.js";
 import { spanFromOffsets } from "./source.js";
+import { parseTypeExpression } from "./type-expression.js";
 
 const importPattern = /^([A-Za-z_$][\w$]*)\s+from\s+["']([^"']+)["']$/;
 const renderPattern = /^([A-Za-z_$][\w$]*)\s*\{([\s\S]*)\}$/;
@@ -88,7 +89,13 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 		if (tag.name === "props") {
 			nodes.push({
 				type: "NazareProps",
-				props: parseProps(tag.markup, source, file, tag.position.start),
+				props: parseProps(
+					tag.markup,
+					source,
+					file,
+					tag.position.start,
+					diagnostics,
+				),
 				span,
 			});
 			return;
@@ -151,29 +158,40 @@ function parseProps(
 	source: string,
 	file: string,
 	nodeStart: number,
+	diagnostics: NazareAst["diagnostics"],
 ): NazarePropDeclaration[] {
 	const body = trimBraces(markup);
 	const props: NazarePropDeclaration[] = [];
 
 	for (const entry of splitTopLevel(body)) {
 		const separator = entry.indexOf(":");
-		if (separator === -1) continue;
+		const name = separator === -1 ? "" : entry.slice(0, separator).trim();
+		const typeExpression =
+			separator === -1 ? "" : entry.slice(separator + 1).trim();
 
-		const name = entry.slice(0, separator).trim();
-		const typeExpression = entry.slice(separator + 1).trim();
-		if (!isIdentifier(name) || !typeExpression) continue;
+		const offset = source.indexOf(name || entry, nodeStart);
+		const span = spanFromOffsets(source, file, {
+			start: offset >= 0 ? offset : nodeStart,
+			end: offset >= 0 ? offset + (name || entry).length : nodeStart,
+		});
 
-		const offset = source.indexOf(name, nodeStart);
+		if (!isIdentifier(name) || !typeExpression) {
+			diagnostics.push(parseMalformedPropDeclaration(entry, span));
+			continue;
+		}
+
+		const parsed = parseTypeExpression(typeExpression);
+		if (parsed.error) {
+			diagnostics.push(parseInvalidTypeExpression(name, parsed.error, span));
+		}
+
 		props.push({
 			name,
 			typeExpression,
-			typeInfo: parsePropTypeInfo(typeExpression),
-			required: /\.required\s*\(/.test(typeExpression),
-			hasDefault: hasDefaultValue(typeExpression),
-			span: spanFromOffsets(source, file, {
-				start: offset >= 0 ? offset : nodeStart,
-				end: offset >= 0 ? offset + name.length : nodeStart,
-			}),
+			typeInfo: parsed.typeInfo,
+			required: parsed.required,
+			hasDefault: parsed.hasDefault,
+			span,
 		});
 	}
 
@@ -293,50 +311,6 @@ function pushTrimmedPart(
 	});
 }
 
-function parsePropTypeInfo(typeExpression: string): PropTypeInfo {
-	return {
-		valueType: parseValueType(typeExpression),
-		setting: /\.setting\s*\(/.test(typeExpression)
-			? {
-					label: stringObjectValue(typeExpression, "label"),
-					default: stringObjectValue(typeExpression, "default"),
-				}
-			: undefined,
-	};
-}
-
-function parseValueType(typeExpression: string): SemanticType {
-	const trimmed = typeExpression.trim();
-	const arrayMatch = trimmed.match(/^array\s*\(\s*([A-Za-z_$][\w$]*)\s*\)/);
-	if (arrayMatch)
-		return { kind: "array", element: parseNamedValueType(arrayMatch[1]) };
-
-	const objectMatch = trimmed.match(
-		/^object\s*\(\s*["']?([A-Za-z_$][\w$]*)["']?\s*\)/,
-	);
-	if (objectMatch) return { kind: "object", name: objectMatch[1] };
-
-	const valueType = trimmed.match(/^([A-Za-z_$][\w$]*)/)?.[1];
-	return valueType ? parseNamedValueType(valueType) : { kind: "unknown" };
-}
-
-function parseNamedValueType(valueType: string): SemanticType {
-	if (valueType === "string") return { kind: "string" };
-	if (valueType === "url") return { kind: "url" };
-	if (valueType === "boolean") return { kind: "boolean" };
-	if (valueType === "number") return { kind: "number" };
-	if (valueType === "Money") return { kind: "money" };
-	if ((shopifyObjectTypeNames as readonly string[]).includes(valueType)) {
-		return { kind: "object", name: valueType };
-	}
-	if (/^[A-Z]/.test(valueType)) return { kind: "object", name: valueType };
-	return { kind: "unknown" };
-}
-
-function stringObjectValue(source: string, key: string): string | undefined {
-	return source.match(new RegExp(`${key}\\s*:\\s*["']([^"']*)["']`))?.[1];
-}
-
 function collectControlFlowRange(
 	node: LiquidHtmlNode,
 	controlFlowRanges: SourceRange[],
@@ -397,13 +371,6 @@ function unsupportedSyntaxDiagnostics(
 			? controlFlowNotLowered(span)
 			: htmlNotPromoted(span);
 	});
-}
-
-function hasDefaultValue(typeExpression: string): boolean {
-	return (
-		/\.default\s*\(/.test(typeExpression) ||
-		/\bdefault\s*:/.test(typeExpression)
-	);
 }
 
 function isIdentifier(value: string): boolean {
