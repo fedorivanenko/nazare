@@ -1,68 +1,43 @@
 import type {
-	ArtifactObject,
-	ArtifactSemanticGraph,
+	ArtifactGraph,
+	ArtifactIR,
+	ArtifactSymbol,
+	PropArgumentSyntaxNode,
+	RenderSiteSyntaxNode,
 	ValidationIssue,
 } from "@nazare/core";
 
-export function validateArtifactGraph(
-	graph: ArtifactSemanticGraph,
-): ValidationIssue[] {
+export function validateArtifactIR(ir: ArtifactIR): ValidationIssue[] {
 	return [
-		...validateMorphismEndpoints(graph),
-		...validateRenderSites(graph),
-		...validatePassesPropOrigins(graph),
-		...validateExpectsPropOrigins(graph),
+		...ir.diagnostics,
+		...validateRenderTargetResolutions(ir),
+		...validateArgumentBindings(ir),
+		...validatePropBindingTargets(ir),
 	];
 }
 
-function validateMorphismEndpoints(
-	graph: ArtifactSemanticGraph,
-): ValidationIssue[] {
-	const objectIds = new Set(graph.objects.map((object) => object.id));
-	const issues: ValidationIssue[] = [];
-
-	for (const morphism of graph.morphisms) {
-		if (!objectIds.has(morphism.from)) {
-			issues.push({
-				severity: "error",
-				code: "SIGMA_MISSING_FROM_OBJECT",
-				message: `Morphism ${morphism.id} references missing from object ${morphism.from}`,
-				morphismId: morphism.id,
-				span: morphism.span,
-			});
-		}
-
-		if (!objectIds.has(morphism.to)) {
-			issues.push({
-				severity: "error",
-				code: "SIGMA_MISSING_TO_OBJECT",
-				message: `Morphism ${morphism.id} references missing to object ${morphism.to}`,
-				morphismId: morphism.id,
-				span: morphism.span,
-			});
-		}
-	}
-
-	return issues;
+export function validateArtifactGraph(graph: ArtifactGraph): ValidationIssue[] {
+	return validateGraphEdgeEndpoints(graph);
 }
 
-function validateRenderSites(graph: ArtifactSemanticGraph): ValidationIssue[] {
-	const renderSites = graph.objects.filter(
-		(object) => object.kind === "render-site",
-	);
+function validateRenderTargetResolutions(ir: ArtifactIR): ValidationIssue[] {
 	const issues: ValidationIssue[] = [];
+	const renderSites = ir.syntax.filter(
+		(node): node is RenderSiteSyntaxNode => node.kind === "render-site",
+	);
 
 	for (const renderSite of renderSites) {
-		const rendersEdges = graph.morphisms.filter(
-			(morphism) =>
-				morphism.kind === "renders" && morphism.from === renderSite.id,
+		const renderTargetResolutions = ir.resolutions.filter(
+			(resolution) =>
+				resolution.kind === "render-target" &&
+				resolution.renderSiteId === renderSite.id,
 		);
-		if (rendersEdges.length !== 1) {
+		if (renderTargetResolutions.length !== 1) {
 			issues.push({
 				severity: "error",
-				code: "SIGMA_RENDER_SITE_RENDERS_COUNT",
-				message: `Render site ${renderSite.id} must have exactly one renders edge; found ${rendersEdges.length}`,
-				objectId: renderSite.id,
+				code: "CONSTRAINT_RENDER_TARGET_RESOLUTION_COUNT",
+				message: `Render site ${renderSite.id} must resolve to exactly one component symbol; found ${renderTargetResolutions.length}`,
+				nodeId: renderSite.id,
 				span: renderSite.span,
 			});
 		}
@@ -71,23 +46,84 @@ function validateRenderSites(graph: ArtifactSemanticGraph): ValidationIssue[] {
 	return issues;
 }
 
-function validatePassesPropOrigins(
-	graph: ArtifactSemanticGraph,
-): ValidationIssue[] {
-	const objectsById = objectMap(graph.objects);
+function validateArgumentBindings(ir: ArtifactIR): ValidationIssue[] {
 	const issues: ValidationIssue[] = [];
+	const arguments_ = ir.syntax.filter(
+		(node): node is PropArgumentSyntaxNode => node.kind === "prop-argument",
+	);
 
-	for (const morphism of graph.morphisms) {
-		if (morphism.kind !== "passes-prop") continue;
+	for (const argument of arguments_) {
+		const bindings = ir.resolutions.filter(
+			(resolution) =>
+				resolution.kind === "prop-binding" &&
+				resolution.argumentId === argument.id,
+		);
+		const hasDiagnostic = ir.diagnostics.some(
+			(diagnostic) => diagnostic.nodeId === argument.id,
+		);
+		const renderHasUnresolvedContractDiagnostic = ir.diagnostics.some(
+			(diagnostic) =>
+				diagnostic.code === "CONSTRAINT_UNRESOLVED_EXTERNAL_CONTRACT" &&
+				diagnostic.nodeId === argument.renderSiteId,
+		);
+		if (
+			bindings.length === 1 ||
+			hasDiagnostic ||
+			renderHasUnresolvedContractDiagnostic
+		) {
+			continue;
+		}
 
-		const fromObject = objectsById.get(morphism.from);
-		if (fromObject?.kind !== "render-site") {
+		issues.push({
+			severity: "error",
+			code:
+				bindings.length > 1
+					? "CONSTRAINT_PROP_ARGUMENT_AMBIGUOUS"
+					: "CONSTRAINT_PROP_ARGUMENT_UNRESOLVED",
+			message: `Prop argument ${argument.id} must have exactly one prop binding or diagnostic; found ${bindings.length}`,
+			nodeId: argument.id,
+			span: argument.span,
+		});
+	}
+
+	return issues;
+}
+
+function validatePropBindingTargets(ir: ArtifactIR): ValidationIssue[] {
+	const issues: ValidationIssue[] = [];
+	const symbolsById = symbolMap(ir.symbols);
+
+	for (const binding of ir.resolutions) {
+		if (binding.kind !== "prop-binding") continue;
+
+		const renderTarget = ir.resolutions.find(
+			(resolution) =>
+				resolution.kind === "render-target" &&
+				resolution.renderSiteId === binding.renderSiteId,
+		);
+		if (renderTarget?.kind !== "render-target") continue;
+
+		if (binding.targetComponentSymbolId !== renderTarget.symbolId) {
 			issues.push({
 				severity: "error",
-				code: "SIGMA_PASSES_PROP_ORIGIN",
-				message: `passes-prop morphism ${morphism.id} must originate from render-site`,
-				morphismId: morphism.id,
-				span: morphism.span,
+				code: "CONSTRAINT_PROP_BINDING_TARGET_MISMATCH",
+				message: `Prop binding ${binding.argumentId} targets ${binding.targetComponentSymbolId}, but render target is ${renderTarget.symbolId}`,
+				nodeId: binding.argumentId,
+			});
+		}
+
+		const targetProp = symbolsById.get(binding.propSymbolId);
+		if (
+			!targetProp ||
+			targetProp.ownerSymbolId !== binding.targetComponentSymbolId ||
+			targetProp.resolution !== "external-resolved" ||
+			targetProp.source !== "compiled-contract"
+		) {
+			issues.push({
+				severity: "error",
+				code: "CONSTRAINT_PROP_BINDING_TARGET_NOT_CONTRACT_PROP",
+				message: `Prop binding ${binding.argumentId} does not target a resolved contract prop`,
+				nodeId: binding.argumentId,
 			});
 		}
 	}
@@ -95,29 +131,28 @@ function validatePassesPropOrigins(
 	return issues;
 }
 
-function validateExpectsPropOrigins(
-	graph: ArtifactSemanticGraph,
-): ValidationIssue[] {
-	const objectsById = objectMap(graph.objects);
-	const allowedKinds = new Set([
-		"component",
-		"section",
-		"snippet",
-		"props-interface",
-	]);
+function validateGraphEdgeEndpoints(graph: ArtifactGraph): ValidationIssue[] {
+	const nodeIds = new Set(graph.nodes.map((node) => node.id));
 	const issues: ValidationIssue[] = [];
 
-	for (const morphism of graph.morphisms) {
-		if (morphism.kind !== "expects-prop") continue;
-
-		const fromObject = objectsById.get(morphism.from);
-		if (!fromObject || !allowedKinds.has(fromObject.kind)) {
+	for (const edge of graph.edges) {
+		if (!nodeIds.has(edge.from)) {
 			issues.push({
 				severity: "error",
-				code: "SIGMA_EXPECTS_PROP_ORIGIN",
-				message: `expects-prop morphism ${morphism.id} must originate from component, section, snippet, or props-interface`,
-				morphismId: morphism.id,
-				span: morphism.span,
+				code: "CONSTRAINT_MISSING_FROM_NODE",
+				message: `Edge ${edge.id} references missing from node ${edge.from}`,
+				edgeId: edge.id,
+				span: edge.span,
+			});
+		}
+
+		if (!nodeIds.has(edge.to)) {
+			issues.push({
+				severity: "error",
+				code: "CONSTRAINT_MISSING_TO_NODE",
+				message: `Edge ${edge.id} references missing to node ${edge.to}`,
+				edgeId: edge.id,
+				span: edge.span,
 			});
 		}
 	}
@@ -125,6 +160,6 @@ function validateExpectsPropOrigins(
 	return issues;
 }
 
-function objectMap(objects: ArtifactObject[]): Map<string, ArtifactObject> {
-	return new Map(objects.map((object) => [object.id, object]));
+function symbolMap(symbols: ArtifactSymbol[]): Map<string, ArtifactSymbol> {
+	return new Map(symbols.map((symbol) => [symbol.id, symbol]));
 }

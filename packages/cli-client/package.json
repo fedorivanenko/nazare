@@ -10,5 +10,9 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nazare/compiler": "workspace:^",
+    "@nazare/core": "workspace:^"
   }
 }

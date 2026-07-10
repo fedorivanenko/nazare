@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
@@ -18,7 +21,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core
 
-  packages/cli-client: {}
+  packages/cli-client:
+    dependencies:
+      '@nazare/compiler':
+        specifier: workspace:^
+        version: link:../compiler
+      '@nazare/core':
+        specifier: workspace:^
+        version: link:../core
 
   packages/cli-dev: {}
 
@@ -37,6 +47,9 @@ packages:
 
   '@shopify/liquid-html-parser@2.9.2':
     resolution: {integrity: sha512-2XJYqHaZxEBwuufGhzIZ0M6m9YA4HS7YlVOiZtYanFgkmoQeJm1c0JhKcuCXU5C1pc2M0rt1XzBX8SgWv7l8Ww==}
+
+  '@types/node@26.1.1':
+    resolution: {integrity: sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw==}
 
   isarray@1.0.0:
     resolution: {integrity: sha512-VLghIWNM6ELQzo7zwmcg0NmTVyWKYjvIeM83yjp0wRDTmUnrM678fQbcKBo6n2CJEF0szoG//ytg+TKla89ALQ==}
@@ -57,12 +70,19 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  undici-types@8.3.0:
+    resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
+
 snapshots:
 
   '@shopify/liquid-html-parser@2.9.2':
     dependencies:
       line-column: 1.0.2
       ohm-js: 17.5.0
+
+  '@types/node@26.1.1':
+    dependencies:
+      undici-types: 8.3.0
 
   isarray@1.0.0: {}
 
@@ -78,3 +98,5 @@ snapshots:
   ohm-js@17.5.0: {}
 
   typescript@5.9.3: {}
+
+  undici-types@8.3.0: {}

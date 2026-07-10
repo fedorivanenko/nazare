@@ -1,3 +1,10 @@
+import type { ArtifactContract } from "@nazare/core";
+import { artifactGraphFromIR } from "./graph.js";
+import { parseNazareLiquid } from "./parser.js";
+import { bindArtifactIR, contractFromIR } from "./symbols.js";
+import { syntaxFromAst } from "./syntax.js";
+import { validateArtifactGraph, validateArtifactIR } from "./validate.js";
+
 export type {
 	NazareAst,
 	NazareImportNode,
@@ -9,9 +16,47 @@ export type {
 	NazareRenderNode,
 	ParseDiagnostic,
 } from "./ast.js";
-export { artifactGraphFromAst } from "./graph.js";
+export { artifactGraphFromIR } from "./graph.js";
 export { parseNazareLiquid } from "./parser.js";
-export { validateArtifactGraph } from "./validate.js";
+export {
+	bindArtifactIR,
+	componentSymbolIdForPackage,
+	contractFromIR,
+} from "./symbols.js";
+export { syntaxFromAst } from "./syntax.js";
+export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
+
+export type CompileNazareArtifactOptions = {
+	contracts?: ArtifactContract[];
+	packageId?: string;
+};
+
+export function artifactGraphFromAst(
+	ast: ReturnType<typeof parseNazareLiquid>,
+) {
+	return artifactGraphFromIR(bindArtifactIR(syntaxFromAst(ast)));
+}
+
+export function compileNazareArtifact(
+	source: string,
+	file: string,
+	options: CompileNazareArtifactOptions = {},
+) {
+	const ast = parseNazareLiquid(source, file);
+	const syntax = syntaxFromAst(ast);
+	const ir = bindArtifactIR(syntax, { contracts: options.contracts });
+	const graph = artifactGraphFromIR(ir);
+	const issues = [
+		...ast.diagnostics,
+		...validateArtifactIR(ir),
+		...validateArtifactGraph(graph),
+	];
+	const contract = options.packageId
+		? contractFromIR(ir, options.packageId)
+		: undefined;
+
+	return { ast, ir, graph, issues, contract };
+}
 
 export function compilerPackageName(): string {
 	return "@nazare/compiler";

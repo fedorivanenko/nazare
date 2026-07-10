@@ -1,3 +1,5 @@
 node_modules/
 dist/
+.nazare-out/
 *.tsbuildinfo
+.claude/settings.local.json

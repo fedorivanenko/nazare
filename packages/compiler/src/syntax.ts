@@ -1,0 +1,165 @@
+import type {
+	ArtifactSyntaxNode,
+	ComponentSyntaxNode,
+	ExpressionSyntaxNode,
+	FileSyntaxNode,
+	Id,
+	ImportSyntaxNode,
+	PropArgumentSyntaxNode,
+	PropDeclarationSyntaxNode,
+	PropsInterfaceSyntaxNode,
+	RenderSiteSyntaxNode,
+	SemanticType,
+} from "@nazare/core";
+import type { NazareAst } from "./ast.js";
+import { spanFromOffsets } from "./source.js";
+
+export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
+	const syntax: ArtifactSyntaxNode[] = [];
+	const fileId = fileSyntaxId(ast.file);
+	const componentId = componentSyntaxId(ast.file);
+	const source = ast.liquidAst._source;
+	const fileSpan = spanFromOffsets(source, ast.file, {
+		start: 0,
+		end: source.length,
+	});
+
+	const fileNode: FileSyntaxNode = {
+		id: fileId,
+		kind: "file",
+		path: ast.file,
+		span: fileSpan,
+	};
+	const componentNode: ComponentSyntaxNode = {
+		id: componentId,
+		kind: "component",
+		name: ast.file,
+		fileId,
+		span: fileSpan,
+	};
+
+	syntax.push(fileNode, componentNode);
+
+	let renderIndex = 0;
+	let outputExpressionIndex = 0;
+
+	for (const node of ast.nodes) {
+		if (node.type === "NazareImport") {
+			const importNode: ImportSyntaxNode = {
+				id: `syntax:import:${ast.file}:${node.localName}`,
+				kind: "import",
+				localName: node.localName,
+				packageId: node.packageId,
+				fileId,
+				span: node.span,
+			};
+			syntax.push(importNode);
+			continue;
+		}
+
+		if (node.type === "NazareProps") {
+			const propsInterfaceId = `syntax:props-interface:${ast.file}`;
+			const propDeclarations: PropDeclarationSyntaxNode[] = node.props.map(
+				(prop) => ({
+					id: propDeclarationSyntaxId(ast.file, prop.name),
+					kind: "prop-declaration",
+					name: prop.name,
+					typeExpression: prop.typeExpression,
+					typeInfo: prop.typeInfo,
+					required: prop.required,
+					hasDefault: prop.hasDefault,
+					propsInterfaceId,
+					span: prop.span,
+				}),
+			);
+			const propsInterface: PropsInterfaceSyntaxNode = {
+				id: propsInterfaceId,
+				kind: "props-interface",
+				ownerId: componentId,
+				propDeclarationIds: propDeclarations.map((prop) => prop.id),
+				span: node.span,
+			};
+
+			syntax.push(propsInterface, ...propDeclarations);
+			continue;
+		}
+
+		if (node.type === "NazareOutputExpression") {
+			outputExpressionIndex += 1;
+			syntax.push({
+				id: `syntax:expression:${ast.file}:output:${outputExpressionIndex}`,
+				kind: "expression",
+				source: node.expression,
+				inferredType: inferExpressionType(node.expression),
+				span: node.expressionSpan,
+			});
+			continue;
+		}
+
+		if (node.type === "NazareRender") {
+			renderIndex += 1;
+			const renderSiteId = `syntax:render-site:${ast.file}:${renderIndex}`;
+			const argumentNodes: PropArgumentSyntaxNode[] = [];
+			const expressionNodes: ExpressionSyntaxNode[] = [];
+
+			for (const prop of node.props) {
+				const expressionId = `syntax:expression:${ast.file}:${renderIndex}:${prop.name}`;
+				const argumentId = `syntax:prop-argument:${ast.file}:${renderIndex}:${prop.name}`;
+				expressionNodes.push({
+					id: expressionId,
+					kind: "expression",
+					source: prop.expression,
+					inferredType: inferExpressionType(prop.expression),
+					span: prop.expressionSpan,
+				});
+				argumentNodes.push({
+					id: argumentId,
+					kind: "prop-argument",
+					name: prop.name,
+					nameSpan: prop.nameSpan,
+					expressionId,
+					renderSiteId,
+					span: prop.span,
+				});
+			}
+
+			const renderSite: RenderSiteSyntaxNode = {
+				id: renderSiteId,
+				kind: "render-site",
+				targetName: node.target,
+				argumentIds: argumentNodes.map((argument) => argument.id),
+				ownerId: componentId,
+				reachability: node.reachability,
+				span: node.span,
+			};
+
+			syntax.push(renderSite, ...argumentNodes, ...expressionNodes);
+		}
+	}
+
+	return syntax;
+}
+
+function inferExpressionType(source: string): SemanticType | undefined {
+	const trimmed = source.trim();
+	const stringLiteral = trimmed.match(/^["']([^"']*)["']$/);
+	if (stringLiteral) return { kind: "string-literal", value: stringLiteral[1] };
+	const numberLiteral = Number(trimmed);
+	if (trimmed !== "" && Number.isFinite(numberLiteral)) {
+		return { kind: "number-literal", value: numberLiteral };
+	}
+	if (trimmed === "true" || trimmed === "false") return { kind: "boolean" };
+	return undefined;
+}
+
+export function fileSyntaxId(file: string): Id {
+	return `syntax:file:${file}`;
+}
+
+export function componentSyntaxId(file: string): Id {
+	return `syntax:component:${file}`;
+}
+
+export function propDeclarationSyntaxId(file: string, name: string): Id {
+	return `syntax:prop-declaration:${file}:${name}`;
+}

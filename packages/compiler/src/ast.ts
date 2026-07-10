@@ -1,8 +1,8 @@
-import type { SourceSpan } from "@nazare/core";
+import type { PropTypeInfo, SourceSpan } from "@nazare/core";
 import type { DocumentNode, LiquidHtmlNode } from "@shopify/liquid-html-parser";
 
 export type ParseDiagnostic = {
-	severity: "error" | "warning";
+	severity: "error" | "warning" | "info";
 	code: string;
 	message: string;
 	span?: SourceSpan;
@@ -18,6 +18,7 @@ export type NazareImportNode = {
 export type NazarePropDeclaration = {
 	name: string;
 	typeExpression: string;
+	typeInfo: PropTypeInfo;
 	required: boolean;
 	hasDefault: boolean;
 	span: SourceSpan;
@@ -33,12 +34,22 @@ export type NazarePassedProp = {
 	name: string;
 	expression: string;
 	span: SourceSpan;
+	nameSpan: SourceSpan;
+	expressionSpan: SourceSpan;
 };
 
 export type NazareRenderNode = {
 	type: "NazareRender";
 	target: string;
 	props: NazarePassedProp[];
+	reachability: "unconditional" | "conditional-unmodeled" | "unknown";
+	span: SourceSpan;
+};
+
+export type NazareOutputExpressionNode = {
+	type: "NazareOutputExpression";
+	expression: string;
+	expressionSpan: SourceSpan;
 	span: SourceSpan;
 };
 
@@ -52,6 +63,7 @@ export type NazareNode =
 	| NazareImportNode
 	| NazarePropsNode
 	| NazareRenderNode
+	| NazareOutputExpressionNode
 	| NazareOpaqueNode;
 
 export type NazareAst = {

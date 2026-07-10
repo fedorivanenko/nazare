@@ -1,188 +1,178 @@
 import type {
-	ArtifactMorphism,
-	ArtifactObject,
-	ArtifactSemanticGraph,
+	ArtifactGraph,
+	ArtifactGraphEdge,
+	ArtifactGraphNode,
+	ArtifactIR,
+	ArtifactSyntaxNode,
 	Id,
 } from "@nazare/core";
-import type { NazareAst, NazareNode } from "./ast.js";
 
-export function artifactGraphFromAst(ast: NazareAst): ArtifactSemanticGraph {
-	const objects = new Map<Id, ArtifactObject>();
-	const morphisms: ArtifactMorphism[] = [];
-	const fileId = `file:${ast.file}`;
-	const imports = new Map<string, string>();
+export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
+	const nodes: ArtifactGraphNode[] = [
+		...ir.syntax.map(graphNodeFromSyntax),
+		...ir.symbols.map(
+			(symbol): ArtifactGraphNode => ({
+				id: symbol.id,
+				kind: symbol.kind,
+				name: symbol.name,
+				layer: "symbol",
+			}),
+		),
+	];
+	const edges: ArtifactGraphEdge[] = [];
 
-	addObject(objects, {
-		id: fileId,
-		kind: "file",
-		name: ast.file,
-		span: ast.nodes[0]?.span,
-	});
-
-	let morphismIndex = 0;
-	let renderIndex = 0;
-
-	for (const node of ast.nodes) {
-		if (node.type === "NazareImport") {
-			const importId = `import:${ast.file}:${node.localName}`;
-			const componentId = componentIdForPackage(node.packageId);
-			imports.set(node.localName, componentId);
-
-			addObject(objects, {
-				id: importId,
-				kind: "import",
-				name: node.localName,
-				data: { packageId: node.packageId },
-				span: node.span,
-			});
-			addObject(objects, {
-				id: componentId,
-				kind: "component",
-				name: node.localName,
-				data: { packageId: node.packageId },
-				span: node.span,
-			});
-			morphisms.push({
-				id: morphismId(++morphismIndex),
-				kind: "declares",
-				from: fileId,
-				to: importId,
-				span: node.span,
-			});
-			morphisms.push({
-				id: morphismId(++morphismIndex),
-				kind: "imports",
-				from: fileId,
-				to: componentId,
-				span: node.span,
-			});
-			continue;
+	for (const syntaxNode of ir.syntax) {
+		if (syntaxNode.kind === "component") {
+			pushEdge(edges, "declares", syntaxNode.fileId, syntaxNode.id, "syntax");
 		}
-
-		if (node.type === "NazareProps") {
-			const propsInterfaceId = `props-interface:${ast.file}`;
-			addObject(objects, {
-				id: propsInterfaceId,
-				kind: "props-interface",
-				name: `${ast.file} props`,
-				span: node.span,
-			});
-			morphisms.push({
-				id: morphismId(++morphismIndex),
-				kind: "declares",
-				from: fileId,
-				to: propsInterfaceId,
-				span: node.span,
-			});
-
-			for (const prop of node.props) {
-				const propId = `prop:${ast.file}:expected:${prop.name}`;
-				addObject(objects, {
-					id: propId,
-					kind: "prop",
-					name: prop.name,
-					data: {
-						typeExpression: prop.typeExpression,
-						required: prop.required,
-						hasDefault: prop.hasDefault,
-					},
-					span: prop.span,
-				});
-				morphisms.push({
-					id: morphismId(++morphismIndex),
-					kind: "expects-prop",
-					from: propsInterfaceId,
-					to: propId,
-					span: prop.span,
-				});
+		if (syntaxNode.kind === "import") {
+			pushEdge(edges, "declares", syntaxNode.fileId, syntaxNode.id, "syntax");
+		}
+		if (syntaxNode.kind === "props-interface") {
+			pushEdge(edges, "declares", syntaxNode.ownerId, syntaxNode.id, "syntax");
+		}
+		if (syntaxNode.kind === "prop-declaration") {
+			pushEdge(
+				edges,
+				"declares",
+				syntaxNode.propsInterfaceId,
+				syntaxNode.id,
+				"syntax",
+			);
+		}
+		if (syntaxNode.kind === "render-site") {
+			pushEdge(edges, "declares", syntaxNode.ownerId, syntaxNode.id, "syntax");
+			for (const argumentId of syntaxNode.argumentIds) {
+				pushEdge(
+					edges,
+					"supplies-argument",
+					syntaxNode.id,
+					argumentId,
+					"syntax",
+				);
 			}
-			continue;
 		}
-
-		if (node.type === "NazareRender") {
-			renderIndex += 1;
-			morphismIndex = addRenderNode({
-				ast,
-				node,
-				objects,
-				morphisms,
-				imports,
-				renderIndex,
-				morphismIndex,
-			});
+		if (syntaxNode.kind === "prop-argument") {
+			pushEdge(
+				edges,
+				"uses-expression",
+				syntaxNode.id,
+				syntaxNode.expressionId,
+				"syntax",
+			);
 		}
 	}
 
-	return { objects: Array.from(objects.values()), morphisms };
-}
-
-function addRenderNode(input: {
-	ast: NazareAst;
-	node: Extract<NazareNode, { type: "NazareRender" }>;
-	objects: Map<Id, ArtifactObject>;
-	morphisms: ArtifactMorphism[];
-	imports: Map<string, string>;
-	renderIndex: number;
-	morphismIndex: number;
-}): number {
-	const renderId = `render:${input.ast.file}:${input.renderIndex}`;
-	const targetId =
-		input.imports.get(input.node.target) ?? `component:${input.node.target}`;
-	let morphismIndex = input.morphismIndex;
-
-	addObject(input.objects, {
-		id: renderId,
-		kind: "render-site",
-		name: `${input.node.target} render`,
-		data: { target: input.node.target },
-		span: input.node.span,
-	});
-	addObject(input.objects, {
-		id: targetId,
-		kind: "component",
-		name: input.node.target,
-		span: input.node.span,
-	});
-	input.morphisms.push({
-		id: morphismId(++morphismIndex),
-		kind: "renders",
-		from: renderId,
-		to: targetId,
-		span: input.node.span,
-	});
-
-	for (const prop of input.node.props) {
-		const propId = `prop:${input.ast.file}:render:${input.renderIndex}:${prop.name}`;
-		addObject(input.objects, {
-			id: propId,
-			kind: "prop",
-			name: prop.name,
-			data: { expression: prop.expression },
-			span: prop.span,
-		});
-		input.morphisms.push({
-			id: morphismId(++morphismIndex),
-			kind: "passes-prop",
-			from: renderId,
-			to: propId,
-			span: prop.span,
-		});
+	for (const symbol of ir.symbols) {
+		for (const declaration of symbol.declarations) {
+			pushEdge(edges, "resolves-to", declaration, symbol.id, "resolved");
+		}
 	}
 
-	return morphismIndex;
+	for (const resolution of ir.resolutions) {
+		if (resolution.kind === "setting-projection") {
+			pushEdge(
+				edges,
+				"materializes-as-setting",
+				resolution.propSymbolId,
+				resolution.settingSymbolId,
+				"resolved",
+			);
+		}
+		if (resolution.kind === "alias-target") {
+			pushEdge(
+				edges,
+				"aliases",
+				resolution.aliasSymbolId,
+				resolution.targetSymbolId,
+				"resolved",
+			);
+		}
+		if (resolution.kind === "import-target") {
+			pushEdge(
+				edges,
+				"imports",
+				resolution.importId,
+				resolution.targetSymbolId,
+				"derived",
+			);
+		}
+		if (resolution.kind === "render-target") {
+			pushEdge(
+				edges,
+				"renders",
+				resolution.renderSiteId,
+				resolution.symbolId,
+				"resolved",
+			);
+		}
+		if (resolution.kind === "prop-binding") {
+			pushEdge(
+				edges,
+				"expects-prop",
+				resolution.targetComponentSymbolId,
+				resolution.propSymbolId,
+				"resolved",
+			);
+			pushEdge(
+				edges,
+				"binds-to",
+				resolution.argumentId,
+				resolution.propSymbolId,
+				"resolved",
+			);
+		}
+		if (resolution.kind === "symbol-reference") {
+			pushEdge(
+				edges,
+				"references",
+				resolution.expressionId,
+				resolution.symbolId,
+				"resolved",
+			);
+		}
+	}
+
+	return { nodes, edges };
 }
 
-function addObject(
-	objects: Map<Id, ArtifactObject>,
-	object: ArtifactObject,
+function graphNodeFromSyntax(node: ArtifactSyntaxNode): ArtifactGraphNode {
+	return {
+		id: node.id,
+		kind: node.kind,
+		name: syntaxName(node),
+		layer: "syntax",
+		span: "span" in node ? node.span : undefined,
+	};
+}
+
+function syntaxName(node: ArtifactSyntaxNode): string {
+	if (node.kind === "file") return node.path;
+	if ("name" in node) return node.name;
+	if (node.kind === "render-site") return node.targetName;
+	if (node.kind === "import") return node.localName;
+	if (node.kind === "expression") return node.source;
+	return node.kind;
+}
+
+function pushEdge(
+	edges: ArtifactGraphEdge[],
+	kind: ArtifactGraphEdge["kind"],
+	from: Id,
+	to: Id,
+	origin: ArtifactGraphEdge["origin"],
 ): void {
-	if (!objects.has(object.id)) objects.set(object.id, object);
-}
+	if (
+		edges.some(
+			(edge) =>
+				edge.kind === kind &&
+				edge.from === from &&
+				edge.to === to &&
+				edge.origin === origin,
+		)
+	) {
+		return;
+	}
 
-function componentIdForPackage(packageId: string): Id {
-	return `component:${packageId}`;
-}
-
-function morphismId(index: number): Id {
-	return `morphism:${index}`;
+	edges.push({ id: `edge:${edges.length + 1}`, kind, from, to, origin });
 }
