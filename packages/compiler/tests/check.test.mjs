@@ -59,6 +59,13 @@ test("check: prop type mismatch reported but binding still created", () => {
 	);
 });
 
+// Intentional strictness: a string literal is not a url. Accepting strings
+// for a prop requires the contract to say so (future union type, url | string).
+test("check: string literal is not assignable to url prop", () => {
+	const result = compileConsumer(`href: "https://x.dev", text: "Go"`);
+	assert.ok(codes(result).includes("CONSTRAINT_PROP_TYPE_MISMATCH"));
+});
+
 test("check: unresolved contract downgrades to warning", () => {
 	const source = `{% import Card from "@test/card" %}
 {% render Card {title: "Hi"} %}`;
