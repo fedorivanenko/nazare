@@ -1,3 +1,7 @@
+// Derived lookup indexes over an ArtifactIR. The IR itself stays flat arrays
+// so it serializes cleanly (golden snapshots, CLI output); passes that need
+// by-id or by-kind access build this index once instead of scanning. Never
+// stored — always rebuilt from the IR it wraps.
 import type {
 	ArtifactIR,
 	ArtifactResolution,

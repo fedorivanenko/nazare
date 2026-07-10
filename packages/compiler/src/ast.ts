@@ -1,3 +1,8 @@
+// Shape of the parse pass's output: the handful of Nazare-specific nodes
+// (import / props / render / output expression) lifted out of a Liquid file,
+// alongside the untouched LiquidHTML AST. Anything Nazare doesn't model stays
+// opaque rather than being rejected — every valid Shopify theme should be at
+// least partially readable.
 import type { Diagnostic, PropTypeInfo, SourceSpan } from "@nazare/core";
 import type { DocumentNode, LiquidHtmlNode } from "@shopify/liquid-html-parser";
 

@@ -1,3 +1,8 @@
+// Bind pass: builds the IR from syntax nodes — symbols (components, aliases,
+// props, settings) and resolutions linking uses to them. Records facts only:
+// a prop binding exists whenever an argument names a contract prop, even if
+// the types disagree. Judging those facts belongs to check.ts; this file
+// must never emit a diagnostic.
 import type {
 	ArtifactContract,
 	ArtifactIR,

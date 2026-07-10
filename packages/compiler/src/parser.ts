@@ -1,3 +1,8 @@
+// Parse pass: runs Shopify's tolerant LiquidHTML parser, then walks the tree
+// once to lift Nazare tags into NazareNodes (see ast.ts). Owns only surface
+// syntax concerns — tag markup shapes, spans, and which Liquid constructs are
+// not yet lowered (control flow, HTML). No symbols, no types beyond what the
+// props DSL literally declares.
 import {
 	type LiquidHtmlNode,
 	NodeTypes,

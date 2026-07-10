@@ -1,3 +1,8 @@
+// Validate pass: structural invariants of the compiler's own output — every
+// render site resolves exactly once, bindings point at real contract props,
+// graph edges reference existing nodes. These guard the compiler against
+// itself; a failure here is a compiler bug, not a user error (user errors
+// belong to check.ts).
 import type { ArtifactGraph, ArtifactIR, Diagnostic } from "@nazare/core";
 import {
 	missingEdgeEndpoint,

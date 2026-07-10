@@ -1,3 +1,8 @@
+// Check pass: judges the IR against imported package contracts — missing
+// required props, unknown arguments, type assignability, and value-level
+// range constraints. Every diagnostic about *user* code at a render site
+// originates here; structural self-invariants live in validate.ts. Owns the
+// assignability relation between SemanticTypes.
 import type {
 	ArtifactContract,
 	ArtifactIR,

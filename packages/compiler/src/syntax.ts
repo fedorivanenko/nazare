@@ -1,3 +1,8 @@
+// Syntax pass: lowers the parsed AST into flat ArtifactSyntaxNodes with
+// stable ids (formats owned by ids.ts). This is where tree structure becomes
+// id-linked records — every later pass works on this flat form, never on the
+// AST. Also infers types for literal expressions, since that is still a
+// purely syntactic fact.
 import type {
 	ArtifactSyntaxNode,
 	ComponentSyntaxNode,

@@ -1,3 +1,5 @@
+// Converts character offsets (what the Liquid parser reports) into
+// line/column SourceSpans (what diagnostics and editors consume).
 import type { SourceSpan } from "@nazare/core";
 
 type OffsetPosition = {

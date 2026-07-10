@@ -1,3 +1,8 @@
+// Graph pass: projects the IR into a uniform node/edge shape for queries and
+// visualization. Purely derived — adds no information the IR doesn't already
+// hold, so it can always be rebuilt and never needs to be kept in sync
+// manually. Edge identity is the edge's content, keeping ids stable across
+// emission order.
 import type {
 	ArtifactGraph,
 	ArtifactGraphEdge,
