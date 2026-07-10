@@ -57,7 +57,7 @@ type NazareRefs = {
 ${fields}
 };
 type NazareContext = { root: HTMLElement; refs: NazareRefs };
-declare function component(
+declare function island(
   setup: (context: NazareContext) => void,
 ): (context: NazareContext) => void;`;
 }

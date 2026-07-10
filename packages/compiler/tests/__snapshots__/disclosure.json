@@ -38,7 +38,7 @@
         "id": "syntax:script:examples/components/disclosure/disclosure.nz.liquid:1",
         "kind": "script",
         "lang": "ts",
-        "source": "\nexport default component(({ refs }) => {\n  refs.trigger.addEventListener(\"click\", () => {\n    refs.panel.hidden = !refs.panel.hidden;\n    refs.root.classList.toggle(\"nazare-disclosure--open\");\n  });\n});\n",
+        "source": "\nexport default island(({ refs }) => {\n  refs.trigger.addEventListener(\"click\", () => {\n    refs.panel.hidden = !refs.panel.hidden;\n    refs.root.classList.toggle(\"nazare-disclosure--open\");\n  });\n});\n",
         "ownerId": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",

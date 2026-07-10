@@ -15,7 +15,7 @@ const validComponent = `<div ref="root">
 </div>
 
 {% script lang="ts" %}
-component(({ refs }) => {
+island(({ refs }) => {
   refs.trigger.addEventListener("click", () => refs.root.remove());
 });
 {% endscript %}`;
@@ -39,7 +39,7 @@ test("refs: valid component links script accesses to markup refs", () => {
 test("refs: script access without a matching element is an error", () => {
 	const result = compile(`<div ref="root"></div>
 {% script %}
-component(({ refs }) => {
+island(({ refs }) => {
   refs.root.remove();
   refs.panel.hidden = false;
 });
@@ -55,7 +55,7 @@ test("refs: duplicate ref names are an error", () => {
 	const result = compile(`<div ref="item"></div>
 <span ref="item"></span>
 {% script %}
-component(({ refs }) => refs.item.remove());
+island(({ refs }) => refs.item.remove());
 {% endscript %}`);
 	assert.ok(codes(result).includes("CONSTRAINT_DUPLICATE_REF"));
 });
@@ -64,7 +64,7 @@ test("refs: declared but never accessed ref warns when a script exists", () => {
 	const result = compile(`<div ref="root"></div>
 <div ref="ghost"></div>
 {% script %}
-component(({ refs }) => refs.root.remove());
+island(({ refs }) => refs.root.remove());
 {% endscript %}`);
 	const issue = result.issues.find(
 		(candidate) => candidate.code === "CONSTRAINT_UNUSED_REF",
@@ -90,7 +90,7 @@ test("refs: dynamic ref values are skipped with a parse warning", () => {
 test("refs: script body with comparisons does not confuse the liquid parser", () => {
 	const result = compile(`<div ref="root"></div>
 {% script %}
-component(({ refs }) => {
+island(({ refs }) => {
   const n = 1;
   if (n < 2 && n > 0) refs.root.remove();
 });

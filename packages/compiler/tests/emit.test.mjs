@@ -20,7 +20,7 @@ const disclosureLike = `{% props {
 </div>
 
 {% script lang="ts" %}
-export default component(({ refs }: { refs: any }) => {
+export default island(({ refs }: { refs: any }) => {
   refs.trigger.addEventListener("click", () => refs.root.remove());
 });
 {% endscript %}`;
@@ -90,7 +90,7 @@ test("emit: no script means no js assets", () => {
 
 test("emit: script without a root element warns", () => {
 	const result = emit(`{% script %}
-export default component(() => {});
+export default island(() => {});
 {% endscript %}`);
 	assert.ok(
 		result.issues.some(
@@ -102,7 +102,7 @@ export default component(() => {});
 test("emit: script without default export warns", () => {
 	const result = emit(`<div ref="root"></div>
 {% script %}
-component(({ refs }) => refs.root.remove());
+island(({ refs }) => refs.root.remove());
 {% endscript %}`);
 	assert.ok(
 		result.issues.some(

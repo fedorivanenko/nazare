@@ -15,7 +15,7 @@ test("script-check: valid typed script passes", () => {
   <button ref="trigger">Go</button>
 </div>
 {% script lang="ts" %}
-export default component(({ refs }) => {
+export default island(({ refs }) => {
   refs.trigger.disabled = true;
   refs.root.classList.add("open");
 });
@@ -27,7 +27,7 @@ test("script-check: refs are typed from tag names", () => {
 	// disabled exists on HTMLButtonElement but not on HTMLDivElement
 	const issues = scriptIssues(`<div ref="panel"></div>
 {% script lang="ts" %}
-export default component(({ refs }) => {
+export default island(({ refs }) => {
   refs.panel.disabled = true;
 });
 {% endscript %}`);
@@ -40,7 +40,7 @@ export default component(({ refs }) => {
 test("script-check: diagnostic spans map back into the liquid file", () => {
 	const issues = scriptIssues(`<div ref="panel"></div>
 {% script lang="ts" %}
-export default component(({ refs }) => {
+export default island(({ refs }) => {
   refs.panel.disabled = true;
 });
 {% endscript %}`);
@@ -53,7 +53,7 @@ export default component(({ refs }) => {
 test("script-check: unknown ref is not double-reported", () => {
 	const source = `<div ref="root"></div>
 {% script lang="ts" %}
-export default component(({ refs }) => {
+export default island(({ refs }) => {
   refs.ghost.remove();
 });
 {% endscript %}`;
@@ -71,7 +71,7 @@ export default component(({ refs }) => {
 test("script-check: general type errors are caught", () => {
 	const issues = scriptIssues(`<div ref="root"></div>
 {% script lang="ts" %}
-export default component(({ refs }) => {
+export default island(({ refs }) => {
   const n: number = "not a number";
   refs.root.remove();
 });
@@ -82,7 +82,7 @@ export default component(({ refs }) => {
 test("script-check: js scripts are skipped", () => {
 	const issues = scriptIssues(`<div ref="root"></div>
 {% script lang="js" %}
-export default component(({ refs }) => {
+export default island(({ refs }) => {
   refs.root.whatever();
 });
 {% endscript %}`);
@@ -92,7 +92,7 @@ export default component(({ refs }) => {
 test("script-check: custom element tags fall back to HTMLElement", () => {
 	const issues = scriptIssues(`<my-widget ref="widget"></my-widget>
 {% script lang="ts" %}
-export default component(({ refs }) => {
+export default island(({ refs }) => {
   refs.widget.setAttribute("data-x", "1");
 });
 {% endscript %}`);

@@ -231,7 +231,7 @@ export function emitScriptWithoutDefaultExport(
 	return {
 		severity: "warning",
 		code: "EMIT_SCRIPT_WITHOUT_DEFAULT_EXPORT",
-		message: `Script in ${componentName} has no "export default component(...)"; nothing will be registered`,
+		message: `Script in ${componentName} has no "export default island(...)"; nothing will be registered`,
 		span,
 	};
 }
