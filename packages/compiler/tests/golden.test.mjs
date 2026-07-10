@@ -26,6 +26,13 @@ function compileComponent(component, contracts) {
 	return compileNazareArtifact(readFileSync(entryPath, "utf8"), file, {
 		packageId: component.manifest.id,
 		contracts,
+		readAsset: (relativePath) => {
+			try {
+				return readFileSync(join(component.dir, relativePath), "utf8");
+			} catch {
+				return undefined;
+			}
+		},
 	});
 }
 

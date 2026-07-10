@@ -35,6 +35,63 @@
         }
       },
       {
+        "id": "syntax:style:examples/components/price/price.nz.liquid:1",
+        "kind": "style",
+        "source": ".price {\n  display: inline-flex;\n  align-items: baseline;\n  gap: 0.5rem;\n}\n\n.price__compare {\n  color: rgb(107 114 128);\n}\n",
+        "ownerId": "syntax:component:examples/components/price/price.nz.liquid",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 1,
+            "column": 27
+          }
+        },
+        "bodySpan": {
+          "file": "examples/components/price/price.css",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 10,
+            "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:script:examples/components/price/price.nz.liquid:1",
+        "kind": "script",
+        "lang": "js",
+        "source": "export default island(({ root }) => {\n\troot.dataset.priceReady = \"true\";\n});\n",
+        "ownerId": "syntax:component:examples/components/price/price.nz.liquid",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 2,
+            "column": 1
+          },
+          "end": {
+            "line": 2,
+            "column": 26
+          }
+        },
+        "bodySpan": {
+          "file": "examples/components/price/price.js",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 4,
+            "column": 1
+          }
+        }
+      },
+      {
         "id": "syntax:props-interface:examples/components/price/price.nz.liquid",
         "kind": "props-interface",
         "ownerId": "syntax:component:examples/components/price/price.nz.liquid",
@@ -332,6 +389,40 @@
         }
       },
       {
+        "id": "syntax:style:examples/components/price/price.nz.liquid:1",
+        "kind": "style",
+        "name": "style",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 1,
+            "column": 27
+          }
+        }
+      },
+      {
+        "id": "syntax:script:examples/components/price/price.nz.liquid:1",
+        "kind": "script",
+        "name": "script",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 2,
+            "column": 1
+          },
+          "end": {
+            "line": 2,
+            "column": 26
+          }
+        }
+      },
+      {
         "id": "syntax:props-interface:examples/components/price/price.nz.liquid",
         "kind": "props-interface",
         "name": "props-interface",
@@ -485,6 +576,20 @@
         "origin": "syntax"
       },
       {
+        "id": "edge:syntax:declares:syntax:component:examples/components/price/price.nz.liquid->syntax:style:examples/components/price/price.nz.liquid:1",
+        "kind": "declares",
+        "from": "syntax:component:examples/components/price/price.nz.liquid",
+        "to": "syntax:style:examples/components/price/price.nz.liquid:1",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:syntax:declares:syntax:component:examples/components/price/price.nz.liquid->syntax:script:examples/components/price/price.nz.liquid:1",
+        "kind": "declares",
+        "from": "syntax:component:examples/components/price/price.nz.liquid",
+        "to": "syntax:script:examples/components/price/price.nz.liquid:1",
+        "origin": "syntax"
+      },
+      {
         "id": "edge:syntax:declares:syntax:component:examples/components/price/price.nz.liquid->syntax:props-interface:examples/components/price/price.nz.liquid",
         "kind": "declares",
         "from": "syntax:component:examples/components/price/price.nz.liquid",
@@ -585,38 +690,6 @@
     ]
   },
   "issues": [
-    {
-      "severity": "error",
-      "code": "NAZARE_PARSE_IMPORT",
-      "message": "Invalid Nazare import syntax: \"./price.css\"",
-      "span": {
-        "file": "examples/components/price/price.nz.liquid",
-        "start": {
-          "line": 1,
-          "column": 1
-        },
-        "end": {
-          "line": 1,
-          "column": 27
-        }
-      }
-    },
-    {
-      "severity": "error",
-      "code": "NAZARE_PARSE_IMPORT",
-      "message": "Invalid Nazare import syntax: \"./price.js\"",
-      "span": {
-        "file": "examples/components/price/price.nz.liquid",
-        "start": {
-          "line": 2,
-          "column": 1
-        },
-        "end": {
-          "line": 2,
-          "column": 26
-        }
-      }
-    },
     {
       "severity": "info",
       "code": "IR_NODE_NOT_PROMOTED_HTML",

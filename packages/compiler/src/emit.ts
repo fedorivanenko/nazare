@@ -111,10 +111,13 @@ function emitLiquid(
 	}
 
 	for (const node of compiled.ast.nodes) {
-		if (node.type === "NazareProps" || node.type === "NazareImport") {
-			edits.push({ ...editRange(source, node.span), replacement: "" });
-		}
-		if (node.type === "NazareScript" || node.type === "NazareStyle") {
+		if (
+			node.type === "NazareProps" ||
+			node.type === "NazareImport" ||
+			node.type === "NazareAssetImport" ||
+			node.type === "NazareScript" ||
+			node.type === "NazareStyle"
+		) {
 			edits.push({ ...editRange(source, node.span), replacement: "" });
 		}
 	}

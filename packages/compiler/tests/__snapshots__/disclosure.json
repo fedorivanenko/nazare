@@ -35,6 +35,152 @@
         }
       },
       {
+        "id": "syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid",
+        "kind": "props-interface",
+        "ownerId": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
+        "propDeclarationIds": [
+          "syntax:prop-declaration:examples/components/disclosure/disclosure.nz.liquid:label"
+        ],
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 6,
+            "column": 5
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/disclosure/disclosure.nz.liquid:label",
+        "kind": "prop-declaration",
+        "name": "label",
+        "typeExpression": "string.setting({\n    label: \"Trigger label\",\n    default: \"Details\",\n  })",
+        "typeInfo": {
+          "valueType": {
+            "kind": "string"
+          },
+          "setting": {
+            "label": "Trigger label",
+            "default": "Details"
+          }
+        },
+        "required": false,
+        "hasDefault": true,
+        "propsInterfaceId": "syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 2,
+            "column": 3
+          },
+          "end": {
+            "line": 2,
+            "column": 8
+          }
+        }
+      },
+      {
+        "id": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1",
+        "kind": "element-ref",
+        "name": "root",
+        "tagName": "div",
+        "ownerId": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 8,
+            "column": 6
+          },
+          "end": {
+            "line": 8,
+            "column": 16
+          }
+        }
+      },
+      {
+        "id": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2",
+        "kind": "element-ref",
+        "name": "trigger",
+        "tagName": "button",
+        "ownerId": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 9,
+            "column": 11
+          },
+          "end": {
+            "line": 9,
+            "column": 24
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1",
+        "kind": "expression",
+        "source": "section.settings.label",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 9,
+            "column": 42
+          },
+          "end": {
+            "line": 9,
+            "column": 64
+          }
+        }
+      },
+      {
+        "id": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3",
+        "kind": "element-ref",
+        "name": "panel",
+        "tagName": "div",
+        "ownerId": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 10,
+            "column": 8
+          },
+          "end": {
+            "line": 10,
+            "column": 19
+          }
+        }
+      },
+      {
+        "id": "syntax:style:examples/components/disclosure/disclosure.nz.liquid:1",
+        "kind": "style",
+        "source": "\n.nazare-disclosure {\n  display: block;\n}\n.nazare-disclosure--open > [data-nz-ref=\"panel\"] {\n  display: block;\n}\n",
+        "ownerId": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 15,
+            "column": 1
+          },
+          "end": {
+            "line": 22,
+            "column": 20
+          }
+        },
+        "bodySpan": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 15,
+            "column": 17
+          },
+          "end": {
+            "line": 22,
+            "column": 1
+          }
+        }
+      },
+      {
         "id": "syntax:script:examples/components/disclosure/disclosure.nz.liquid:1",
         "kind": "script",
         "lang": "ts",
@@ -130,152 +276,6 @@
             "column": 14
           }
         }
-      },
-      {
-        "id": "syntax:style:examples/components/disclosure/disclosure.nz.liquid:1",
-        "kind": "style",
-        "source": "\n.nazare-disclosure {\n  display: block;\n}\n.nazare-disclosure--open > [data-nz-ref=\"panel\"] {\n  display: block;\n}\n",
-        "ownerId": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 15,
-            "column": 1
-          },
-          "end": {
-            "line": 22,
-            "column": 20
-          }
-        },
-        "bodySpan": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 15,
-            "column": 17
-          },
-          "end": {
-            "line": 22,
-            "column": 1
-          }
-        }
-      },
-      {
-        "id": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1",
-        "kind": "element-ref",
-        "name": "trigger",
-        "tagName": "button",
-        "ownerId": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 9,
-            "column": 11
-          },
-          "end": {
-            "line": 9,
-            "column": 24
-          }
-        }
-      },
-      {
-        "id": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2",
-        "kind": "element-ref",
-        "name": "panel",
-        "tagName": "div",
-        "ownerId": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 10,
-            "column": 8
-          },
-          "end": {
-            "line": 10,
-            "column": 19
-          }
-        }
-      },
-      {
-        "id": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3",
-        "kind": "element-ref",
-        "name": "root",
-        "tagName": "div",
-        "ownerId": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 8,
-            "column": 6
-          },
-          "end": {
-            "line": 8,
-            "column": 16
-          }
-        }
-      },
-      {
-        "id": "syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid",
-        "kind": "props-interface",
-        "ownerId": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
-        "propDeclarationIds": [
-          "syntax:prop-declaration:examples/components/disclosure/disclosure.nz.liquid:label"
-        ],
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 1,
-            "column": 1
-          },
-          "end": {
-            "line": 6,
-            "column": 5
-          }
-        }
-      },
-      {
-        "id": "syntax:prop-declaration:examples/components/disclosure/disclosure.nz.liquid:label",
-        "kind": "prop-declaration",
-        "name": "label",
-        "typeExpression": "string.setting({\n    label: \"Trigger label\",\n    default: \"Details\",\n  })",
-        "typeInfo": {
-          "valueType": {
-            "kind": "string"
-          },
-          "setting": {
-            "label": "Trigger label",
-            "default": "Details"
-          }
-        },
-        "required": false,
-        "hasDefault": true,
-        "propsInterfaceId": "syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid",
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 2,
-            "column": 3
-          },
-          "end": {
-            "line": 2,
-            "column": 8
-          }
-        }
-      },
-      {
-        "id": "syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1",
-        "kind": "expression",
-        "source": "section.settings.label",
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 9,
-            "column": 42
-          },
-          "end": {
-            "line": 9,
-            "column": 64
-          }
-        }
       }
     ],
     "symbols": [
@@ -285,36 +285,6 @@
         "name": "examples/components/disclosure/disclosure.nz.liquid",
         "declarations": [
           "syntax:component:examples/components/disclosure/disclosure.nz.liquid"
-        ],
-        "resolution": "local",
-        "source": "syntax"
-      },
-      {
-        "id": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.trigger",
-        "kind": "ref",
-        "name": "trigger",
-        "declarations": [
-          "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1"
-        ],
-        "resolution": "local",
-        "source": "syntax"
-      },
-      {
-        "id": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.panel",
-        "kind": "ref",
-        "name": "panel",
-        "declarations": [
-          "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2"
-        ],
-        "resolution": "local",
-        "source": "syntax"
-      },
-      {
-        "id": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.root",
-        "kind": "ref",
-        "name": "root",
-        "declarations": [
-          "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3"
         ],
         "resolution": "local",
         "source": "syntax"
@@ -344,6 +314,36 @@
         "semanticType": {
           "kind": "string"
         }
+      },
+      {
+        "id": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.root",
+        "kind": "ref",
+        "name": "root",
+        "declarations": [
+          "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1"
+        ],
+        "resolution": "local",
+        "source": "syntax"
+      },
+      {
+        "id": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.trigger",
+        "kind": "ref",
+        "name": "trigger",
+        "declarations": [
+          "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2"
+        ],
+        "resolution": "local",
+        "source": "syntax"
+      },
+      {
+        "id": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.panel",
+        "kind": "ref",
+        "name": "panel",
+        "declarations": [
+          "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3"
+        ],
+        "resolution": "local",
+        "source": "syntax"
       }
     ],
     "resolutions": [
@@ -351,6 +351,11 @@
         "kind": "setting-projection",
         "propSymbolId": "symbol:prop:examples/components/disclosure/disclosure.nz.liquid#default.label",
         "settingSymbolId": "symbol:setting:examples/components/disclosure/disclosure.nz.liquid#default.label"
+      },
+      {
+        "kind": "symbol-reference",
+        "expressionId": "syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1",
+        "symbolId": "symbol:setting:examples/components/disclosure/disclosure.nz.liquid#default.label"
       },
       {
         "kind": "ref-binding",
@@ -371,11 +376,6 @@
         "kind": "ref-binding",
         "refAccessId": "syntax:ref-access:examples/components/disclosure/disclosure.nz.liquid:1:4",
         "symbolId": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.root"
-      },
-      {
-        "kind": "symbol-reference",
-        "expressionId": "syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1",
-        "symbolId": "symbol:setting:examples/components/disclosure/disclosure.nz.liquid#default.label"
       }
     ]
   },
@@ -412,6 +412,125 @@
           "end": {
             "line": 32,
             "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid",
+        "kind": "props-interface",
+        "name": "props-interface",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 6,
+            "column": 5
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/disclosure/disclosure.nz.liquid:label",
+        "kind": "prop-declaration",
+        "name": "label",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 2,
+            "column": 3
+          },
+          "end": {
+            "line": 2,
+            "column": 8
+          }
+        }
+      },
+      {
+        "id": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1",
+        "kind": "element-ref",
+        "name": "root",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 8,
+            "column": 6
+          },
+          "end": {
+            "line": 8,
+            "column": 16
+          }
+        }
+      },
+      {
+        "id": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2",
+        "kind": "element-ref",
+        "name": "trigger",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 9,
+            "column": 11
+          },
+          "end": {
+            "line": 9,
+            "column": 24
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1",
+        "kind": "expression",
+        "name": "section.settings.label",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 9,
+            "column": 42
+          },
+          "end": {
+            "line": 9,
+            "column": 64
+          }
+        }
+      },
+      {
+        "id": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3",
+        "kind": "element-ref",
+        "name": "panel",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 10,
+            "column": 8
+          },
+          "end": {
+            "line": 10,
+            "column": 19
+          }
+        }
+      },
+      {
+        "id": "syntax:style:examples/components/disclosure/disclosure.nz.liquid:1",
+        "kind": "style",
+        "name": "style",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/disclosure/disclosure.nz.liquid",
+          "start": {
+            "line": 15,
+            "column": 1
+          },
+          "end": {
+            "line": 22,
+            "column": 20
           }
         }
       },
@@ -501,146 +620,9 @@
         }
       },
       {
-        "id": "syntax:style:examples/components/disclosure/disclosure.nz.liquid:1",
-        "kind": "style",
-        "name": "style",
-        "layer": "syntax",
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 15,
-            "column": 1
-          },
-          "end": {
-            "line": 22,
-            "column": 20
-          }
-        }
-      },
-      {
-        "id": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1",
-        "kind": "element-ref",
-        "name": "trigger",
-        "layer": "syntax",
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 9,
-            "column": 11
-          },
-          "end": {
-            "line": 9,
-            "column": 24
-          }
-        }
-      },
-      {
-        "id": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2",
-        "kind": "element-ref",
-        "name": "panel",
-        "layer": "syntax",
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 10,
-            "column": 8
-          },
-          "end": {
-            "line": 10,
-            "column": 19
-          }
-        }
-      },
-      {
-        "id": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3",
-        "kind": "element-ref",
-        "name": "root",
-        "layer": "syntax",
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 8,
-            "column": 6
-          },
-          "end": {
-            "line": 8,
-            "column": 16
-          }
-        }
-      },
-      {
-        "id": "syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid",
-        "kind": "props-interface",
-        "name": "props-interface",
-        "layer": "syntax",
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 1,
-            "column": 1
-          },
-          "end": {
-            "line": 6,
-            "column": 5
-          }
-        }
-      },
-      {
-        "id": "syntax:prop-declaration:examples/components/disclosure/disclosure.nz.liquid:label",
-        "kind": "prop-declaration",
-        "name": "label",
-        "layer": "syntax",
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 2,
-            "column": 3
-          },
-          "end": {
-            "line": 2,
-            "column": 8
-          }
-        }
-      },
-      {
-        "id": "syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1",
-        "kind": "expression",
-        "name": "section.settings.label",
-        "layer": "syntax",
-        "span": {
-          "file": "examples/components/disclosure/disclosure.nz.liquid",
-          "start": {
-            "line": 9,
-            "column": 42
-          },
-          "end": {
-            "line": 9,
-            "column": 64
-          }
-        }
-      },
-      {
         "id": "symbol:component:examples/components/disclosure/disclosure.nz.liquid#default",
         "kind": "component",
         "name": "examples/components/disclosure/disclosure.nz.liquid",
-        "layer": "symbol"
-      },
-      {
-        "id": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.trigger",
-        "kind": "ref",
-        "name": "trigger",
-        "layer": "symbol"
-      },
-      {
-        "id": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.panel",
-        "kind": "ref",
-        "name": "panel",
-        "layer": "symbol"
-      },
-      {
-        "id": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.root",
-        "kind": "ref",
-        "name": "root",
         "layer": "symbol"
       },
       {
@@ -654,6 +636,24 @@
         "kind": "setting",
         "name": "section.settings.label",
         "layer": "symbol"
+      },
+      {
+        "id": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.root",
+        "kind": "ref",
+        "name": "root",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.trigger",
+        "kind": "ref",
+        "name": "trigger",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.panel",
+        "kind": "ref",
+        "name": "panel",
+        "layer": "symbol"
       }
     ],
     "edges": [
@@ -662,6 +662,48 @@
         "kind": "declares",
         "from": "syntax:file:examples/components/disclosure/disclosure.nz.liquid",
         "to": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:syntax:declares:syntax:component:examples/components/disclosure/disclosure.nz.liquid->syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid",
+        "kind": "declares",
+        "from": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
+        "to": "syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:syntax:declares:syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid->syntax:prop-declaration:examples/components/disclosure/disclosure.nz.liquid:label",
+        "kind": "declares",
+        "from": "syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid",
+        "to": "syntax:prop-declaration:examples/components/disclosure/disclosure.nz.liquid:label",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:syntax:declares:syntax:component:examples/components/disclosure/disclosure.nz.liquid->syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1",
+        "kind": "declares",
+        "from": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
+        "to": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:syntax:declares:syntax:component:examples/components/disclosure/disclosure.nz.liquid->syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2",
+        "kind": "declares",
+        "from": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
+        "to": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:syntax:declares:syntax:component:examples/components/disclosure/disclosure.nz.liquid->syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3",
+        "kind": "declares",
+        "from": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
+        "to": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:syntax:declares:syntax:component:examples/components/disclosure/disclosure.nz.liquid->syntax:style:examples/components/disclosure/disclosure.nz.liquid:1",
+        "kind": "declares",
+        "from": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
+        "to": "syntax:style:examples/components/disclosure/disclosure.nz.liquid:1",
         "origin": "syntax"
       },
       {
@@ -700,73 +742,10 @@
         "origin": "syntax"
       },
       {
-        "id": "edge:syntax:declares:syntax:component:examples/components/disclosure/disclosure.nz.liquid->syntax:style:examples/components/disclosure/disclosure.nz.liquid:1",
-        "kind": "declares",
-        "from": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
-        "to": "syntax:style:examples/components/disclosure/disclosure.nz.liquid:1",
-        "origin": "syntax"
-      },
-      {
-        "id": "edge:syntax:declares:syntax:component:examples/components/disclosure/disclosure.nz.liquid->syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1",
-        "kind": "declares",
-        "from": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
-        "to": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1",
-        "origin": "syntax"
-      },
-      {
-        "id": "edge:syntax:declares:syntax:component:examples/components/disclosure/disclosure.nz.liquid->syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2",
-        "kind": "declares",
-        "from": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
-        "to": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2",
-        "origin": "syntax"
-      },
-      {
-        "id": "edge:syntax:declares:syntax:component:examples/components/disclosure/disclosure.nz.liquid->syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3",
-        "kind": "declares",
-        "from": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
-        "to": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3",
-        "origin": "syntax"
-      },
-      {
-        "id": "edge:syntax:declares:syntax:component:examples/components/disclosure/disclosure.nz.liquid->syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid",
-        "kind": "declares",
-        "from": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
-        "to": "syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid",
-        "origin": "syntax"
-      },
-      {
-        "id": "edge:syntax:declares:syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid->syntax:prop-declaration:examples/components/disclosure/disclosure.nz.liquid:label",
-        "kind": "declares",
-        "from": "syntax:props-interface:examples/components/disclosure/disclosure.nz.liquid",
-        "to": "syntax:prop-declaration:examples/components/disclosure/disclosure.nz.liquid:label",
-        "origin": "syntax"
-      },
-      {
         "id": "edge:resolved:resolves-to:syntax:component:examples/components/disclosure/disclosure.nz.liquid->symbol:component:examples/components/disclosure/disclosure.nz.liquid#default",
         "kind": "resolves-to",
         "from": "syntax:component:examples/components/disclosure/disclosure.nz.liquid",
         "to": "symbol:component:examples/components/disclosure/disclosure.nz.liquid#default",
-        "origin": "resolved"
-      },
-      {
-        "id": "edge:resolved:resolves-to:syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1->symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.trigger",
-        "kind": "resolves-to",
-        "from": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1",
-        "to": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.trigger",
-        "origin": "resolved"
-      },
-      {
-        "id": "edge:resolved:resolves-to:syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2->symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.panel",
-        "kind": "resolves-to",
-        "from": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2",
-        "to": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.panel",
-        "origin": "resolved"
-      },
-      {
-        "id": "edge:resolved:resolves-to:syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3->symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.root",
-        "kind": "resolves-to",
-        "from": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3",
-        "to": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.root",
         "origin": "resolved"
       },
       {
@@ -784,9 +763,37 @@
         "origin": "resolved"
       },
       {
+        "id": "edge:resolved:resolves-to:syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1->symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.root",
+        "kind": "resolves-to",
+        "from": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:1",
+        "to": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.root",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:resolved:resolves-to:syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2->symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.trigger",
+        "kind": "resolves-to",
+        "from": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:2",
+        "to": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.trigger",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:resolved:resolves-to:syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3->symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.panel",
+        "kind": "resolves-to",
+        "from": "syntax:element-ref:examples/components/disclosure/disclosure.nz.liquid:3",
+        "to": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.panel",
+        "origin": "resolved"
+      },
+      {
         "id": "edge:resolved:materializes-as-setting:symbol:prop:examples/components/disclosure/disclosure.nz.liquid#default.label->symbol:setting:examples/components/disclosure/disclosure.nz.liquid#default.label",
         "kind": "materializes-as-setting",
         "from": "symbol:prop:examples/components/disclosure/disclosure.nz.liquid#default.label",
+        "to": "symbol:setting:examples/components/disclosure/disclosure.nz.liquid#default.label",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:resolved:references:syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1->symbol:setting:examples/components/disclosure/disclosure.nz.liquid#default.label",
+        "kind": "references",
+        "from": "syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1",
         "to": "symbol:setting:examples/components/disclosure/disclosure.nz.liquid#default.label",
         "origin": "resolved"
       },
@@ -816,13 +823,6 @@
         "kind": "references",
         "from": "syntax:ref-access:examples/components/disclosure/disclosure.nz.liquid:1:4",
         "to": "symbol:ref:examples/components/disclosure/disclosure.nz.liquid#default.root",
-        "origin": "resolved"
-      },
-      {
-        "id": "edge:resolved:references:syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1->symbol:setting:examples/components/disclosure/disclosure.nz.liquid#default.label",
-        "kind": "references",
-        "from": "syntax:expression:examples/components/disclosure/disclosure.nz.liquid:output:1",
-        "to": "symbol:setting:examples/components/disclosure/disclosure.nz.liquid#default.label",
         "origin": "resolved"
       }
     ]

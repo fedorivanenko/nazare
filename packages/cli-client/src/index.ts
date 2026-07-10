@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import {
@@ -35,6 +36,13 @@ try {
 	const result = await compileNazareArtifactWithResolver(source, file, {
 		resolver: localContractResolver(file),
 		packageId,
+		readAsset: (relativePath) => {
+			try {
+				return readFileSync(join(dirname(file), relativePath), "utf8");
+			} catch {
+				return undefined;
+			}
+		},
 	});
 
 	if (command === "ast") {

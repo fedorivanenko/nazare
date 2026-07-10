@@ -15,6 +15,30 @@ export function parseInvalidImport(
 	};
 }
 
+export function parseInvalidAssetImport(
+	path: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_ASSET_IMPORT",
+		message: `Invalid asset import "${path}"; must be a ./-relative .ts, .js, or .css file inside the component directory`,
+		span,
+	};
+}
+
+export function assetImportNotFound(
+	path: string,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "ASSET_IMPORT_NOT_FOUND",
+		message: `Imported asset "${path}" could not be read`,
+		span,
+	};
+}
+
 export function parseMalformedPropDeclaration(
 	entry: string,
 	span: SourceSpan,

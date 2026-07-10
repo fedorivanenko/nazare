@@ -12,11 +12,14 @@ import type {
 	ArtifactIR,
 	Diagnostic,
 } from "@nazare/core";
-import type { NazareAst } from "./ast.js";
+import type { NazareAst, NazareNode } from "./ast.js";
 import { checkArtifactIR } from "./check.js";
-import { contractResolutionFailed } from "./diagnostics.js";
+import {
+	assetImportNotFound,
+	contractResolutionFailed,
+} from "./diagnostics.js";
 import { artifactGraphFromIR } from "./graph.js";
-import { parseNazareLiquid } from "./parser.js";
+import { parseNazareLiquid, scanRefAccesses } from "./parser.js";
 import { bindArtifactIR, contractFromIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
 import { validateArtifactGraph, validateArtifactIR } from "./validate.js";
@@ -56,6 +59,12 @@ export type CompileNazareArtifactOptions = {
 	contracts?: ArtifactContract[];
 	/** When set, the artifact's own contract is produced under this package id. */
 	packageId?: string;
+	/**
+	 * Reads a sidecar asset referenced by a relative {% import %}, given its
+	 * path relative to the component file. Undefined means not found. Without
+	 * a reader, relative imports diagnose as unreadable.
+	 */
+	readAsset?: (relativePath: string) => string | undefined;
 };
 
 /**
@@ -69,6 +78,7 @@ export type ContractResolver = (
 export type CompileWithResolverOptions = {
 	resolver?: ContractResolver;
 	packageId?: string;
+	readAsset?: (relativePath: string) => string | undefined;
 };
 
 export type CompileResult = {
@@ -95,7 +105,9 @@ export function compileNazareArtifact(
 	file: string,
 	options: CompileNazareArtifactOptions = {},
 ): CompileResult {
-	return compileFromAst(parseNazareLiquid(source, file), options);
+	const ast = parseNazareLiquid(source, file);
+	resolveAssetImports(ast, options.readAsset);
+	return compileFromAst(ast, options);
 }
 
 /**
@@ -110,6 +122,7 @@ export async function compileNazareArtifactWithResolver(
 	options: CompileWithResolverOptions = {},
 ): Promise<CompileResult> {
 	const ast = parseNazareLiquid(source, file);
+	resolveAssetImports(ast, options.readAsset);
 	const imports = ast.nodes.filter(
 		(node) => node.type === "NazareImport",
 	);
@@ -139,6 +152,63 @@ export async function compileNazareArtifactWithResolver(
 		packageId: options.packageId,
 	});
 	return { ...result, issues: [...resolutionIssues, ...result.issues] };
+}
+
+/**
+ * Replaces each relative-import node with the script/style node its sidecar
+ * file contains, in place — declaration order is mount order, and the
+ * import tag's span becomes the synthesized node's span so emission removes
+ * it. Sidecar-local spans (bodySpan, ref accesses) point into the sidecar
+ * file itself.
+ */
+function resolveAssetImports(
+	ast: NazareAst,
+	readAsset: ((relativePath: string) => string | undefined) | undefined,
+): void {
+	ast.nodes = ast.nodes.map((node): NazareNode => {
+		if (node.type !== "NazareAssetImport") return node;
+
+		const contents = readAsset?.(node.path);
+		if (contents === undefined) {
+			ast.diagnostics.push(assetImportNotFound(node.path, node.span));
+			return node;
+		}
+
+		const sidecarFile = sidecarPath(ast.file, node.path);
+		const lines = contents.split("\n");
+		const bodySpan = {
+			file: sidecarFile,
+			start: { line: 1, column: 1 },
+			end: {
+				line: lines.length,
+				column: (lines.at(-1)?.length ?? 0) + 1,
+			},
+		};
+
+		if (node.path.endsWith(".css")) {
+			return {
+				type: "NazareStyle",
+				source: contents,
+				span: node.span,
+				bodySpan,
+			};
+		}
+
+		return {
+			type: "NazareScript",
+			lang: node.path.endsWith(".ts") ? "ts" : "js",
+			source: contents,
+			refAccesses: scanRefAccesses(contents, sidecarFile),
+			span: node.span,
+			bodySpan,
+		};
+	});
+}
+
+function sidecarPath(componentFile: string, relativePath: string): string {
+	const directory = componentFile.split("/").slice(0, -1).join("/");
+	const local = relativePath.replace(/^\.\//, "");
+	return directory ? `${directory}/${local}` : local;
 }
 
 function compileFromAst(

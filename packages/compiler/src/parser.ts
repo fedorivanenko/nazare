@@ -3,6 +3,7 @@
 // syntax concerns — tag markup shapes, spans, and which Liquid constructs are
 // not yet lowered (control flow, HTML). No symbols, no types beyond what the
 // props DSL literally declares.
+import type { SourceSpan } from "@nazare/core";
 import {
 	type LiquidHtmlNode,
 	NodeTypes,
@@ -20,6 +21,7 @@ import type {
 import {
 	controlFlowNotLowered,
 	htmlNotPromoted,
+	parseInvalidAssetImport,
 	parseInvalidImport,
 	parseInvalidRefAttribute,
 	parseInvalidTypeExpression,
@@ -98,6 +100,17 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 		const span = spanFromOffsets(source, file, tag.position);
 
 		if (tag.name === "import") {
+			const assetMatch = tag.markup.trim().match(/^["']([^"']+)["']$/);
+			if (assetMatch) {
+				const path = assetMatch[1];
+				if (!isValidAssetImportPath(path)) {
+					diagnostics.push(parseInvalidAssetImport(path, span));
+					return;
+				}
+				nodes.push({ type: "NazareAssetImport", path, span });
+				return;
+			}
+
 			const match = tag.markup.trim().match(importPattern);
 			if (!match) {
 				diagnostics.push(parseInvalidImport(tag.markup, span));
@@ -153,6 +166,14 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 
 	diagnostics.push(
 		...unsupportedSyntaxDiagnostics(unsupportedSyntax, source, file),
+	);
+
+	// Scripts/styles are extracted before the walk, so restore source order —
+	// declaration order is meaningful (it is mount order for behaviors).
+	nodes.sort(
+		(a, b) =>
+			a.span.start.line - b.span.start.line ||
+			a.span.start.column - b.span.start.column,
 	);
 
 	return { file, liquidAst: ast, nodes, diagnostics };
@@ -563,4 +584,27 @@ function unsupportedSyntaxDiagnostics(
 
 function isIdentifier(value: string): boolean {
 	return /^[A-Za-z_$][\w$]*$/.test(value);
+}
+
+// Sidecar imports stay inside the component's own directory so the package
+// remains a portable artifact.
+function isValidAssetImportPath(path: string): boolean {
+	return (
+		path.startsWith("./") &&
+		!path.includes("..") &&
+		/\.(ts|js|css)$/.test(path)
+	);
+}
+
+export function scanRefAccesses(
+	source: string,
+	file: string,
+): { name: string; span: SourceSpan }[] {
+	return Array.from(source.matchAll(refAccessPattern)).map((access) => ({
+		name: access[1],
+		span: spanFromOffsets(source, file, {
+			start: access.index,
+			end: access.index + access[0].length,
+		}),
+	}));
 }

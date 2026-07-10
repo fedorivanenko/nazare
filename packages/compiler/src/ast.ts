@@ -76,6 +76,13 @@ export type NazareScriptNode = {
 	bodySpan: SourceSpan;
 };
 
+/** Side-effect import of a sidecar asset: {% import "./x.ts" %} etc. */
+export type NazareAssetImportNode = {
+	type: "NazareAssetImport";
+	path: string;
+	span: SourceSpan;
+};
+
 export type NazareStyleNode = {
 	type: "NazareStyle";
 	source: string;
@@ -98,6 +105,7 @@ export type NazareNode =
 	| NazareElementRefNode
 	| NazareScriptNode
 	| NazareStyleNode
+	| NazareAssetImportNode
 	| NazareOpaqueNode;
 
 export type NazareAst = {
