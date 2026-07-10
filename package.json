@@ -5,6 +5,7 @@
   "packageManager": "pnpm@10.0.0",
   "scripts": {
     "typecheck": "tsc -b",
+    "test": "tsc -b && node --test packages/compiler/tests/*.test.mjs",
     "format": "biome format --write .",
     "lint": "biome check ."
   },

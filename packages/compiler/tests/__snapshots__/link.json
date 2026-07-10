@@ -1,0 +1,673 @@
+{
+  "ir": {
+    "syntax": [
+      {
+        "id": "syntax:file:examples/components/link/link.nz.liquid",
+        "kind": "file",
+        "path": "examples/components/link/link.nz.liquid",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 10,
+            "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:component:examples/components/link/link.nz.liquid",
+        "kind": "component",
+        "name": "examples/components/link/link.nz.liquid",
+        "fileId": "syntax:file:examples/components/link/link.nz.liquid",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 10,
+            "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:props-interface:examples/components/link/link.nz.liquid",
+        "kind": "props-interface",
+        "ownerId": "syntax:component:examples/components/link/link.nz.liquid",
+        "propDeclarationIds": [
+          "syntax:prop-declaration:examples/components/link/link.nz.liquid:href",
+          "syntax:prop-declaration:examples/components/link/link.nz.liquid:text",
+          "syntax:prop-declaration:examples/components/link/link.nz.liquid:class"
+        ],
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 5,
+            "column": 5
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/link/link.nz.liquid:href",
+        "kind": "prop-declaration",
+        "name": "href",
+        "typeExpression": "url.required()",
+        "typeInfo": {
+          "valueType": {
+            "kind": "url"
+          }
+        },
+        "required": true,
+        "hasDefault": false,
+        "propsInterfaceId": "syntax:props-interface:examples/components/link/link.nz.liquid",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 2,
+            "column": 3
+          },
+          "end": {
+            "line": 2,
+            "column": 7
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/link/link.nz.liquid:text",
+        "kind": "prop-declaration",
+        "name": "text",
+        "typeExpression": "string.required()",
+        "typeInfo": {
+          "valueType": {
+            "kind": "string"
+          }
+        },
+        "required": true,
+        "hasDefault": false,
+        "propsInterfaceId": "syntax:props-interface:examples/components/link/link.nz.liquid",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 3,
+            "column": 3
+          },
+          "end": {
+            "line": 3,
+            "column": 7
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/link/link.nz.liquid:class",
+        "kind": "prop-declaration",
+        "name": "class",
+        "typeExpression": "string.optional()",
+        "typeInfo": {
+          "valueType": {
+            "kind": "string"
+          }
+        },
+        "required": false,
+        "hasDefault": false,
+        "propsInterfaceId": "syntax:props-interface:examples/components/link/link.nz.liquid",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 4,
+            "column": 3
+          },
+          "end": {
+            "line": 4,
+            "column": 8
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/link/link.nz.liquid:output:1",
+        "kind": "expression",
+        "source": "href",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 7,
+            "column": 13
+          },
+          "end": {
+            "line": 7,
+            "column": 17
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/link/link.nz.liquid:output:2",
+        "kind": "expression",
+        "source": "class",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 7,
+            "column": 55
+          },
+          "end": {
+            "line": 7,
+            "column": 60
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/link/link.nz.liquid:output:3",
+        "kind": "expression",
+        "source": "text",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 8,
+            "column": 6
+          },
+          "end": {
+            "line": 8,
+            "column": 10
+          }
+        }
+      }
+    ],
+    "symbols": [
+      {
+        "id": "symbol:component:examples/components/link/link.nz.liquid#default",
+        "kind": "component",
+        "name": "examples/components/link/link.nz.liquid",
+        "declarations": [
+          "syntax:component:examples/components/link/link.nz.liquid"
+        ],
+        "resolution": "local",
+        "source": "syntax"
+      },
+      {
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
+        "kind": "prop",
+        "name": "href",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/link/link.nz.liquid:href"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "url"
+        }
+      },
+      {
+        "id": "symbol:setting:examples/components/link/link.nz.liquid#default.href",
+        "kind": "setting",
+        "name": "section.settings.href",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/link/link.nz.liquid:href"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "url"
+        }
+      },
+      {
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.text",
+        "kind": "prop",
+        "name": "text",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/link/link.nz.liquid:text"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "string"
+        }
+      },
+      {
+        "id": "symbol:setting:examples/components/link/link.nz.liquid#default.text",
+        "kind": "setting",
+        "name": "section.settings.text",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/link/link.nz.liquid:text"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "string"
+        }
+      },
+      {
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
+        "kind": "prop",
+        "name": "class",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/link/link.nz.liquid:class"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "string"
+        }
+      },
+      {
+        "id": "symbol:setting:examples/components/link/link.nz.liquid#default.class",
+        "kind": "setting",
+        "name": "section.settings.class",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/link/link.nz.liquid:class"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "string"
+        }
+      }
+    ],
+    "resolutions": [
+      {
+        "kind": "setting-projection",
+        "propSymbolId": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
+        "settingSymbolId": "symbol:setting:examples/components/link/link.nz.liquid#default.href"
+      },
+      {
+        "kind": "setting-projection",
+        "propSymbolId": "symbol:prop:examples/components/link/link.nz.liquid#default.text",
+        "settingSymbolId": "symbol:setting:examples/components/link/link.nz.liquid#default.text"
+      },
+      {
+        "kind": "setting-projection",
+        "propSymbolId": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
+        "settingSymbolId": "symbol:setting:examples/components/link/link.nz.liquid#default.class"
+      }
+    ],
+    "diagnostics": []
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "syntax:file:examples/components/link/link.nz.liquid",
+        "kind": "file",
+        "name": "examples/components/link/link.nz.liquid",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 10,
+            "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:component:examples/components/link/link.nz.liquid",
+        "kind": "component",
+        "name": "examples/components/link/link.nz.liquid",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 10,
+            "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:props-interface:examples/components/link/link.nz.liquid",
+        "kind": "props-interface",
+        "name": "props-interface",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 5,
+            "column": 5
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/link/link.nz.liquid:href",
+        "kind": "prop-declaration",
+        "name": "href",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 2,
+            "column": 3
+          },
+          "end": {
+            "line": 2,
+            "column": 7
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/link/link.nz.liquid:text",
+        "kind": "prop-declaration",
+        "name": "text",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 3,
+            "column": 3
+          },
+          "end": {
+            "line": 3,
+            "column": 7
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/link/link.nz.liquid:class",
+        "kind": "prop-declaration",
+        "name": "class",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 4,
+            "column": 3
+          },
+          "end": {
+            "line": 4,
+            "column": 8
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/link/link.nz.liquid:output:1",
+        "kind": "expression",
+        "name": "href",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 7,
+            "column": 13
+          },
+          "end": {
+            "line": 7,
+            "column": 17
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/link/link.nz.liquid:output:2",
+        "kind": "expression",
+        "name": "class",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 7,
+            "column": 55
+          },
+          "end": {
+            "line": 7,
+            "column": 60
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/link/link.nz.liquid:output:3",
+        "kind": "expression",
+        "name": "text",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 8,
+            "column": 6
+          },
+          "end": {
+            "line": 8,
+            "column": 10
+          }
+        }
+      },
+      {
+        "id": "symbol:component:examples/components/link/link.nz.liquid#default",
+        "kind": "component",
+        "name": "examples/components/link/link.nz.liquid",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
+        "kind": "prop",
+        "name": "href",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:setting:examples/components/link/link.nz.liquid#default.href",
+        "kind": "setting",
+        "name": "section.settings.href",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.text",
+        "kind": "prop",
+        "name": "text",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:setting:examples/components/link/link.nz.liquid#default.text",
+        "kind": "setting",
+        "name": "section.settings.text",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
+        "kind": "prop",
+        "name": "class",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:setting:examples/components/link/link.nz.liquid#default.class",
+        "kind": "setting",
+        "name": "section.settings.class",
+        "layer": "symbol"
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge:1",
+        "kind": "declares",
+        "from": "syntax:file:examples/components/link/link.nz.liquid",
+        "to": "syntax:component:examples/components/link/link.nz.liquid",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:2",
+        "kind": "declares",
+        "from": "syntax:component:examples/components/link/link.nz.liquid",
+        "to": "syntax:props-interface:examples/components/link/link.nz.liquid",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:3",
+        "kind": "declares",
+        "from": "syntax:props-interface:examples/components/link/link.nz.liquid",
+        "to": "syntax:prop-declaration:examples/components/link/link.nz.liquid:href",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:4",
+        "kind": "declares",
+        "from": "syntax:props-interface:examples/components/link/link.nz.liquid",
+        "to": "syntax:prop-declaration:examples/components/link/link.nz.liquid:text",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:5",
+        "kind": "declares",
+        "from": "syntax:props-interface:examples/components/link/link.nz.liquid",
+        "to": "syntax:prop-declaration:examples/components/link/link.nz.liquid:class",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:6",
+        "kind": "resolves-to",
+        "from": "syntax:component:examples/components/link/link.nz.liquid",
+        "to": "symbol:component:examples/components/link/link.nz.liquid#default",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:7",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:href",
+        "to": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:8",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:href",
+        "to": "symbol:setting:examples/components/link/link.nz.liquid#default.href",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:9",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:text",
+        "to": "symbol:prop:examples/components/link/link.nz.liquid#default.text",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:10",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:text",
+        "to": "symbol:setting:examples/components/link/link.nz.liquid#default.text",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:11",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:class",
+        "to": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:12",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:class",
+        "to": "symbol:setting:examples/components/link/link.nz.liquid#default.class",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:13",
+        "kind": "materializes-as-setting",
+        "from": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
+        "to": "symbol:setting:examples/components/link/link.nz.liquid#default.href",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:14",
+        "kind": "materializes-as-setting",
+        "from": "symbol:prop:examples/components/link/link.nz.liquid#default.text",
+        "to": "symbol:setting:examples/components/link/link.nz.liquid#default.text",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:15",
+        "kind": "materializes-as-setting",
+        "from": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
+        "to": "symbol:setting:examples/components/link/link.nz.liquid#default.class",
+        "origin": "resolved"
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "warning",
+      "code": "IR_PARTIAL_LOWERING_CONTROL_FLOW",
+      "message": "Control-flow omission means render-site reachability is incomplete; syntax is preserved in LiquidHTML AST",
+      "span": {
+        "file": "examples/components/link/link.nz.liquid",
+        "start": {
+          "line": 7,
+          "column": 44
+        },
+        "end": {
+          "line": 7,
+          "column": 64
+        }
+      }
+    },
+    {
+      "severity": "info",
+      "code": "IR_NODE_NOT_PROMOTED_HTML",
+      "message": "HTML elements are not promoted to ArtifactIR in v0; syntax is preserved in LiquidHTML AST",
+      "span": {
+        "file": "examples/components/link/link.nz.liquid",
+        "start": {
+          "line": 7,
+          "column": 1
+        },
+        "end": {
+          "line": 9,
+          "column": 5
+        }
+      }
+    }
+  ],
+  "contract": {
+    "packageId": "@nazare/link",
+    "componentSymbolId": "symbol:component:@nazare/link#default",
+    "props": [
+      {
+        "name": "href",
+        "symbolId": "symbol:prop:@nazare/link#default.href",
+        "required": true,
+        "hasDefault": false,
+        "typeExpression": "url.required()",
+        "typeInfo": {
+          "valueType": {
+            "kind": "url"
+          }
+        }
+      },
+      {
+        "name": "text",
+        "symbolId": "symbol:prop:@nazare/link#default.text",
+        "required": true,
+        "hasDefault": false,
+        "typeExpression": "string.required()",
+        "typeInfo": {
+          "valueType": {
+            "kind": "string"
+          }
+        }
+      },
+      {
+        "name": "class",
+        "symbolId": "symbol:prop:@nazare/link#default.class",
+        "required": false,
+        "hasDefault": false,
+        "typeExpression": "string.optional()",
+        "typeInfo": {
+          "valueType": {
+            "kind": "string"
+          }
+        }
+      }
+    ]
+  }
+}

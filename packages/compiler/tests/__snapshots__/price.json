@@ -1,0 +1,672 @@
+{
+  "ir": {
+    "syntax": [
+      {
+        "id": "syntax:file:examples/components/price/price.nz.liquid",
+        "kind": "file",
+        "path": "examples/components/price/price.nz.liquid",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 17,
+            "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:component:examples/components/price/price.nz.liquid",
+        "kind": "component",
+        "name": "examples/components/price/price.nz.liquid",
+        "fileId": "syntax:file:examples/components/price/price.nz.liquid",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 17,
+            "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:props-interface:examples/components/price/price.nz.liquid",
+        "kind": "props-interface",
+        "ownerId": "syntax:component:examples/components/price/price.nz.liquid",
+        "propDeclarationIds": [
+          "syntax:prop-declaration:examples/components/price/price.nz.liquid:price",
+          "syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price",
+          "syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at"
+        ],
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 4,
+            "column": 1
+          },
+          "end": {
+            "line": 8,
+            "column": 5
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/price/price.nz.liquid:price",
+        "kind": "prop-declaration",
+        "name": "price",
+        "typeExpression": "Money.required()",
+        "typeInfo": {
+          "valueType": {
+            "kind": "money"
+          }
+        },
+        "required": true,
+        "hasDefault": false,
+        "propsInterfaceId": "syntax:props-interface:examples/components/price/price.nz.liquid",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 5,
+            "column": 3
+          },
+          "end": {
+            "line": 5,
+            "column": 8
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price",
+        "kind": "prop-declaration",
+        "name": "compare_at_price",
+        "typeExpression": "Money.optional()",
+        "typeInfo": {
+          "valueType": {
+            "kind": "money"
+          }
+        },
+        "required": false,
+        "hasDefault": false,
+        "propsInterfaceId": "syntax:props-interface:examples/components/price/price.nz.liquid",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 6,
+            "column": 3
+          },
+          "end": {
+            "line": 6,
+            "column": 19
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at",
+        "kind": "prop-declaration",
+        "name": "show_compare_at",
+        "typeExpression": "boolean.default(true)",
+        "typeInfo": {
+          "valueType": {
+            "kind": "boolean"
+          }
+        },
+        "required": false,
+        "hasDefault": true,
+        "propsInterfaceId": "syntax:props-interface:examples/components/price/price.nz.liquid",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 7,
+            "column": 3
+          },
+          "end": {
+            "line": 7,
+            "column": 18
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/price/price.nz.liquid:output:1",
+        "kind": "expression",
+        "source": "price | money",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 11,
+            "column": 35
+          },
+          "end": {
+            "line": 11,
+            "column": 48
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/price/price.nz.liquid:output:2",
+        "kind": "expression",
+        "source": "compare_at_price | money",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 14,
+            "column": 34
+          },
+          "end": {
+            "line": 14,
+            "column": 58
+          }
+        }
+      }
+    ],
+    "symbols": [
+      {
+        "id": "symbol:component:examples/components/price/price.nz.liquid#default",
+        "kind": "component",
+        "name": "examples/components/price/price.nz.liquid",
+        "declarations": [
+          "syntax:component:examples/components/price/price.nz.liquid"
+        ],
+        "resolution": "local",
+        "source": "syntax"
+      },
+      {
+        "id": "symbol:prop:examples/components/price/price.nz.liquid#default.price",
+        "kind": "prop",
+        "name": "price",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/price/price.nz.liquid:price"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "money"
+        }
+      },
+      {
+        "id": "symbol:setting:examples/components/price/price.nz.liquid#default.price",
+        "kind": "setting",
+        "name": "section.settings.price",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/price/price.nz.liquid:price"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "money"
+        }
+      },
+      {
+        "id": "symbol:prop:examples/components/price/price.nz.liquid#default.compare_at_price",
+        "kind": "prop",
+        "name": "compare_at_price",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "money"
+        }
+      },
+      {
+        "id": "symbol:setting:examples/components/price/price.nz.liquid#default.compare_at_price",
+        "kind": "setting",
+        "name": "section.settings.compare_at_price",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "money"
+        }
+      },
+      {
+        "id": "symbol:prop:examples/components/price/price.nz.liquid#default.show_compare_at",
+        "kind": "prop",
+        "name": "show_compare_at",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "id": "symbol:setting:examples/components/price/price.nz.liquid#default.show_compare_at",
+        "kind": "setting",
+        "name": "section.settings.show_compare_at",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "boolean"
+        }
+      }
+    ],
+    "resolutions": [
+      {
+        "kind": "setting-projection",
+        "propSymbolId": "symbol:prop:examples/components/price/price.nz.liquid#default.price",
+        "settingSymbolId": "symbol:setting:examples/components/price/price.nz.liquid#default.price"
+      },
+      {
+        "kind": "setting-projection",
+        "propSymbolId": "symbol:prop:examples/components/price/price.nz.liquid#default.compare_at_price",
+        "settingSymbolId": "symbol:setting:examples/components/price/price.nz.liquid#default.compare_at_price"
+      },
+      {
+        "kind": "setting-projection",
+        "propSymbolId": "symbol:prop:examples/components/price/price.nz.liquid#default.show_compare_at",
+        "settingSymbolId": "symbol:setting:examples/components/price/price.nz.liquid#default.show_compare_at"
+      }
+    ],
+    "diagnostics": []
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "syntax:file:examples/components/price/price.nz.liquid",
+        "kind": "file",
+        "name": "examples/components/price/price.nz.liquid",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 17,
+            "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:component:examples/components/price/price.nz.liquid",
+        "kind": "component",
+        "name": "examples/components/price/price.nz.liquid",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 17,
+            "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:props-interface:examples/components/price/price.nz.liquid",
+        "kind": "props-interface",
+        "name": "props-interface",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 4,
+            "column": 1
+          },
+          "end": {
+            "line": 8,
+            "column": 5
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/price/price.nz.liquid:price",
+        "kind": "prop-declaration",
+        "name": "price",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 5,
+            "column": 3
+          },
+          "end": {
+            "line": 5,
+            "column": 8
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price",
+        "kind": "prop-declaration",
+        "name": "compare_at_price",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 6,
+            "column": 3
+          },
+          "end": {
+            "line": 6,
+            "column": 19
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at",
+        "kind": "prop-declaration",
+        "name": "show_compare_at",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 7,
+            "column": 3
+          },
+          "end": {
+            "line": 7,
+            "column": 18
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/price/price.nz.liquid:output:1",
+        "kind": "expression",
+        "name": "price | money",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 11,
+            "column": 35
+          },
+          "end": {
+            "line": 11,
+            "column": 48
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/price/price.nz.liquid:output:2",
+        "kind": "expression",
+        "name": "compare_at_price | money",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 14,
+            "column": 34
+          },
+          "end": {
+            "line": 14,
+            "column": 58
+          }
+        }
+      },
+      {
+        "id": "symbol:component:examples/components/price/price.nz.liquid#default",
+        "kind": "component",
+        "name": "examples/components/price/price.nz.liquid",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:prop:examples/components/price/price.nz.liquid#default.price",
+        "kind": "prop",
+        "name": "price",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:setting:examples/components/price/price.nz.liquid#default.price",
+        "kind": "setting",
+        "name": "section.settings.price",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:prop:examples/components/price/price.nz.liquid#default.compare_at_price",
+        "kind": "prop",
+        "name": "compare_at_price",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:setting:examples/components/price/price.nz.liquid#default.compare_at_price",
+        "kind": "setting",
+        "name": "section.settings.compare_at_price",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:prop:examples/components/price/price.nz.liquid#default.show_compare_at",
+        "kind": "prop",
+        "name": "show_compare_at",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:setting:examples/components/price/price.nz.liquid#default.show_compare_at",
+        "kind": "setting",
+        "name": "section.settings.show_compare_at",
+        "layer": "symbol"
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge:1",
+        "kind": "declares",
+        "from": "syntax:file:examples/components/price/price.nz.liquid",
+        "to": "syntax:component:examples/components/price/price.nz.liquid",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:2",
+        "kind": "declares",
+        "from": "syntax:component:examples/components/price/price.nz.liquid",
+        "to": "syntax:props-interface:examples/components/price/price.nz.liquid",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:3",
+        "kind": "declares",
+        "from": "syntax:props-interface:examples/components/price/price.nz.liquid",
+        "to": "syntax:prop-declaration:examples/components/price/price.nz.liquid:price",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:4",
+        "kind": "declares",
+        "from": "syntax:props-interface:examples/components/price/price.nz.liquid",
+        "to": "syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:5",
+        "kind": "declares",
+        "from": "syntax:props-interface:examples/components/price/price.nz.liquid",
+        "to": "syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:6",
+        "kind": "resolves-to",
+        "from": "syntax:component:examples/components/price/price.nz.liquid",
+        "to": "symbol:component:examples/components/price/price.nz.liquid#default",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:7",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/price/price.nz.liquid:price",
+        "to": "symbol:prop:examples/components/price/price.nz.liquid#default.price",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:8",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/price/price.nz.liquid:price",
+        "to": "symbol:setting:examples/components/price/price.nz.liquid#default.price",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:9",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price",
+        "to": "symbol:prop:examples/components/price/price.nz.liquid#default.compare_at_price",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:10",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/price/price.nz.liquid:compare_at_price",
+        "to": "symbol:setting:examples/components/price/price.nz.liquid#default.compare_at_price",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:11",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at",
+        "to": "symbol:prop:examples/components/price/price.nz.liquid#default.show_compare_at",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:12",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/price/price.nz.liquid:show_compare_at",
+        "to": "symbol:setting:examples/components/price/price.nz.liquid#default.show_compare_at",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:13",
+        "kind": "materializes-as-setting",
+        "from": "symbol:prop:examples/components/price/price.nz.liquid#default.price",
+        "to": "symbol:setting:examples/components/price/price.nz.liquid#default.price",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:14",
+        "kind": "materializes-as-setting",
+        "from": "symbol:prop:examples/components/price/price.nz.liquid#default.compare_at_price",
+        "to": "symbol:setting:examples/components/price/price.nz.liquid#default.compare_at_price",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:15",
+        "kind": "materializes-as-setting",
+        "from": "symbol:prop:examples/components/price/price.nz.liquid#default.show_compare_at",
+        "to": "symbol:setting:examples/components/price/price.nz.liquid#default.show_compare_at",
+        "origin": "resolved"
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "error",
+      "code": "NAZARE_PARSE_IMPORT",
+      "message": "Invalid Nazare import syntax: \"./price.css\"",
+      "span": {
+        "file": "examples/components/price/price.nz.liquid",
+        "start": {
+          "line": 1,
+          "column": 1
+        },
+        "end": {
+          "line": 1,
+          "column": 27
+        }
+      }
+    },
+    {
+      "severity": "error",
+      "code": "NAZARE_PARSE_IMPORT",
+      "message": "Invalid Nazare import syntax: \"./price.js\"",
+      "span": {
+        "file": "examples/components/price/price.nz.liquid",
+        "start": {
+          "line": 2,
+          "column": 1
+        },
+        "end": {
+          "line": 2,
+          "column": 26
+        }
+      }
+    },
+    {
+      "severity": "info",
+      "code": "IR_NODE_NOT_PROMOTED_HTML",
+      "message": "HTML elements are not promoted to ArtifactIR in v0; syntax is preserved in LiquidHTML AST",
+      "span": {
+        "file": "examples/components/price/price.nz.liquid",
+        "start": {
+          "line": 11,
+          "column": 3
+        },
+        "end": {
+          "line": 11,
+          "column": 58
+        }
+      }
+    },
+    {
+      "severity": "warning",
+      "code": "IR_PARTIAL_LOWERING_CONTROL_FLOW",
+      "message": "Control-flow omission means render-site reachability is incomplete; syntax is preserved in LiquidHTML AST",
+      "span": {
+        "file": "examples/components/price/price.nz.liquid",
+        "start": {
+          "line": 13,
+          "column": 77
+        },
+        "end": {
+          "line": 15,
+          "column": 3
+        }
+      }
+    }
+  ],
+  "contract": {
+    "packageId": "@nazare/price",
+    "componentSymbolId": "symbol:component:@nazare/price#default",
+    "props": [
+      {
+        "name": "price",
+        "symbolId": "symbol:prop:@nazare/price#default.price",
+        "required": true,
+        "hasDefault": false,
+        "typeExpression": "Money.required()",
+        "typeInfo": {
+          "valueType": {
+            "kind": "money"
+          }
+        }
+      },
+      {
+        "name": "compare_at_price",
+        "symbolId": "symbol:prop:@nazare/price#default.compare_at_price",
+        "required": false,
+        "hasDefault": false,
+        "typeExpression": "Money.optional()",
+        "typeInfo": {
+          "valueType": {
+            "kind": "money"
+          }
+        }
+      },
+      {
+        "name": "show_compare_at",
+        "symbolId": "symbol:prop:@nazare/price#default.show_compare_at",
+        "required": false,
+        "hasDefault": true,
+        "typeExpression": "boolean.default(true)",
+        "typeInfo": {
+          "valueType": {
+            "kind": "boolean"
+          }
+        }
+      }
+    ]
+  }
+}
