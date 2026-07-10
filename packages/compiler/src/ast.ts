@@ -54,10 +54,18 @@ export type NazareOutputExpressionNode = {
 	span: SourceSpan;
 };
 
+export type NazareDataBinding = {
+	attribute: string;
+	property: string;
+	expression: string;
+	span: SourceSpan;
+};
+
 export type NazareElementRefNode = {
 	type: "NazareElementRef";
 	name: string;
 	tagName: string;
+	dataBindings: NazareDataBinding[];
 	span: SourceSpan;
 };
 
@@ -66,11 +74,18 @@ export type NazareRefAccess = {
 	span: SourceSpan;
 };
 
+export type NazareDataAccess = {
+	ref: string;
+	property: string;
+	span: SourceSpan;
+};
+
 export type NazareScriptNode = {
 	type: "NazareScript";
 	lang: "ts" | "js";
 	source: string;
 	refAccesses: NazareRefAccess[];
+	dataAccesses: NazareDataAccess[];
 	span: SourceSpan;
 	/** Span of the script body only, excluding the {% script %} tags. */
 	bodySpan: SourceSpan;

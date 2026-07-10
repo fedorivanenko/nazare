@@ -118,6 +118,36 @@ export function duplicateRef(
 	};
 }
 
+export function unknownDataAccess(
+	refName: string,
+	property: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_UNKNOWN_DATA_ACCESS",
+		message: `Script reads data.${refName}.${property} but no data-* binding for it exists on ref "${refName}"`,
+		nodeId,
+		span,
+	};
+}
+
+export function unusedDataBinding(
+	refName: string,
+	property: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "warning",
+		code: "CONSTRAINT_UNUSED_DATA_BINDING",
+		message: `data binding "${property}" on ref "${refName}" is never read by the component's script`,
+		nodeId,
+		span,
+	};
+}
+
 export function unusedRef(
 	refName: string,
 	nodeId: Id,

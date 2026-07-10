@@ -19,7 +19,11 @@ import {
 	contractResolutionFailed,
 } from "./diagnostics.js";
 import { artifactGraphFromIR } from "./graph.js";
-import { parseNazareLiquid, scanRefAccesses } from "./parser.js";
+import {
+	parseNazareLiquid,
+	scanDataAccesses,
+	scanRefAccesses,
+} from "./parser.js";
 import { bindArtifactIR, contractFromIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
 import { validateArtifactGraph, validateArtifactIR } from "./validate.js";
@@ -199,6 +203,7 @@ function resolveAssetImports(
 			lang: node.path.endsWith(".ts") ? "ts" : "js",
 			source: contents,
 			refAccesses: scanRefAccesses(contents, sidecarFile),
+			dataAccesses: scanDataAccesses(contents, sidecarFile),
 			span: node.span,
 			bodySpan,
 		};

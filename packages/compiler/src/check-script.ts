@@ -6,6 +6,7 @@
 // slower than the rest of the pipeline, so callers opt in (the CLI does).
 import type { ArtifactIR, Diagnostic, SourceSpan } from "@nazare/core";
 import ts from "typescript";
+import { type DataChannel, dataChannelFromIR } from "./data-channel.js";
 import { scriptTypeError } from "./diagnostics.js";
 
 const virtualFileName = "component.ts";
@@ -17,9 +18,11 @@ export function checkComponentScripts(ir: ArtifactIR): Diagnostic[] {
 		(node) => node.kind === "script" && node.lang === "ts",
 	);
 
+	const channel = dataChannelFromIR(ir);
+
 	for (const script of scripts) {
 		if (script.kind !== "script") continue;
-		const prelude = preludeFor(refs);
+		const prelude = preludeFor(refs, channel);
 		const virtualSource = `${prelude}\n${script.source}`;
 		const preludeLines = prelude.split("\n").length;
 
@@ -40,6 +43,7 @@ export function checkComponentScripts(ir: ArtifactIR): Diagnostic[] {
 
 function preludeFor(
 	refs: { name: string; tagName: string }[],
+	channel: DataChannel,
 ): string {
 	const seen = new Set<string>();
 	const fields = refs
@@ -50,13 +54,28 @@ function preludeFor(
 		)
 		.join("\n");
 
+	const dataFields = Array.from(channel.entries())
+		.map(([refName, bindings]) => {
+			const properties = Array.from(bindings.values())
+				.map(
+					(binding) =>
+						`    ${binding.property}${binding.optional ? "?" : ""}: ${binding.kind};`,
+				)
+				.join("\n");
+			return `  ${refName}: {\n${properties}\n  };`;
+		})
+		.join("\n");
+
 	return `type NazareTagType<T extends string> = T extends keyof HTMLElementTagNameMap
   ? HTMLElementTagNameMap[T]
   : HTMLElement;
 type NazareRefs = {
 ${fields}
 };
-type NazareContext = { root: HTMLElement; refs: NazareRefs };
+type NazareData = {
+${dataFields}
+};
+type NazareContext = { root: HTMLElement; refs: NazareRefs; data: NazareData };
 declare function island(
   setup: (context: NazareContext) => void,
 ): (context: NazareContext) => void;`;
@@ -96,14 +115,14 @@ function typescriptDiagnostics(virtualSource: string): readonly ts.Diagnostic[] 
 		.filter((diagnostic) => diagnostic.file?.fileName === virtualFileName);
 }
 
-/** refs.<unknown> already gets CONSTRAINT_UNKNOWN_REF from the check pass. */
+/**
+ * refs.<unknown> and data.<unknown> already get CONSTRAINT_UNKNOWN_REF /
+ * CONSTRAINT_UNKNOWN_DATA_ACCESS from the check pass.
+ */
 function isRedundantUnknownRef(diagnostic: ts.Diagnostic): boolean {
-	return (
-		diagnostic.code === 2339 &&
-		ts
-			.flattenDiagnosticMessageText(diagnostic.messageText, " ")
-			.includes("NazareRefs")
-	);
+	if (diagnostic.code !== 2339) return false;
+	const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, " ");
+	return message.includes("NazareRefs") || message.includes("NazareData");
 }
 
 function spanForDiagnostic(

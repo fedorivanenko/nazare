@@ -12,15 +12,18 @@ import type {
 	RenderSiteSyntaxNode,
 	SemanticType,
 } from "@nazare/core";
+import { dataChannelFromIR } from "./data-channel.js";
 import {
 	duplicateRef,
 	propTypeMismatch,
 	propValueOutOfRange,
 	requiredPropMissing,
+	unknownDataAccess,
 	unknownPropArgument,
 	unknownPropsReference,
 	unknownRef,
 	unresolvedExternalContract,
+	unusedDataBinding,
 	unusedRef,
 } from "./diagnostics.js";
 import { type ArtifactIRIndex, indexArtifactIR } from "./ir-index.js";
@@ -62,6 +65,58 @@ export function checkArtifactIR(
 
 	issues.push(...checkRefs(index));
 	issues.push(...checkPropsReferences(index));
+	issues.push(...checkDataChannel(ir, index));
+
+	return issues;
+}
+
+/**
+ * Data-channel linkage: every data.<ref>.<property> read must have a
+ * matching data-* binding on that ref; bindings never read warn when a
+ * script exists. Binding expressions are ordinary props reads, so
+ * checkPropsReferences does not cover them — undeclared props are caught
+ * here through the element-ref bindings themselves.
+ */
+function checkDataChannel(
+	ir: ArtifactIR,
+	index: ArtifactIRIndex,
+): Diagnostic[] {
+	const issues: Diagnostic[] = [];
+	const channel = dataChannelFromIR(ir);
+	const declaredProps = new Set(
+		index.nodesOfKind("prop-declaration").map((node) => node.name),
+	);
+	const readProperties = new Set<string>();
+	const scripts = index.nodesOfKind("script");
+
+	for (const script of scripts) {
+		for (const access of script.dataAccesses ?? []) {
+			readProperties.add(`${access.ref}.${access.property}`);
+			if (channel.get(access.ref)?.has(access.property)) continue;
+			issues.push(
+				unknownDataAccess(access.ref, access.property, script.id, access.span),
+			);
+		}
+	}
+
+	for (const node of index.nodesOfKind("element-ref")) {
+		for (const binding of node.dataBindings ?? []) {
+			const propsRead = binding.expression.trim().match(/^props\.([\w$]+)$/);
+			if (propsRead && !declaredProps.has(propsRead[1])) {
+				issues.push(
+					unknownPropsReference(propsRead[1], node.id, binding.span),
+				);
+			}
+			if (
+				scripts.length > 0 &&
+				!readProperties.has(`${node.name}.${binding.property}`)
+			) {
+				issues.push(
+					unusedDataBinding(node.name, binding.property, node.id, binding.span),
+				);
+			}
+		}
+	}
 
 	return issues;
 }

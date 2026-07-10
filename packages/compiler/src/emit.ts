@@ -15,6 +15,7 @@ import type {
 import { NodeTypes } from "@shopify/liquid-html-parser";
 import ts from "typescript";
 import type { NazareAst } from "./ast.js";
+import { dataChannelFromIR } from "./data-channel.js";
 import { emitScriptWithoutDefaultExport, emitScriptWithoutRoot } from "./diagnostics.js";
 import { themeSchemaFromIR } from "./schema.js";
 import { scopeCss } from "./scope-css.js";
@@ -79,7 +80,12 @@ export function emitTheme(
 	if (hasScript) {
 		files.push({
 			path: `assets/${options.name}.js`,
-			contents: emitComponentScript(scripts, options.name, issues),
+			contents: emitComponentScript(
+				scripts,
+				options.name,
+				dataDescriptor(compiled.ir),
+				issues,
+			),
 		});
 		files.push({ path: "assets/nazare-runtime.js", contents: runtimeSource });
 	}
@@ -226,12 +232,27 @@ function rootElementStartTagEnd(
 	return undefined;
 }
 
+/** Descriptor telling the runtime how to parse each ref's data-* strings. */
+function dataDescriptor(ir: ArtifactIR): Record<string, Record<string, string>> {
+	const descriptor: Record<string, Record<string, string>> = {};
+	for (const [refName, bindings] of dataChannelFromIR(ir)) {
+		descriptor[refName] = {};
+		for (const binding of bindings.values()) {
+			descriptor[refName][binding.property] = binding.kind;
+		}
+	}
+	return descriptor;
+}
+
 function emitComponentScript(
 	scripts: Extract<ArtifactIR["syntax"][number], { kind: "script" }>[],
 	name: string,
+	descriptor: Record<string, Record<string, string>>,
 	issues: Diagnostic[],
 ): string {
-	const bodies = scripts.map((script) => {
+	// Each behavior registers separately so declaration order is mount order
+	// and one default export cannot clobber another.
+	const registrations = scripts.map((script) => {
 		if (!/\bexport\s+default\b/.test(script.source)) {
 			issues.push(emitScriptWithoutDefaultExport(name, script.span));
 		}
@@ -239,11 +260,20 @@ function emitComponentScript(
 			/\bexport\s+default\b/,
 			"__module.default =",
 		);
-		return script.lang === "ts"
-			? ts.transpileModule(rewritten, {
-					compilerOptions: { target: ts.ScriptTarget.ES2018 },
-				}).outputText
-			: rewritten;
+		const body =
+			script.lang === "ts"
+				? ts.transpileModule(rewritten, {
+						compilerOptions: { target: ts.ScriptTarget.ES2018 },
+					}).outputText
+				: rewritten;
+
+		return [
+			"(function () {",
+			"  var __module = {};",
+			indent(body.trim(), "  "),
+			`  window.Nazare.register(${JSON.stringify(name)}, __module.default, __data);`,
+			"})();",
+		].join("\n");
 	});
 
 	return [
@@ -251,9 +281,8 @@ function emitComponentScript(
 		"(function () {",
 		'  "use strict";',
 		"  var island = window.Nazare.island;",
-		"  var __module = {};",
-		...bodies.map((body) => indent(body.trim(), "  ")),
-		`  window.Nazare.register(${JSON.stringify(name)}, __module.default);`,
+		`  var __data = ${JSON.stringify(descriptor)};`,
+		...registrations.map((registration) => indent(registration, "  ")),
 		"})();",
 		"",
 	].join("\n");
@@ -294,29 +323,52 @@ const runtimeSource = `/* Nazare runtime */
   "use strict";
   if (window.Nazare) return;
   function island(setup) { return setup; }
-  function mount(name, setup) {
+  function refLookup(root, key) {
+    if (root.getAttribute("data-nz-ref") === key) return root;
+    return root.querySelector('[data-nz-ref="' + key + '"]');
+  }
+  function parseValue(raw, kind) {
+    if (raw === undefined) return undefined;
+    if (kind === "number") return Number(raw);
+    if (kind === "boolean") return raw === "true";
+    return raw;
+  }
+  function buildData(root, descriptor) {
+    var data = {};
+    Object.keys(descriptor || {}).forEach(function (refName) {
+      var element = refLookup(root, refName);
+      var entry = {};
+      Object.keys(descriptor[refName]).forEach(function (property) {
+        var raw = element ? element.dataset[property] : undefined;
+        entry[property] = parseValue(raw, descriptor[refName][property]);
+      });
+      data[refName] = entry;
+    });
+    return data;
+  }
+  function mount(name, setup, descriptor) {
     var roots = document.querySelectorAll('[data-nz-component="' + name + '"]');
     roots.forEach(function (root) {
-      if (root.nazareMounted) return;
-      root.nazareMounted = true;
+      if (!root.nazareMounted) root.nazareMounted = [];
+      if (root.nazareMounted.indexOf(setup) !== -1) return;
+      root.nazareMounted.push(setup);
       var refs = new Proxy({}, {
         get: function (_, key) {
           if (typeof key !== "string") return undefined;
-          if (root.getAttribute("data-nz-ref") === key) return root;
-          return root.querySelector('[data-nz-ref="' + key + '"]');
+          return refLookup(root, key);
         },
       });
-      setup({ root: root, refs: refs });
+      setup({ root: root, refs: refs, data: buildData(root, descriptor) });
     });
   }
-  function register(name, setup) {
+  function register(name, setup, descriptor) {
     if (typeof setup !== "function") return;
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", function () {
-        mount(name, setup);
+        mount(name, setup, descriptor);
       });
     } else {
-      mount(name, setup);
+      mount(name, setup, descriptor);
     }
   }
   window.Nazare = { island: island, register: register, mount: mount };

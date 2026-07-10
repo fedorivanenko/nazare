@@ -84,6 +84,17 @@ export type ExpressionSyntaxNode = {
 	span?: SourceSpan;
 };
 
+/** A data-* attribute on a ref'd element whose value is a bound expression. */
+export type ElementRefDataBinding = {
+	/** Attribute name without the data- prefix, as authored (kebab-case). */
+	attribute: string;
+	/** dataset property name (camelCase of attribute). */
+	property: string;
+	/** The bound expression, e.g. "props.step". */
+	expression: string;
+	span?: SourceSpan;
+};
+
 /** An HTML element in the component's markup carrying a ref="name" attribute. */
 export type ElementRefSyntaxNode = {
 	id: Id;
@@ -91,6 +102,14 @@ export type ElementRefSyntaxNode = {
 	name: string;
 	tagName: string;
 	ownerId: Id;
+	dataBindings?: ElementRefDataBinding[];
+	span?: SourceSpan;
+};
+
+/** A data.<ref>.<property> access inside a script. */
+export type ScriptDataAccess = {
+	ref: string;
+	property: string;
 	span?: SourceSpan;
 };
 
@@ -101,6 +120,7 @@ export type ScriptSyntaxNode = {
 	lang: "ts" | "js";
 	source: string;
 	ownerId: Id;
+	dataAccesses?: ScriptDataAccess[];
 	span?: SourceSpan;
 	/** Span of the script body only, excluding the {% script %} tags. */
 	bodySpan?: SourceSpan;

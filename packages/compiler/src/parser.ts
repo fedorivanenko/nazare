@@ -12,6 +12,7 @@ import {
 } from "@shopify/liquid-html-parser";
 import type {
 	NazareAst,
+	NazareDataBinding,
 	NazareNode,
 	NazarePassedProp,
 	NazarePropDeclaration,
@@ -37,6 +38,7 @@ const scriptBlockPattern =
 const styleBlockPattern =
 	/{%-?\s*stylesheet\s*-?%}([\s\S]*?){%-?\s*endstylesheet\s*-?%}/g;
 const refAccessPattern = /\brefs\.([A-Za-z_$][\w$]*)/g;
+const dataAccessPattern = /\bdata\.([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)/g;
 const refIdentifierPattern = /^[A-Za-z_$][\w$]*$/;
 
 type SourceRange = { start: number; end: number };
@@ -204,6 +206,16 @@ function extractScriptBlocks(
 					}),
 				}),
 			),
+			dataAccesses: Array.from(body.matchAll(dataAccessPattern)).map(
+				(access) => ({
+					ref: access[1],
+					property: access[2],
+					span: spanFromOffsets(source, file, {
+						start: bodyStart + access.index,
+						end: bodyStart + access.index + access[0].length,
+					}),
+				}),
+			),
 			span: spanFromOffsets(source, file, {
 				start: blockStart,
 				end: blockStart + block.length,
@@ -313,9 +325,70 @@ function collectElementRef(
 			type: "NazareElementRef",
 			name: refName,
 			tagName: elementTagName(node),
+			dataBindings: collectDataBindings(node, source, file),
 			span,
 		});
 	}
+}
+
+/**
+ * data-* attributes on a ref'd element whose value is a single {{ expr }}
+ * output become typed data bindings; static or mixed values stay plain HTML.
+ */
+function collectDataBindings(
+	node: LiquidHtmlNode & { attributes?: unknown },
+	source: string,
+	file: string,
+): NazareDataBinding[] {
+	type AttributeLike = {
+		type: string;
+		name: { type: string; value?: unknown }[];
+		value: { type: string; position: SourceRange }[];
+		position: SourceRange;
+	};
+	const bindings: NazareDataBinding[] = [];
+	const attributes = (
+		Array.isArray(node.attributes) ? node.attributes : []
+	) as AttributeLike[];
+
+	for (const attribute of attributes) {
+		if (
+			attribute.type !== NodeTypes.AttrDoubleQuoted &&
+			attribute.type !== NodeTypes.AttrSingleQuoted &&
+			attribute.type !== NodeTypes.AttrUnquoted
+		) {
+			continue;
+		}
+		const attributeName = staticText(attribute.name);
+		if (!attributeName?.startsWith("data-") || attributeName === "data-nz-ref")
+			continue;
+
+		const values = attribute.value;
+		if (
+			values.length !== 1 ||
+			values[0].type !== NodeTypes.LiquidVariableOutput
+		) {
+			continue;
+		}
+
+		const raw = source.slice(values[0].position.start, values[0].position.end);
+		const expression = raw
+			.match(/^\s*{{-?\s*([\s\S]*?)\s*-?}}\s*$/)?.[1]
+			?.trim();
+		if (!expression) continue;
+
+		const suffix = attributeName.slice("data-".length);
+		bindings.push({
+			attribute: suffix,
+			property: suffix.replace(/-([a-z])/g, (_, letter: string) =>
+				letter.toUpperCase(),
+			),
+			expression,
+			span: spanFromOffsets(source, file, attribute.position),
+		});
+	}
+
+	return bindings;
 }
 
 /** Joined text of a name/value node list, or undefined when any part is Liquid. */
@@ -602,6 +675,20 @@ export function scanRefAccesses(
 ): { name: string; span: SourceSpan }[] {
 	return Array.from(source.matchAll(refAccessPattern)).map((access) => ({
 		name: access[1],
+		span: spanFromOffsets(source, file, {
+			start: access.index,
+			end: access.index + access[0].length,
+		}),
+	}));
+}
+
+export function scanDataAccesses(
+	source: string,
+	file: string,
+): { ref: string; property: string; span: SourceSpan }[] {
+	return Array.from(source.matchAll(dataAccessPattern)).map((access) => ({
+		ref: access[1],
+		property: access[2],
 		span: spanFromOffsets(source, file, {
 			start: access.index,
 			end: access.index + access[0].length,
