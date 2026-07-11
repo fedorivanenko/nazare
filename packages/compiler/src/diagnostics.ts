@@ -76,6 +76,34 @@ export function parseInvalidRefAttribute(
 	};
 }
 
+export function sectionPropWithoutSetting(
+	propName: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_SECTION_PROP_NOT_SETTING",
+		message: `Section components receive no render arguments, so prop ${propName} has no value source; declare it with .setting() or remove it`,
+		nodeId,
+		span,
+	};
+}
+
+export function snippetPropWithSetting(
+	propName: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "warning",
+		code: "CONSTRAINT_SNIPPET_SETTING_PROP",
+		message: `Snippets have no schema; prop ${propName} declares .setting() but will read the enclosing section's settings — an undeclared cross-file contract. Declare the setting on the consuming section instead (setting hoisting is planned)`,
+		nodeId,
+		span,
+	};
+}
+
 export function unknownPropsReference(
 	propName: string,
 	nodeId: Id,

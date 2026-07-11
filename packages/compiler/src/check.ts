@@ -8,6 +8,7 @@ import type {
 	ArtifactIR,
 	Diagnostic,
 	ExpressionSyntaxNode,
+	NazareManifest,
 	PropArgumentSyntaxNode,
 	RenderSiteSyntaxNode,
 	SemanticType,
@@ -18,6 +19,8 @@ import {
 	propTypeMismatch,
 	propValueOutOfRange,
 	requiredPropMissing,
+	sectionPropWithoutSetting,
+	snippetPropWithSetting,
 	unknownDataAccess,
 	unknownPropArgument,
 	unknownPropsReference,
@@ -28,9 +31,15 @@ import {
 } from "./diagnostics.js";
 import { type ArtifactIRIndex, indexArtifactIR } from "./ir-index.js";
 
+export type CheckArtifactIROptions = {
+	/** The component's manifest kind; enables kind-specific provenance rules. */
+	kind?: NazareManifest["kind"];
+};
+
 export function checkArtifactIR(
 	ir: ArtifactIR,
 	contracts: ArtifactContract[] = [],
+	options: CheckArtifactIROptions = {},
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const index = indexArtifactIR(ir);
@@ -66,6 +75,34 @@ export function checkArtifactIR(
 	issues.push(...checkRefs(index));
 	issues.push(...checkPropsReferences(index));
 	issues.push(...checkDataChannel(ir, index));
+	issues.push(...checkPropProvenanceForKind(index, options.kind));
+
+	return issues;
+}
+
+/**
+ * Kind-specific provenance rules. Sections are instantiated by the theme
+ * editor and receive no render arguments, so a non-setting prop has no value
+ * source — Liquid renders it silently blank. Snippets have no schema, so a
+ * .setting() prop reads whatever section happens to enclose it: an
+ * undeclared cross-file contract (until setting hoisting exists).
+ */
+function checkPropProvenanceForKind(
+	index: ArtifactIRIndex,
+	kind: NazareManifest["kind"] | undefined,
+): Diagnostic[] {
+	if (kind !== "section" && kind !== "snippet") return [];
+	const issues: Diagnostic[] = [];
+
+	for (const prop of index.nodesOfKind("prop-declaration")) {
+		const isSetting = prop.typeInfo.setting !== undefined;
+		if (kind === "section" && !isSetting) {
+			issues.push(sectionPropWithoutSetting(prop.name, prop.id, prop.span));
+		}
+		if (kind === "snippet" && isSetting) {
+			issues.push(snippetPropWithSetting(prop.name, prop.id, prop.span));
+		}
+	}
 
 	return issues;
 }

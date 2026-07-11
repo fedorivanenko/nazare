@@ -32,10 +32,12 @@ if (!file) {
 
 try {
 	const source = await readFile(file, "utf8");
-	const packageId = await packageIdForEntry(file);
+	const manifest = await manifestForEntry(file);
+	const packageId = manifest?.id;
 	const result = await compileNazareArtifactWithResolver(source, file, {
 		resolver: localContractResolver(file),
 		packageId,
+		kind: manifest?.kind,
 		readAsset: (relativePath) => {
 			try {
 				return readFileSync(join(dirname(file), relativePath), "utf8");
@@ -88,7 +90,6 @@ try {
 	}
 
 	if (command === "build") {
-		const manifest = await manifestForEntry(file);
 		const emitted = emitTheme(source, result, {
 			name: schemaName(file, packageId),
 			kind: manifest?.kind,
@@ -154,12 +155,6 @@ function localContractResolver(entryFile: string): ContractResolver {
 
 		return undefined;
 	};
-}
-
-async function packageIdForEntry(
-	entryFile: string,
-): Promise<string | undefined> {
-	return (await manifestForEntry(entryFile))?.id;
 }
 
 async function manifestForEntry(

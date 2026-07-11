@@ -11,6 +11,7 @@ import type {
 	ArtifactGraph,
 	ArtifactIR,
 	Diagnostic,
+	NazareManifest,
 } from "@nazare/core";
 import type { NazareAst, NazareNode } from "./ast.js";
 import { checkArtifactIR } from "./check.js";
@@ -63,6 +64,8 @@ export type CompileNazareArtifactOptions = {
 	contracts?: ArtifactContract[];
 	/** When set, the artifact's own contract is produced under this package id. */
 	packageId?: string;
+	/** Manifest kind; enables section/snippet provenance rules in check. */
+	kind?: NazareManifest["kind"];
 	/**
 	 * Reads a sidecar asset referenced by a relative {% import %}, given its
 	 * path relative to the component file. Undefined means not found. Without
@@ -82,6 +85,7 @@ export type ContractResolver = (
 export type CompileWithResolverOptions = {
 	resolver?: ContractResolver;
 	packageId?: string;
+	kind?: NazareManifest["kind"];
 	readAsset?: (relativePath: string) => string | undefined;
 };
 
@@ -154,6 +158,7 @@ export async function compileNazareArtifactWithResolver(
 	const result = compileFromAst(ast, {
 		contracts,
 		packageId: options.packageId,
+		kind: options.kind,
 	});
 	return { ...result, issues: [...resolutionIssues, ...result.issues] };
 }
@@ -225,7 +230,7 @@ function compileFromAst(
 	const graph = artifactGraphFromIR(ir);
 	const issues = [
 		...ast.diagnostics,
-		...checkArtifactIR(ir, options.contracts),
+		...checkArtifactIR(ir, options.contracts, { kind: options.kind }),
 		...validateArtifactIR(ir),
 		...validateArtifactGraph(graph),
 	];
