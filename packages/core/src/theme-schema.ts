@@ -13,6 +13,8 @@ export type ThemeSchemaSetting = {
 	label?: string;
 	/** header-type settings carry content instead of id/label. */
 	content?: string;
+	/** Helper text under the input; Nazare uses it for hoisting provenance. */
+	info?: string;
 	default?: unknown;
 	options?: ThemeSchemaSettingOption[];
 	min?: number;

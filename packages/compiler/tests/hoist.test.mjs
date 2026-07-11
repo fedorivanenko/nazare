@@ -35,12 +35,18 @@ test("hoist: unfilled setting-props land in the section schema under a header", 
 
 	assert.deepEqual(schema.settings, [
 		{ type: "header", content: "Promo link" },
-		{ type: "url", id: "promo_link_href", label: "Link" },
+		{
+			type: "url",
+			id: "promo_link_href",
+			label: "Link",
+			info: "From @test/link",
+		},
 		{
 			type: "text",
 			id: "promo_link_label",
 			label: "Label",
 			default: "Shop now",
+			info: "From @test/link",
 		},
 	]);
 });

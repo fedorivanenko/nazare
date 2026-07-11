@@ -58,7 +58,10 @@ export function themeSchemaFromIR(
 			entry.typeInfo,
 			entry.sourcePropName,
 		);
-		if (setting) settings.push(setting);
+		if (setting) {
+			setting.info = `From ${entry.sourcePackageId}`;
+			settings.push(setting);
+		}
 	}
 
 	return { name: options.name, settings };

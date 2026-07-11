@@ -12,14 +12,17 @@ import type {
 	PropArgumentSyntaxNode,
 	RenderSiteSyntaxNode,
 	SemanticType,
+	SourceSpan,
 } from "@nazare/core";
 import { dataChannelFromIR } from "./data-channel.js";
 import { resolveHoistedSettings } from "./hoist.js";
+import { findUnsupportedModuleSyntax } from "./script-modules.js";
 import {
 	duplicateRef,
 	propTypeMismatch,
 	propValueOutOfRange,
 	requiredPropMissing,
+	scriptModuleSyntaxUnsupported,
 	sectionPropWithoutSetting,
 	unknownDataAccess,
 	unknownPropArgument,
@@ -77,6 +80,40 @@ export function checkArtifactIR(
 	issues.push(...checkDataChannel(ir, index));
 	issues.push(...checkPropProvenanceForKind(index, options.kind));
 	issues.push(...resolveHoistedSettings(ir, contracts).issues);
+	issues.push(...checkScriptModuleSyntax(index));
+
+	return issues;
+}
+
+/** Module syntax in behavior scripts breaks the emitted IIFE until bundling exists. */
+function checkScriptModuleSyntax(index: ArtifactIRIndex): Diagnostic[] {
+	const issues: Diagnostic[] = [];
+
+	for (const script of index.nodesOfKind("script")) {
+		for (const found of findUnsupportedModuleSyntax(script.source)) {
+			const base = script.bodySpan;
+			const span: SourceSpan | undefined = base
+				? {
+						file: base.file,
+						start: {
+							line: base.start.line + found.line,
+							column:
+								found.line === 0
+									? base.start.column + found.character
+									: found.character + 1,
+						},
+						end: {
+							line: base.start.line + found.line,
+							column:
+								(found.line === 0
+									? base.start.column + found.character
+									: found.character + 1) + found.text.length,
+						},
+					}
+				: script.span;
+			issues.push(scriptModuleSyntaxUnsupported(found.text, script.id, span));
+		}
+	}
 
 	return issues;
 }

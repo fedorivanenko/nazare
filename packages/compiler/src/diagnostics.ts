@@ -314,6 +314,20 @@ export function propValueOutOfRange(
 	};
 }
 
+export function scriptModuleSyntaxUnsupported(
+	statementText: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "SCRIPT_MODULE_SYNTAX_UNSUPPORTED",
+		message: `Behavior scripts cannot use module imports/exports yet (no bundler; the emitted script would throw): ${statementText} — inline the code; "export default island(...)" and type-only imports are fine`,
+		nodeId,
+		span,
+	};
+}
+
 export function scriptTypeError(
 	message: string,
 	tsCode: number,
