@@ -9,8 +9,10 @@ export type ThemeSchemaSettingOption = {
 
 export type ThemeSchemaSetting = {
 	type: string;
-	id: string;
-	label: string;
+	id?: string;
+	label?: string;
+	/** header-type settings carry content instead of id/label. */
+	content?: string;
 	default?: unknown;
 	options?: ThemeSchemaSettingOption[];
 	min?: number;

@@ -90,15 +90,30 @@ export function sectionPropWithoutSetting(
 	};
 }
 
-export function snippetPropWithSetting(
-	propName: string,
+export function hoistedAliasReused(
+	alias: string,
 	nodeId: Id,
 	span: SourceSpan | undefined,
 ): Diagnostic {
 	return {
-		severity: "warning",
-		code: "CONSTRAINT_SNIPPET_SETTING_PROP",
-		message: `Snippets have no schema; prop ${propName} declares .setting() but will read the enclosing section's settings — an undeclared cross-file contract. Declare the setting on the consuming section instead (setting hoisting is planned)`,
+		severity: "error",
+		code: "CONSTRAINT_HOISTED_ALIAS_REUSED",
+		message: `${alias} is rendered more than once with unfilled settings; each instance needs its own knobs — import the package again under a second alias, or fill the arguments explicitly`,
+		nodeId,
+		span,
+	};
+}
+
+export function hoistedSettingCollision(
+	settingId: string,
+	owner: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_HOISTED_SETTING_COLLISION",
+		message: `Hoisted setting id "${settingId}" collides with ${owner}; rename the import alias or the prop`,
 		nodeId,
 		span,
 	};

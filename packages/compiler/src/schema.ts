@@ -3,12 +3,15 @@
 // the editor input (color picker, range, select, resource picker). Purely
 // derived from the IR — never hand-maintained.
 import type {
+	ArtifactContract,
 	ArtifactIR,
 	PropDeclarationSyntaxNode,
+	PropTypeInfo,
 	SemanticType,
 	ThemeSchema,
 	ThemeSchemaSetting,
 } from "@nazare/core";
+import { humanizeAlias, resolveHoistedSettings } from "./hoist.js";
 
 const shopifyObjectSettingTypes: Record<string, string> = {
 	ShopifyArticle: "article",
@@ -25,6 +28,8 @@ const shopifyObjectSettingTypes: Record<string, string> = {
 
 export type ThemeSchemaFromIROptions = {
 	name: string;
+	/** Dependency contracts; enables hoisted settings in the schema. */
+	contracts?: ArtifactContract[];
 };
 
 export function themeSchemaFromIR(
@@ -39,22 +44,47 @@ export function themeSchemaFromIR(
 		if (setting) settings.push(setting);
 	}
 
+	// Hoisted settings group under one header per component alias, with the
+	// leaf's own labels unmodified beneath it.
+	const { hoisted } = resolveHoistedSettings(ir, options.contracts);
+	let currentGroup: string | undefined;
+	for (const entry of hoisted) {
+		if (entry.alias !== currentGroup) {
+			currentGroup = entry.alias;
+			settings.push({ type: "header", content: humanizeAlias(entry.alias) });
+		}
+		const setting = settingFor(
+			entry.settingId,
+			entry.typeInfo,
+			entry.sourcePropName,
+		);
+		if (setting) settings.push(setting);
+	}
+
 	return { name: options.name, settings };
 }
 
 function settingFromProp(
 	prop: PropDeclarationSyntaxNode,
 ): ThemeSchemaSetting | undefined {
-	const metadata = prop.typeInfo.setting;
+	return settingFor(prop.name, prop.typeInfo, prop.name);
+}
+
+function settingFor(
+	id: string,
+	typeInfo: PropTypeInfo,
+	fallbackLabel: string,
+): ThemeSchemaSetting | undefined {
+	const metadata = typeInfo.setting;
 	if (!metadata) return undefined;
 
-	const input = settingInput(unwrapNil(prop.typeInfo.valueType));
+	const input = settingInput(unwrapNil(typeInfo.valueType));
 	if (!input) return undefined;
 
 	const setting: ThemeSchemaSetting = {
 		type: input.type,
-		id: prop.name,
-		label: metadata.label ?? prop.name,
+		id,
+		label: metadata.label ?? fallbackLabel,
 		...input.extra,
 	};
 	if (metadata.default !== undefined) setting.default = metadata.default;

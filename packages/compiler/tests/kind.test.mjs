@@ -31,15 +31,12 @@ test("kind: section with only settings is clean", () => {
 	assert.ok(!codes(result).includes("CONSTRAINT_SECTION_PROP_NOT_SETTING"));
 });
 
-test("kind: snippet with a setting prop warns", () => {
+test("kind: snippet with a setting prop is clean (it hoists)", () => {
 	const result = compile(
 		`label: string.setting({ label: "Label" }),`,
 		"snippet",
 	);
-	const issue = result.issues.find(
-		(candidate) => candidate.code === "CONSTRAINT_SNIPPET_SETTING_PROP",
-	);
-	assert.equal(issue?.severity, "warning");
+	assert.ok(!codes(result).includes("CONSTRAINT_SNIPPET_SETTING_PROP"));
 });
 
 test("kind: snippet with render-arg props is clean", () => {

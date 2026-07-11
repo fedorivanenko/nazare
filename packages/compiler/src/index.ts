@@ -100,6 +100,8 @@ export type CompileResult = {
 	issues: Diagnostic[];
 	/** Present only when options.packageId was given. */
 	contract?: ArtifactContract;
+	/** The dependency contracts this compile ran with (needed for hoisting at emit time). */
+	contracts: ArtifactContract[];
 };
 
 /** Shortcut to a graph when diagnostics and contracts are not needed. */
@@ -235,8 +237,8 @@ function compileFromAst(
 		...validateArtifactGraph(graph),
 	];
 	const contract = options.packageId
-		? contractFromIR(ir, options.packageId)
+		? contractFromIR(ir, options.packageId, options.contracts)
 		: undefined;
 
-	return { ast, ir, graph, issues, contract };
+	return { ast, ir, graph, issues, contract, contracts: options.contracts ?? [] };
 }

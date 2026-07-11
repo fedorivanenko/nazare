@@ -12,6 +12,7 @@ import type {
 	Id,
 	PropDeclarationSyntaxNode,
 } from "@nazare/core";
+import { resolveHoistedSettings } from "./hoist.js";
 import {
 	aliasSymbolId,
 	componentSymbolId,
@@ -262,6 +263,7 @@ export function bindArtifactIR(
 export function contractFromIR(
 	ir: ArtifactIR,
 	packageId: string,
+	dependencyContracts: ArtifactContract[] = [],
 ): ArtifactContract {
 	const props = ir.syntax
 		.filter(
@@ -277,10 +279,22 @@ export function contractFromIR(
 			typeInfo: node.typeInfo,
 		}));
 
+	// Settings this component hoists from its dependencies surface at its own
+	// boundary as implicit render arguments, so consumers can hoist further.
+	const hoisted = resolveHoistedSettings(ir, dependencyContracts).hoisted.map(
+		(setting) => ({
+			name: setting.settingId,
+			sourcePackageId: setting.sourcePackageId,
+			sourcePropName: setting.sourcePropName,
+			typeInfo: setting.typeInfo,
+		}),
+	);
+
 	return {
 		packageId,
 		componentSymbolId: componentSymbolIdForPackage(packageId),
 		props,
+		...(hoisted.length > 0 ? { hoisted } : {}),
 	};
 }
 

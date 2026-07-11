@@ -6,6 +6,7 @@
 // are transpiled and wrapped for the runtime asset, which mounts one setup
 // call per DOM instance.
 import type {
+	ArtifactContract,
 	ArtifactIR,
 	Diagnostic,
 	Id,
@@ -17,6 +18,7 @@ import ts from "typescript";
 import type { NazareAst } from "./ast.js";
 import { dataChannelFromIR } from "./data-channel.js";
 import { emitScriptWithoutDefaultExport, emitScriptWithoutRoot } from "./diagnostics.js";
+import { type HoistedSetting, resolveHoistedSettings } from "./hoist.js";
 import { themeSchemaFromIR } from "./schema.js";
 import { scopeCss } from "./scope-css.js";
 import { offsetFromPosition } from "./source.js";
@@ -39,6 +41,8 @@ export type EmitResult = {
 type CompiledComponent = {
 	ast: NazareAst;
 	ir: ArtifactIR;
+	/** Dependency contracts; enables hoisted settings in schema and lowering. */
+	contracts?: ArtifactContract[];
 };
 
 type SourceEdit = {
@@ -104,6 +108,15 @@ function emitLiquid(
 	const snippetNamesByLocalName = new Map<string, string>();
 	const argumentsById = new Map<Id, PropArgumentSyntaxNode>();
 	const expressionsById = new Map<Id, string>();
+	const hoistedBySiteId = new Map<Id, HoistedSetting[]>();
+	for (const setting of resolveHoistedSettings(
+		compiled.ir,
+		compiled.contracts,
+	).hoisted) {
+		const bucket = hoistedBySiteId.get(setting.renderSiteId);
+		if (bucket) bucket.push(setting);
+		else hoistedBySiteId.set(setting.renderSiteId, [setting]);
+	}
 
 	for (const node of compiled.ir.syntax) {
 		if (node.kind === "import") {
@@ -139,14 +152,25 @@ function emitLiquid(
 			const snippetName =
 				snippetNamesByLocalName.get(node.targetName) ??
 				node.targetName.toLowerCase();
-			const argumentList = node.argumentIds
+			const authored = node.argumentIds
 				.map((argumentId) => argumentsById.get(argumentId))
 				.filter((argument) => argument !== undefined)
 				.map(
 					(argument) =>
 						`${argument.name}: ${expressionsById.get(argument.expressionId) ?? ""}`,
-				)
-				.join(", ");
+				);
+			// Hoisted settings become generated pass-through arguments: read
+			// from our own schema in a section, from our own implicit render
+			// args in a snippet (whose consumer hoists them further).
+			const generated = (hoistedBySiteId.get(node.id) ?? []).map(
+				(setting) =>
+					`${setting.argName}: ${
+						options.kind === "section"
+							? `section.settings.${setting.settingId}`
+							: setting.settingId
+					}`,
+			);
+			const argumentList = [...authored, ...generated].join(", ");
 			edits.push({
 				...editRange(source, node.span),
 				replacement: argumentList
@@ -183,7 +207,10 @@ function emitLiquid(
 	}
 
 	if (options.kind === "section") {
-		const schema = themeSchemaFromIR(compiled.ir, { name: options.name });
+		const schema = themeSchemaFromIR(compiled.ir, {
+			name: options.name,
+			contracts: compiled.contracts,
+		});
 		liquid += `\n{% schema %}\n${JSON.stringify(schema, null, 2)}\n{% endschema %}\n`;
 	}
 

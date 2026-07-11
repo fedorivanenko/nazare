@@ -14,13 +14,13 @@ import type {
 	SemanticType,
 } from "@nazare/core";
 import { dataChannelFromIR } from "./data-channel.js";
+import { resolveHoistedSettings } from "./hoist.js";
 import {
 	duplicateRef,
 	propTypeMismatch,
 	propValueOutOfRange,
 	requiredPropMissing,
 	sectionPropWithoutSetting,
-	snippetPropWithSetting,
 	unknownDataAccess,
 	unknownPropArgument,
 	unknownPropsReference,
@@ -76,32 +76,27 @@ export function checkArtifactIR(
 	issues.push(...checkPropsReferences(index));
 	issues.push(...checkDataChannel(ir, index));
 	issues.push(...checkPropProvenanceForKind(index, options.kind));
+	issues.push(...resolveHoistedSettings(ir, contracts).issues);
 
 	return issues;
 }
 
 /**
- * Kind-specific provenance rules. Sections are instantiated by the theme
- * editor and receive no render arguments, so a non-setting prop has no value
- * source — Liquid renders it silently blank. Snippets have no schema, so a
- * .setting() prop reads whatever section happens to enclose it: an
- * undeclared cross-file contract (until setting hoisting exists).
+ * Kind-specific provenance rule. Sections are instantiated by the theme
+ * editor and receive no render arguments, so a non-setting prop has no
+ * value source — Liquid renders it silently blank. (Setting-props on
+ * snippets are fine: they hoist into the consuming section's schema.)
  */
 function checkPropProvenanceForKind(
 	index: ArtifactIRIndex,
 	kind: NazareManifest["kind"] | undefined,
 ): Diagnostic[] {
-	if (kind !== "section" && kind !== "snippet") return [];
+	if (kind !== "section") return [];
 	const issues: Diagnostic[] = [];
 
 	for (const prop of index.nodesOfKind("prop-declaration")) {
-		const isSetting = prop.typeInfo.setting !== undefined;
-		if (kind === "section" && !isSetting) {
-			issues.push(sectionPropWithoutSetting(prop.name, prop.id, prop.span));
-		}
-		if (kind === "snippet" && isSetting) {
-			issues.push(snippetPropWithSetting(prop.name, prop.id, prop.span));
-		}
+		if (prop.typeInfo.setting) continue;
+		issues.push(sectionPropWithoutSetting(prop.name, prop.id, prop.span));
 	}
 
 	return issues;
@@ -245,7 +240,9 @@ function checkRenderSiteAgainstContract(
 		if (
 			!contractProp.required ||
 			contractProp.hasDefault ||
-			argumentNames.has(contractProp.name)
+			argumentNames.has(contractProp.name) ||
+			// Unfilled setting-props hoist into the consumer's schema.
+			contractProp.typeInfo.setting !== undefined
 		)
 			continue;
 		issues.push(
@@ -259,9 +256,10 @@ function checkRenderSiteAgainstContract(
 	}
 
 	for (const argument of arguments_) {
-		const contractProp = contract.props.find(
-			(prop) => prop.name === argument.name,
-		);
+		// Explicitly filling a setting the dependency hoisted is the opt-out.
+		const contractProp =
+			contract.props.find((prop) => prop.name === argument.name) ??
+			(contract.hoisted ?? []).find((entry) => entry.name === argument.name);
 		if (!contractProp) {
 			issues.push(
 				unknownPropArgument(

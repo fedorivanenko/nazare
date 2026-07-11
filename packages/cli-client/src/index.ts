@@ -82,6 +82,7 @@ try {
 	if (command === "schema") {
 		const schema = themeSchemaFromIR(result.ir, {
 			name: schemaName(file, packageId),
+			contracts: result.contracts,
 		});
 		console.log(
 			JSON.stringify({ schema, issues: result.issues }, null, 2),
@@ -176,6 +177,7 @@ async function writeDumpFiles(
 	const base = artifactBaseName(entryFile);
 	const schema = themeSchemaFromIR(result.ir, {
 		name: schemaName(entryFile, packageId),
+		contracts: result.contracts,
 	});
 	const files = [
 		[`${base}.ast.json`, { ast: result.ast, issues: result.issues }],
