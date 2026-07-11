@@ -76,6 +76,28 @@ export function parseInvalidRefAttribute(
 	};
 }
 
+export function undeclaredDependency(
+	packageId: string,
+	nodeId: Id | undefined,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_UNDECLARED_DEPENDENCY",
+		message: `${packageId} is imported but not declared in the manifest's dependencies`,
+		nodeId,
+		span,
+	};
+}
+
+export function unusedDependency(packageId: string): Diagnostic {
+	return {
+		severity: "warning",
+		code: "CONSTRAINT_UNUSED_DEPENDENCY",
+		message: `${packageId} is declared in the manifest's dependencies but never imported`,
+	};
+}
+
 export function sectionPropWithoutSetting(
 	propName: string,
 	nodeId: Id,

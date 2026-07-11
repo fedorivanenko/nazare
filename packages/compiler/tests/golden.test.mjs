@@ -26,6 +26,7 @@ function compileComponent(component, contracts) {
 	return compileNazareArtifact(readFileSync(entryPath, "utf8"), file, {
 		packageId: component.manifest.id,
 		kind: component.manifest.kind,
+		dependencies: Object.keys(component.manifest.dependencies ?? {}),
 		contracts,
 		readAsset: (relativePath) => {
 			try {

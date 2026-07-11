@@ -14,6 +14,7 @@ import type {
 	SemanticType,
 	SourceSpan,
 } from "@nazare/core";
+import { importSpecifiers } from "./bundle.js";
 import { dataChannelFromIR } from "./data-channel.js";
 import { resolveHoistedSettings } from "./hoist.js";
 import { findUnsupportedModuleSyntax } from "./script-modules.js";
@@ -24,12 +25,14 @@ import {
 	requiredPropMissing,
 	scriptModuleSyntaxUnsupported,
 	sectionPropWithoutSetting,
+	undeclaredDependency,
 	unknownDataAccess,
 	unknownPropArgument,
 	unknownPropsReference,
 	unknownRef,
 	unresolvedExternalContract,
 	unusedDataBinding,
+	unusedDependency,
 	unusedRef,
 } from "./diagnostics.js";
 import { type ArtifactIRIndex, indexArtifactIR } from "./ir-index.js";
@@ -37,6 +40,11 @@ import { type ArtifactIRIndex, indexArtifactIR } from "./ir-index.js";
 export type CheckArtifactIROptions = {
 	/** The component's manifest kind; enables kind-specific provenance rules. */
 	kind?: NazareManifest["kind"];
+	/**
+	 * Declared dependency package ids from the manifest. When present, every
+	 * imported package must be declared and every declaration must be used.
+	 */
+	dependencies?: string[];
 };
 
 export function checkArtifactIR(
@@ -81,6 +89,44 @@ export function checkArtifactIR(
 	issues.push(...checkPropProvenanceForKind(index, options.kind));
 	issues.push(...resolveHoistedSettings(ir, contracts).issues);
 	issues.push(...checkScriptModuleSyntax(index));
+	issues.push(...checkDependencies(index, options.dependencies));
+
+	return issues;
+}
+
+/**
+ * The manifest's dependencies and the component's actual imports (Liquid
+ * package imports plus bare script imports) must agree in both directions.
+ * Skipped when no manifest context was provided.
+ */
+function checkDependencies(
+	index: ArtifactIRIndex,
+	dependencies: string[] | undefined,
+): Diagnostic[] {
+	if (dependencies === undefined) return [];
+	const declared = new Set(dependencies);
+	const issues: Diagnostic[] = [];
+	const used = new Set<string>();
+
+	for (const node of index.nodesOfKind("import")) {
+		used.add(node.packageId);
+		if (declared.has(node.packageId)) continue;
+		issues.push(undeclaredDependency(node.packageId, node.id, node.span));
+	}
+
+	for (const script of index.nodesOfKind("script")) {
+		for (const specifier of importSpecifiers(script.source)) {
+			if (specifier.startsWith(".")) continue;
+			used.add(specifier);
+			if (declared.has(specifier)) continue;
+			issues.push(undeclaredDependency(specifier, script.id, script.span));
+		}
+	}
+
+	for (const packageId of dependencies) {
+		if (used.has(packageId)) continue;
+		issues.push(unusedDependency(packageId));
+	}
 
 	return issues;
 }

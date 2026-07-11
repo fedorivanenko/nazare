@@ -46,6 +46,9 @@ try {
 		resolver: localContractResolver(file),
 		packageId,
 		kind: manifest?.kind,
+		dependencies: manifest
+			? Object.keys(manifest.dependencies ?? {})
+			: undefined,
 		readAsset,
 	});
 
