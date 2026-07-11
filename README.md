@@ -18,8 +18,12 @@ all of them with a diagnostic that says what to do instead.
 - Markup reads `{{ props.x }}`; the compiler lowers each read to its
   declared provenance — `section.settings.x` for `.setting()` props, the
   bare render-argument name otherwise.
-- Section components receive no render arguments, so every section prop must
-  be a `.setting()` (otherwise it would render silently blank).
+- Section and block components receive no render arguments, so every prop
+  must be a `.setting()` (otherwise it would render silently blank).
+- Blocks (`kind: "block"`) compile to theme blocks with their own schema
+  and a default preset; a section offers the slot with
+  `{% blocks "@pkg/a" %}` (bare `{% blocks %}` accepts any theme block).
+  One slot per section; blocks cannot nest in v1.
 - A setting-prop argument you leave unfilled at a render site hoists into
   the consuming section's schema. Filling the argument is the opt-out.
 - The same import alias rendered twice with unfilled setting-props is an
