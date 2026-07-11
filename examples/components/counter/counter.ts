@@ -1,10 +1,14 @@
+import { cn } from "@nazare/cn";
 import { formatValue } from "./format.ts";
 
-export default island(({ refs, data }) => {
+export default island(({ root, refs, data }) => {
 	let value = data.root.start;
 
 	const render = () => {
 		refs.value.textContent = formatValue(data.root.prefix, value);
+		root.className = cn("nazare-counter", {
+			"nazare-counter--positive": value > 0,
+		});
 	};
 
 	refs.increment.addEventListener("click", () => {

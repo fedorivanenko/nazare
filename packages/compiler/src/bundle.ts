@@ -11,6 +11,7 @@ import {
 	scriptImportCycle,
 	scriptImportInvalid,
 	scriptImportNotFound,
+	scriptPackageImportUnresolved,
 } from "./diagnostics.js";
 
 export type BundleResult = {
@@ -20,6 +21,9 @@ export type BundleResult = {
 };
 
 export type ReadAsset = (relativePath: string) => string | undefined;
+
+/** Supplies the entry source of a function package (manifest kind "function"). */
+export type ReadPackageModule = (packageId: string) => string | undefined;
 
 type Module = {
 	id: string;
@@ -32,16 +36,41 @@ export function bundleScript(
 	entrySource: string,
 	entryId: string,
 	readAsset: ReadAsset | undefined,
+	readPackageModule?: ReadPackageModule,
 ): BundleResult {
 	const issues: Diagnostic[] = [];
 	const modules = new Map<string, Module>();
 	const loading = new Set<string>();
 
-	const load = (id: string, source: string): void => {
+	const load = (id: string, source: string, isPackage: boolean): void => {
 		loading.add(id);
 		const resolutions: Record<string, string> = {};
 
-		for (const specifier of relativeImports(source)) {
+		for (const specifier of importSpecifiers(source)) {
+			if (!specifier.startsWith(".")) {
+				// Bare specifier: a function package, self-contained by rule.
+				resolutions[specifier] = specifier;
+				if (modules.has(specifier)) continue;
+				if (loading.has(specifier)) {
+					issues.push(scriptImportCycle(specifier, id));
+					continue;
+				}
+				const packageSource = readPackageModule?.(specifier);
+				if (packageSource === undefined) {
+					issues.push(scriptPackageImportUnresolved(specifier, id));
+					continue;
+				}
+				load(specifier, packageSource, true);
+				continue;
+			}
+
+			if (isPackage) {
+				// v1: function packages cannot have their own relative files —
+				// readAsset only reaches the consuming component's directory.
+				issues.push(scriptImportInvalid(specifier, id));
+				continue;
+			}
+
 			const resolvedId = resolveSpecifier(id, specifier);
 			if (!resolvedId) {
 				issues.push(scriptImportInvalid(specifier, id));
@@ -58,7 +87,7 @@ export function bundleScript(
 				issues.push(scriptImportNotFound(specifier, id));
 				continue;
 			}
-			load(resolvedId, contents);
+			load(resolvedId, contents, false);
 		}
 
 		modules.set(id, {
@@ -74,7 +103,7 @@ export function bundleScript(
 		loading.delete(id);
 	};
 
-	load(entryId, entrySource);
+	load(entryId, entrySource, false);
 
 	const moduleEntries = Array.from(modules.values());
 	const singleModule =
@@ -123,8 +152,8 @@ export function bundleScript(
 	return { code, issues };
 }
 
-/** Non-type-only relative import/export-from specifiers, in source order. */
-function relativeImports(source: string): string[] {
+/** Non-type-only import/export-from specifiers, in source order. */
+export function importSpecifiers(source: string): string[] {
 	const sourceFile = ts.createSourceFile(
 		"module.ts",
 		source,
@@ -144,7 +173,6 @@ function relativeImports(source: string): string[] {
 			specifier = statement.moduleSpecifier;
 		}
 		if (!specifier || !ts.isStringLiteral(specifier)) continue;
-		if (!specifier.text.startsWith(".")) continue;
 		specifiers.push(specifier.text);
 	}
 

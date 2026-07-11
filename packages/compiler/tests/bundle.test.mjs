@@ -117,6 +117,83 @@ test("bundle: import cycles are an emit error", () => {
 	assert.ok(emitted.issues.some((i) => i.code === "SCRIPT_IMPORT_CYCLE"));
 });
 
+const cnSource = `export type ClassValue = string | Record<string, boolean> | null | undefined;
+export function cn(...values: ClassValue[]): string {
+  const classes: string[] = [];
+  for (const value of values) {
+    if (!value) continue;
+    if (typeof value === "string") { classes.push(value); continue; }
+    for (const [name, on] of Object.entries(value)) if (on) classes.push(name);
+  }
+  return classes.join(" ");
+}
+`;
+
+test("bundle: function packages resolve as bare imports and execute", () => {
+	const source = `<div ref="root"></div>
+{% script lang="ts" %}
+import { cn } from "@test/cn";
+export default island(({ root }) => {
+  root.className = cn("a", { b: true, c: false });
+});
+{% endscript %}`;
+	const compiled = compileNazareArtifact(source, "components/w/w.nz.liquid");
+	const emitted = emitTheme(source, compiled, {
+		name: "widget",
+		readPackageModule: (id) => (id === "@test/cn" ? cnSource : undefined),
+	});
+	assert.deepEqual(
+		emitted.issues.filter((i) => i.severity === "error"),
+		[],
+	);
+	const script = emitted.files.find((f) => f.path === "assets/widget.js");
+
+	const element = { className: "", getAttribute: () => null };
+	const registered = [];
+	vm.runInNewContext(script.contents, {
+		window: {
+			Nazare: {
+				island: (setup) => setup,
+				register: (name, setup, data) => registered.push(setup),
+			},
+		},
+	});
+	registered[0]({ root: element, refs: {}, data: {} });
+	assert.equal(element.className, "a b");
+});
+
+test("bundle: unresolvable package import is an emit error", () => {
+	const source = `<div ref="root"></div>
+{% script %}
+import { gone } from "@test/missing";
+export default island(() => {});
+{% endscript %}`;
+	const compiled = compileNazareArtifact(source, "components/w/w.nz.liquid");
+	const emitted = emitTheme(source, compiled, { name: "widget" });
+	assert.ok(
+		emitted.issues.some(
+			(i) => i.code === "SCRIPT_PACKAGE_IMPORT_UNRESOLVED",
+		),
+	);
+});
+
+test("bundle: function packages must be self-contained", () => {
+	const source = `<div ref="root"></div>
+{% script %}
+import { x } from "@test/pkg";
+export default island(() => {});
+{% endscript %}`;
+	const compiled = compileNazareArtifact(source, "components/w/w.nz.liquid");
+	const emitted = emitTheme(source, compiled, {
+		name: "widget",
+		readPackageModule: (id) =>
+			id === "@test/pkg"
+				? `import { y } from "./helper.ts";\nexport const x = y;\n`
+				: undefined,
+	});
+	assert.ok(emitted.issues.some((i) => i.code === "SCRIPT_IMPORT_INVALID"));
+});
+
 test("bundle: escaping the component directory is an emit error", () => {
 	const { emitted } = build(`{% import "./widget.ts" %}
 <div ref="root"></div>`, (path) =>

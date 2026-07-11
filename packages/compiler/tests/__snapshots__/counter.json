@@ -38,7 +38,7 @@
         "id": "syntax:script:examples/components/counter/counter.nz.liquid:1",
         "kind": "script",
         "lang": "ts",
-        "source": "import { formatValue } from \"./format.ts\";\n\nexport default island(({ refs, data }) => {\n\tlet value = data.root.start;\n\n\tconst render = () => {\n\t\trefs.value.textContent = formatValue(data.root.prefix, value);\n\t};\n\n\trefs.increment.addEventListener(\"click\", () => {\n\t\tvalue += data.increment.step;\n\t\trender();\n\t});\n\trefs.decrement.addEventListener(\"click\", () => {\n\t\tvalue -= data.decrement.step;\n\t\trender();\n\t});\n\n\trender();\n});\n",
+        "source": "import { cn } from \"@nazare/cn\";\nimport { formatValue } from \"./format.ts\";\n\nexport default island(({ root, refs, data }) => {\n\tlet value = data.root.start;\n\n\tconst render = () => {\n\t\trefs.value.textContent = formatValue(data.root.prefix, value);\n\t\troot.className = cn(\"nazare-counter\", {\n\t\t\t\"nazare-counter--positive\": value > 0,\n\t\t});\n\t};\n\n\trefs.increment.addEventListener(\"click\", () => {\n\t\tvalue += data.increment.step;\n\t\trender();\n\t});\n\trefs.decrement.addEventListener(\"click\", () => {\n\t\tvalue -= data.decrement.step;\n\t\trender();\n\t});\n\n\trender();\n});\n",
         "ownerId": "syntax:component:examples/components/counter/counter.nz.liquid",
         "dataAccesses": [
           {
@@ -47,11 +47,11 @@
             "span": {
               "file": "examples/components/counter/counter.ts",
               "start": {
-                "line": 4,
+                "line": 5,
                 "column": 14
               },
               "end": {
-                "line": 4,
+                "line": 5,
                 "column": 29
               }
             }
@@ -62,11 +62,11 @@
             "span": {
               "file": "examples/components/counter/counter.ts",
               "start": {
-                "line": 7,
+                "line": 8,
                 "column": 40
               },
               "end": {
-                "line": 7,
+                "line": 8,
                 "column": 56
               }
             }
@@ -77,11 +77,11 @@
             "span": {
               "file": "examples/components/counter/counter.ts",
               "start": {
-                "line": 11,
+                "line": 15,
                 "column": 12
               },
               "end": {
-                "line": 11,
+                "line": 15,
                 "column": 31
               }
             }
@@ -92,11 +92,11 @@
             "span": {
               "file": "examples/components/counter/counter.ts",
               "start": {
-                "line": 15,
+                "line": 19,
                 "column": 12
               },
               "end": {
-                "line": 15,
+                "line": 19,
                 "column": 31
               }
             }
@@ -120,7 +120,7 @@
             "column": 1
           },
           "end": {
-            "line": 21,
+            "line": 25,
             "column": 1
           }
         }
@@ -133,11 +133,11 @@
         "span": {
           "file": "examples/components/counter/counter.ts",
           "start": {
-            "line": 7,
+            "line": 8,
             "column": 3
           },
           "end": {
-            "line": 7,
+            "line": 8,
             "column": 13
           }
         }
@@ -150,11 +150,11 @@
         "span": {
           "file": "examples/components/counter/counter.ts",
           "start": {
-            "line": 10,
+            "line": 14,
             "column": 2
           },
           "end": {
-            "line": 10,
+            "line": 14,
             "column": 16
           }
         }
@@ -167,11 +167,11 @@
         "span": {
           "file": "examples/components/counter/counter.ts",
           "start": {
-            "line": 14,
+            "line": 18,
             "column": 2
           },
           "end": {
-            "line": 14,
+            "line": 18,
             "column": 16
           }
         }
@@ -799,11 +799,11 @@
         "span": {
           "file": "examples/components/counter/counter.ts",
           "start": {
-            "line": 7,
+            "line": 8,
             "column": 3
           },
           "end": {
-            "line": 7,
+            "line": 8,
             "column": 13
           }
         }
@@ -816,11 +816,11 @@
         "span": {
           "file": "examples/components/counter/counter.ts",
           "start": {
-            "line": 10,
+            "line": 14,
             "column": 2
           },
           "end": {
-            "line": 10,
+            "line": 14,
             "column": 16
           }
         }
@@ -833,11 +833,11 @@
         "span": {
           "file": "examples/components/counter/counter.ts",
           "start": {
-            "line": 14,
+            "line": 18,
             "column": 2
           },
           "end": {
-            "line": 14,
+            "line": 18,
             "column": 16
           }
         }

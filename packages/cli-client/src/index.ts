@@ -41,6 +41,7 @@ try {
 			return undefined;
 		}
 	};
+	const readPackageModule = localPackageModuleReader(file);
 	const result = await compileNazareArtifactWithResolver(source, file, {
 		resolver: localContractResolver(file),
 		packageId,
@@ -72,7 +73,7 @@ try {
 	if (command === "validate") {
 		const issues = [
 			...result.issues,
-			...checkComponentScripts(result.ir, { readAsset }),
+			...checkComponentScripts(result.ir, { readAsset, readPackageModule }),
 		];
 		console.log(JSON.stringify({ issues }, null, 2));
 		process.exit(hasErrors(issues) ? 1 : 0);
@@ -99,10 +100,11 @@ try {
 			name: schemaName(file, packageId),
 			kind: manifest?.kind,
 			readAsset,
+			readPackageModule,
 		});
 		const issues = [
 			...result.issues,
-			...checkComponentScripts(result.ir, { readAsset }),
+			...checkComponentScripts(result.ir, { readAsset, readPackageModule }),
 			...emitted.issues,
 		];
 		const outputDir = join(".nazare-out", "theme");
@@ -157,6 +159,43 @@ function localContractResolver(entryFile: string): ContractResolver {
 			return compileNazareArtifact(entrySource, entryPath, {
 				packageId: manifest.id,
 			}).contract;
+		}
+
+		return undefined;
+	};
+}
+
+/**
+ * Resolves function packages (manifest kind "function") from the same
+ * roots the contract resolver searches, returning the entry source for
+ * bundling and type checking.
+ */
+function localPackageModuleReader(
+	entryFile: string,
+): (packageId: string) => string | undefined {
+	const searchRoots = [
+		resolve(dirname(entryFile), ".."),
+		resolve(process.cwd(), "examples", "components"),
+	];
+
+	return (packageId) => {
+		const componentName = packageId.split("/").at(-1);
+		if (!componentName) return undefined;
+
+		for (const root of searchRoots) {
+			try {
+				const manifestPath = join(root, componentName, "nazare.json");
+				const manifest = JSON.parse(
+					readFileSync(manifestPath, "utf8"),
+				) as NazareManifest;
+				if (manifest.kind !== "function") return undefined;
+				return readFileSync(
+					join(dirname(manifestPath), manifest.entry),
+					"utf8",
+				);
+			} catch {
+				// try the next root
+			}
 		}
 
 		return undefined;

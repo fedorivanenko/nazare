@@ -33,6 +33,8 @@ export type EmitThemeOptions = {
 	kind?: NazareManifest["kind"];
 	/** Reads component-relative files; enables bundling of script imports. */
 	readAsset?: (relativePath: string) => string | undefined;
+	/** Supplies function-package sources for bare script imports. */
+	readPackageModule?: (packageId: string) => string | undefined;
 };
 
 export type EmittedFile = {
@@ -352,7 +354,12 @@ function emitComponentScript(
 				? script.bodySpan.file.replace(`${componentDir}/`, "")
 				: `inline-${index + 1}.ts`;
 
-		const bundle = bundleScript(script.source, entryId, options.readAsset);
+		const bundle = bundleScript(
+			script.source,
+			entryId,
+			options.readAsset,
+			options.readPackageModule,
+		);
 		issues.push(...bundle.issues);
 
 		return `window.Nazare.register(${JSON.stringify(options.name)}, ${bundle.code}, __data);`;

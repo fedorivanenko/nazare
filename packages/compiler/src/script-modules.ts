@@ -1,9 +1,9 @@
-// Finds module syntax in behavior scripts that the bundler cannot resolve:
-// bare (package) specifiers — only ./-relative files inside the component
-// directory are bundleable. Relative imports, named exports, type-only
-// imports, and `export default island(...)` are all fine. Uses the TS
-// parser, not a regex — comments, strings, and type-only forms are
-// distinguished correctly.
+// Finds module syntax in behavior scripts that nothing downstream can
+// handle. Since the bundler resolves both relative files and function
+// packages, only legacy `import x = require(...)` remains unsupported.
+// Unresolvable specifiers are reported by the bundler (emit) and the
+// multi-module type check, which know the resolvers; this fast-path check
+// cannot.
 import ts from "typescript";
 
 export type ModuleSyntaxFinding = {
@@ -26,40 +26,16 @@ export function findUnsupportedModuleSyntax(
 	const findings: ModuleSyntaxFinding[] = [];
 
 	for (const statement of sourceFile.statements) {
-		if (ts.isImportEqualsDeclaration(statement)) {
-			findings.push(finding(sourceFile, statement));
-			continue;
-		}
-
-		let specifier: ts.Expression | undefined;
-		if (ts.isImportDeclaration(statement)) {
-			if (statement.importClause?.isTypeOnly) continue;
-			specifier = statement.moduleSpecifier;
-		}
-		if (ts.isExportDeclaration(statement)) {
-			if (statement.isTypeOnly || !statement.moduleSpecifier) continue;
-			specifier = statement.moduleSpecifier;
-		}
-		if (!specifier) continue;
-		if (ts.isStringLiteral(specifier) && specifier.text.startsWith(".")) {
-			continue; // relative: the bundler resolves it
-		}
-		findings.push(finding(sourceFile, statement));
+		if (!ts.isImportEqualsDeclaration(statement)) continue;
+		const start = statement.getStart(sourceFile);
+		const position = sourceFile.getLineAndCharacterOfPosition(start);
+		const text = statement.getText(sourceFile);
+		findings.push({
+			text: text.length > 60 ? `${text.slice(0, 57)}...` : text.split("\n")[0],
+			line: position.line,
+			character: position.character,
+		});
 	}
 
 	return findings;
-}
-
-function finding(
-	sourceFile: ts.SourceFile,
-	statement: ts.Statement,
-): ModuleSyntaxFinding {
-	const start = statement.getStart(sourceFile);
-	const position = sourceFile.getLineAndCharacterOfPosition(start);
-	const text = statement.getText(sourceFile);
-	return {
-		text: text.length > 60 ? `${text.slice(0, 57)}...` : text.split("\n")[0],
-		line: position.line,
-		character: position.character,
-	};
 }

@@ -16,15 +16,22 @@ function moduleIssues(result) {
 	);
 }
 
-test("module-syntax: bare package imports are an error", () => {
+test("module-syntax: import-equals is an error", () => {
 	const result = compile(`{% script lang="ts" %}
-import { debounce } from "lodash";
+import lodash = require("lodash");
 export default island(({ refs }) => refs.root.remove());
 {% endscript %}`);
 	const issues = moduleIssues(result);
 	assert.equal(issues.length, 1);
 	assert.equal(issues[0].severity, "error");
-	assert.ok(issues[0].message.includes("lodash"));
+});
+
+test("module-syntax: bare package imports pass the fast path (resolved at bundle/check)", () => {
+	const result = compile(`{% script lang="ts" %}
+import { cn } from "@nazare/cn";
+export default island(({ refs }) => refs.root.remove());
+{% endscript %}`);
+	assert.deepEqual(moduleIssues(result), []);
 });
 
 test("module-syntax: relative imports are allowed (the bundler resolves them)", () => {
@@ -65,7 +72,7 @@ test("module-syntax: sidecar behavior files are checked too, with sidecar spans"
 		`{% import "./widget.ts" %}`,
 		(path) =>
 			path === "./widget.ts"
-				? `import express from "express";\nexport default island(() => {});\n`
+				? `import express = require("express");\nexport default island(() => {});\n`
 				: undefined,
 	);
 	const issues = moduleIssues(result);

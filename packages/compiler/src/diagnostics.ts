@@ -322,7 +322,7 @@ export function scriptModuleSyntaxUnsupported(
 	return {
 		severity: "error",
 		code: "SCRIPT_MODULE_SYNTAX_UNSUPPORTED",
-		message: `Behavior scripts cannot import packages (only ./-relative files inside the component are bundled): ${statementText}`,
+		message: `Unsupported module syntax in behavior script: ${statementText}`,
 		nodeId,
 		span,
 	};
@@ -347,6 +347,17 @@ export function scriptImportInvalid(
 		severity: "error",
 		code: "SCRIPT_IMPORT_INVALID",
 		message: `Cannot bundle "${specifier}" imported by ${importer}; imports must stay inside the component directory and name a .ts or .js file`,
+	};
+}
+
+export function scriptPackageImportUnresolved(
+	packageId: string,
+	importer: string,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "SCRIPT_PACKAGE_IMPORT_UNRESOLVED",
+		message: `Cannot resolve "${packageId}" imported by ${importer}; only function packages (manifest kind "function") reachable by the resolver can be imported`,
 	};
 }
 

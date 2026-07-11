@@ -6,6 +6,7 @@
 // slower than the rest of the pipeline, so callers opt in (the CLI does).
 import type { ArtifactIR, Diagnostic, SourceSpan } from "@nazare/core";
 import ts from "typescript";
+import { importSpecifiers } from "./bundle.js";
 import { type DataChannel, dataChannelFromIR } from "./data-channel.js";
 import { scriptTypeError } from "./diagnostics.js";
 
@@ -17,6 +18,8 @@ const virtualFileName = "/component.ts";
 export type CheckComponentScriptsOptions = {
 	/** Resolves ./-relative script imports so cross-module types check. */
 	readAsset?: (relativePath: string) => string | undefined;
+	/** Supplies function-package sources for bare script imports. */
+	readPackageModule?: (packageId: string) => string | undefined;
 };
 
 export function checkComponentScripts(
@@ -40,6 +43,7 @@ export function checkComponentScripts(
 		for (const diagnostic of typescriptDiagnostics(
 			virtualSource,
 			options.readAsset,
+			packageModules(script.source, options.readPackageModule),
 		)) {
 			if (isRedundantUnknownRef(diagnostic)) continue;
 			issues.push(
@@ -95,15 +99,44 @@ declare function island(
 ): (context: NazareContext) => void;`;
 }
 
+/**
+ * Serves function-package sources at virtual paths, mapped via
+ * compilerOptions.paths so bare specifiers type-check. Direct imports only;
+ * a package importing another package is typed at bundle level, not here.
+ */
+function packageModules(
+	scriptSource: string,
+	readPackageModule: ((packageId: string) => string | undefined) | undefined,
+): Map<string, { virtualPath: string; source: string }> {
+	const packages = new Map<string, { virtualPath: string; source: string }>();
+	if (!readPackageModule) return packages;
+	for (const specifier of importSpecifiers(scriptSource)) {
+		if (specifier.startsWith(".") || packages.has(specifier)) continue;
+		const source = readPackageModule(specifier);
+		if (source === undefined) continue;
+		packages.set(specifier, {
+			virtualPath: `/nz-packages/${specifier}.ts`,
+			source,
+		});
+	}
+	return packages;
+}
+
 function typescriptDiagnostics(
 	virtualSource: string,
 	readAsset: ((relativePath: string) => string | undefined) | undefined,
+	packages: Map<string, { virtualPath: string; source: string }>,
 ): readonly ts.Diagnostic[] {
+	const paths: Record<string, string[]> = {};
+	for (const [specifier, entry] of packages) {
+		paths[specifier] = [entry.virtualPath];
+	}
 	const options: ts.CompilerOptions = {
 		target: ts.ScriptTarget.ES2018,
 		module: ts.ModuleKind.ESNext,
 		moduleResolution: ts.ModuleResolutionKind.Bundler,
 		allowImportingTsExtensions: true,
+		paths,
 		lib: ["lib.es2018.d.ts", "lib.dom.d.ts"],
 		strict: true,
 		noEmit: true,
@@ -122,8 +155,13 @@ function typescriptDiagnostics(
 	// the virtual entry lives at "/", so "./utils.ts" becomes "/utils.ts",
 	// which maps back to readAsset("./utils.ts"). Real fs paths (TS libs)
 	// miss readAsset and fall through to ts.sys.
+	const packagesByVirtualPath = new Map(
+		Array.from(packages.values()).map((entry) => [entry.virtualPath, entry]),
+	);
 	const virtualContents = (fileName: string): string | undefined => {
 		if (fileName === virtualFileName) return virtualSource;
+		const packageEntry = packagesByVirtualPath.get(fileName);
+		if (packageEntry) return packageEntry.source;
 		if (!fileName.startsWith("/") || fileName.includes("node_modules"))
 			return undefined;
 		return readAsset?.(`.${fileName}`);
