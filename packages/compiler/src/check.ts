@@ -153,6 +153,12 @@ function checkRefs(index: ArtifactIRIndex): Diagnostic[] {
 	const accesses = index.nodesOfKind("ref-access");
 	const declaredNames = new Set(declarations.map((node) => node.name));
 	const accessedNames = new Set(accesses.map((node) => node.name));
+	// Reading a ref's data channel uses the ref too.
+	for (const script of index.nodesOfKind("script")) {
+		for (const access of script.dataAccesses ?? []) {
+			accessedNames.add(access.ref);
+		}
+	}
 	const seenNames = new Set<string>();
 
 	for (const declaration of declarations) {
