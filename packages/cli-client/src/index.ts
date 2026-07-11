@@ -34,17 +34,18 @@ try {
 	const source = await readFile(file, "utf8");
 	const manifest = await manifestForEntry(file);
 	const packageId = manifest?.id;
+	const readAsset = (relativePath: string) => {
+		try {
+			return readFileSync(join(dirname(file), relativePath), "utf8");
+		} catch {
+			return undefined;
+		}
+	};
 	const result = await compileNazareArtifactWithResolver(source, file, {
 		resolver: localContractResolver(file),
 		packageId,
 		kind: manifest?.kind,
-		readAsset: (relativePath) => {
-			try {
-				return readFileSync(join(dirname(file), relativePath), "utf8");
-			} catch {
-				return undefined;
-			}
-		},
+		readAsset,
 	});
 
 	if (command === "ast") {
@@ -69,7 +70,10 @@ try {
 	}
 
 	if (command === "validate") {
-		const issues = [...result.issues, ...checkComponentScripts(result.ir)];
+		const issues = [
+			...result.issues,
+			...checkComponentScripts(result.ir, { readAsset }),
+		];
 		console.log(JSON.stringify({ issues }, null, 2));
 		process.exit(hasErrors(issues) ? 1 : 0);
 	}
@@ -94,10 +98,11 @@ try {
 		const emitted = emitTheme(source, result, {
 			name: schemaName(file, packageId),
 			kind: manifest?.kind,
+			readAsset,
 		});
 		const issues = [
 			...result.issues,
-			...checkComponentScripts(result.ir),
+			...checkComponentScripts(result.ir, { readAsset }),
 			...emitted.issues,
 		];
 		const outputDir = join(".nazare-out", "theme");

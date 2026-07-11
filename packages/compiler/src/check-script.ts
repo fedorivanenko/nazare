@@ -9,9 +9,20 @@ import ts from "typescript";
 import { type DataChannel, dataChannelFromIR } from "./data-channel.js";
 import { scriptTypeError } from "./diagnostics.js";
 
-const virtualFileName = "component.ts";
+// Rooted at "/" — TS's program-level module resolution silently skips
+// resolution for rootless containing files, so the virtual component lives
+// at the filesystem root and sidecars alongside it.
+const virtualFileName = "/component.ts";
 
-export function checkComponentScripts(ir: ArtifactIR): Diagnostic[] {
+export type CheckComponentScriptsOptions = {
+	/** Resolves ./-relative script imports so cross-module types check. */
+	readAsset?: (relativePath: string) => string | undefined;
+};
+
+export function checkComponentScripts(
+	ir: ArtifactIR,
+	options: CheckComponentScriptsOptions = {},
+): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const refs = ir.syntax.filter((node) => node.kind === "element-ref");
 	const scripts = ir.syntax.filter(
@@ -26,7 +37,10 @@ export function checkComponentScripts(ir: ArtifactIR): Diagnostic[] {
 		const virtualSource = `${prelude}\n${script.source}`;
 		const preludeLines = prelude.split("\n").length;
 
-		for (const diagnostic of typescriptDiagnostics(virtualSource)) {
+		for (const diagnostic of typescriptDiagnostics(
+			virtualSource,
+			options.readAsset,
+		)) {
 			if (isRedundantUnknownRef(diagnostic)) continue;
 			issues.push(
 				scriptTypeError(
@@ -81,9 +95,15 @@ declare function island(
 ): (context: NazareContext) => void;`;
 }
 
-function typescriptDiagnostics(virtualSource: string): readonly ts.Diagnostic[] {
+function typescriptDiagnostics(
+	virtualSource: string,
+	readAsset: ((relativePath: string) => string | undefined) | undefined,
+): readonly ts.Diagnostic[] {
 	const options: ts.CompilerOptions = {
 		target: ts.ScriptTarget.ES2018,
+		module: ts.ModuleKind.ESNext,
+		moduleResolution: ts.ModuleResolutionKind.Bundler,
+		allowImportingTsExtensions: true,
 		lib: ["lib.es2018.d.ts", "lib.dom.d.ts"],
 		strict: true,
 		noEmit: true,
@@ -98,15 +118,30 @@ function typescriptDiagnostics(virtualSource: string): readonly ts.Diagnostic[] 
 		ts.ScriptTarget.ES2018,
 		true,
 	);
+	// Relative imports resolve as component-dir files served by readAsset:
+	// the virtual entry lives at "/", so "./utils.ts" becomes "/utils.ts",
+	// which maps back to readAsset("./utils.ts"). Real fs paths (TS libs)
+	// miss readAsset and fall through to ts.sys.
+	const virtualContents = (fileName: string): string | undefined => {
+		if (fileName === virtualFileName) return virtualSource;
+		if (!fileName.startsWith("/") || fileName.includes("node_modules"))
+			return undefined;
+		return readAsset?.(`.${fileName}`);
+	};
 
-	host.getSourceFile = (fileName, ...rest) =>
-		fileName === virtualFileName
-			? virtualSourceFile
-			: defaultGetSourceFile(fileName, ...rest);
+	host.getSourceFile = (fileName, languageVersion, ...rest) => {
+		if (fileName === virtualFileName) return virtualSourceFile;
+		const contents = virtualContents(fileName);
+		if (contents !== undefined) {
+			return ts.createSourceFile(fileName, contents, languageVersion, true);
+		}
+		return defaultGetSourceFile(fileName, languageVersion, ...rest);
+	};
 	host.fileExists = (fileName) =>
-		fileName === virtualFileName || ts.sys.fileExists(fileName);
+		virtualContents(fileName) !== undefined || ts.sys.fileExists(fileName);
 	host.readFile = (fileName) =>
-		fileName === virtualFileName ? virtualSource : ts.sys.readFile(fileName);
+		virtualContents(fileName) ?? ts.sys.readFile(fileName);
+	host.getCurrentDirectory = () => "/";
 	host.writeFile = () => undefined;
 
 	const program = ts.createProgram([virtualFileName], options, host);

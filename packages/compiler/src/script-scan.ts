@@ -59,26 +59,8 @@ export function scanScript(source: string): ScriptScan {
 }
 
 export function hasDefaultExport(source: string): boolean {
-	return defaultExportStatement(parse(source)) !== undefined;
-}
-
-/** Replaces the `export default` keywords with `__module.default =`, precisely. */
-export function rewriteExportDefault(source: string): string {
-	const sourceFile = parse(source);
-	const statement = defaultExportStatement(sourceFile);
-	if (!statement) return source;
-	return (
-		source.slice(0, statement.getStart(sourceFile)) +
-		"__module.default = " +
-		source.slice(statement.expression.getStart(sourceFile))
-	);
-}
-
-function defaultExportStatement(
-	sourceFile: ts.SourceFile,
-): ts.ExportAssignment | undefined {
-	return sourceFile.statements.find(
-		(statement): statement is ts.ExportAssignment =>
+	return parse(source).statements.some(
+		(statement) =>
 			ts.isExportAssignment(statement) && !statement.isExportEquals,
 	);
 }

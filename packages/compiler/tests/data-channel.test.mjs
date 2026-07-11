@@ -111,8 +111,9 @@ test("data: emitted asset carries the parse descriptor per behavior", () => {
 		),
 	);
 	assert.ok(
-		script.contents.includes('window.Nazare.register("counter", __module.default, __data)'),
+		script.contents.includes('window.Nazare.register("counter", '),
 	);
+	assert.ok(script.contents.includes(", __data);"));
 });
 
 test("data: multiple behaviors each register once", () => {

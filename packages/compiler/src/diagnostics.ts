@@ -322,9 +322,42 @@ export function scriptModuleSyntaxUnsupported(
 	return {
 		severity: "error",
 		code: "SCRIPT_MODULE_SYNTAX_UNSUPPORTED",
-		message: `Behavior scripts cannot use module imports/exports yet (no bundler; the emitted script would throw): ${statementText} — inline the code; "export default island(...)" and type-only imports are fine`,
+		message: `Behavior scripts cannot import packages (only ./-relative files inside the component are bundled): ${statementText}`,
 		nodeId,
 		span,
+	};
+}
+
+export function scriptImportNotFound(
+	specifier: string,
+	importer: string,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "SCRIPT_IMPORT_NOT_FOUND",
+		message: `Cannot bundle "${specifier}" imported by ${importer}; the file could not be read`,
+	};
+}
+
+export function scriptImportInvalid(
+	specifier: string,
+	importer: string,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "SCRIPT_IMPORT_INVALID",
+		message: `Cannot bundle "${specifier}" imported by ${importer}; imports must stay inside the component directory and name a .ts or .js file`,
+	};
+}
+
+export function scriptImportCycle(
+	moduleId: string,
+	importer: string,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "SCRIPT_IMPORT_CYCLE",
+		message: `Import cycle: ${importer} imports ${moduleId}, which is already loading`,
 	};
 }
 

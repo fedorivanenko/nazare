@@ -1,8 +1,10 @@
+import { formatValue } from "./format.ts";
+
 export default island(({ refs, data }) => {
 	let value = data.root.start;
 
 	const render = () => {
-		refs.value.textContent = data.root.prefix + String(value);
+		refs.value.textContent = formatValue(data.root.prefix, value);
 	};
 
 	refs.increment.addEventListener("click", () => {

@@ -1,10 +1,9 @@
-// Finds module syntax in behavior scripts that would break at runtime:
-// emission wraps scripts in an IIFE and no bundler exists yet, so a real
-// import or a named export survives transpilation and throws in the theme.
-// Only `export default island(...)` (rewritten at emit) and type-only
-// imports (erased by transpilation) are allowed. Uses the TS parser, not a
-// regex — comments, strings, and type-only forms are distinguished
-// correctly.
+// Finds module syntax in behavior scripts that the bundler cannot resolve:
+// bare (package) specifiers — only ./-relative files inside the component
+// directory are bundleable. Relative imports, named exports, type-only
+// imports, and `export default island(...)` are all fine. Uses the TS
+// parser, not a regex — comments, strings, and type-only forms are
+// distinguished correctly.
 import ts from "typescript";
 
 export type ModuleSyntaxFinding = {
@@ -27,31 +26,25 @@ export function findUnsupportedModuleSyntax(
 	const findings: ModuleSyntaxFinding[] = [];
 
 	for (const statement of sourceFile.statements) {
-		if (ts.isImportDeclaration(statement)) {
-			if (statement.importClause?.isTypeOnly) continue;
-			findings.push(finding(sourceFile, statement));
-			continue;
-		}
 		if (ts.isImportEqualsDeclaration(statement)) {
 			findings.push(finding(sourceFile, statement));
 			continue;
 		}
-		// export default island(...) is the entry point; everything else that
-		// exports breaks inside the emitted IIFE.
-		if (ts.isExportAssignment(statement)) continue;
+
+		let specifier: ts.Expression | undefined;
+		if (ts.isImportDeclaration(statement)) {
+			if (statement.importClause?.isTypeOnly) continue;
+			specifier = statement.moduleSpecifier;
+		}
 		if (ts.isExportDeclaration(statement)) {
-			if (statement.isTypeOnly) continue;
-			findings.push(finding(sourceFile, statement));
-			continue;
+			if (statement.isTypeOnly || !statement.moduleSpecifier) continue;
+			specifier = statement.moduleSpecifier;
 		}
-		if (
-			ts.canHaveModifiers(statement) &&
-			ts
-				.getModifiers(statement)
-				?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)
-		) {
-			findings.push(finding(sourceFile, statement));
+		if (!specifier) continue;
+		if (ts.isStringLiteral(specifier) && specifier.text.startsWith(".")) {
+			continue; // relative: the bundler resolves it
 		}
+		findings.push(finding(sourceFile, statement));
 	}
 
 	return findings;

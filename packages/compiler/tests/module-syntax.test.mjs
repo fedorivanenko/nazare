@@ -16,23 +16,31 @@ function moduleIssues(result) {
 	);
 }
 
-test("module-syntax: a real import in a behavior script is an error", () => {
+test("module-syntax: bare package imports are an error", () => {
 	const result = compile(`{% script lang="ts" %}
-import { debounce } from "./utils.ts";
+import { debounce } from "lodash";
 export default island(({ refs }) => refs.root.remove());
 {% endscript %}`);
 	const issues = moduleIssues(result);
 	assert.equal(issues.length, 1);
 	assert.equal(issues[0].severity, "error");
-	assert.ok(issues[0].message.includes("./utils.ts"));
+	assert.ok(issues[0].message.includes("lodash"));
 });
 
-test("module-syntax: named exports are an error", () => {
+test("module-syntax: relative imports are allowed (the bundler resolves them)", () => {
+	const result = compile(`{% script lang="ts" %}
+import { debounce } from "./utils.ts";
+export default island(({ refs }) => refs.root.remove());
+{% endscript %}`);
+	assert.deepEqual(moduleIssues(result), []);
+});
+
+test("module-syntax: named exports are allowed", () => {
 	const result = compile(`{% script lang="ts" %}
 export const helper = () => {};
 export default island(() => {});
 {% endscript %}`);
-	assert.equal(moduleIssues(result).length, 1);
+	assert.deepEqual(moduleIssues(result), []);
 });
 
 test("module-syntax: type-only imports are allowed", () => {
@@ -57,7 +65,7 @@ test("module-syntax: sidecar behavior files are checked too, with sidecar spans"
 		`{% import "./widget.ts" %}`,
 		(path) =>
 			path === "./widget.ts"
-				? `import { x } from "./dep.ts";\nexport default island(() => {});\n`
+				? `import express from "express";\nexport default island(() => {});\n`
 				: undefined,
 	);
 	const issues = moduleIssues(result);

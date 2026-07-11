@@ -6,6 +6,7 @@
   "dependencies": {},
   "files": [
     "counter.nz.liquid",
-    "counter.ts"
+    "counter.ts",
+    "format.ts"
   ]
 }

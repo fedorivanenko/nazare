@@ -89,6 +89,31 @@ export default island(({ refs }) => {
 	assert.deepEqual(issues, []);
 });
 
+test("script-check: types flow across relative imports", () => {
+	const readAsset = (path) =>
+		path === "./format.ts"
+			? `export function format(value: number): string { return String(value); }`
+			: undefined;
+	const source = `<output ref="value"></output>
+{% script lang="ts" %}
+import { format } from "./format.ts";
+export default island(({ refs }) => {
+  refs.value.textContent = format("not a number");
+});
+{% endscript %}`;
+	const result = compileNazareArtifact(source, "component.nz.liquid", {
+		readAsset,
+	});
+	const issues = checkComponentScripts(result.ir, { readAsset });
+	assert.ok(
+		issues.some(
+			(issue) =>
+				issue.code === "SCRIPT_TYPE_ERROR" && issue.message.includes("TS2345"),
+		),
+		"argument type error crosses the module boundary",
+	);
+});
+
 test("script-check: custom element tags fall back to HTMLElement", () => {
 	const issues = scriptIssues(`<my-widget ref="widget"></my-widget>
 {% script lang="ts" %}

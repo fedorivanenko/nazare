@@ -43,9 +43,10 @@ all of them with a diagnostic that says what to do instead.
   hydrate, and props do not reach JS — data crosses in the markup.
 - Multiple behaviors per component are fine; declaration order is mount
   order.
-- No module imports/exports yet (no bundler; the emitted script would
-  throw). Type-only imports are fine. Don't shadow `refs`/`data` with local
-  variables — the scanner does not scope-analyze.
+- Relative imports (`./utils.ts` inside the component directory) are
+  bundled into the emitted asset, and types flow across them. Bare package
+  imports are not resolvable yet and fail the compile. Don't shadow
+  `refs`/`data` with local variables — the scanner does not scope-analyze.
 
 **Files**
 - `{% import X from "@pkg/name" %}` declares a package dependency;
