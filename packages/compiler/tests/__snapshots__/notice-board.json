@@ -1,0 +1,466 @@
+{
+  "ir": {
+    "syntax": [
+      {
+        "id": "syntax:file:examples/components/notice-board/notice-board.nz.liquid",
+        "kind": "file",
+        "path": "examples/components/notice-board/notice-board.nz.liquid",
+        "span": {
+          "file": "examples/components/notice-board/notice-board.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 9,
+            "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:component:examples/components/notice-board/notice-board.nz.liquid",
+        "kind": "component",
+        "name": "examples/components/notice-board/notice-board.nz.liquid",
+        "fileId": "syntax:file:examples/components/notice-board/notice-board.nz.liquid",
+        "span": {
+          "file": "examples/components/notice-board/notice-board.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 9,
+            "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:props-interface:examples/components/notice-board/notice-board.nz.liquid",
+        "kind": "props-interface",
+        "ownerId": "syntax:component:examples/components/notice-board/notice-board.nz.liquid",
+        "propDeclarationIds": [
+          "syntax:prop-declaration:examples/components/notice-board/notice-board.nz.liquid:heading"
+        ],
+        "span": {
+          "file": "examples/components/notice-board/notice-board.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 3,
+            "column": 5
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/notice-board/notice-board.nz.liquid:heading",
+        "kind": "prop-declaration",
+        "name": "heading",
+        "typeExpression": "string.setting({ label: \"Heading\", default: \"Notices\" })",
+        "typeInfo": {
+          "valueType": {
+            "kind": "string"
+          },
+          "setting": {
+            "label": "Heading",
+            "default": "Notices"
+          }
+        },
+        "required": false,
+        "hasDefault": true,
+        "propsInterfaceId": "syntax:props-interface:examples/components/notice-board/notice-board.nz.liquid",
+        "span": {
+          "file": "examples/components/notice-board/notice-board.nz.liquid",
+          "start": {
+            "line": 2,
+            "column": 3
+          },
+          "end": {
+            "line": 2,
+            "column": 10
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/notice-board/notice-board.nz.liquid:output:1",
+        "kind": "expression",
+        "source": "props.heading",
+        "span": {
+          "file": "examples/components/notice-board/notice-board.nz.liquid",
+          "start": {
+            "line": 6,
+            "column": 10
+          },
+          "end": {
+            "line": 6,
+            "column": 23
+          }
+        }
+      },
+      {
+        "id": "syntax:blocks-slot:examples/components/notice-board/notice-board.nz.liquid:1",
+        "kind": "blocks-slot",
+        "packageIds": [
+          "@nazare/notice"
+        ],
+        "ownerId": "syntax:component:examples/components/notice-board/notice-board.nz.liquid",
+        "span": {
+          "file": "examples/components/notice-board/notice-board.nz.liquid",
+          "start": {
+            "line": 7,
+            "column": 3
+          },
+          "end": {
+            "line": 7,
+            "column": 32
+          }
+        }
+      }
+    ],
+    "symbols": [
+      {
+        "id": "symbol:component:examples/components/notice-board/notice-board.nz.liquid#default",
+        "kind": "component",
+        "name": "examples/components/notice-board/notice-board.nz.liquid",
+        "declarations": [
+          "syntax:component:examples/components/notice-board/notice-board.nz.liquid"
+        ],
+        "resolution": "local",
+        "source": "syntax"
+      },
+      {
+        "id": "symbol:prop:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "kind": "prop",
+        "name": "heading",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/notice-board/notice-board.nz.liquid:heading"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "string"
+        }
+      },
+      {
+        "id": "symbol:setting:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "kind": "setting",
+        "name": "section.settings.heading",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/notice-board/notice-board.nz.liquid:heading"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "string"
+        }
+      },
+      {
+        "id": "symbol:component:@nazare/notice#default",
+        "kind": "component",
+        "name": "@nazare/notice",
+        "declarations": [],
+        "resolution": "external-resolved",
+        "source": "compiled-contract",
+        "packageId": "@nazare/notice"
+      },
+      {
+        "id": "symbol:prop:@nazare/notice#default.message",
+        "kind": "prop",
+        "name": "message",
+        "declarations": [],
+        "resolution": "external-resolved",
+        "source": "compiled-contract",
+        "ownerSymbolId": "symbol:component:@nazare/notice#default",
+        "semanticType": {
+          "kind": "string"
+        }
+      },
+      {
+        "id": "symbol:prop:@nazare/notice#default.tone",
+        "kind": "prop",
+        "name": "tone",
+        "declarations": [],
+        "resolution": "external-resolved",
+        "source": "compiled-contract",
+        "ownerSymbolId": "symbol:component:@nazare/notice#default",
+        "semanticType": {
+          "kind": "union",
+          "members": [
+            {
+              "kind": "string-literal",
+              "value": "info"
+            },
+            {
+              "kind": "string-literal",
+              "value": "success"
+            },
+            {
+              "kind": "string-literal",
+              "value": "warning"
+            }
+          ]
+        }
+      }
+    ],
+    "resolutions": [
+      {
+        "kind": "setting-projection",
+        "propSymbolId": "symbol:prop:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "settingSymbolId": "symbol:setting:examples/components/notice-board/notice-board.nz.liquid#default.heading"
+      },
+      {
+        "kind": "symbol-reference",
+        "expressionId": "syntax:expression:examples/components/notice-board/notice-board.nz.liquid:output:1",
+        "symbolId": "symbol:prop:examples/components/notice-board/notice-board.nz.liquid#default.heading"
+      }
+    ]
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "syntax:file:examples/components/notice-board/notice-board.nz.liquid",
+        "kind": "file",
+        "name": "examples/components/notice-board/notice-board.nz.liquid",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/notice-board/notice-board.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 9,
+            "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:component:examples/components/notice-board/notice-board.nz.liquid",
+        "kind": "component",
+        "name": "examples/components/notice-board/notice-board.nz.liquid",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/notice-board/notice-board.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 9,
+            "column": 1
+          }
+        }
+      },
+      {
+        "id": "syntax:props-interface:examples/components/notice-board/notice-board.nz.liquid",
+        "kind": "props-interface",
+        "name": "props-interface",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/notice-board/notice-board.nz.liquid",
+          "start": {
+            "line": 1,
+            "column": 1
+          },
+          "end": {
+            "line": 3,
+            "column": 5
+          }
+        }
+      },
+      {
+        "id": "syntax:prop-declaration:examples/components/notice-board/notice-board.nz.liquid:heading",
+        "kind": "prop-declaration",
+        "name": "heading",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/notice-board/notice-board.nz.liquid",
+          "start": {
+            "line": 2,
+            "column": 3
+          },
+          "end": {
+            "line": 2,
+            "column": 10
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/notice-board/notice-board.nz.liquid:output:1",
+        "kind": "expression",
+        "name": "props.heading",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/notice-board/notice-board.nz.liquid",
+          "start": {
+            "line": 6,
+            "column": 10
+          },
+          "end": {
+            "line": 6,
+            "column": 23
+          }
+        }
+      },
+      {
+        "id": "syntax:blocks-slot:examples/components/notice-board/notice-board.nz.liquid:1",
+        "kind": "blocks-slot",
+        "name": "blocks-slot",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/notice-board/notice-board.nz.liquid",
+          "start": {
+            "line": 7,
+            "column": 3
+          },
+          "end": {
+            "line": 7,
+            "column": 32
+          }
+        }
+      },
+      {
+        "id": "symbol:component:examples/components/notice-board/notice-board.nz.liquid#default",
+        "kind": "component",
+        "name": "examples/components/notice-board/notice-board.nz.liquid",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:prop:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "kind": "prop",
+        "name": "heading",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:setting:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "kind": "setting",
+        "name": "section.settings.heading",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:component:@nazare/notice#default",
+        "kind": "component",
+        "name": "@nazare/notice",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:prop:@nazare/notice#default.message",
+        "kind": "prop",
+        "name": "message",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:prop:@nazare/notice#default.tone",
+        "kind": "prop",
+        "name": "tone",
+        "layer": "symbol"
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge:syntax:declares:syntax:file:examples/components/notice-board/notice-board.nz.liquid->syntax:component:examples/components/notice-board/notice-board.nz.liquid",
+        "kind": "declares",
+        "from": "syntax:file:examples/components/notice-board/notice-board.nz.liquid",
+        "to": "syntax:component:examples/components/notice-board/notice-board.nz.liquid",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:syntax:declares:syntax:component:examples/components/notice-board/notice-board.nz.liquid->syntax:props-interface:examples/components/notice-board/notice-board.nz.liquid",
+        "kind": "declares",
+        "from": "syntax:component:examples/components/notice-board/notice-board.nz.liquid",
+        "to": "syntax:props-interface:examples/components/notice-board/notice-board.nz.liquid",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:syntax:declares:syntax:props-interface:examples/components/notice-board/notice-board.nz.liquid->syntax:prop-declaration:examples/components/notice-board/notice-board.nz.liquid:heading",
+        "kind": "declares",
+        "from": "syntax:props-interface:examples/components/notice-board/notice-board.nz.liquid",
+        "to": "syntax:prop-declaration:examples/components/notice-board/notice-board.nz.liquid:heading",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:syntax:declares:syntax:component:examples/components/notice-board/notice-board.nz.liquid->syntax:blocks-slot:examples/components/notice-board/notice-board.nz.liquid:1",
+        "kind": "declares",
+        "from": "syntax:component:examples/components/notice-board/notice-board.nz.liquid",
+        "to": "syntax:blocks-slot:examples/components/notice-board/notice-board.nz.liquid:1",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:resolved:resolves-to:syntax:component:examples/components/notice-board/notice-board.nz.liquid->symbol:component:examples/components/notice-board/notice-board.nz.liquid#default",
+        "kind": "resolves-to",
+        "from": "syntax:component:examples/components/notice-board/notice-board.nz.liquid",
+        "to": "symbol:component:examples/components/notice-board/notice-board.nz.liquid#default",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/notice-board/notice-board.nz.liquid:heading->symbol:prop:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/notice-board/notice-board.nz.liquid:heading",
+        "to": "symbol:prop:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/notice-board/notice-board.nz.liquid:heading->symbol:setting:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/notice-board/notice-board.nz.liquid:heading",
+        "to": "symbol:setting:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:resolved:materializes-as-setting:symbol:prop:examples/components/notice-board/notice-board.nz.liquid#default.heading->symbol:setting:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "kind": "materializes-as-setting",
+        "from": "symbol:prop:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "to": "symbol:setting:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:resolved:references:syntax:expression:examples/components/notice-board/notice-board.nz.liquid:output:1->symbol:prop:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "kind": "references",
+        "from": "syntax:expression:examples/components/notice-board/notice-board.nz.liquid:output:1",
+        "to": "symbol:prop:examples/components/notice-board/notice-board.nz.liquid#default.heading",
+        "origin": "resolved"
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "info",
+      "code": "IR_NODE_NOT_PROMOTED_HTML",
+      "message": "HTML elements are not promoted to ArtifactIR in v0; syntax is preserved in LiquidHTML AST",
+      "span": {
+        "file": "examples/components/notice-board/notice-board.nz.liquid",
+        "start": {
+          "line": 6,
+          "column": 3
+        },
+        "end": {
+          "line": 6,
+          "column": 31
+        }
+      }
+    }
+  ],
+  "contract": {
+    "packageId": "@nazare/notice-board",
+    "componentSymbolId": "symbol:component:@nazare/notice-board#default",
+    "props": [
+      {
+        "name": "heading",
+        "symbolId": "symbol:prop:@nazare/notice-board#default.heading",
+        "required": false,
+        "hasDefault": true,
+        "typeExpression": "string.setting({ label: \"Heading\", default: \"Notices\" })",
+        "typeInfo": {
+          "valueType": {
+            "kind": "string"
+          },
+          "setting": {
+            "label": "Heading",
+            "default": "Notices"
+          }
+        }
+      }
+    ]
+  }
+}

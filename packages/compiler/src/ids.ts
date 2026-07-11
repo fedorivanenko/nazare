@@ -61,6 +61,10 @@ export function styleSyntaxId(file: string, index: number): Id {
 	return `syntax:style:${file}:${index}`;
 }
 
+export function blocksSlotSyntaxId(file: string, index: number): Id {
+	return `syntax:blocks-slot:${file}:${index}`;
+}
+
 export function refAccessSyntaxId(
 	file: string,
 	scriptIndex: number,

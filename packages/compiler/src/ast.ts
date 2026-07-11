@@ -98,6 +98,13 @@ export type NazareAssetImportNode = {
 	span: SourceSpan;
 };
 
+/** {% blocks "@pkg/a", "@pkg/b" %} — the theme-block slot in a section. */
+export type NazareBlocksNode = {
+	type: "NazareBlocks";
+	packageIds: string[];
+	span: SourceSpan;
+};
+
 export type NazareStyleNode = {
 	type: "NazareStyle";
 	source: string;
@@ -120,6 +127,7 @@ export type NazareNode =
 	| NazareElementRefNode
 	| NazareScriptNode
 	| NazareStyleNode
+	| NazareBlocksNode
 	| NazareAssetImportNode
 	| NazareOpaqueNode;
 

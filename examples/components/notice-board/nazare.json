@@ -1,0 +1,12 @@
+{
+  "id": "@nazare/notice-board",
+  "version": "0.1.0",
+  "kind": "section",
+  "entry": "notice-board.nz.liquid",
+  "dependencies": {
+    "@nazare/notice": "0.1.0"
+  },
+  "files": [
+    "notice-board.nz.liquid"
+  ]
+}

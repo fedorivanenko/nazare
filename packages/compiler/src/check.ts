@@ -19,7 +19,9 @@ import { dataChannelFromIR } from "./data-channel.js";
 import { resolveHoistedSettings } from "./hoist.js";
 import { findUnsupportedModuleSyntax } from "./script-modules.js";
 import {
+	blocksSlotOutsideSection,
 	duplicateRef,
+	multipleBlocksSlots,
 	propTypeMismatch,
 	propValueOutOfRange,
 	requiredPropMissing,
@@ -123,6 +125,14 @@ function checkDependencies(
 		}
 	}
 
+	for (const slot of index.nodesOfKind("blocks-slot")) {
+		for (const packageId of slot.packageIds) {
+			used.add(packageId);
+			if (declared.has(packageId)) continue;
+			issues.push(undeclaredDependency(packageId, slot.id, slot.span));
+		}
+	}
+
 	for (const packageId of dependencies) {
 		if (used.has(packageId)) continue;
 		issues.push(unusedDependency(packageId));
@@ -165,21 +175,35 @@ function checkScriptModuleSyntax(index: ArtifactIRIndex): Diagnostic[] {
 }
 
 /**
- * Kind-specific provenance rule. Sections are instantiated by the theme
+ * Kind-specific rules. Sections and blocks are instantiated by the theme
  * editor and receive no render arguments, so a non-setting prop has no
  * value source — Liquid renders it silently blank. (Setting-props on
  * snippets are fine: they hoist into the consuming section's schema.)
+ * The {% blocks %} slot only makes sense in a section, at most once.
  */
 function checkPropProvenanceForKind(
 	index: ArtifactIRIndex,
 	kind: NazareManifest["kind"] | undefined,
 ): Diagnostic[] {
-	if (kind !== "section") return [];
 	const issues: Diagnostic[] = [];
 
-	for (const prop of index.nodesOfKind("prop-declaration")) {
-		if (prop.typeInfo.setting) continue;
-		issues.push(sectionPropWithoutSetting(prop.name, prop.id, prop.span));
+	if (kind === "section" || kind === "block") {
+		for (const prop of index.nodesOfKind("prop-declaration")) {
+			if (prop.typeInfo.setting) continue;
+			issues.push(
+				sectionPropWithoutSetting(kind, prop.name, prop.id, prop.span),
+			);
+		}
+	}
+
+	const slots = index.nodesOfKind("blocks-slot");
+	if (kind !== undefined && kind !== "section") {
+		for (const slot of slots) {
+			issues.push(blocksSlotOutsideSection(slot.id, slot.span));
+		}
+	}
+	for (const slot of slots.slice(1)) {
+		issues.push(multipleBlocksSlots(slot.id, slot.span));
 	}
 
 	return issues;

@@ -90,6 +90,7 @@ try {
 	if (command === "schema") {
 		const schema = themeSchemaFromIR(result.ir, {
 			name: schemaName(file, packageId),
+			kind: manifest?.kind,
 			contracts: result.contracts,
 		});
 		console.log(

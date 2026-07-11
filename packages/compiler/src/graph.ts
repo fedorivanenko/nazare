@@ -73,7 +73,8 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 		if (
 			syntaxNode.kind === "element-ref" ||
 			syntaxNode.kind === "script" ||
-			syntaxNode.kind === "style"
+			syntaxNode.kind === "style" ||
+			syntaxNode.kind === "blocks-slot"
 		) {
 			pushEdge(edges, edgeIds, "declares", syntaxNode.ownerId, syntaxNode.id, "syntax");
 		}

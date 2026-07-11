@@ -1,0 +1,10 @@
+{
+  "id": "@nazare/notice",
+  "version": "0.1.0",
+  "kind": "block",
+  "entry": "notice.nz.liquid",
+  "dependencies": {},
+  "files": [
+    "notice.nz.liquid"
+  ]
+}

@@ -79,7 +79,12 @@ export function emitTheme(
 		{ hasScript, hasStyle },
 		issues,
 	);
-	const directory = options.kind === "section" ? "sections" : "snippets";
+	const directory =
+		options.kind === "section"
+			? "sections"
+			: options.kind === "block"
+				? "blocks"
+				: "snippets";
 	files.push({ path: `${directory}/${options.name}.liquid`, contents: liquid });
 
 	if (hasStyle) {
@@ -149,6 +154,12 @@ function emitLiquid(
 		) {
 			edits.push({ ...editRange(source, node.span), replacement: "" });
 		}
+		if (node.type === "NazareBlocks") {
+			edits.push({
+				...editRange(source, node.span),
+				replacement: "{% content_for 'blocks' %}",
+			});
+		}
 	}
 
 	for (const node of compiled.ir.syntax) {
@@ -177,7 +188,9 @@ function emitLiquid(
 					`${setting.argName}: ${
 						options.kind === "section"
 							? `section.settings.${setting.settingId}`
-							: setting.settingId
+							: options.kind === "block"
+								? `block.settings.${setting.settingId}`
+								: setting.settingId
 					}`,
 			);
 			const argumentList = [...authored, ...generated].join(", ");
@@ -190,7 +203,7 @@ function emitLiquid(
 		}
 	}
 
-	if (hasScript || hasStyle) {
+	if (hasScript || hasStyle || options.kind === "block") {
 		const root = rootElement(source, compiled.ast);
 		if (!root) {
 			if (hasScript) issues.push(emitScriptWithoutRoot(options.name));
@@ -200,16 +213,23 @@ function emitLiquid(
 					emitAmbiguousRoot(options.name, root.tagName, root.topLevelCount),
 				);
 			}
+			const stamps = [
+				...(hasScript || hasStyle
+					? [` data-nz-component="${options.name}"`]
+					: []),
+				// The editor needs this to map a block instance to its DOM.
+				...(options.kind === "block" ? [" {{ block.shopify_attributes }}"] : []),
+			];
 			edits.push({
 				start: root.tagEnd,
 				end: root.tagEnd,
-				replacement: ` data-nz-component="${options.name}"`,
+				replacement: stamps.join(""),
 			});
 		}
 	}
 
 	let liquid = applyEdits(source, edits);
-	liquid = lowerPropsReads(liquid, compiled.ir);
+	liquid = lowerPropsReads(liquid, compiled.ir, options.kind);
 	liquid = `${liquid.replace(/\n{3,}/g, "\n\n").trim()}\n`;
 	liquid =
 		generatedHeader(
@@ -226,9 +246,10 @@ function emitLiquid(
 			`{{ '${options.name}.js' | asset_url | script_tag }}\n`;
 	}
 
-	if (options.kind === "section") {
+	if (options.kind === "section" || options.kind === "block") {
 		const schema = themeSchemaFromIR(compiled.ir, {
 			name: options.name,
+			kind: options.kind,
 			contracts: compiled.contracts,
 		});
 		liquid += `\n{% schema %}\n${JSON.stringify(schema, null, 2)}\n{% endschema %}\n`;
@@ -265,13 +286,18 @@ function generatedHeader(
  * Textual over the whole output so control-flow Liquid (which Nazare does
  * not model) lowers too; undeclared names are left for check to report.
  */
-function lowerPropsReads(liquid: string, ir: ArtifactIR): string {
+function lowerPropsReads(
+	liquid: string,
+	ir: ArtifactIR,
+	kind: NazareManifest["kind"] | undefined,
+): string {
+	const settingsObject = kind === "block" ? "block.settings" : "section.settings";
 	const accessByProp = new Map<string, string>();
 	for (const node of ir.syntax) {
 		if (node.kind !== "prop-declaration") continue;
 		accessByProp.set(
 			node.name,
-			node.typeInfo.setting ? `section.settings.${node.name}` : node.name,
+			node.typeInfo.setting ? `${settingsObject}.${node.name}` : node.name,
 		);
 	}
 

@@ -19,6 +19,7 @@ import type {
 import type { NazareAst } from "./ast.js";
 import {
 	argumentExpressionSyntaxId,
+	blocksSlotSyntaxId,
 	componentSyntaxId,
 	elementRefSyntaxId,
 	fileSyntaxId,
@@ -71,6 +72,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 	let elementRefIndex = 0;
 	let scriptIndex = 0;
 	let styleIndex = 0;
+	let blocksSlotIndex = 0;
 
 	for (const node of ast.nodes) {
 		if (node.type === "NazareImport") {
@@ -177,6 +179,18 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 				ownerId: componentId,
 				span: node.span,
 				bodySpan: node.bodySpan,
+			});
+			continue;
+		}
+
+		if (node.type === "NazareBlocks") {
+			blocksSlotIndex += 1;
+			syntax.push({
+				id: blocksSlotSyntaxId(ast.file, blocksSlotIndex),
+				kind: "blocks-slot",
+				packageIds: node.packageIds,
+				ownerId: componentId,
+				span: node.span,
 			});
 			continue;
 		}

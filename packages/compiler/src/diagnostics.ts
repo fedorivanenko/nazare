@@ -39,6 +39,18 @@ export function assetImportNotFound(
 	};
 }
 
+export function parseInvalidBlocksSlot(
+	markup: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_BLOCKS_SLOT",
+		message: `Invalid blocks slot: ${markup} — expected {% blocks %} or {% blocks "@pkg/a", "@pkg/b" %}`,
+		span,
+	};
+}
+
 export function parseMalformedPropDeclaration(
 	entry: string,
 	span: SourceSpan,
@@ -99,6 +111,7 @@ export function unusedDependency(packageId: string): Diagnostic {
 }
 
 export function sectionPropWithoutSetting(
+	kind: "section" | "block",
 	propName: string,
 	nodeId: Id,
 	span: SourceSpan | undefined,
@@ -106,7 +119,35 @@ export function sectionPropWithoutSetting(
 	return {
 		severity: "error",
 		code: "CONSTRAINT_SECTION_PROP_NOT_SETTING",
-		message: `Section components receive no render arguments, so prop ${propName} has no value source; declare it with .setting() or remove it`,
+		message: `${kind === "block" ? "Block" : "Section"} components receive no render arguments, so prop ${propName} has no value source; declare it with .setting() or remove it`,
+		nodeId,
+		span,
+	};
+}
+
+export function blocksSlotOutsideSection(
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_BLOCKS_SLOT_OUTSIDE_SECTION",
+		message:
+			"{% blocks %} is only valid in section components; blocks are leaves in v1",
+		nodeId,
+		span,
+	};
+}
+
+export function multipleBlocksSlots(
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_MULTIPLE_BLOCKS_SLOTS",
+		message:
+			"A section can have only one {% blocks %} slot; merge the slots or split the section",
 		nodeId,
 		span,
 	};

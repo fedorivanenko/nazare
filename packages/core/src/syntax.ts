@@ -126,6 +126,16 @@ export type ScriptSyntaxNode = {
 	bodySpan?: SourceSpan;
 };
 
+/** The {% blocks %} slot: where merchant-composed theme blocks render. */
+export type BlocksSlotSyntaxNode = {
+	id: Id;
+	kind: "blocks-slot";
+	/** Accepted block package ids; empty means accept any theme block. */
+	packageIds: string[];
+	ownerId: Id;
+	span?: SourceSpan;
+};
+
 /** A {% stylesheet %}…{% endstylesheet %} block owning component styles. */
 export type StyleSyntaxNode = {
 	id: Id;
@@ -157,6 +167,7 @@ export type ArtifactSyntaxNode =
 	| ElementRefSyntaxNode
 	| ScriptSyntaxNode
 	| StyleSyntaxNode
+	| BlocksSlotSyntaxNode
 	| RefAccessSyntaxNode;
 
 export type ArtifactSyntaxKind = ArtifactSyntaxNode["kind"];

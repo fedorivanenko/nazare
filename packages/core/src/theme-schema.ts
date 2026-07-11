@@ -23,7 +23,19 @@ export type ThemeSchemaSetting = {
 	unit?: string;
 };
 
+/** A block type a section accepts; "@theme" accepts any theme block. */
+export type ThemeSchemaBlockType = {
+	type: string;
+};
+
+/** Editor "Add block" entry; v1 generates one default preset per block. */
+export type ThemeSchemaPreset = {
+	name: string;
+};
+
 export type ThemeSchema = {
 	name: string;
 	settings: ThemeSchemaSetting[];
+	blocks?: ThemeSchemaBlockType[];
+	presets?: ThemeSchemaPreset[];
 };

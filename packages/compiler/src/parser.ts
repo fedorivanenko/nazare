@@ -23,6 +23,7 @@ import {
 	controlFlowNotLowered,
 	htmlNotPromoted,
 	parseInvalidAssetImport,
+	parseInvalidBlocksSlot,
 	parseInvalidImport,
 	parseInvalidRefAttribute,
 	parseInvalidTypeExpression,
@@ -139,6 +140,28 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 				),
 				span,
 			});
+			return;
+		}
+
+		if (tag.name === "blocks") {
+			const markup = tag.markup.trim();
+			const packageIds: string[] = [];
+			let valid = true;
+			if (markup.length > 0) {
+				for (const part of markup.split(",")) {
+					const id = part.trim().match(/^["']([^"']+)["']$/)?.[1];
+					if (!id) {
+						valid = false;
+						break;
+					}
+					packageIds.push(id);
+				}
+			}
+			if (!valid) {
+				diagnostics.push(parseInvalidBlocksSlot(tag.markup, span));
+				return;
+			}
+			nodes.push({ type: "NazareBlocks", packageIds, span });
 			return;
 		}
 
