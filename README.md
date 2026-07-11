@@ -64,6 +64,9 @@ all of them with a diagnostic that says what to do instead.
   is stamped, and multiple roots warn.
 - Liquid control flow is preserved but not modeled: render-site
   reachability is approximate, and hoisting ignores branches.
+- Plain Shopify sections are checked too: files with an authored
+  `{% schema %}` get every `section.settings.x` / `block.settings.x` read
+  validated against the declared setting ids — no Nazare syntax required.
 
 ## Repository layout
 

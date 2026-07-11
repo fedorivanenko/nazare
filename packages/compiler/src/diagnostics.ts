@@ -110,6 +110,31 @@ export function unusedDependency(packageId: string): Diagnostic {
 	};
 }
 
+export function schemaInvalidJson(
+	reason: string,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_SCHEMA_INVALID_JSON",
+		message: `The {% schema %} block is not valid JSON: ${reason}`,
+		span,
+	};
+}
+
+export function unknownSettingRead(
+	object: "section" | "block",
+	settingId: string,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_UNKNOWN_SETTING_READ",
+		message: `${object}.settings.${settingId} is read but the schema declares no setting "${settingId}"; it will render blank`,
+		span,
+	};
+}
+
 export function sectionPropWithoutSetting(
 	kind: "section" | "block",
 	propName: string,

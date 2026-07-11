@@ -131,9 +131,24 @@ export type NazareNode =
 	| NazareAssetImportNode
 	| NazareOpaqueNode;
 
+/** A literal section.settings.x / block.settings.x read anywhere in the file. */
+export type SettingsRead = {
+	object: "section" | "block";
+	name: string;
+	span: SourceSpan;
+};
+
+/** An authored {% schema %} block (vanilla sections), body unparsed. */
+export type AuthoredSchema = {
+	source: string;
+	span: SourceSpan;
+};
+
 export type NazareAst = {
 	file: string;
 	liquidAst: DocumentNode;
 	nodes: NazareNode[];
+	settingsReads: SettingsRead[];
+	schema?: AuthoredSchema;
 	diagnostics: Diagnostic[];
 };

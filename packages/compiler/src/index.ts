@@ -15,6 +15,7 @@ import type {
 } from "@nazare/core";
 import type { NazareAst, NazareNode } from "./ast.js";
 import { checkArtifactIR } from "./check.js";
+import { checkVanillaSchema } from "./check-vanilla.js";
 import {
 	assetImportNotFound,
 	contractResolutionFailed,
@@ -236,6 +237,7 @@ function compileFromAst(
 	const graph = artifactGraphFromIR(ir);
 	const issues = [
 		...ast.diagnostics,
+		...checkVanillaSchema(ast),
 		...checkArtifactIR(ir, options.contracts, {
 			kind: options.kind,
 			dependencies: options.dependencies,

@@ -11,6 +11,7 @@ import {
 	walk,
 } from "@shopify/liquid-html-parser";
 import type {
+	AuthoredSchema,
 	NazareAst,
 	NazareDataBinding,
 	NazareNode,
@@ -18,6 +19,7 @@ import type {
 	NazarePropDeclaration,
 	NazareScriptNode,
 	NazareStyleNode,
+	SettingsRead,
 } from "./ast.js";
 import {
 	controlFlowNotLowered,
@@ -30,7 +32,7 @@ import {
 	parseMalformedPropDeclaration,
 } from "./diagnostics.js";
 import { scanScript } from "./script-scan.js";
-import { spanFromOffsets } from "./source.js";
+import { offsetFromPosition, spanFromOffsets } from "./source.js";
 import { parseTypeExpression } from "./type-expression.js";
 
 const importPattern = /^([A-Za-z_$][\w$]*)\s+from\s+["']([^"']+)["']$/;
@@ -72,10 +74,21 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 	);
 	nodes.push(...styleExtraction.styles);
 
-	const ast = toLiquidHtmlAST(styleExtraction.blankedSource, {
-		mode: "tolerant",
-		allowUnclosedDocumentNode: true,
-	});
+	let ast: ReturnType<typeof toLiquidHtmlAST>;
+	try {
+		ast = toLiquidHtmlAST(styleExtraction.blankedSource, {
+			mode: "tolerant",
+			allowUnclosedDocumentNode: true,
+		});
+	} catch (error) {
+		// Broken Liquid is a diagnostic, not a crash: report it and continue
+		// with an empty document (scripts/styles were already extracted).
+		diagnostics.push(parseLiquidError(error, source, file));
+		ast = toLiquidHtmlAST("", {
+			mode: "tolerant",
+			allowUnclosedDocumentNode: true,
+		});
+	}
 
 	walk(ast, (node) => {
 		collectUnsupportedSyntax(node, unsupportedSyntax);
@@ -200,7 +213,15 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 			a.span.start.column - b.span.start.column,
 	);
 
-	return { file, liquidAst: ast, nodes, diagnostics };
+	const schema = extractAuthoredSchema(ast, source, file);
+	const settingsReads = scanSettingsReads(
+		styleExtraction.blankedSource,
+		schema,
+		source,
+		file,
+	);
+
+	return { file, liquidAst: ast, nodes, settingsReads, schema, diagnostics };
 }
 
 function extractScriptBlocks(
@@ -252,6 +273,77 @@ function extractScriptBlocks(
 	}
 
 	return { scripts, blankedSource };
+}
+
+function parseLiquidError(
+	error: unknown,
+	source: string,
+	file: string,
+): NazareAst["diagnostics"][number] {
+	const loc = (error as { loc?: { start?: { line: number; column: number } } })
+		.loc;
+	const start = loc?.start ?? { line: 1, column: 1 };
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_LIQUID",
+		message: `Liquid parse error: ${error instanceof Error ? error.message : String(error)}`,
+		span: { file, start, end: start },
+	};
+}
+
+function extractAuthoredSchema(
+	ast: ReturnType<typeof toLiquidHtmlAST>,
+	source: string,
+	file: string,
+): AuthoredSchema | undefined {
+	for (const node of ast.children) {
+		if (node.type !== NodeTypes.LiquidRawTag || node.name !== "schema") {
+			continue;
+		}
+		return {
+			source: node.body.value,
+			span: spanFromOffsets(source, file, node.position),
+		};
+	}
+	return undefined;
+}
+
+/**
+ * Literal section.settings.x / block.settings.x reads anywhere in the file,
+ * control flow included — Liquid renders unknown settings silently blank,
+ * so unmodeled regions must be scanned too. The schema block is excluded
+ * (its JSON may mention setting paths in copy).
+ */
+function scanSettingsReads(
+	scanSource: string,
+	schema: AuthoredSchema | undefined,
+	source: string,
+	file: string,
+): SettingsRead[] {
+	let scannable = scanSource;
+	if (schema) {
+		const start = offsetFromPosition(source, schema.span.start);
+		const end = offsetFromPosition(source, schema.span.end);
+		scannable =
+			scannable.slice(0, start) +
+			scannable.slice(start, end).replace(/[^\n]/g, " ") +
+			scannable.slice(end);
+	}
+
+	const reads: SettingsRead[] = [];
+	for (const match of scannable.matchAll(
+		/\b(section|block)\.settings\.([A-Za-z_][A-Za-z0-9_-]*)/g,
+	)) {
+		reads.push({
+			object: match[1] as "section" | "block",
+			name: match[2],
+			span: spanFromOffsets(source, file, {
+				start: match.index,
+				end: match.index + match[0].length,
+			}),
+		});
+	}
+	return reads;
 }
 
 function extractStyleBlocks(
