@@ -28,6 +28,7 @@ import {
 	parseInvalidTypeExpression,
 	parseMalformedPropDeclaration,
 } from "./diagnostics.js";
+import { scanScript } from "./script-scan.js";
 import { spanFromOffsets } from "./source.js";
 import { parseTypeExpression } from "./type-expression.js";
 
@@ -37,8 +38,6 @@ const scriptBlockPattern =
 	/{%-?\s*script\b([^%]*?)-?%}([\s\S]*?){%-?\s*endscript\s*-?%}/g;
 const styleBlockPattern =
 	/{%-?\s*stylesheet\s*-?%}([\s\S]*?){%-?\s*endstylesheet\s*-?%}/g;
-const refAccessPattern = /\brefs\.([A-Za-z_$][\w$]*)/g;
-const dataAccessPattern = /\bdata\.([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)/g;
 const refIdentifierPattern = /^[A-Za-z_$][\w$]*$/;
 
 type SourceRange = { start: number; end: number };
@@ -192,30 +191,27 @@ function extractScriptBlocks(
 		const [block, markup, body] = match;
 		const blockStart = match.index;
 		const bodyStart = blockStart + block.indexOf(body, markup.length);
+		const scan = scanScript(body);
 
 		scripts.push({
 			type: "NazareScript",
 			lang: /\blang\s*=\s*["']?js["']?/.test(markup) ? "js" : "ts",
 			source: body,
-			refAccesses: Array.from(body.matchAll(refAccessPattern)).map(
-				(access) => ({
-					name: access[1],
-					span: spanFromOffsets(source, file, {
-						start: bodyStart + access.index,
-						end: bodyStart + access.index + access[0].length,
-					}),
+			refAccesses: scan.refAccesses.map((access) => ({
+				name: access.name,
+				span: spanFromOffsets(source, file, {
+					start: bodyStart + access.start,
+					end: bodyStart + access.end,
 				}),
-			),
-			dataAccesses: Array.from(body.matchAll(dataAccessPattern)).map(
-				(access) => ({
-					ref: access[1],
-					property: access[2],
-					span: spanFromOffsets(source, file, {
-						start: bodyStart + access.index,
-						end: bodyStart + access.index + access[0].length,
-					}),
+			})),
+			dataAccesses: scan.dataAccesses.map((access) => ({
+				ref: access.ref,
+				property: access.property,
+				span: spanFromOffsets(source, file, {
+					start: bodyStart + access.start,
+					end: bodyStart + access.end,
 				}),
-			),
+			})),
 			span: spanFromOffsets(source, file, {
 				start: blockStart,
 				end: blockStart + block.length,
@@ -673,11 +669,11 @@ export function scanRefAccesses(
 	source: string,
 	file: string,
 ): { name: string; span: SourceSpan }[] {
-	return Array.from(source.matchAll(refAccessPattern)).map((access) => ({
-		name: access[1],
+	return scanScript(source).refAccesses.map((access) => ({
+		name: access.name,
 		span: spanFromOffsets(source, file, {
-			start: access.index,
-			end: access.index + access[0].length,
+			start: access.start,
+			end: access.end,
 		}),
 	}));
 }
@@ -686,12 +682,12 @@ export function scanDataAccesses(
 	source: string,
 	file: string,
 ): { ref: string; property: string; span: SourceSpan }[] {
-	return Array.from(source.matchAll(dataAccessPattern)).map((access) => ({
-		ref: access[1],
-		property: access[2],
+	return scanScript(source).dataAccesses.map((access) => ({
+		ref: access.ref,
+		property: access.property,
 		span: spanFromOffsets(source, file, {
-			start: access.index,
-			end: access.index + access[0].length,
+			start: access.start,
+			end: access.end,
 		}),
 	}));
 }

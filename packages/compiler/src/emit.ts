@@ -19,6 +19,7 @@ import type { NazareAst } from "./ast.js";
 import { dataChannelFromIR } from "./data-channel.js";
 import { emitScriptWithoutDefaultExport, emitScriptWithoutRoot } from "./diagnostics.js";
 import { type HoistedSetting, resolveHoistedSettings } from "./hoist.js";
+import { hasDefaultExport, rewriteExportDefault } from "./script-scan.js";
 import { themeSchemaFromIR } from "./schema.js";
 import { scopeCss } from "./scope-css.js";
 import { offsetFromPosition } from "./source.js";
@@ -307,13 +308,10 @@ function emitComponentScript(
 	// Each behavior registers separately so declaration order is mount order
 	// and one default export cannot clobber another.
 	const registrations = scripts.map((script) => {
-		if (!/\bexport\s+default\b/.test(script.source)) {
+		if (!hasDefaultExport(script.source)) {
 			issues.push(emitScriptWithoutDefaultExport(name, script.span));
 		}
-		const rewritten = script.source.replace(
-			/\bexport\s+default\b/,
-			"__module.default =",
-		);
+		const rewritten = rewriteExportDefault(script.source);
 		const body =
 			script.lang === "ts"
 				? ts.transpileModule(rewritten, {

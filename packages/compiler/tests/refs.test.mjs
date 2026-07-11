@@ -87,6 +87,21 @@ test("refs: dynamic ref values are skipped with a parse warning", () => {
 	);
 });
 
+test("refs: mentions in comments and strings are not accesses", () => {
+	const result = compile(`<div ref="root"></div>
+<div ref="ghost"></div>
+{% script %}
+// refs.ghost is intentionally unused; see refs.ghost docs
+const note = "refs.ghost";
+island(({ refs }) => refs.root.setAttribute("note", note));
+{% endscript %}`);
+	const unused = result.issues.filter(
+		(issue) => issue.code === "CONSTRAINT_UNUSED_REF",
+	);
+	assert.equal(unused.length, 1);
+	assert.ok(unused[0].message.includes("ghost"));
+});
+
 test("refs: script body with comparisons does not confuse the liquid parser", () => {
 	const result = compile(`<div ref="root"></div>
 {% script %}
