@@ -17,7 +17,11 @@ import { NodeTypes } from "@shopify/liquid-html-parser";
 import ts from "typescript";
 import type { NazareAst } from "./ast.js";
 import { dataChannelFromIR } from "./data-channel.js";
-import { emitScriptWithoutDefaultExport, emitScriptWithoutRoot } from "./diagnostics.js";
+import {
+	emitAmbiguousRoot,
+	emitScriptWithoutDefaultExport,
+	emitScriptWithoutRoot,
+} from "./diagnostics.js";
 import { type HoistedSetting, resolveHoistedSettings } from "./hoist.js";
 import { hasDefaultExport, rewriteExportDefault } from "./script-scan.js";
 import { themeSchemaFromIR } from "./schema.js";
@@ -182,13 +186,18 @@ function emitLiquid(
 	}
 
 	if (hasScript || hasStyle) {
-		const rootTagEnd = rootElementStartTagEnd(source, compiled.ast);
-		if (rootTagEnd === undefined) {
+		const root = rootElement(source, compiled.ast);
+		if (!root) {
 			if (hasScript) issues.push(emitScriptWithoutRoot(options.name));
 		} else {
+			if (root.topLevelCount > 1) {
+				issues.push(
+					emitAmbiguousRoot(options.name, root.tagName, root.topLevelCount),
+				);
+			}
 			edits.push({
-				start: rootTagEnd,
-				end: rootTagEnd,
+				start: root.tagEnd,
+				end: root.tagEnd,
 				replacement: ` data-nz-component="${options.name}"`,
 			});
 		}
@@ -267,11 +276,16 @@ function lowerPropsReads(liquid: string, ir: ArtifactIR): string {
 	);
 }
 
-/** Offset just before the closing ">" of the first top-level element's start tag. */
-function rootElementStartTagEnd(
+/** The first top-level element (which gets stamped) and how many compete with it. */
+function rootElement(
 	source: string,
 	ast: NazareAst,
-): number | undefined {
+): { tagEnd: number; tagName: string; topLevelCount: number } | undefined {
+	let first:
+		| { tagEnd: number; tagName: string; topLevelCount: number }
+		| undefined;
+	let count = 0;
+
 	for (const node of ast.liquidAst.children) {
 		if (
 			node.type !== NodeTypes.HtmlElement &&
@@ -280,11 +294,27 @@ function rootElementStartTagEnd(
 		) {
 			continue;
 		}
+		count += 1;
+		if (first) continue;
+
 		const tagEnd = (node as { blockStartPosition: { end: number } })
 			.blockStartPosition.end;
-		return source[tagEnd - 2] === "/" ? tagEnd - 2 : tagEnd - 1;
+		const name = (node as { name?: unknown }).name;
+		const tagName =
+			typeof name === "string"
+				? name
+				: Array.isArray(name) &&
+						typeof (name[0] as { value?: unknown })?.value === "string"
+					? String((name[0] as { value: string }).value)
+					: "unknown";
+		first = {
+			tagEnd: source[tagEnd - 2] === "/" ? tagEnd - 2 : tagEnd - 1,
+			tagName,
+			topLevelCount: 0,
+		};
 	}
-	return undefined;
+
+	return first ? { ...first, topLevelCount: count } : undefined;
 }
 
 /** Descriptor telling the runtime how to parse each ref's data-* strings. */

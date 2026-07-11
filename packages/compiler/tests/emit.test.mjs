@@ -97,6 +97,30 @@ test("emit: no script means no js assets", () => {
 	);
 });
 
+test("emit: multiple top-level elements warn about the ambiguous root", () => {
+	const result = emit(`<div ref="root">a</div>
+<aside>b</aside>
+{% script %}
+export default island(({ refs }) => refs.root.remove());
+{% endscript %}`);
+	const issue = result.issues.find(
+		(candidate) => candidate.code === "EMIT_AMBIGUOUS_ROOT_ELEMENT",
+	);
+	assert.equal(issue?.severity, "warning");
+	assert.ok(issue.message.includes("<div>"));
+	assert.ok(issue.message.includes("2 top-level"));
+
+	const single = emit(`<div ref="root">a</div>
+{% script %}
+export default island(({ refs }) => refs.root.remove());
+{% endscript %}`);
+	assert.ok(
+		!single.issues.some(
+			(candidate) => candidate.code === "EMIT_AMBIGUOUS_ROOT_ELEMENT",
+		),
+	);
+});
+
 test("emit: script without a root element warns", () => {
 	const result = emit(`{% script %}
 export default island(() => {});

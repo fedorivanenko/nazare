@@ -341,6 +341,18 @@ export function scriptTypeError(
 	};
 }
 
+export function emitAmbiguousRoot(
+	componentName: string,
+	stampedTag: string,
+	topLevelCount: number,
+): Diagnostic {
+	return {
+		severity: "warning",
+		code: "EMIT_AMBIGUOUS_ROOT_ELEMENT",
+		message: `Component ${componentName} has ${topLevelCount} top-level elements; the first (<${stampedTag}>) was stamped data-nz-component, so scripts and scoped styles only reach that subtree — wrap the markup in a single root element`,
+	};
+}
+
 export function emitScriptWithoutRoot(componentName: string): Diagnostic {
 	return {
 		severity: "warning",
