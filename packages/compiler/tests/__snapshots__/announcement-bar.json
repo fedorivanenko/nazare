@@ -433,6 +433,18 @@
             }
           ]
         }
+      },
+      {
+        "id": "symbol:prop:@nazare/link#default.new_tab",
+        "kind": "prop",
+        "name": "new_tab",
+        "declarations": [],
+        "resolution": "external-resolved",
+        "source": "compiled-contract",
+        "ownerSymbolId": "symbol:component:@nazare/link#default",
+        "semanticType": {
+          "kind": "boolean"
+        }
       }
     ],
     "resolutions": [
@@ -802,6 +814,12 @@
         "kind": "prop",
         "name": "class",
         "layer": "symbol"
+      },
+      {
+        "id": "symbol:prop:@nazare/link#default.new_tab",
+        "kind": "prop",
+        "name": "new_tab",
+        "layer": "symbol"
       }
     ],
     "edges": [
@@ -1097,6 +1115,22 @@
           },
           "setting": {
             "label": "Link"
+          }
+        }
+      }
+    ],
+    "hoisted": [
+      {
+        "name": "link_new_tab",
+        "sourcePackageId": "@nazare/link",
+        "sourcePropName": "new_tab",
+        "typeInfo": {
+          "valueType": {
+            "kind": "boolean"
+          },
+          "setting": {
+            "label": "Open in new tab",
+            "default": false
           }
         }
       }

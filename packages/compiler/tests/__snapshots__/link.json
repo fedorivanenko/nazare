@@ -12,7 +12,7 @@
             "column": 1
           },
           "end": {
-            "line": 10,
+            "line": 11,
             "column": 1
           }
         }
@@ -29,7 +29,7 @@
             "column": 1
           },
           "end": {
-            "line": 10,
+            "line": 11,
             "column": 1
           }
         }
@@ -41,7 +41,8 @@
         "propDeclarationIds": [
           "syntax:prop-declaration:examples/components/link/link.nz.liquid:href",
           "syntax:prop-declaration:examples/components/link/link.nz.liquid:text",
-          "syntax:prop-declaration:examples/components/link/link.nz.liquid:class"
+          "syntax:prop-declaration:examples/components/link/link.nz.liquid:class",
+          "syntax:prop-declaration:examples/components/link/link.nz.liquid:new_tab"
         ],
         "span": {
           "file": "examples/components/link/link.nz.liquid",
@@ -50,7 +51,7 @@
             "column": 1
           },
           "end": {
-            "line": 5,
+            "line": 6,
             "column": 5
           }
         }
@@ -139,17 +140,46 @@
         }
       },
       {
+        "id": "syntax:prop-declaration:examples/components/link/link.nz.liquid:new_tab",
+        "kind": "prop-declaration",
+        "name": "new_tab",
+        "typeExpression": "boolean.setting({ label: \"Open in new tab\", default: false })",
+        "typeInfo": {
+          "valueType": {
+            "kind": "boolean"
+          },
+          "setting": {
+            "label": "Open in new tab",
+            "default": false
+          }
+        },
+        "required": false,
+        "hasDefault": true,
+        "propsInterfaceId": "syntax:props-interface:examples/components/link/link.nz.liquid",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 5,
+            "column": 3
+          },
+          "end": {
+            "line": 5,
+            "column": 10
+          }
+        }
+      },
+      {
         "id": "syntax:expression:examples/components/link/link.nz.liquid:output:1",
         "kind": "expression",
         "source": "props.href",
         "span": {
           "file": "examples/components/link/link.nz.liquid",
           "start": {
-            "line": 7,
+            "line": 8,
             "column": 13
           },
           "end": {
-            "line": 7,
+            "line": 8,
             "column": 23
           }
         }
@@ -161,11 +191,11 @@
         "span": {
           "file": "examples/components/link/link.nz.liquid",
           "start": {
-            "line": 7,
+            "line": 8,
             "column": 67
           },
           "end": {
-            "line": 7,
+            "line": 8,
             "column": 78
           }
         }
@@ -177,11 +207,11 @@
         "span": {
           "file": "examples/components/link/link.nz.liquid",
           "start": {
-            "line": 8,
+            "line": 9,
             "column": 6
           },
           "end": {
-            "line": 8,
+            "line": 9,
             "column": 16
           }
         }
@@ -291,6 +321,32 @@
             }
           ]
         }
+      },
+      {
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.new_tab",
+        "kind": "prop",
+        "name": "new_tab",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/link/link.nz.liquid:new_tab"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "boolean"
+        }
+      },
+      {
+        "id": "symbol:setting:examples/components/link/link.nz.liquid#default.new_tab",
+        "kind": "setting",
+        "name": "section.settings.new_tab",
+        "declarations": [
+          "syntax:prop-declaration:examples/components/link/link.nz.liquid:new_tab"
+        ],
+        "resolution": "local",
+        "source": "syntax",
+        "semanticType": {
+          "kind": "boolean"
+        }
       }
     ],
     "resolutions": [
@@ -308,6 +364,11 @@
         "kind": "setting-projection",
         "propSymbolId": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "settingSymbolId": "symbol:setting:examples/components/link/link.nz.liquid#default.class"
+      },
+      {
+        "kind": "setting-projection",
+        "propSymbolId": "symbol:prop:examples/components/link/link.nz.liquid#default.new_tab",
+        "settingSymbolId": "symbol:setting:examples/components/link/link.nz.liquid#default.new_tab"
       },
       {
         "kind": "symbol-reference",
@@ -340,7 +401,7 @@
             "column": 1
           },
           "end": {
-            "line": 10,
+            "line": 11,
             "column": 1
           }
         }
@@ -357,7 +418,7 @@
             "column": 1
           },
           "end": {
-            "line": 10,
+            "line": 11,
             "column": 1
           }
         }
@@ -374,7 +435,7 @@
             "column": 1
           },
           "end": {
-            "line": 5,
+            "line": 6,
             "column": 5
           }
         }
@@ -431,6 +492,23 @@
         }
       },
       {
+        "id": "syntax:prop-declaration:examples/components/link/link.nz.liquid:new_tab",
+        "kind": "prop-declaration",
+        "name": "new_tab",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/link/link.nz.liquid",
+          "start": {
+            "line": 5,
+            "column": 3
+          },
+          "end": {
+            "line": 5,
+            "column": 10
+          }
+        }
+      },
+      {
         "id": "syntax:expression:examples/components/link/link.nz.liquid:output:1",
         "kind": "expression",
         "name": "props.href",
@@ -438,11 +516,11 @@
         "span": {
           "file": "examples/components/link/link.nz.liquid",
           "start": {
-            "line": 7,
+            "line": 8,
             "column": 13
           },
           "end": {
-            "line": 7,
+            "line": 8,
             "column": 23
           }
         }
@@ -455,11 +533,11 @@
         "span": {
           "file": "examples/components/link/link.nz.liquid",
           "start": {
-            "line": 7,
+            "line": 8,
             "column": 67
           },
           "end": {
-            "line": 7,
+            "line": 8,
             "column": 78
           }
         }
@@ -472,11 +550,11 @@
         "span": {
           "file": "examples/components/link/link.nz.liquid",
           "start": {
-            "line": 8,
+            "line": 9,
             "column": 6
           },
           "end": {
-            "line": 8,
+            "line": 9,
             "column": 16
           }
         }
@@ -522,6 +600,18 @@
         "kind": "setting",
         "name": "section.settings.class",
         "layer": "symbol"
+      },
+      {
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.new_tab",
+        "kind": "prop",
+        "name": "new_tab",
+        "layer": "symbol"
+      },
+      {
+        "id": "symbol:setting:examples/components/link/link.nz.liquid#default.new_tab",
+        "kind": "setting",
+        "name": "section.settings.new_tab",
+        "layer": "symbol"
       }
     ],
     "edges": [
@@ -558,6 +648,13 @@
         "kind": "declares",
         "from": "syntax:props-interface:examples/components/link/link.nz.liquid",
         "to": "syntax:prop-declaration:examples/components/link/link.nz.liquid:class",
+        "origin": "syntax"
+      },
+      {
+        "id": "edge:syntax:declares:syntax:props-interface:examples/components/link/link.nz.liquid->syntax:prop-declaration:examples/components/link/link.nz.liquid:new_tab",
+        "kind": "declares",
+        "from": "syntax:props-interface:examples/components/link/link.nz.liquid",
+        "to": "syntax:prop-declaration:examples/components/link/link.nz.liquid:new_tab",
         "origin": "syntax"
       },
       {
@@ -610,6 +707,20 @@
         "origin": "resolved"
       },
       {
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/link/link.nz.liquid:new_tab->symbol:prop:examples/components/link/link.nz.liquid#default.new_tab",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:new_tab",
+        "to": "symbol:prop:examples/components/link/link.nz.liquid#default.new_tab",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:resolved:resolves-to:syntax:prop-declaration:examples/components/link/link.nz.liquid:new_tab->symbol:setting:examples/components/link/link.nz.liquid#default.new_tab",
+        "kind": "resolves-to",
+        "from": "syntax:prop-declaration:examples/components/link/link.nz.liquid:new_tab",
+        "to": "symbol:setting:examples/components/link/link.nz.liquid#default.new_tab",
+        "origin": "resolved"
+      },
+      {
         "id": "edge:resolved:materializes-as-setting:symbol:prop:examples/components/link/link.nz.liquid#default.href->symbol:setting:examples/components/link/link.nz.liquid#default.href",
         "kind": "materializes-as-setting",
         "from": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
@@ -628,6 +739,13 @@
         "kind": "materializes-as-setting",
         "from": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "to": "symbol:setting:examples/components/link/link.nz.liquid#default.class",
+        "origin": "resolved"
+      },
+      {
+        "id": "edge:resolved:materializes-as-setting:symbol:prop:examples/components/link/link.nz.liquid#default.new_tab->symbol:setting:examples/components/link/link.nz.liquid#default.new_tab",
+        "kind": "materializes-as-setting",
+        "from": "symbol:prop:examples/components/link/link.nz.liquid#default.new_tab",
+        "to": "symbol:setting:examples/components/link/link.nz.liquid#default.new_tab",
         "origin": "resolved"
       },
       {
@@ -661,11 +779,11 @@
       "span": {
         "file": "examples/components/link/link.nz.liquid",
         "start": {
-          "line": 7,
+          "line": 8,
           "column": 56
         },
         "end": {
-          "line": 7,
+          "line": 8,
           "column": 82
         }
       }
@@ -677,11 +795,11 @@
       "span": {
         "file": "examples/components/link/link.nz.liquid",
         "start": {
-          "line": 7,
+          "line": 8,
           "column": 1
         },
         "end": {
-          "line": 9,
+          "line": 10,
           "column": 5
         }
       }
@@ -732,6 +850,22 @@
                 "kind": "nil"
               }
             ]
+          }
+        }
+      },
+      {
+        "name": "new_tab",
+        "symbolId": "symbol:prop:@nazare/link#default.new_tab",
+        "required": false,
+        "hasDefault": true,
+        "typeExpression": "boolean.setting({ label: \"Open in new tab\", default: false })",
+        "typeInfo": {
+          "valueType": {
+            "kind": "boolean"
+          },
+          "setting": {
+            "label": "Open in new tab",
+            "default": false
           }
         }
       }
