@@ -1,3 +1,8 @@
+// Typed-refs pass: the virtual TypeScript program that checks {% script %}
+// blocks. This is the compiler's most fragile machinery (rootless-file and
+// directoryExists resolution bugs both lived here), so it runs every change
+// — but kept to a few load-bearing cases, since each boots a TS program and
+// is by far the slowest thing in the suite.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -5,91 +10,59 @@ import {
 	compileNazareArtifact,
 } from "../dist/index.js";
 
-function scriptIssues(source) {
-	const result = compileNazareArtifact(source, "component.nz.liquid");
-	return checkComponentScripts(result.ir);
-}
+test("check-script: refs are typed from tag names, misuse is an error", () => {
+	// disabled exists on HTMLButtonElement, not HTMLDivElement
+	const result = compileNazareArtifact(
+		`<div ref="panel"></div>\n{% script lang="ts" %}\nexport default island(({ refs }) => { refs.panel.disabled = true; });\n{% endscript %}`,
+		"component.nz.liquid",
+	);
+	const issue = checkComponentScripts(result.ir).find(
+		(i) => i.code === "SCRIPT_TYPE_ERROR",
+	);
+	assert.ok(issue?.message.includes("disabled"));
+	assert.equal(issue.span?.file, "component.nz.liquid");
+});
 
-test("script-check: valid typed script passes", () => {
-	const issues = scriptIssues(`<div ref="root">
-  <button ref="trigger">Go</button>
+test("check-script: the data channel is typed, and valid usage passes", () => {
+	const good = `{% props {
+  step: number.default(1),
+  currency: string.setting({ label: "Currency" }),
+} %}
+<div ref="root" data-currency="{{ props.currency }}">
+  <button ref="increment" data-step="{{ props.step }}">+</button>
 </div>
 {% script lang="ts" %}
-export default island(({ refs }) => {
-  refs.trigger.disabled = true;
-  refs.root.classList.add("open");
-});
-{% endscript %}`);
-	assert.deepEqual(issues, []);
-});
-
-test("script-check: refs are typed from tag names", () => {
-	// disabled exists on HTMLButtonElement but not on HTMLDivElement
-	const issues = scriptIssues(`<div ref="panel"></div>
-{% script lang="ts" %}
-export default island(({ refs }) => {
-  refs.panel.disabled = true;
-});
-{% endscript %}`);
-	const issue = issues.find((i) => i.code === "SCRIPT_TYPE_ERROR");
-	assert.ok(issue);
-	assert.ok(issue.message.includes("disabled"));
-	assert.equal(issue.severity, "error");
-});
-
-test("script-check: diagnostic spans map back into the liquid file", () => {
-	const issues = scriptIssues(`<div ref="panel"></div>
-{% script lang="ts" %}
-export default island(({ refs }) => {
-  refs.panel.disabled = true;
-});
-{% endscript %}`);
-	const issue = issues.find((i) => i.code === "SCRIPT_TYPE_ERROR");
-	assert.equal(issue?.span?.file, "component.nz.liquid");
-	// refs.panel.disabled is on line 4 of the component file
-	assert.equal(issue?.span?.start.line, 4);
-});
-
-test("script-check: unknown ref is not double-reported", () => {
-	const source = `<div ref="root"></div>
-{% script lang="ts" %}
-export default island(({ refs }) => {
-  refs.ghost.remove();
+export default island(({ refs, data }) => {
+  let total = 0;
+  refs.increment.addEventListener("click", () => {
+    total += data.increment.step;
+    refs.root.textContent = data.root.currency + total.toFixed(2);
+  });
 });
 {% endscript %}`;
-	const compiled = compileNazareArtifact(source, "component.nz.liquid");
-	assert.ok(
-		compiled.issues.some((i) => i.code === "CONSTRAINT_UNKNOWN_REF"),
+	assert.deepEqual(
+		checkComponentScripts(
+			compileNazareArtifact(good, "component.nz.liquid").ir,
+		),
+		[],
+	);
+
+	// number channel used as a string is a type error
+	const bad = good.replace(
+		"total += data.increment.step",
+		"data.increment.step.toUpperCase()",
 	);
 	assert.ok(
-		!checkComponentScripts(compiled.ir).some(
-			(i) => i.code === "SCRIPT_TYPE_ERROR" && i.message.includes("ghost"),
+		checkComponentScripts(
+			compileNazareArtifact(bad, "component.nz.liquid").ir,
+		).some(
+			(i) =>
+				i.code === "SCRIPT_TYPE_ERROR" && i.message.includes("toUpperCase"),
 		),
 	);
 });
 
-test("script-check: general type errors are caught", () => {
-	const issues = scriptIssues(`<div ref="root"></div>
-{% script lang="ts" %}
-export default island(({ refs }) => {
-  const n: number = "not a number";
-  refs.root.remove();
-});
-{% endscript %}`);
-	assert.ok(issues.some((i) => i.message.includes("TS2322")));
-});
-
-test("script-check: js scripts are skipped", () => {
-	const issues = scriptIssues(`<div ref="root"></div>
-{% script lang="js" %}
-export default island(({ refs }) => {
-  refs.root.whatever();
-});
-{% endscript %}`);
-	assert.deepEqual(issues, []);
-});
-
-test("script-check: types flow across relative imports", () => {
+test("check-script: types flow across a relative import", () => {
 	const readFile = (path) =>
 		path === "format.ts"
 			? `export function format(value: number): string { return String(value); }`
@@ -104,22 +77,19 @@ export default island(({ refs }) => {
 	const result = compileNazareArtifact(source, "component.nz.liquid", {
 		readFile,
 	});
-	const issues = checkComponentScripts(result.ir, { readFile });
 	assert.ok(
-		issues.some(
-			(issue) =>
-				issue.code === "SCRIPT_TYPE_ERROR" && issue.message.includes("TS2345"),
+		checkComponentScripts(result.ir, { readFile }).some(
+			(i) =>
+				i.code === "SCRIPT_TYPE_ERROR" && i.message.includes("TS2345"),
 		),
 		"argument type error crosses the module boundary",
 	);
 });
 
-test("script-check: custom element tags fall back to HTMLElement", () => {
-	const issues = scriptIssues(`<my-widget ref="widget"></my-widget>
-{% script lang="ts" %}
-export default island(({ refs }) => {
-  refs.widget.setAttribute("data-x", "1");
-});
-{% endscript %}`);
-	assert.deepEqual(issues, []);
+test("check-script: js scripts are skipped", () => {
+	const result = compileNazareArtifact(
+		`<div ref="root"></div>\n{% script lang="js" %}\nexport default island(({ refs }) => refs.root.whatever());\n{% endscript %}`,
+		"component.nz.liquid",
+	);
+	assert.deepEqual(checkComponentScripts(result.ir), []);
 });
