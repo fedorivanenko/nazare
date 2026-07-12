@@ -73,7 +73,11 @@ try {
 	if (command === "ast") {
 		const result = compile();
 		console.log(
-			JSON.stringify({ ast: result.ast, issues: result.issues }, null, 2),
+			JSON.stringify(
+				{ ast: result.ast, issues: result.issues, notes: result.notes },
+				null,
+				2,
+			),
 		);
 		process.exit(hasErrors(result.issues) ? 1 : 0);
 	}
@@ -81,7 +85,11 @@ try {
 	if (command === "ir") {
 		const result = compile();
 		console.log(
-			JSON.stringify({ ir: result.ir, issues: result.issues }, null, 2),
+			JSON.stringify(
+				{ ir: result.ir, issues: result.issues, notes: result.notes },
+				null,
+				2,
+			),
 		);
 		process.exit(hasErrors(result.issues) ? 1 : 0);
 	}
@@ -89,7 +97,11 @@ try {
 	if (command === "graph") {
 		const result = compile();
 		console.log(
-			JSON.stringify({ graph: result.graph, issues: result.issues }, null, 2),
+			JSON.stringify(
+				{ graph: result.graph, issues: result.issues, notes: result.notes },
+				null,
+				2,
+			),
 		);
 		process.exit(hasErrors(result.issues) ? 1 : 0);
 	}
@@ -100,7 +112,7 @@ try {
 			...result.issues,
 			...checkComponentScripts(result.ir, { readFile: readProjectFile }),
 		];
-		console.log(JSON.stringify({ issues }, null, 2));
+		console.log(JSON.stringify({ issues, notes: result.notes }, null, 2));
 		process.exit(hasErrors(issues) ? 1 : 0);
 	}
 
@@ -116,7 +128,13 @@ try {
 			name: artifactBaseName(entryPath),
 			contracts: result.contracts,
 		});
-		console.log(JSON.stringify({ schema, issues: result.issues }, null, 2));
+		console.log(
+			JSON.stringify(
+				{ schema, issues: result.issues, notes: result.notes },
+				null,
+				2,
+			),
+		);
 		process.exit(hasErrors(result.issues) ? 1 : 0);
 	}
 
@@ -139,7 +157,9 @@ try {
 			await writeFile(path, themeFile.contents);
 			written.push(path);
 		}
-		console.log(JSON.stringify({ written, issues }, null, 2));
+		console.log(
+			JSON.stringify({ written, issues, notes: built.notes }, null, 2),
+		);
 		process.exit(hasErrors(issues) ? 1 : 0);
 	}
 

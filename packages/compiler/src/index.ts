@@ -42,7 +42,9 @@ export type {
 	ParseDiagnostic,
 } from "./ast.js";
 export {
+	CHECK_RULES,
 	type CheckArtifactIROptions,
+	type CheckRule,
 	type CompilerMode,
 	checkArtifactIR,
 	checkComponentAuthoringConstraints,
@@ -103,6 +105,12 @@ export type CompileResult = {
 	graph: ArtifactGraph;
 	/** All diagnostics from every compile pass; emit diagnostics are separate. */
 	issues: Diagnostic[];
+	/**
+	 * Informational notices about unmodeled Liquid (control flow, HTML) — a
+	 * separate channel from issues, not mode-dependent. Consumers surface them
+	 * if they want; they never affect whether a compile fails.
+	 */
+	notes: Diagnostic[];
 	/** This artifact's own contract, keyed by its file path. */
 	contract: ArtifactContract;
 	/** Contracts of the imported component files (needed for hoisting at emit time). */
@@ -146,32 +154,26 @@ export function compileNazareArtifact(
 	const syntax = syntaxFromAst(ast);
 	const ir = bindArtifactIR(syntax, { contracts });
 	const graph = artifactGraphFromIR(ir);
-	const issues = filterIssuesForMode(
-		[
-			...contractResolution.issues,
-			...ast.diagnostics,
-			...checkVanillaSchema(ast),
-			...checkArtifactIR(ir, contracts, { mode: options.strictness }),
-			...validateArtifactIR(ir),
-			...validateArtifactGraph(graph),
-		],
-		options.strictness,
-	);
+	const issues = [
+		...contractResolution.issues,
+		...ast.diagnostics,
+		...checkVanillaSchema(ast),
+		...checkArtifactIR(ir, contracts, { mode: options.strictness }),
+		...validateArtifactIR(ir),
+		...validateArtifactGraph(graph),
+	];
 	const contract = contractFromIR(ir, file, contracts);
 
-	return { ast, syntax, ir, graph, issues, contract, contracts };
-}
-
-function filterIssuesForMode(
-	issues: Diagnostic[],
-	mode: CompilerMode | undefined,
-): Diagnostic[] {
-	if (mode !== "loose") return issues;
-	const looseSuppressedCodes = new Set([
-		"IR_NODE_NOT_PROMOTED_HTML",
-		"IR_PARTIAL_LOWERING_CONTROL_FLOW",
-	]);
-	return issues.filter((issue) => !looseSuppressedCodes.has(issue.code));
+	return {
+		ast,
+		syntax,
+		ir,
+		graph,
+		issues,
+		notes: ast.notes,
+		contract,
+		contracts,
+	};
 }
 
 /** Compiles and emits theme files with one aggregated diagnostic list. */

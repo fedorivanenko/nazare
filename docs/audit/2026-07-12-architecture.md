@@ -172,9 +172,16 @@ byte-identical, so the emit snapshots barely move.
 
 ## Suggested build order
 
-1. `ReferenceSyntaxNode` — scanner in parse, resolution in bind, span
-   projection in emit; delete `liquid-lowering.ts` and the duplicate
-   recognizers. (The headline win.)
+1. ✅ **DONE** (commit 21f088d) — `ReferenceSyntaxNode`: scanner in parse
+   (`references.ts`, scans only Liquid expression regions via the AST — output
+   tags, structured control-flow conditions via `markup.position`, render
+   args), span projection in emit, `checkPropsReferences`/`checkStyleBindings`
+   consume the located nodes. Deleted `liquid-lowering.ts`,
+   `parseStyleReference`, `NazareOutputExpression`, and the props/style
+   regexes. Output byte-identical (emit snapshots unchanged); the literal-text
+   footgun is gone and control-flow conditions are now checked. Replacement
+   computation lives in emit (`referenceLowering`) rather than bind — a small
+   deviation from the sketch, kept for scope.
 2. Mode rule registry; delete `filterIssuesForMode`; move partial-lowering
    notices to a `notes` channel.
 3. Resolver split: `checkDependencies` as an explicit call; drop the policy.

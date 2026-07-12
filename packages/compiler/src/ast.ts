@@ -195,5 +195,12 @@ export type NazareAst = {
 	nodes: NazareNode[];
 	settingsReads: SettingsRead[];
 	schema?: AuthoredSchema;
+	/** Compile-failing and warning diagnostics from the parse pass. */
 	diagnostics: Diagnostic[];
+	/**
+	 * Informational notices about what Nazare did not model (control flow,
+	 * HTML). Not diagnostics — a separate channel consumers may surface, never
+	 * mixed into `issues` and filtered back out.
+	 */
+	notes: Diagnostic[];
 };

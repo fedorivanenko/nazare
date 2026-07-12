@@ -55,25 +55,52 @@ export type CheckArtifactIROptions = {
 	mode?: CompilerMode;
 };
 
+export type CheckRule = {
+	/** Stable identifier for the rule group. */
+	name: string;
+	/** Modes this rule runs in. */
+	modes: readonly CompilerMode[];
+	run: (ir: ArtifactIR, contracts: ArtifactContract[]) => Diagnostic[];
+};
+
+/**
+ * The single source of truth for what each mode checks. Reading this list
+ * answers "what does loose mode do?" — loose keeps the contract and script
+ * guarantees a build needs; strict adds component-authoring and css-module
+ * linkage. Nothing is checked-then-filtered elsewhere.
+ */
+export const CHECK_RULES: readonly CheckRule[] = [
+	{
+		name: "contract-constraints",
+		modes: ["loose", "strict"],
+		run: (ir, contracts) => checkContractConstraints(ir, contracts),
+	},
+	{
+		name: "script-constraints",
+		modes: ["loose", "strict"],
+		run: (ir) => checkScriptConstraints(ir),
+	},
+	{
+		name: "component-authoring-constraints",
+		modes: ["strict"],
+		run: (ir, contracts) => checkComponentAuthoringConstraints(ir, contracts),
+	},
+	{
+		name: "style-constraints",
+		modes: ["strict"],
+		run: (ir) => checkStyleConstraints(ir),
+	},
+];
+
 export function checkArtifactIR(
 	ir: ArtifactIR,
 	contracts: ArtifactContract[] = [],
 	options: CheckArtifactIROptions = {},
 ): Diagnostic[] {
 	const mode = options.mode ?? "strict";
-	const issues = [
-		...checkContractConstraints(ir, contracts),
-		...checkScriptConstraints(ir),
-	];
-
-	if (mode === "strict") {
-		issues.push(
-			...checkComponentAuthoringConstraints(ir, contracts),
-			...checkStyleConstraints(ir),
-		);
-	}
-
-	return issues;
+	return CHECK_RULES.filter((rule) => rule.modes.includes(mode)).flatMap(
+		(rule) => rule.run(ir, contracts),
+	);
 }
 
 export function checkContractConstraints(

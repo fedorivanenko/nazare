@@ -62,22 +62,41 @@ test("compile strictness: loose mode skips component-author linkage checks", () 
 	);
 });
 
-test("compile strictness: loose mode suppresses IR coverage notices", () => {
+test("IR coverage notices live on the notes channel, not issues", () => {
 	const source = `{% if true %}<div>{{ props.title }}</div>{% endif %}`;
 	const strict = compileNazareArtifact(source, "component.nz.liquid");
 	const loose = compileNazareArtifact(source, "component.nz.liquid", {
 		strictness: "loose",
 	});
 
+	// Notes are a separate channel, never mixed into issues and never filtered.
+	assert.ok(!strict.issues.some((issue) => issue.code.startsWith("IR_")));
 	assert.ok(
-		strict.issues.some(
-			(issue) => issue.code === "IR_PARTIAL_LOWERING_CONTROL_FLOW",
+		strict.notes.some(
+			(note) => note.code === "IR_PARTIAL_LOWERING_CONTROL_FLOW",
 		),
 	);
 	assert.ok(
-		strict.issues.some((issue) => issue.code === "IR_NODE_NOT_PROMOTED_HTML"),
+		strict.notes.some((note) => note.code === "IR_NODE_NOT_PROMOTED_HTML"),
 	);
-	assert.ok(!loose.issues.some((issue) => issue.code.startsWith("IR_")));
+	// Notes are not mode-dependent — the same regardless of strictness.
+	assert.deepEqual(
+		loose.notes.map((note) => note.code).sort(),
+		strict.notes.map((note) => note.code).sort(),
+	);
+});
+
+test("CHECK_RULES is the single source of truth for what each mode checks", async () => {
+	const { CHECK_RULES } = await import("../dist/check.js");
+	const loose = CHECK_RULES.filter((rule) => rule.modes.includes("loose")).map(
+		(rule) => rule.name,
+	);
+	const strict = CHECK_RULES.filter((rule) =>
+		rule.modes.includes("strict"),
+	).map((rule) => rule.name);
+	assert.deepEqual(loose, ["contract-constraints", "script-constraints"]);
+	assert.ok(strict.includes("component-authoring-constraints"));
+	assert.ok(strict.includes("style-constraints"));
 });
 
 test("check category APIs expose the strict check groups", () => {

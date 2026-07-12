@@ -202,9 +202,9 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 	// span instead of textually (see references.ts).
 	nodes.push(...collectReferences(ast, source, file, nodes));
 
-	diagnostics.push(
-		...unsupportedSyntaxDiagnostics(unsupportedSyntax, source, file),
-	);
+	// What Nazare did not model (control flow, HTML) is a note, not a
+	// diagnostic — a separate channel, never mixed into issues.
+	const notes = unsupportedSyntaxDiagnostics(unsupportedSyntax, source, file);
 
 	// Scripts/styles are extracted before the walk, so restore source order —
 	// declaration order is meaningful (it is mount order for behaviors).
@@ -222,7 +222,15 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 		file,
 	);
 
-	return { file, liquidAst: ast, nodes, settingsReads, schema, diagnostics };
+	return {
+		file,
+		liquidAst: ast,
+		nodes,
+		settingsReads,
+		schema,
+		diagnostics,
+		notes,
+	};
 }
 
 function extractScriptBlocks(
