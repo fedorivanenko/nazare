@@ -102,6 +102,7 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 			syntaxNode.kind === "element-ref" ||
 			syntaxNode.kind === "root-marker" ||
 			syntaxNode.kind === "island-placement" ||
+			syntaxNode.kind === "reference" ||
 			syntaxNode.kind === "script" ||
 			syntaxNode.kind === "style" ||
 			syntaxNode.kind === "blocks-slot"

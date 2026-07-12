@@ -29,8 +29,8 @@ export function renderSiteSyntaxId(file: string, renderIndex: number): Id {
 	return `syntax:render-site:${file}:${renderIndex}`;
 }
 
-export function outputExpressionSyntaxId(file: string, index: number): Id {
-	return `syntax:expression:${file}:output:${index}`;
+export function referenceSyntaxId(file: string, index: number): Id {
+	return `syntax:reference:${file}:${index}`;
 }
 
 export function argumentExpressionSyntaxId(

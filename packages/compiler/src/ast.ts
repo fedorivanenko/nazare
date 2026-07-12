@@ -61,10 +61,17 @@ export type NazareRenderNode = {
 	span: SourceSpan;
 };
 
-export type NazareOutputExpressionNode = {
-	type: "NazareOutputExpression";
-	expression: string;
-	expressionSpan: SourceSpan;
+/**
+ * A located Nazare reference — `props.x` or a css-module read `styles.class`
+ * — found inside a Liquid expression region. Emit replaces its span; see
+ * references.ts for how they are located and ReferenceForm for the shapes.
+ */
+export type NazareReferenceNode = {
+	type: "NazareReference";
+	target: "prop" | "style";
+	binding: string;
+	name: string;
+	form: "identifier" | "bare-class" | "quoted-class";
 	span: SourceSpan;
 };
 
@@ -159,7 +166,7 @@ export type NazareNode =
 	| NazareComponentNode
 	| NazarePropsNode
 	| NazareRenderNode
-	| NazareOutputExpressionNode
+	| NazareReferenceNode
 	| NazareElementRefNode
 	| NazareRootMarkerNode
 	| NazareIslandNode

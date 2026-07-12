@@ -15,7 +15,7 @@ import type {
 	SemanticType,
 	SourceSpan,
 } from "@nazare/core";
-import { cssClassTokens, parseStyleReference } from "./css-modules.js";
+import { cssClassTokens } from "./css-modules.js";
 import { dataChannelFromIR } from "./data-channel.js";
 import {
 	blocksSlotNotABlock,
@@ -180,9 +180,6 @@ function checkStyleBindings(index: ArtifactIRIndex): Diagnostic[] {
 		.nodesOfKind("style")
 		.filter((style) => style.bindingName !== undefined);
 	if (boundStyles.length === 0) return [];
-	const bindingNames = new Set(
-		boundStyles.map((style) => style.bindingName as string),
-	);
 
 	const definitions = new Map<
 		string,
@@ -199,17 +196,16 @@ function checkStyleBindings(index: ArtifactIRIndex): Diagnostic[] {
 	}
 
 	const referenced = new Set<string>();
-	for (const expression of index.nodesOfKind("expression")) {
-		const reference = parseStyleReference(expression.source, bindingNames);
-		if (!reference) continue;
-		referenced.add(reference.className);
-		if (!definitions.has(reference.className)) {
+	for (const reference of index.nodesOfKind("reference")) {
+		if (reference.target !== "style") continue;
+		referenced.add(reference.name);
+		if (!definitions.has(reference.name)) {
 			issues.push(
 				unknownStyleClass(
 					reference.binding,
-					reference.className,
-					expression.id,
-					expression.span,
+					reference.name,
+					reference.id,
+					reference.span,
 				),
 			);
 		}
@@ -335,9 +331,8 @@ function checkPropProvenanceForKind(
 /**
  * Data-channel linkage: every data.<ref>.<property> read must have a
  * matching data-* binding on that ref; bindings never read warn when a
- * script exists. Binding expressions are ordinary props reads, so
- * checkPropsReferences does not cover them — undeclared props are caught
- * here through the element-ref bindings themselves.
+ * script exists. (Undeclared props inside a binding are located reference
+ * nodes, so checkPropsReferences reports those.)
  */
 function checkDataChannel(
 	ir: ArtifactIR,
@@ -345,9 +340,6 @@ function checkDataChannel(
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const channel = dataChannelFromIR(ir);
-	const declaredProps = new Set(
-		index.nodesOfKind("prop-declaration").map((node) => node.name),
-	);
 	const readProperties = new Set<string>();
 	const scripts = index.nodesOfKind("script");
 
@@ -363,10 +355,6 @@ function checkDataChannel(
 
 	for (const node of index.nodesOfKind("element-ref")) {
 		for (const binding of node.dataBindings ?? []) {
-			const propsRead = binding.expression.trim().match(/^props\.([\w$]+)$/);
-			if (propsRead && !declaredProps.has(propsRead[1])) {
-				issues.push(unknownPropsReference(propsRead[1], node.id, binding.span));
-			}
 			if (
 				scripts.length > 0 &&
 				!readProperties.has(`${node.name}.${binding.property}`)
@@ -381,22 +369,18 @@ function checkDataChannel(
 	return issues;
 }
 
-/** Every props.<name> read in a modeled expression must be declared. */
+/** Every located props.<name> reference must name a declared prop. */
 function checkPropsReferences(index: ArtifactIRIndex): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const declared = new Set(
 		index.nodesOfKind("prop-declaration").map((node) => node.name),
 	);
 
-	for (const expression of index.nodesOfKind("expression")) {
-		for (const match of expression.source.matchAll(
-			/\bprops\.([A-Za-z_$][\w$]*)/g,
-		)) {
-			if (declared.has(match[1])) continue;
-			issues.push(
-				unknownPropsReference(match[1], expression.id, expression.span),
-			);
-		}
+	for (const reference of index.nodesOfKind("reference")) {
+		if (reference.target !== "prop" || declared.has(reference.name)) continue;
+		issues.push(
+			unknownPropsReference(reference.name, reference.id, reference.span),
+		);
 	}
 
 	return issues;

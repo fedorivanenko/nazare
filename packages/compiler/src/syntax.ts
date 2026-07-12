@@ -24,7 +24,7 @@ import {
 	fileSyntaxId,
 	importSyntaxId,
 	islandPlacementSyntaxId,
-	outputExpressionSyntaxId,
+	referenceSyntaxId,
 	propArgumentSyntaxId,
 	propDeclarationSyntaxId,
 	propsInterfaceSyntaxId,
@@ -73,7 +73,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 	syntax.push(fileNode, componentNode);
 
 	let renderIndex = 0;
-	let outputExpressionIndex = 0;
+	let referenceIndex = 0;
 	let elementRefIndex = 0;
 	let rootMarkerIndex = 0;
 	let islandPlacementIndex = 0;
@@ -122,14 +122,17 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 			continue;
 		}
 
-		if (node.type === "NazareOutputExpression") {
-			outputExpressionIndex += 1;
+		if (node.type === "NazareReference") {
+			referenceIndex += 1;
 			syntax.push({
-				id: outputExpressionSyntaxId(ast.file, outputExpressionIndex),
-				kind: "expression",
-				source: node.expression,
-				inferredType: inferExpressionType(node.expression),
-				span: node.expressionSpan,
+				id: referenceSyntaxId(ast.file, referenceIndex),
+				kind: "reference",
+				target: node.target,
+				binding: node.binding,
+				name: node.name,
+				form: node.form,
+				ownerId: componentId,
+				span: node.span,
 			});
 			continue;
 		}

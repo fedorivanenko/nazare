@@ -179,6 +179,26 @@ export type StyleSyntaxNode = {
 	bodySpan?: SourceSpan;
 };
 
+/**
+ * A located Nazare reference in the Liquid — `props.x` or a css-module read
+ * `styles.class`. Produced by the parser from Liquid expression regions and
+ * projected back to text by emit, so lowering is span-based, not textual.
+ */
+export type ReferenceSyntaxNode = {
+	id: Id;
+	kind: "reference";
+	target: "prop" | "style";
+	/** The head token: "props" or the style binding name. */
+	binding: string;
+	/** The member: prop name or css class name. */
+	name: string;
+	/** How the reference is written when lowered (see the compiler's ReferenceForm). */
+	form: "identifier" | "bare-class" | "quoted-class";
+	ownerId: Id;
+	/** The span to replace at emit. */
+	span?: SourceSpan;
+};
+
 /** A refs.<name> access inside a script block. */
 export type RefAccessSyntaxNode = {
 	id: Id;
@@ -211,6 +231,7 @@ export type ArtifactSyntaxNode =
 	| RenderSiteSyntaxNode
 	| ImportSyntaxNode
 	| ExpressionSyntaxNode
+	| ReferenceSyntaxNode
 	| ElementRefSyntaxNode
 	| RootMarkerSyntaxNode
 	| ScriptSyntaxNode

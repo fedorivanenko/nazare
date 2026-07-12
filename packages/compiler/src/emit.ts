@@ -25,7 +25,6 @@ import {
 	emitScriptWithoutRoot,
 } from "./diagnostics.js";
 import { type HoistedSetting, resolveHoistedSettings } from "./hoist.js";
-import { lowerPropsReads, lowerStyleReads } from "./liquid-lowering.js";
 import { baseNameOf, directoryOf } from "./paths.js";
 import { themeSchemaFromIR } from "./schema.js";
 import { hasDefaultExport } from "./script-scan.js";
@@ -205,7 +204,7 @@ function emitLiquid(
 	const edits: SourceEdit[] = [];
 	const snippetNamesByLocalName = new Map<string, string>();
 	const argumentsById = new Map<Id, PropArgumentSyntaxNode>();
-	const expressionsById = new Map<Id, string>();
+	const expressionsById = new Map<Id, { source: string; start: number }>();
 	const hoistedBySiteId = new Map<Id, HoistedSetting[]>();
 	for (const setting of resolveHoistedSettings(compiled.ir, compiled.contracts)
 		.hoisted) {
@@ -220,8 +219,37 @@ function emitLiquid(
 			snippetNamesByLocalName.set(node.localName, baseNameOf(node.path));
 		}
 		if (node.kind === "prop-argument") argumentsById.set(node.id, node);
-		if (node.kind === "expression") expressionsById.set(node.id, node.source);
+		if (node.kind === "expression") {
+			expressionsById.set(node.id, {
+				source: node.source,
+				start: node.span ? offsetFromPosition(source, node.span.start) : 0,
+			});
+		}
 	}
+
+	// Located props/style references and their lowered replacements. Emit
+	// projects each by span — the whole reason lowering is not textual.
+	const lower = referenceLowering(compiled.ir, kind, options.name, source);
+	const renderRanges = compiled.ir.syntax
+		.filter((node) => node.kind === "render-site" && node.span)
+		.map((node) => spanOffsets(source, node.span));
+
+	// A render argument's expression, with its own references lowered — the
+	// tag is rebuilt, so its references cannot be span-edited in place.
+	const loweredArgument = (expressionId: Id): string => {
+		const expression = expressionsById.get(expressionId);
+		if (!expression) return "";
+		const end = expression.start + expression.source.length;
+		const localEdits = lower.references
+			.filter((ref) => ref.start >= expression.start && ref.end <= end)
+			.map((ref) => ({
+				start: ref.start - expression.start,
+				end: ref.end - expression.start,
+				replacement: lower.replacementFor(ref.node),
+			}))
+			.filter((edit): edit is SourceEdit => edit.replacement !== undefined);
+		return applyEdits(expression.source, localEdits);
+	};
 
 	for (const node of compiled.ast.nodes) {
 		if (
@@ -264,7 +292,7 @@ function emitLiquid(
 				.filter((argument) => argument !== undefined)
 				.map(
 					(argument) =>
-						`${argument.name}: ${expressionsById.get(argument.expressionId) ?? ""}`,
+						`${argument.name}: ${loweredArgument(argument.expressionId)}`,
 				);
 			// Hoisted settings become generated pass-through arguments: read
 			// from our own schema in a section, from our own implicit render
@@ -289,6 +317,21 @@ function emitLiquid(
 		}
 	}
 
+	// Pass-through references (output tags, control-flow conditions) lower by
+	// span; references inside a render site are rebuilt with that tag above.
+	for (const reference of lower.references) {
+		if (
+			renderRanges.some(
+				(range) => reference.start >= range.start && reference.end <= range.end,
+			)
+		) {
+			continue;
+		}
+		const replacement = lower.replacementFor(reference.node);
+		if (replacement === undefined) continue;
+		edits.push({ start: reference.start, end: reference.end, replacement });
+	}
+
 	// data-nz-component is only the island mount hook now — styles scope by
 	// class rewrite and need no root attribute.
 	if (hasScript || kind === "block") {
@@ -311,8 +354,6 @@ function emitLiquid(
 	}
 
 	let liquid = applyEdits(source, edits);
-	liquid = lowerPropsReads(liquid, compiled.ir, kind);
-	liquid = lowerStyleReads(liquid, compiled.ir, options.name);
 	liquid = `${liquid.replace(/\n{3,}/g, "\n\n").trim()}\n`;
 	liquid =
 		generatedHeader(
@@ -528,6 +569,73 @@ function emitComponentScript(
 			"",
 		].join("\n"),
 		issues,
+	};
+}
+
+type ReferenceNode = Extract<
+	ArtifactIR["syntax"][number],
+	{ kind: "reference" }
+>;
+
+type ReferenceLowering = {
+	references: { node: ReferenceNode; start: number; end: number }[];
+	replacementFor: (node: ReferenceNode) => string | undefined;
+};
+
+/**
+ * Precomputes, for every located reference, the text it lowers to: prop reads
+ * take their declared provenance (section/block.settings.x or the bare render
+ * argument name), style reads take the scoped class — bare inside an output
+ * tag, quoted in expression position. An undeclared prop resolves to
+ * undefined, so emit leaves it untouched for the diagnostic to explain.
+ */
+function referenceLowering(
+	ir: ArtifactIR,
+	kind: ComponentKind,
+	componentName: string,
+	source: string,
+): ReferenceLowering {
+	const settingsObject =
+		kind === "block" ? "block.settings" : "section.settings";
+	const provenance = new Map<string, string>();
+	for (const node of ir.syntax) {
+		if (node.kind !== "prop-declaration") continue;
+		provenance.set(
+			node.name,
+			node.typeInfo.setting ? `${settingsObject}.${node.name}` : node.name,
+		);
+	}
+
+	const references = ir.syntax
+		.filter((node): node is ReferenceNode => node.kind === "reference")
+		.filter((node) => node.span !== undefined)
+		.map((node) => ({
+			node,
+			...spanOffsets(source, node.span),
+		}));
+
+	const replacementFor = (node: ReferenceNode): string | undefined => {
+		if (node.target === "prop") return provenance.get(node.name);
+		const scoped = scopedClassName(componentName, node.name);
+		return node.form === "quoted-class" ? `"${scoped}"` : scoped;
+	};
+
+	return { references, replacementFor };
+}
+
+function spanOffsets(
+	source: string,
+	span:
+		| {
+				start: { line: number; column: number };
+				end: { line: number; column: number };
+		  }
+		| undefined,
+): { start: number; end: number } {
+	if (!span) return { start: 0, end: 0 };
+	return {
+		start: offsetFromPosition(source, span.start),
+		end: offsetFromPosition(source, span.end),
 	};
 }
 

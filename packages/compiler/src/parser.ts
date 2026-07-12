@@ -17,6 +17,7 @@ import type {
 	NazareNode,
 	NazarePassedProp,
 	NazarePropDeclaration,
+	NazareReferenceNode,
 	NazareScriptNode,
 	NazareStyleNode,
 	SettingsRead,
@@ -40,6 +41,7 @@ import {
 	parseMalformedPropDeclaration,
 } from "./diagnostics.js";
 import { isRelativeSpecifier, resolveImportPath } from "./paths.js";
+import { type LiquidRegion, scanRegionReferences } from "./references.js";
 import { scanScript } from "./script-scan.js";
 import { offsetFromPosition, spanFromOffsets } from "./source.js";
 import { parseTypeExpression } from "./type-expression.js";
@@ -109,16 +111,6 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 	let componentDeclared = false;
 
 	walk(ast, (node) => {
-		if (node.type === NodeTypes.LiquidVariableOutput) {
-			const outputExpression = parseOutputExpression(
-				source,
-				file,
-				node.position,
-			);
-			if (outputExpression) nodes.push(outputExpression);
-			return;
-		}
-
 		if (node.type !== NodeTypes.LiquidTag) return;
 
 		const tag = node as LiquidTagLike;
@@ -204,6 +196,11 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 			return;
 		}
 	});
+
+	// props.x / styles.class references are located from Liquid expression
+	// regions once the style bindings are known, so emit can lower them by
+	// span instead of textually (see references.ts).
+	nodes.push(...collectReferences(ast, source, file, nodes));
 
 	diagnostics.push(
 		...unsupportedSyntaxDiagnostics(unsupportedSyntax, source, file),
@@ -661,26 +658,130 @@ function elementTagName(node: LiquidHtmlNode): string {
 	return "unknown";
 }
 
-function parseOutputExpression(
+// Tags whose markup never carries a props/style read (structural Nazare tags
+// and the schema/comment raw blocks). Everything else — output tags, control
+// flow, render, assign/echo — is scanned for references.
+const nonReferenceTags = new Set([
+	"component",
+	"import",
+	"props",
+	"blocks",
+	"schema",
+	"comment",
+	"endcomment",
+]);
+
+/**
+ * Locates every props/style reference in the file's Liquid expression
+ * regions. Style binding names come from the already-collected style nodes
+ * and css imports, so this runs after the main walk.
+ */
+function collectReferences(
+	ast: ReturnType<typeof toLiquidHtmlAST>,
 	source: string,
 	file: string,
-	position: SourceRange,
-): NazareNode | undefined {
-	const raw = source.slice(position.start, position.end);
-	const match = raw.match(/^\s*{{-?\s*([\s\S]*?)\s*-?}}\s*$/);
-	const expression = match?.[1]?.trim();
-	if (!expression) return undefined;
-	const expressionStartInRaw = raw.indexOf(expression);
-	const expressionStart = position.start + expressionStartInRaw;
-	return {
-		type: "NazareOutputExpression",
-		expression,
-		expressionSpan: spanFromOffsets(source, file, {
-			start: expressionStart,
-			end: expressionStart + expression.length,
-		}),
-		span: spanFromOffsets(source, file, position),
-	};
+	nodes: NazareNode[],
+): NazareReferenceNode[] {
+	const styleBindings = new Set<string>();
+	for (const node of nodes) {
+		if (node.type === "NazareStyle" && node.bindingName) {
+			styleBindings.add(node.bindingName);
+		}
+		if (node.type === "NazareAssetImport" && node.path.endsWith(".css")) {
+			styleBindings.add(node.localName);
+		}
+	}
+
+	// A block tag and its first branch share the same {% … %} opening, so the
+	// same token is scanned twice; a source span is one location, so dedupe.
+	const references: NazareReferenceNode[] = [];
+	const seen = new Set<string>();
+	walk(ast, (node) => {
+		const region = liquidRegion(node, source);
+		if (!region) return;
+		for (const raw of scanRegionReferences(region, styleBindings)) {
+			const key = `${raw.start}:${raw.end}`;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			references.push({
+				type: "NazareReference",
+				target: raw.target,
+				binding: raw.binding,
+				name: raw.name,
+				form: raw.form,
+				span: spanFromOffsets(source, file, {
+					start: raw.start,
+					end: raw.end,
+				}),
+			});
+		}
+	});
+	return references;
+}
+
+/** The source range of a structured tag markup (a Liquid condition), if any. */
+function markupPosition(
+	markup: unknown,
+): { start: number; end: number } | undefined {
+	const position = (markup as { position?: unknown } | undefined)?.position;
+	if (
+		position &&
+		typeof (position as SourceRange).start === "number" &&
+		typeof (position as SourceRange).end === "number"
+	) {
+		return position as SourceRange;
+	}
+	return undefined;
+}
+
+/** The scannable Liquid region for a node, or undefined if there is none. */
+function liquidRegion(
+	node: LiquidHtmlNode,
+	source: string,
+): LiquidRegion | undefined {
+	if (node.type === NodeTypes.LiquidVariableOutput) {
+		const position = (node as LiquidTagLike).position;
+		const raw = source.slice(position.start, position.end);
+		const match = raw.match(/^\s*{{-?\s*([\s\S]*?)\s*-?}}\s*$/);
+		const inner = match?.[1];
+		if (!inner) return undefined;
+		return {
+			kind: "output",
+			inner,
+			innerOffset: position.start + raw.indexOf(inner),
+			outputStart: position.start,
+			outputEnd: position.end,
+		};
+	}
+
+	if (
+		node.type === NodeTypes.LiquidTag ||
+		node.type === NodeTypes.LiquidBranch
+	) {
+		const tag = node as LiquidTagLike & { markup?: unknown };
+		if (typeof tag.name === "string" && nonReferenceTags.has(tag.name)) {
+			return undefined;
+		}
+		// Leaf tags (render, assign, echo) expose their markup as a string.
+		if (typeof tag.markup === "string") {
+			if (tag.markup.length === 0) return undefined;
+			const innerOffset = source.indexOf(tag.markup, tag.position.start);
+			if (innerOffset < 0) return undefined;
+			return { kind: "markup", inner: tag.markup, innerOffset };
+		}
+		// Control-flow conditions (if/unless/elsif/when/case) parse into a
+		// structured node that carries the condition's exact source range —
+		// scan only that, never the block body (which is its own nodes).
+		const position = markupPosition(tag.markup);
+		if (!position) return undefined;
+		return {
+			kind: "markup",
+			inner: source.slice(position.start, position.end),
+			innerOffset: position.start,
+		};
+	}
+
+	return undefined;
 }
 
 function parseProps(

@@ -95,34 +95,6 @@ export function rewriteCssClasses(
 	return root.toString();
 }
 
-export type StyleReference = {
-	binding: string;
-	className: string;
-};
-
-/**
- * Parses an expression as a style-map read: `styles.wrapper` or
- * `styles["hero-image"]` (bracket form for names that are not identifiers).
- * Returns undefined when the head is not one of the given binding names.
- */
-export function parseStyleReference(
-	expression: string,
-	bindingNames: ReadonlySet<string>,
-): StyleReference | undefined {
-	const trimmed = expression.trim();
-	const dotForm = trimmed.match(/^([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)$/);
-	if (dotForm && bindingNames.has(dotForm[1])) {
-		return { binding: dotForm[1], className: dotForm[2] };
-	}
-	const bracketForm = trimmed.match(
-		/^([A-Za-z_$][\w$]*)\[\s*["']([^"']+)["']\s*\]$/,
-	);
-	if (bracketForm && bindingNames.has(bracketForm[1])) {
-		return { binding: bracketForm[1], className: bracketForm[2] };
-	}
-	return undefined;
-}
-
 function lineStartOffsets(source: string): number[] {
 	const starts = [0];
 	for (let index = 0; index < source.length; index += 1) {
