@@ -1,15 +1,25 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import {
+	basename,
+	dirname,
+	extname,
+	join,
+	relative,
+	resolve,
+	sep,
+} from "node:path";
+import {
+	buildNazareTheme,
 	checkComponentScripts,
 	compileNazareArtifact,
-	emitTheme,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
 
-const [, , command, file] = process.argv;
+const args = process.argv.slice(2);
+const command = args[0];
+const file = args[1];
 
 if (
 	!command ||
@@ -28,6 +38,8 @@ if (!file) {
 }
 
 try {
+	const cliOptions = parseCliOptions(args.slice(2));
+
 	// The project root is the working directory: every file the compiler
 	// sees is identified by its root-relative POSIX path, and readProjectFile
 	// is the compiler's entire filesystem.
@@ -48,11 +60,18 @@ try {
 	// The file declares its own kind ({% component section %}); the CLI no
 	// longer reads nazare.json to compile — that stays registry-only.
 	const source = await readFile(file, "utf8");
-	const result = compileNazareArtifact(source, entryPath, {
-		readFile: readProjectFile,
-	});
+	let compiled: ReturnType<typeof compileNazareArtifact> | undefined;
+	const compile = (): ReturnType<typeof compileNazareArtifact> => {
+		compiled ??= compileNazareArtifact(source, entryPath, {
+			readFile: readProjectFile,
+			strictness: cliOptions.strictness,
+			dependencyDiagnostics: cliOptions.dependencyDiagnostics,
+		});
+		return compiled;
+	};
 
 	if (command === "ast") {
+		const result = compile();
 		console.log(
 			JSON.stringify({ ast: result.ast, issues: result.issues }, null, 2),
 		);
@@ -60,6 +79,7 @@ try {
 	}
 
 	if (command === "ir") {
+		const result = compile();
 		console.log(
 			JSON.stringify({ ir: result.ir, issues: result.issues }, null, 2),
 		);
@@ -67,6 +87,7 @@ try {
 	}
 
 	if (command === "graph") {
+		const result = compile();
 		console.log(
 			JSON.stringify({ graph: result.graph, issues: result.issues }, null, 2),
 		);
@@ -74,6 +95,7 @@ try {
 	}
 
 	if (command === "validate") {
+		const result = compile();
 		const issues = [
 			...result.issues,
 			...checkComponentScripts(result.ir, { readFile: readProjectFile }),
@@ -83,34 +105,35 @@ try {
 	}
 
 	if (command === "artifact") {
+		const result = compile();
 		console.log(JSON.stringify(result, null, 2));
 		process.exit(hasErrors(result.issues) ? 1 : 0);
 	}
 
 	if (command === "schema") {
+		const result = compile();
 		const schema = themeSchemaFromIR(result.ir, {
 			name: artifactBaseName(entryPath),
 			contracts: result.contracts,
 		});
-		console.log(
-			JSON.stringify({ schema, issues: result.issues }, null, 2),
-		);
+		console.log(JSON.stringify({ schema, issues: result.issues }, null, 2));
 		process.exit(hasErrors(result.issues) ? 1 : 0);
 	}
 
 	if (command === "build") {
-		const emitted = emitTheme(source, result, {
+		const built = buildNazareTheme(source, entryPath, {
 			name: artifactBaseName(entryPath),
 			readFile: readProjectFile,
+			strictness: cliOptions.strictness,
+			dependencyDiagnostics: cliOptions.dependencyDiagnostics,
 		});
 		const issues = [
-			...result.issues,
-			...checkComponentScripts(result.ir, { readFile: readProjectFile }),
-			...emitted.issues,
+			...built.issues,
+			...checkComponentScripts(built.ir, { readFile: readProjectFile }),
 		];
 		const outputDir = join(".nazare-out", "theme");
 		const written: string[] = [];
-		for (const themeFile of emitted.files) {
+		for (const themeFile of built.emitted.files) {
 			const path = join(outputDir, themeFile.path);
 			await mkdir(dirname(path), { recursive: true });
 			await writeFile(path, themeFile.contents);
@@ -121,6 +144,7 @@ try {
 	}
 
 	if (command === "dump") {
+		const result = compile();
 		const written = await writeDumpFiles(entryPath, result);
 		console.log(JSON.stringify({ written, issues: result.issues }, null, 2));
 		process.exit(hasErrors(result.issues) ? 1 : 0);
@@ -132,6 +156,60 @@ try {
 } catch (error) {
 	console.error(error instanceof Error ? error.message : String(error));
 	process.exit(1);
+}
+
+type CliOptions = {
+	strictness?: "loose" | "strict";
+	dependencyDiagnostics?: "hidden" | "surface";
+};
+
+function parseCliOptions(args: string[]): CliOptions {
+	const options: CliOptions = {};
+
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--strictness") {
+			options.strictness = parseStrictness(args[index + 1]);
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("--strictness=")) {
+			options.strictness = parseStrictness(arg.slice("--strictness=".length));
+			continue;
+		}
+		if (arg === "--dependency-diagnostics") {
+			options.dependencyDiagnostics = parseDependencyDiagnostics(
+				args[index + 1],
+			);
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("--dependency-diagnostics=")) {
+			options.dependencyDiagnostics = parseDependencyDiagnostics(
+				arg.slice("--dependency-diagnostics=".length),
+			);
+			continue;
+		}
+		throw new Error(`Unknown option ${arg}`);
+	}
+
+	return options;
+}
+
+function parseStrictness(value: string | undefined): "loose" | "strict" {
+	if (value === "loose" || value === "strict") return value;
+	throw new Error(
+		`Invalid --strictness ${value ?? "<missing>"}; expected loose or strict`,
+	);
+}
+
+function parseDependencyDiagnostics(
+	value: string | undefined,
+): "hidden" | "surface" {
+	if (value === "hidden" || value === "surface") return value;
+	throw new Error(
+		`Invalid --dependency-diagnostics ${value ?? "<missing>"}; expected hidden or surface`,
+	);
 }
 
 async function writeDumpFiles(
@@ -186,5 +264,9 @@ function printHelp(): void {
   nazare schema <file>
   nazare build <file>
   nazare artifact <file>
-  nazare dump <file>`);
+  nazare dump <file>
+
+Options:
+  --strictness loose|strict
+  --dependency-diagnostics hidden|surface`);
 }

@@ -1,16 +1,18 @@
 {
-  "name": "nazare-monorepo",
-  "private": true,
-  "type": "module",
-  "packageManager": "pnpm@10.0.0",
-  "scripts": {
-    "typecheck": "tsc -b",
-    "test": "tsc -b && node --test packages/compiler/tests/*.test.mjs",
-    "format": "biome format --write .",
-    "lint": "biome check ."
-  },
-  "devDependencies": {
-    "@types/node": "^26.1.1",
-    "typescript": "^5.5.0"
-  }
+	"name": "nazare-monorepo",
+	"private": true,
+	"type": "module",
+	"packageManager": "pnpm@10.0.0",
+	"scripts": {
+		"typecheck": "tsc -b",
+		"test": "tsc -b && node --test packages/compiler/tests/*.test.mjs",
+		"test:cli": "tsc -b && node --test packages/cli-client/tests/*.test.mjs",
+		"test:all": "tsc -b && node --test packages/compiler/tests/*.test.mjs packages/cli-client/tests/*.test.mjs",
+		"format": "biome format --write .",
+		"lint": "biome check ."
+	},
+	"devDependencies": {
+		"@types/node": "^26.1.1",
+		"typescript": "^5.5.0"
+	}
 }
