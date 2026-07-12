@@ -188,7 +188,18 @@ byte-identical, so the emit snapshots barely move.
    `IR_PARTIAL_LOWERING_*` notices moved from `issues` to a `notes` channel on
    the compile result (and `NazareAst.notes`), mode-independent;
    `filterIssuesForMode` deleted. CLI surfaces `notes` alongside `issues`.
-3. Resolver split: `checkDependencies` as an explicit call; drop the policy.
+3. ✅ **DONE** (commit aa1b57f) — `resolveComponentContracts` now only derives
+   contracts + reports import-graph failures. A new
+   `checkDependencies(ast, readFile, {mode})` fully checks every
+   transitively-imported file; `buildNazareTheme` calls it explicitly and a
+   plain compile does not. The `dependencyDiagnostics` policy (and the
+   `--dependency-diagnostics` flag) that flipped its default between compile
+   and build are removed — the difference is now a visible call.
 
-Smaller cleanups (#4 silent fallback → assert; #5 runtime typing) can ride
-along or wait.
+**All three items done — the audit is closed.** The invariant holds: parse
+locates, bind resolves, check judges, emit projects; emit only replaces spans;
+no pass re-reads another pass's output; mode and dependency behavior are each
+one visible thing rather than a scattered default.
+
+Smaller cleanups (#4 silent fallback → assert; #5 runtime typing) remain
+optional.
