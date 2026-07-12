@@ -1,12 +1,10 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 import {
-	type ContractResolver,
 	checkComponentScripts,
 	compileNazareArtifact,
-	compileNazareArtifactWithResolver,
 	emitTheme,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
@@ -31,25 +29,28 @@ if (!file) {
 }
 
 try {
-	const source = await readFile(file, "utf8");
-	const manifest = await manifestForEntry(file);
-	const packageId = manifest?.id;
-	const readAsset = (relativePath: string) => {
+	// The project root is the working directory: every file the compiler
+	// sees is identified by its root-relative POSIX path, and readProjectFile
+	// is the compiler's entire filesystem.
+	const projectRoot = process.cwd();
+	const entryPath = relative(projectRoot, resolve(file)).split(sep).join("/");
+	if (entryPath.startsWith("..")) {
+		console.error(`${file} is outside the project root ${projectRoot}`);
+		process.exit(1);
+	}
+	const readProjectFile = (path: string): string | undefined => {
 		try {
-			return readFileSync(join(dirname(file), relativePath), "utf8");
+			return readFileSync(join(projectRoot, path), "utf8");
 		} catch {
 			return undefined;
 		}
 	};
-	const readPackageModule = localPackageModuleReader(file);
-	const result = await compileNazareArtifactWithResolver(source, file, {
-		resolver: localContractResolver(file),
-		packageId,
+
+	const source = await readFile(file, "utf8");
+	const manifest = await manifestForEntry(file);
+	const result = compileNazareArtifact(source, entryPath, {
 		kind: manifest?.kind,
-		dependencies: manifest
-			? Object.keys(manifest.dependencies ?? {})
-			: undefined,
-		readAsset,
+		readFile: readProjectFile,
 	});
 
 	if (command === "ast") {
@@ -76,7 +77,7 @@ try {
 	if (command === "validate") {
 		const issues = [
 			...result.issues,
-			...checkComponentScripts(result.ir, { readAsset, readPackageModule }),
+			...checkComponentScripts(result.ir, { readFile: readProjectFile }),
 		];
 		console.log(JSON.stringify({ issues }, null, 2));
 		process.exit(hasErrors(issues) ? 1 : 0);
@@ -89,7 +90,7 @@ try {
 
 	if (command === "schema") {
 		const schema = themeSchemaFromIR(result.ir, {
-			name: schemaName(file, packageId),
+			name: artifactBaseName(entryPath),
 			kind: manifest?.kind,
 			contracts: result.contracts,
 		});
@@ -101,14 +102,13 @@ try {
 
 	if (command === "build") {
 		const emitted = emitTheme(source, result, {
-			name: schemaName(file, packageId),
+			name: artifactBaseName(entryPath),
 			kind: manifest?.kind,
-			readAsset,
-			readPackageModule,
+			readFile: readProjectFile,
 		});
 		const issues = [
 			...result.issues,
-			...checkComponentScripts(result.ir, { readAsset, readPackageModule }),
+			...checkComponentScripts(result.ir, { readFile: readProjectFile }),
 			...emitted.issues,
 		];
 		const outputDir = join(".nazare-out", "theme");
@@ -124,7 +124,7 @@ try {
 	}
 
 	if (command === "dump") {
-		const written = await writeDumpFiles(file, result, packageId);
+		const written = await writeDumpFiles(entryPath, result);
 		console.log(JSON.stringify({ written, issues: result.issues }, null, 2));
 		process.exit(hasErrors(result.issues) ? 1 : 0);
 	}
@@ -138,74 +138,9 @@ try {
 }
 
 /**
- * Resolves package contracts from the local filesystem by searching, in
- * order: sibling component directories of the compiled file, then
- * examples/components under the current working directory.
+ * The entry's nazare.json is registry metadata; the CLI (registry layer)
+ * reads it only to learn the component's kind. The compiler never sees it.
  */
-function localContractResolver(entryFile: string): ContractResolver {
-	const searchRoots = [
-		resolve(dirname(entryFile), ".."),
-		resolve(process.cwd(), "examples", "components"),
-	];
-
-	return async (packageId) => {
-		const componentName = packageId.split("/").at(-1);
-		if (!componentName) return undefined;
-
-		for (const root of searchRoots) {
-			const manifestPath = join(root, componentName, "nazare.json");
-			const manifestSource = await readOptional(manifestPath);
-			if (manifestSource === undefined) continue;
-
-			const manifest = JSON.parse(manifestSource) as NazareManifest;
-			const entryPath = join(dirname(manifestPath), manifest.entry);
-			const entrySource = await readFile(entryPath, "utf8");
-			return compileNazareArtifact(entrySource, entryPath, {
-				packageId: manifest.id,
-			}).contract;
-		}
-
-		return undefined;
-	};
-}
-
-/**
- * Resolves function packages (manifest kind "function") from the same
- * roots the contract resolver searches, returning the entry source for
- * bundling and type checking.
- */
-function localPackageModuleReader(
-	entryFile: string,
-): (packageId: string) => string | undefined {
-	const searchRoots = [
-		resolve(dirname(entryFile), ".."),
-		resolve(process.cwd(), "examples", "components"),
-	];
-
-	return (packageId) => {
-		const componentName = packageId.split("/").at(-1);
-		if (!componentName) return undefined;
-
-		for (const root of searchRoots) {
-			try {
-				const manifestPath = join(root, componentName, "nazare.json");
-				const manifest = JSON.parse(
-					readFileSync(manifestPath, "utf8"),
-				) as NazareManifest;
-				if (manifest.kind !== "function") return undefined;
-				return readFileSync(
-					join(dirname(manifestPath), manifest.entry),
-					"utf8",
-				);
-			} catch {
-				// try the next root
-			}
-		}
-
-		return undefined;
-	};
-}
-
 async function manifestForEntry(
 	entryFile: string,
 ): Promise<NazareManifest | undefined> {
@@ -217,14 +152,13 @@ async function manifestForEntry(
 }
 
 async function writeDumpFiles(
-	entryFile: string,
-	result: Awaited<ReturnType<typeof compileNazareArtifactWithResolver>>,
-	packageId: string | undefined,
+	entryPath: string,
+	result: ReturnType<typeof compileNazareArtifact>,
 ): Promise<string[]> {
 	const outputDir = ".nazare-out";
-	const base = artifactBaseName(entryFile);
+	const base = artifactBaseName(entryPath);
 	const schema = themeSchemaFromIR(result.ir, {
-		name: schemaName(entryFile, packageId),
+		name: base,
 		contracts: result.contracts,
 	});
 	const files = [
@@ -246,10 +180,6 @@ async function writeDumpFiles(
 	}
 
 	return written;
-}
-
-function schemaName(entryFile: string, packageId: string | undefined): string {
-	return packageId?.split("/").at(-1) ?? artifactBaseName(entryFile);
 }
 
 function artifactBaseName(entryFile: string): string {

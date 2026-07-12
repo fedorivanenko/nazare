@@ -1,18 +1,19 @@
-// Component-scoped bundler for behavior scripts. Relative imports resolve
-// through readAsset — the same boundary sidecar imports use — so a module
-// graph can never leave the component directory and stays a portable
-// artifact. Each module transpiles to CommonJS and is wrapped in a ~10-line
-// loader; specifier→module resolution happens here at bundle time, the
-// runtime only looks ids up. Bare (package) specifiers are not resolvable
-// and are rejected earlier by the module-syntax check.
+// Project-scoped bundler for behavior scripts. Modules are identified by
+// project-relative paths and resolve through readFile — the same boundary
+// every import uses — so a module graph can reach any file the author owns
+// but never leaves the project root. Each module transpiles to CommonJS and
+// is wrapped in a ~10-line loader; specifier→module resolution happens here
+// at bundle time, the runtime only looks ids up. Bare (package) specifiers
+// are illegal: Nazare has no packages at build time.
 import type { Diagnostic } from "@nazare/core";
 import ts from "typescript";
 import {
+	scriptImportBare,
 	scriptImportCycle,
 	scriptImportInvalid,
 	scriptImportNotFound,
-	scriptPackageImportUnresolved,
 } from "./diagnostics.js";
+import { isRelativeSpecifier, resolveImportPath } from "./paths.js";
 
 export type BundleResult = {
 	/** Self-contained expression evaluating to the entry's exports.default. */
@@ -20,10 +21,8 @@ export type BundleResult = {
 	issues: Diagnostic[];
 };
 
-export type ReadAsset = (relativePath: string) => string | undefined;
-
-/** Supplies the entry source of a function package (manifest kind "function"). */
-export type ReadPackageModule = (packageId: string) => string | undefined;
+/** Reads a project file by its project-relative path (see index.ts). */
+export type ReadFile = (path: string) => string | undefined;
 
 type Module = {
 	id: string;
@@ -34,45 +33,28 @@ type Module = {
 
 export function bundleScript(
 	entrySource: string,
-	entryId: string,
-	readAsset: ReadAsset | undefined,
-	readPackageModule?: ReadPackageModule,
+	entryFile: string,
+	readFile: ReadFile | undefined,
 ): BundleResult {
 	const issues: Diagnostic[] = [];
 	const modules = new Map<string, Module>();
 	const loading = new Set<string>();
 
-	const load = (id: string, source: string, isPackage: boolean): void => {
+	const load = (id: string, source: string): void => {
 		loading.add(id);
 		const resolutions: Record<string, string> = {};
 
 		for (const specifier of importSpecifiers(source)) {
-			if (!specifier.startsWith(".")) {
-				// Bare specifier: a function package, self-contained by rule.
-				resolutions[specifier] = specifier;
-				if (modules.has(specifier)) continue;
-				if (loading.has(specifier)) {
-					issues.push(scriptImportCycle(specifier, id));
-					continue;
-				}
-				const packageSource = readPackageModule?.(specifier);
-				if (packageSource === undefined) {
-					issues.push(scriptPackageImportUnresolved(specifier, id));
-					continue;
-				}
-				load(specifier, packageSource, true);
+			if (!isRelativeSpecifier(specifier)) {
+				issues.push(scriptImportBare(specifier, id));
 				continue;
 			}
-
-			if (isPackage) {
-				// v1: function packages cannot have their own relative files —
-				// readAsset only reaches the consuming component's directory.
+			if (!/\.(ts|js)$/.test(specifier)) {
 				issues.push(scriptImportInvalid(specifier, id));
 				continue;
 			}
-
-			const resolvedId = resolveSpecifier(id, specifier);
-			if (!resolvedId) {
+			const resolvedId = resolveImportPath(id, specifier);
+			if (resolvedId === undefined) {
 				issues.push(scriptImportInvalid(specifier, id));
 				continue;
 			}
@@ -82,12 +64,12 @@ export function bundleScript(
 				issues.push(scriptImportCycle(resolvedId, id));
 				continue;
 			}
-			const contents = readAsset?.(`./${resolvedId}`);
+			const contents = readFile?.(resolvedId);
 			if (contents === undefined) {
 				issues.push(scriptImportNotFound(specifier, id));
 				continue;
 			}
-			load(resolvedId, contents, false);
+			load(resolvedId, contents);
 		}
 
 		modules.set(id, {
@@ -103,7 +85,7 @@ export function bundleScript(
 		loading.delete(id);
 	};
 
-	load(entryId, entrySource, false);
+	load(entryFile, entrySource);
 
 	const moduleEntries = Array.from(modules.values());
 	const singleModule =
@@ -145,7 +127,7 @@ export function bundleScript(
 		"        }, module);",
 		"        return module.exports;",
 		"      }",
-		`      return __load(${JSON.stringify(entryId)}).default;`,
+		`      return __load(${JSON.stringify(entryFile)}).default;`,
 		"    })()",
 	].join("\n");
 
@@ -177,28 +159,6 @@ export function importSpecifiers(source: string): string[] {
 	}
 
 	return specifiers;
-}
-
-/**
- * Resolves a specifier against the importing module's directory, staying
- * inside the component dir. Returns undefined when the path escapes or
- * lacks a bundleable extension.
- */
-function resolveSpecifier(fromId: string, specifier: string): string | undefined {
-	if (!/\.(ts|js)$/.test(specifier)) return undefined;
-
-	const base = fromId.split("/").slice(0, -1);
-	const segments = [...base];
-	for (const segment of specifier.split("/")) {
-		if (segment === "." || segment === "") continue;
-		if (segment === "..") {
-			if (segments.length === 0) return undefined;
-			segments.pop();
-			continue;
-		}
-		segments.push(segment);
-	}
-	return segments.join("/");
 }
 
 function indent(text: string, prefix: string): string {

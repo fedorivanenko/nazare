@@ -806,12 +806,12 @@
     }
   ],
   "contract": {
-    "packageId": "@nazare/link",
-    "componentSymbolId": "symbol:component:@nazare/link#default",
+    "path": "examples/components/link/link.nz.liquid",
+    "componentSymbolId": "symbol:component:examples/components/link/link.nz.liquid#default",
     "props": [
       {
         "name": "href",
-        "symbolId": "symbol:prop:@nazare/link#default.href",
+        "symbolId": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
         "required": true,
         "hasDefault": false,
         "typeExpression": "url.required()",
@@ -823,7 +823,7 @@
       },
       {
         "name": "text",
-        "symbolId": "symbol:prop:@nazare/link#default.text",
+        "symbolId": "symbol:prop:examples/components/link/link.nz.liquid#default.text",
         "required": true,
         "hasDefault": false,
         "typeExpression": "string.required()",
@@ -835,7 +835,7 @@
       },
       {
         "name": "class",
-        "symbolId": "symbol:prop:@nazare/link#default.class",
+        "symbolId": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "required": false,
         "hasDefault": false,
         "typeExpression": "string.optional()",
@@ -855,7 +855,7 @@
       },
       {
         "name": "new_tab",
-        "symbolId": "symbol:prop:@nazare/link#default.new_tab",
+        "symbolId": "symbol:prop:examples/components/link/link.nz.liquid#default.new_tab",
         "required": false,
         "hasDefault": true,
         "typeExpression": "boolean.setting({ label: \"Open in new tab\", default: false })",

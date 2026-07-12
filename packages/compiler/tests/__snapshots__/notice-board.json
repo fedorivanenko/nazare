@@ -101,8 +101,8 @@
       {
         "id": "syntax:blocks-slot:examples/components/notice-board/notice-board.nz.liquid:1",
         "kind": "blocks-slot",
-        "packageIds": [
-          "@nazare/notice"
+        "blockTypes": [
+          "notice"
         ],
         "ownerId": "syntax:component:examples/components/notice-board/notice-board.nz.liquid",
         "span": {
@@ -113,7 +113,7 @@
           },
           "end": {
             "line": 7,
-            "column": 32
+            "column": 24
           }
         }
       }
@@ -153,53 +153,6 @@
         "source": "syntax",
         "semanticType": {
           "kind": "string"
-        }
-      },
-      {
-        "id": "symbol:component:@nazare/notice#default",
-        "kind": "component",
-        "name": "@nazare/notice",
-        "declarations": [],
-        "resolution": "external-resolved",
-        "source": "compiled-contract",
-        "packageId": "@nazare/notice"
-      },
-      {
-        "id": "symbol:prop:@nazare/notice#default.message",
-        "kind": "prop",
-        "name": "message",
-        "declarations": [],
-        "resolution": "external-resolved",
-        "source": "compiled-contract",
-        "ownerSymbolId": "symbol:component:@nazare/notice#default",
-        "semanticType": {
-          "kind": "string"
-        }
-      },
-      {
-        "id": "symbol:prop:@nazare/notice#default.tone",
-        "kind": "prop",
-        "name": "tone",
-        "declarations": [],
-        "resolution": "external-resolved",
-        "source": "compiled-contract",
-        "ownerSymbolId": "symbol:component:@nazare/notice#default",
-        "semanticType": {
-          "kind": "union",
-          "members": [
-            {
-              "kind": "string-literal",
-              "value": "info"
-            },
-            {
-              "kind": "string-literal",
-              "value": "success"
-            },
-            {
-              "kind": "string-literal",
-              "value": "warning"
-            }
-          ]
         }
       }
     ],
@@ -316,7 +269,7 @@
           },
           "end": {
             "line": 7,
-            "column": 32
+            "column": 24
           }
         }
       },
@@ -336,24 +289,6 @@
         "id": "symbol:setting:examples/components/notice-board/notice-board.nz.liquid#default.heading",
         "kind": "setting",
         "name": "section.settings.heading",
-        "layer": "symbol"
-      },
-      {
-        "id": "symbol:component:@nazare/notice#default",
-        "kind": "component",
-        "name": "@nazare/notice",
-        "layer": "symbol"
-      },
-      {
-        "id": "symbol:prop:@nazare/notice#default.message",
-        "kind": "prop",
-        "name": "message",
-        "layer": "symbol"
-      },
-      {
-        "id": "symbol:prop:@nazare/notice#default.tone",
-        "kind": "prop",
-        "name": "tone",
         "layer": "symbol"
       }
     ],
@@ -442,12 +377,12 @@
     }
   ],
   "contract": {
-    "packageId": "@nazare/notice-board",
-    "componentSymbolId": "symbol:component:@nazare/notice-board#default",
+    "path": "examples/components/notice-board/notice-board.nz.liquid",
+    "componentSymbolId": "symbol:component:examples/components/notice-board/notice-board.nz.liquid#default",
     "props": [
       {
         "name": "heading",
-        "symbolId": "symbol:prop:@nazare/notice-board#default.heading",
+        "symbolId": "symbol:prop:examples/components/notice-board/notice-board.nz.liquid#default.heading",
         "required": false,
         "hasDefault": true,
         "typeExpression": "string.setting({ label: \"Heading\", default: \"Notices\" })",

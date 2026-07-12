@@ -10,6 +10,16 @@ const componentsDir = join(repoRoot, "examples", "components");
 const snapshotsDir = join(dirname(fileURLToPath(import.meta.url)), "__snapshots__");
 const updateSnapshots = process.env.UPDATE_SNAPSHOTS === "1";
 
+// The repo root plays the project root: every file is identified by its
+// repo-relative path, and imports resolve across component directories.
+const readFile = (path) => {
+	try {
+		return readFileSync(join(repoRoot, path), "utf8");
+	} catch {
+		return undefined;
+	}
+};
+
 const components = readdirSync(componentsDir, { withFileTypes: true })
 	.filter((entry) => entry.isDirectory())
 	.map((entry) => {
@@ -20,38 +30,14 @@ const components = readdirSync(componentsDir, { withFileTypes: true })
 	})
 	.filter((component) => component.manifest.entry.endsWith(".nz.liquid"));
 
-function compileComponent(component, contracts) {
-	const entryPath = join(component.dir, component.manifest.entry);
-	const file = relative(repoRoot, entryPath);
-	return compileNazareArtifact(readFileSync(entryPath, "utf8"), file, {
-		packageId: component.manifest.id,
-		kind: component.manifest.kind,
-		dependencies: Object.keys(component.manifest.dependencies ?? {}),
-		contracts,
-		readAsset: (relativePath) => {
-			try {
-				return readFileSync(join(component.dir, relativePath), "utf8");
-			} catch {
-				return undefined;
-			}
-		},
-	});
-}
-
-const contractsByPackageId = new Map(
-	components.map((component) => [
-		component.manifest.id,
-		compileComponent(component, []).contract,
-	]),
-);
-
 for (const component of components) {
 	test(`golden: ${component.name}`, () => {
-		const contracts = Object.keys(component.manifest.dependencies ?? {})
-			.map((packageId) => contractsByPackageId.get(packageId))
-			.filter((contract) => contract !== undefined);
-
-		const result = compileComponent(component, contracts);
+		const entryPath = join(component.dir, component.manifest.entry);
+		const file = relative(repoRoot, entryPath);
+		const result = compileNazareArtifact(readFileSync(entryPath, "utf8"), file, {
+			kind: component.manifest.kind,
+			readFile,
+		});
 		const actual = `${JSON.stringify(
 			{
 				ir: result.ir,

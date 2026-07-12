@@ -48,29 +48,28 @@ test("provenance: undeclared props read is an error", () => {
 });
 
 test("provenance: props.x in render args carries the prop type", () => {
-	const link = compileNazareArtifact(
-		`{% props { href: url.required(), text: string.required() } %}`,
-		"link.nz.liquid",
-		{ packageId: "@test/link" },
-	).contract;
+	const readFile = (path) =>
+		path === "link.nz.liquid"
+			? `{% props { href: url.required(), text: string.required() } %}`
+			: undefined;
 
 	const ok = compileNazareArtifact(
-		`{% import Link from "@test/link" %}
+		`{% import Link from "./link.nz.liquid" %}
 {% props { url: url.setting({ label: "URL" }) } %}
 {% render Link {href: props.url, text: "Go"} %}`,
 		"consumer.nz.liquid",
-		{ contracts: [link] },
+		{ readFile },
 	);
 	assert.ok(
 		!ok.issues.some((i) => i.code === "CONSTRAINT_PROP_TYPE_MISMATCH"),
 	);
 
 	const bad = compileNazareArtifact(
-		`{% import Link from "@test/link" %}
+		`{% import Link from "./link.nz.liquid" %}
 {% props { count: number.required() } %}
 {% render Link {href: props.count, text: "Go"} %}`,
 		"consumer.nz.liquid",
-		{ contracts: [link] },
+		{ readFile },
 	);
 	assert.ok(
 		bad.issues.some((i) => i.code === "CONSTRAINT_PROP_TYPE_MISMATCH"),

@@ -2,23 +2,25 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compileNazareArtifact, emitTheme } from "../dist/index.js";
 
-const sidecars = {
-	"./widget.ts": `export default island(({ refs }) => {
+const files = {
+	"components/widget/widget.ts": `export default island(({ refs }) => {
   refs.trigger.disabled = true;
 });
 `,
-	"./widget.css": `.widget { color: red; }
+	"components/widget/widget.css": `.widget { color: red; }
+`,
+	"shared/util.ts": `export const noop = () => {};
 `,
 };
 
-function compile(source, readAsset = (path) => sidecars[path]) {
+function compile(source, readFile = (path) => files[path]) {
 	return compileNazareArtifact(source, "components/widget/widget.nz.liquid", {
-		readAsset,
+		readFile,
 	});
 }
 
-test("asset-import: ts sidecar becomes a script node with sidecar spans", () => {
-	const result = compile(`{% import "./widget.ts" %}
+test("asset-import: ts import becomes a script node with its own spans", () => {
+	const result = compile(`{% import widget from "./widget.ts" %}
 <button ref="trigger">Go</button>`);
 	const script = result.ir.syntax.find((node) => node.kind === "script");
 	assert.equal(script?.lang, "ts");
@@ -31,8 +33,8 @@ test("asset-import: ts sidecar becomes a script node with sidecar spans", () => 
 	assert.equal(bindings.length, 1);
 });
 
-test("asset-import: css sidecar becomes a style node and scoped asset", () => {
-	const source = `{% import "./widget.css" %}
+test("asset-import: css import becomes a style node and scoped asset", () => {
+	const source = `{% import styles from "./widget.css" %}
 <div class="widget"></div>`;
 	const result = compile(source);
 	const style = result.ir.syntax.find((node) => node.kind === "style");
@@ -47,33 +49,76 @@ test("asset-import: css sidecar becomes a style node and scoped asset", () => {
 	assert.ok(!liquid.contents.includes("{% import"));
 });
 
-test("asset-import: unreadable sidecar is an error", () => {
-	const result = compile(`{% import "./missing.ts" %}
+test("asset-import: unreadable file is an error", () => {
+	const result = compile(`{% import missing from "./missing.ts" %}
 <div></div>`);
 	const issue = result.issues.find(
-		(candidate) => candidate.code === "ASSET_IMPORT_NOT_FOUND",
+		(candidate) => candidate.code === "IMPORT_NOT_FOUND",
 	);
 	assert.equal(issue?.severity, "error");
 });
 
-test("asset-import: escaping the component directory is a parse error", () => {
-	const result = compile(`{% import "../shared/util.ts" %}
+test("asset-import: reaching another project directory is allowed", () => {
+	const result = compile(`{% import util from "../../shared/util.ts" %}
+<div></div>`);
+	assert.deepEqual(
+		result.issues.filter((i) => i.severity === "error"),
+		[],
+	);
+	const script = result.ir.syntax.find((node) => node.kind === "script");
+	assert.equal(script?.bodySpan?.file, "shared/util.ts");
+});
+
+test("asset-import: escaping the project root is an error", () => {
+	const result = compile(`{% import util from "../../../outside/util.ts" %}
 <div></div>`);
 	assert.ok(
-		result.issues.some((i) => i.code === "NAZARE_PARSE_ASSET_IMPORT"),
+		result.issues.some((i) => i.code === "NAZARE_IMPORT_OUTSIDE_PROJECT"),
 	);
 });
 
-test("asset-import: unsupported extension is a parse error", () => {
-	const result = compile(`{% import "./data.json" %}
+test("asset-import: side-effect form is a parse error", () => {
+	const result = compile(`{% import "./widget.ts" %}
+<div></div>`);
+	assert.ok(result.issues.some((i) => i.code === "NAZARE_PARSE_IMPORT"));
+});
+
+test("asset-import: bare specifier is an error", () => {
+	const result = compile(`{% import widget from "widget" %}
 <div></div>`);
 	assert.ok(
-		result.issues.some((i) => i.code === "NAZARE_PARSE_ASSET_IMPORT"),
+		result.issues.some((i) => i.code === "NAZARE_IMPORT_BARE_SPECIFIER"),
+	);
+});
+
+test("asset-import: unsupported extension is an error", () => {
+	const result = compile(`{% import data from "./data.json" %}
+<div></div>`);
+	assert.ok(
+		result.issues.some(
+			(i) => i.code === "NAZARE_IMPORT_UNSUPPORTED_EXTENSION",
+		),
+	);
+});
+
+test("asset-import: capitalized behavior binding is an error", () => {
+	const result = compile(`{% import Widget from "./widget.ts" %}
+<div></div>`);
+	assert.ok(
+		result.issues.some((i) => i.code === "NAZARE_IMPORT_BINDING_CASE"),
+	);
+});
+
+test("asset-import: lowercase component binding is an error", () => {
+	const result = compile(`{% import card from "./card.nz.liquid" %}
+<div></div>`);
+	assert.ok(
+		result.issues.some((i) => i.code === "NAZARE_IMPORT_COMPONENT_CASE"),
 	);
 });
 
 test("asset-import: declaration order is mount order across inline and imported", () => {
-	const result = compile(`{% import "./widget.ts" %}
+	const result = compile(`{% import widget from "./widget.ts" %}
 <button ref="trigger">Go</button>
 {% script %}
 export default island(({ refs }) => refs.trigger.focus());

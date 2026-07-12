@@ -23,6 +23,7 @@ import {
 } from "./diagnostics.js";
 import { bundleScript } from "./bundle.js";
 import { type HoistedSetting, resolveHoistedSettings } from "./hoist.js";
+import { baseNameOf, directoryOf } from "./paths.js";
 import { hasDefaultExport } from "./script-scan.js";
 import { themeSchemaFromIR } from "./schema.js";
 import { scopeCss } from "./scope-css.js";
@@ -31,10 +32,8 @@ import { offsetFromPosition } from "./source.js";
 export type EmitThemeOptions = {
 	name: string;
 	kind?: NazareManifest["kind"];
-	/** Reads component-relative files; enables bundling of script imports. */
-	readAsset?: (relativePath: string) => string | undefined;
-	/** Supplies function-package sources for bare script imports. */
-	readPackageModule?: (packageId: string) => string | undefined;
+	/** Reads project files (see index.ts); enables bundling of script imports. */
+	readFile?: (path: string) => string | undefined;
 };
 
 export type EmittedFile = {
@@ -135,10 +134,8 @@ function emitLiquid(
 
 	for (const node of compiled.ir.syntax) {
 		if (node.kind === "import") {
-			snippetNamesByLocalName.set(
-				node.localName,
-				node.packageId.split("/").at(-1) ?? node.localName,
-			);
+			// The imported file's own build emits snippets/<basename>.liquid.
+			snippetNamesByLocalName.set(node.localName, baseNameOf(node.path));
 		}
 		if (node.kind === "prop-argument") argumentsById.set(node.id, node);
 		if (node.kind === "expression") expressionsById.set(node.id, node.source);
@@ -273,7 +270,7 @@ function generatedHeader(
 		lines.push("Hoisted settings (declared by dependencies):");
 		for (const entry of hoisted) {
 			lines.push(
-				`  ${entry.settingId} <- prop "${entry.sourcePropName}" of ${entry.sourcePackageId} (via ${entry.alias})`,
+				`  ${entry.settingId} <- prop "${entry.sourcePropName}" of ${entry.sourcePath} (via ${entry.alias})`,
 			);
 		}
 	}
@@ -367,7 +364,7 @@ function emitComponentScript(
 	descriptor: Record<string, Record<string, string>>,
 	issues: Diagnostic[],
 ): string {
-	const componentDir = componentFile.split("/").slice(0, -1).join("/");
+	const componentDir = directoryOf(componentFile);
 
 	// Each behavior registers separately so declaration order is mount order
 	// and one default export cannot clobber another.
@@ -375,17 +372,14 @@ function emitComponentScript(
 		if (!hasDefaultExport(script.source)) {
 			issues.push(emitScriptWithoutDefaultExport(options.name, script.span));
 		}
-		const entryId =
+		// Imported behaviors bundle under their own path; inline scripts get a
+		// synthetic entry beside the component so relative imports resolve.
+		const entryFile =
 			script.bodySpan && script.bodySpan.file !== componentFile
-				? script.bodySpan.file.replace(`${componentDir}/`, "")
-				: `inline-${index + 1}.ts`;
+				? script.bodySpan.file
+				: `${componentDir ? `${componentDir}/` : ""}inline-${index + 1}.ts`;
 
-		const bundle = bundleScript(
-			script.source,
-			entryId,
-			options.readAsset,
-			options.readPackageModule,
-		);
+		const bundle = bundleScript(script.source, entryFile, options.readFile);
 		issues.push(...bundle.issues);
 
 		return `window.Nazare.register(${JSON.stringify(options.name)}, ${bundle.code}, __data);`;

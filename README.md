@@ -22,12 +22,12 @@ all of them with a diagnostic that says what to do instead.
   must be a `.setting()` (otherwise it would render silently blank).
 - Blocks (`kind: "block"`) compile to theme blocks with their own schema
   and a default preset; a section offers the slot with
-  `{% blocks "@pkg/a" %}` (bare `{% blocks %}` accepts any theme block).
-  One slot per section; blocks cannot nest in v1.
+  `{% blocks "notice" %}` (theme-block type names; bare `{% blocks %}`
+  accepts any theme block). One slot per section; blocks cannot nest in v1.
 - A setting-prop argument you leave unfilled at a render site hoists into
   the consuming section's schema. Filling the argument is the opt-out.
 - The same import alias rendered twice with unfilled setting-props is an
-  error — import the package again under a second alias to give each
+  error — import the file again under a second alias to give each
   instance its own settings.
 - Types are strict: a plain string is not a `url`, `color`, `richtext`, or
   `handle`. Widen explicitly with `.or(string)` when you mean it.
@@ -47,17 +47,22 @@ all of them with a diagnostic that says what to do instead.
   hydrate, and props do not reach JS — data crosses in the markup.
 - Multiple behaviors per component are fine; declaration order is mount
   order.
-- Relative imports (`./utils.ts` inside the component directory) and
-  function packages (`import { cn } from "@nazare/cn"` — manifest kind
-  `"function"`) are bundled into the emitted asset, and types flow across
-  them. Function packages must be self-contained (no relative files of
-  their own). Other bare imports fail at build. Don't shadow `refs`/`data`
-  with local variables — the scanner does not scope-analyze.
+- Relative imports (`./utils.ts`, `../cn/cn.ts` — anywhere inside the
+  project) are bundled into the emitted asset, and types flow across them.
+  Bare imports (`import { x } from "pkg"`) fail at build: Nazare has no
+  packages at build time — installing a component copies its source into
+  the project. Don't shadow `refs`/`data` with local variables — the
+  scanner does not scope-analyze.
 
 **Files**
-- `{% import X from "@pkg/name" %}` declares a package dependency;
-  `{% import "./file.ts|.js|.css" %}` declares a sidecar, which must live
-  inside the component's directory.
+- Every import binds a name to a relative path:
+  `{% import Link from "../link/link.nz.liquid" %}` (component —
+  capitalized), `{% import counter from "./counter.ts" %}` (behavior) and
+  `{% import styles from "./counter.css" %}` (style) — lowercase. Wrong
+  case, bare specifiers, side-effect imports, and paths escaping the
+  project root are all errors.
+- Importing a component compiles that file on the spot to derive its
+  props contract — there is no registry lookup at compile time.
 - `{% stylesheet %}` blocks are extracted and scoped under the component
   (this is stricter than vanilla Shopify); `{% style %}` passes through
   untouched. Scoping expects a single top-level root element — the first one

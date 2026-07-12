@@ -2,24 +2,29 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compileNazareArtifact } from "../dist/index.js";
 
-const linkSource = `{% props {
+const files = {
+	"link.nz.liquid": `{% props {
   href: url.required(),
   text: string.required(),
-} %}`;
+} %}`,
+	"flexible.nz.liquid": `{% props {
+  href: url.or(string).required(),
+  align: string.enum("left", "right"),
+} %}`,
+	"gauge.nz.liquid": `{% props {
+  size: number.min(0).max(100).step(5).required(),
+} %}`,
+};
 
-const linkContract = compileNazareArtifact(linkSource, "link.nz.liquid", {
-	packageId: "@test/link",
-}).contract;
+const readFile = (path) => files[path];
 
 function compileConsumer(renderBody) {
-	const source = `{% import Link from "@test/link" %}
+	const source = `{% import Link from "./link.nz.liquid" %}
 {% props {
   link: url.setting({ label: "Link" }),
 } %}
 {% render Link {${renderBody}} %}`;
-	return compileNazareArtifact(source, "consumer.nz.liquid", {
-		contracts: [linkContract],
-	});
+	return compileNazareArtifact(source, "consumer.nz.liquid", { readFile });
 }
 
 function codes(result) {
@@ -60,28 +65,19 @@ test("check: prop type mismatch reported but binding still created", () => {
 });
 
 // Intentional strictness: a string literal is not a url. Accepting strings
-// for a prop requires the contract to say so (future union type, url | string).
+// for a prop requires the contract to say so (union type, url | string).
 test("check: string literal is not assignable to url prop", () => {
 	const result = compileConsumer(`href: "https://x.dev", text: "Go"`);
 	assert.ok(codes(result).includes("CONSTRAINT_PROP_TYPE_MISMATCH"));
 });
 
 test("check: union prop accepts any member type", () => {
-	const flexibleLink = compileNazareArtifact(
-		`{% props {
-  href: url.or(string).required(),
-  align: string.enum("left", "right"),
-} %}`,
-		"flexible.nz.liquid",
-		{ packageId: "@test/flexible" },
-	).contract;
-
 	const compile = (body) =>
 		compileNazareArtifact(
-			`{% import Flexible from "@test/flexible" %}
+			`{% import Flexible from "./flexible.nz.liquid" %}
 {% render Flexible {${body}} %}`,
 			"consumer.nz.liquid",
-			{ contracts: [flexibleLink] },
+			{ readFile },
 		);
 
 	const ok = compile(`href: "https://x.dev", align: "left"`);
@@ -95,20 +91,12 @@ test("check: union prop accepts any member type", () => {
 });
 
 test("check: number literal checked against range constraints", () => {
-	const gauge = compileNazareArtifact(
-		`{% props {
-  size: number.min(0).max(100).step(5).required(),
-} %}`,
-		"gauge.nz.liquid",
-		{ packageId: "@test/gauge" },
-	).contract;
-
 	const compile = (body) =>
 		compileNazareArtifact(
-			`{% import Gauge from "@test/gauge" %}
+			`{% import Gauge from "./gauge.nz.liquid" %}
 {% render Gauge {${body}} %}`,
 			"consumer.nz.liquid",
-			{ contracts: [gauge] },
+			{ readFile },
 		);
 
 	assert.deepEqual(
@@ -128,10 +116,13 @@ test("check: number literal checked against range constraints", () => {
 	);
 });
 
-test("check: unresolved contract downgrades to warning", () => {
-	const source = `{% import Card from "@test/card" %}
+test("check: unreadable component import is an error plus contract warning", () => {
+	const source = `{% import Card from "./card.nz.liquid" %}
 {% render Card {title: "Hi"} %}`;
-	const result = compileNazareArtifact(source, "consumer.nz.liquid");
+	const result = compileNazareArtifact(source, "consumer.nz.liquid", {
+		readFile,
+	});
+	assert.ok(codes(result).includes("IMPORT_NOT_FOUND"));
 	const issue = result.issues.find(
 		(candidate) => candidate.code === "CONSTRAINT_UNRESOLVED_EXTERNAL_CONTRACT",
 	);

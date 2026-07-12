@@ -17,11 +17,7 @@ export type ArtifactSymbolResolution =
 	| "external-resolved"
 	| "external-unresolved";
 
-export type ArtifactSymbolSource =
-	| "syntax"
-	| "manifest"
-	| "compiled-contract"
-	| "registry";
+export type ArtifactSymbolSource = "syntax" | "compiled-contract";
 
 export type ArtifactSymbol = {
 	id: Id;
@@ -30,7 +26,6 @@ export type ArtifactSymbol = {
 	declarations: Id[];
 	resolution: ArtifactSymbolResolution;
 	source: ArtifactSymbolSource;
-	packageId?: string;
 	ownerSymbolId?: Id;
 	semanticType?: SemanticType;
 };

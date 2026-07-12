@@ -80,7 +80,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 				id: importSyntaxId(ast.file, node.localName),
 				kind: "import",
 				localName: node.localName,
-				packageId: node.packageId,
+				path: node.path,
 				fileId,
 				span: node.span,
 			};
@@ -188,7 +188,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 			syntax.push({
 				id: blocksSlotSyntaxId(ast.file, blocksSlotIndex),
 				kind: "blocks-slot",
-				packageIds: node.packageIds,
+				blockTypes: node.blockTypes,
 				ownerId: componentId,
 				span: node.span,
 			});

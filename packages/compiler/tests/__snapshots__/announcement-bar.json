@@ -38,7 +38,7 @@
         "id": "syntax:import:examples/components/announcement-bar/announcement-bar.nz.liquid:Link",
         "kind": "import",
         "localName": "Link",
-        "packageId": "@nazare/link",
+        "path": "examples/components/link/link.nz.liquid",
         "fileId": "syntax:file:examples/components/announcement-bar/announcement-bar.nz.liquid",
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
@@ -48,7 +48,7 @@
           },
           "end": {
             "line": 1,
-            "column": 38
+            "column": 48
           }
         }
       },
@@ -330,13 +330,12 @@
         "source": "syntax"
       },
       {
-        "id": "symbol:component:@nazare/link#default",
+        "id": "symbol:component:examples/components/link/link.nz.liquid#default",
         "kind": "component",
-        "name": "@nazare/link",
+        "name": "examples/components/link/link.nz.liquid",
         "declarations": [],
         "resolution": "external-resolved",
-        "source": "compiled-contract",
-        "packageId": "@nazare/link"
+        "source": "compiled-contract"
       },
       {
         "id": "symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
@@ -391,37 +390,37 @@
         }
       },
       {
-        "id": "symbol:prop:@nazare/link#default.href",
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
         "kind": "prop",
         "name": "href",
         "declarations": [],
         "resolution": "external-resolved",
         "source": "compiled-contract",
-        "ownerSymbolId": "symbol:component:@nazare/link#default",
+        "ownerSymbolId": "symbol:component:examples/components/link/link.nz.liquid#default",
         "semanticType": {
           "kind": "url"
         }
       },
       {
-        "id": "symbol:prop:@nazare/link#default.text",
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.text",
         "kind": "prop",
         "name": "text",
         "declarations": [],
         "resolution": "external-resolved",
         "source": "compiled-contract",
-        "ownerSymbolId": "symbol:component:@nazare/link#default",
+        "ownerSymbolId": "symbol:component:examples/components/link/link.nz.liquid#default",
         "semanticType": {
           "kind": "string"
         }
       },
       {
-        "id": "symbol:prop:@nazare/link#default.class",
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "kind": "prop",
         "name": "class",
         "declarations": [],
         "resolution": "external-resolved",
         "source": "compiled-contract",
-        "ownerSymbolId": "symbol:component:@nazare/link#default",
+        "ownerSymbolId": "symbol:component:examples/components/link/link.nz.liquid#default",
         "semanticType": {
           "kind": "union",
           "members": [
@@ -435,13 +434,13 @@
         }
       },
       {
-        "id": "symbol:prop:@nazare/link#default.new_tab",
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.new_tab",
         "kind": "prop",
         "name": "new_tab",
         "declarations": [],
         "resolution": "external-resolved",
         "source": "compiled-contract",
-        "ownerSymbolId": "symbol:component:@nazare/link#default",
+        "ownerSymbolId": "symbol:component:examples/components/link/link.nz.liquid#default",
         "semanticType": {
           "kind": "boolean"
         }
@@ -451,13 +450,13 @@
       {
         "kind": "alias-target",
         "aliasSymbolId": "symbol:alias:examples/components/announcement-bar/announcement-bar.nz.liquid.Link",
-        "targetSymbolId": "symbol:component:@nazare/link#default"
+        "targetSymbolId": "symbol:component:examples/components/link/link.nz.liquid#default"
       },
       {
         "kind": "import-target",
         "importId": "syntax:import:examples/components/announcement-bar/announcement-bar.nz.liquid:Link",
         "aliasSymbolId": "symbol:alias:examples/components/announcement-bar/announcement-bar.nz.liquid.Link",
-        "targetSymbolId": "symbol:component:@nazare/link#default"
+        "targetSymbolId": "symbol:component:examples/components/link/link.nz.liquid#default"
       },
       {
         "kind": "setting-projection",
@@ -472,30 +471,30 @@
       {
         "kind": "render-target",
         "renderSiteId": "syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1",
-        "symbolId": "symbol:component:@nazare/link#default"
+        "symbolId": "symbol:component:examples/components/link/link.nz.liquid#default"
       },
       {
         "kind": "prop-binding",
         "renderSiteId": "syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1",
         "argumentId": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href",
-        "targetComponentSymbolId": "symbol:component:@nazare/link#default",
-        "propSymbolId": "symbol:prop:@nazare/link#default.href",
+        "targetComponentSymbolId": "symbol:component:examples/components/link/link.nz.liquid#default",
+        "propSymbolId": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
         "expressionId": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href"
       },
       {
         "kind": "prop-binding",
         "renderSiteId": "syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1",
         "argumentId": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text",
-        "targetComponentSymbolId": "symbol:component:@nazare/link#default",
-        "propSymbolId": "symbol:prop:@nazare/link#default.text",
+        "targetComponentSymbolId": "symbol:component:examples/components/link/link.nz.liquid#default",
+        "propSymbolId": "symbol:prop:examples/components/link/link.nz.liquid#default.text",
         "expressionId": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text"
       },
       {
         "kind": "prop-binding",
         "renderSiteId": "syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1",
         "argumentId": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:class",
-        "targetComponentSymbolId": "symbol:component:@nazare/link#default",
-        "propSymbolId": "symbol:prop:@nazare/link#default.class",
+        "targetComponentSymbolId": "symbol:component:examples/components/link/link.nz.liquid#default",
+        "propSymbolId": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "expressionId": "syntax:expression:examples/components/announcement-bar/announcement-bar.nz.liquid:1:class"
       },
       {
@@ -564,7 +563,7 @@
           },
           "end": {
             "line": 1,
-            "column": 38
+            "column": 48
           }
         }
       },
@@ -768,9 +767,9 @@
         "layer": "symbol"
       },
       {
-        "id": "symbol:component:@nazare/link#default",
+        "id": "symbol:component:examples/components/link/link.nz.liquid#default",
         "kind": "component",
-        "name": "@nazare/link",
+        "name": "examples/components/link/link.nz.liquid",
         "layer": "symbol"
       },
       {
@@ -798,25 +797,25 @@
         "layer": "symbol"
       },
       {
-        "id": "symbol:prop:@nazare/link#default.href",
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
         "kind": "prop",
         "name": "href",
         "layer": "symbol"
       },
       {
-        "id": "symbol:prop:@nazare/link#default.text",
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.text",
         "kind": "prop",
         "name": "text",
         "layer": "symbol"
       },
       {
-        "id": "symbol:prop:@nazare/link#default.class",
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "kind": "prop",
         "name": "class",
         "layer": "symbol"
       },
       {
-        "id": "symbol:prop:@nazare/link#default.new_tab",
+        "id": "symbol:prop:examples/components/link/link.nz.liquid#default.new_tab",
         "kind": "prop",
         "name": "new_tab",
         "layer": "symbol"
@@ -950,17 +949,17 @@
         "origin": "resolved"
       },
       {
-        "id": "edge:resolved:aliases:symbol:alias:examples/components/announcement-bar/announcement-bar.nz.liquid.Link->symbol:component:@nazare/link#default",
+        "id": "edge:resolved:aliases:symbol:alias:examples/components/announcement-bar/announcement-bar.nz.liquid.Link->symbol:component:examples/components/link/link.nz.liquid#default",
         "kind": "aliases",
         "from": "symbol:alias:examples/components/announcement-bar/announcement-bar.nz.liquid.Link",
-        "to": "symbol:component:@nazare/link#default",
+        "to": "symbol:component:examples/components/link/link.nz.liquid#default",
         "origin": "resolved"
       },
       {
-        "id": "edge:derived:imports:syntax:import:examples/components/announcement-bar/announcement-bar.nz.liquid:Link->symbol:component:@nazare/link#default",
+        "id": "edge:derived:imports:syntax:import:examples/components/announcement-bar/announcement-bar.nz.liquid:Link->symbol:component:examples/components/link/link.nz.liquid#default",
         "kind": "imports",
         "from": "syntax:import:examples/components/announcement-bar/announcement-bar.nz.liquid:Link",
-        "to": "symbol:component:@nazare/link#default",
+        "to": "symbol:component:examples/components/link/link.nz.liquid#default",
         "origin": "derived"
       },
       {
@@ -978,52 +977,52 @@
         "origin": "resolved"
       },
       {
-        "id": "edge:resolved:renders:syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1->symbol:component:@nazare/link#default",
+        "id": "edge:resolved:renders:syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1->symbol:component:examples/components/link/link.nz.liquid#default",
         "kind": "renders",
         "from": "syntax:render-site:examples/components/announcement-bar/announcement-bar.nz.liquid:1",
-        "to": "symbol:component:@nazare/link#default",
+        "to": "symbol:component:examples/components/link/link.nz.liquid#default",
         "origin": "resolved"
       },
       {
-        "id": "edge:resolved:expects-prop:symbol:component:@nazare/link#default->symbol:prop:@nazare/link#default.href",
+        "id": "edge:resolved:expects-prop:symbol:component:examples/components/link/link.nz.liquid#default->symbol:prop:examples/components/link/link.nz.liquid#default.href",
         "kind": "expects-prop",
-        "from": "symbol:component:@nazare/link#default",
-        "to": "symbol:prop:@nazare/link#default.href",
+        "from": "symbol:component:examples/components/link/link.nz.liquid#default",
+        "to": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
         "origin": "resolved"
       },
       {
-        "id": "edge:resolved:binds-to:syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href->symbol:prop:@nazare/link#default.href",
+        "id": "edge:resolved:binds-to:syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href->symbol:prop:examples/components/link/link.nz.liquid#default.href",
         "kind": "binds-to",
         "from": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:href",
-        "to": "symbol:prop:@nazare/link#default.href",
+        "to": "symbol:prop:examples/components/link/link.nz.liquid#default.href",
         "origin": "resolved"
       },
       {
-        "id": "edge:resolved:expects-prop:symbol:component:@nazare/link#default->symbol:prop:@nazare/link#default.text",
+        "id": "edge:resolved:expects-prop:symbol:component:examples/components/link/link.nz.liquid#default->symbol:prop:examples/components/link/link.nz.liquid#default.text",
         "kind": "expects-prop",
-        "from": "symbol:component:@nazare/link#default",
-        "to": "symbol:prop:@nazare/link#default.text",
+        "from": "symbol:component:examples/components/link/link.nz.liquid#default",
+        "to": "symbol:prop:examples/components/link/link.nz.liquid#default.text",
         "origin": "resolved"
       },
       {
-        "id": "edge:resolved:binds-to:syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text->symbol:prop:@nazare/link#default.text",
+        "id": "edge:resolved:binds-to:syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text->symbol:prop:examples/components/link/link.nz.liquid#default.text",
         "kind": "binds-to",
         "from": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:text",
-        "to": "symbol:prop:@nazare/link#default.text",
+        "to": "symbol:prop:examples/components/link/link.nz.liquid#default.text",
         "origin": "resolved"
       },
       {
-        "id": "edge:resolved:expects-prop:symbol:component:@nazare/link#default->symbol:prop:@nazare/link#default.class",
+        "id": "edge:resolved:expects-prop:symbol:component:examples/components/link/link.nz.liquid#default->symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "kind": "expects-prop",
-        "from": "symbol:component:@nazare/link#default",
-        "to": "symbol:prop:@nazare/link#default.class",
+        "from": "symbol:component:examples/components/link/link.nz.liquid#default",
+        "to": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "origin": "resolved"
       },
       {
-        "id": "edge:resolved:binds-to:syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:class->symbol:prop:@nazare/link#default.class",
+        "id": "edge:resolved:binds-to:syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:class->symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "kind": "binds-to",
         "from": "syntax:prop-argument:examples/components/announcement-bar/announcement-bar.nz.liquid:1:class",
-        "to": "symbol:prop:@nazare/link#default.class",
+        "to": "symbol:prop:examples/components/link/link.nz.liquid#default.class",
         "origin": "resolved"
       },
       {
@@ -1084,12 +1083,12 @@
     }
   ],
   "contract": {
-    "packageId": "@nazare/announcement-bar",
-    "componentSymbolId": "symbol:component:@nazare/announcement-bar#default",
+    "path": "examples/components/announcement-bar/announcement-bar.nz.liquid",
+    "componentSymbolId": "symbol:component:examples/components/announcement-bar/announcement-bar.nz.liquid#default",
     "props": [
       {
         "name": "text",
-        "symbolId": "symbol:prop:@nazare/announcement-bar#default.text",
+        "symbolId": "symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.text",
         "required": false,
         "hasDefault": true,
         "typeExpression": "string.setting({\n    label: \"Text\",\n    default: \"Free shipping on orders over $50\",\n  })",
@@ -1105,7 +1104,7 @@
       },
       {
         "name": "link",
-        "symbolId": "symbol:prop:@nazare/announcement-bar#default.link",
+        "symbolId": "symbol:prop:examples/components/announcement-bar/announcement-bar.nz.liquid#default.link",
         "required": false,
         "hasDefault": false,
         "typeExpression": "url.setting({\n    label: \"Link\",\n  })",
@@ -1122,7 +1121,7 @@
     "hoisted": [
       {
         "name": "link_new_tab",
-        "sourcePackageId": "@nazare/link",
+        "sourcePath": "examples/components/link/link.nz.liquid",
         "sourcePropName": "new_tab",
         "typeInfo": {
           "valueType": {

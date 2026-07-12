@@ -61,11 +61,10 @@ test("blocks: block kind requires setting props", () => {
 test("blocks: section slot lowers to content_for and the schema blocks array", () => {
 	const source = `{% props { heading: string.setting({ label: "H" }) } %}
 <section><h2>{{ props.heading }}</h2>
-{% blocks "@nazare/notice", "@nazare/quote" %}
+{% blocks "notice", "quote" %}
 </section>`;
 	const compiled = compileNazareArtifact(source, "board.nz.liquid", {
 		kind: "section",
-		dependencies: ["@nazare/notice", "@nazare/quote"],
 	});
 	assert.deepEqual(
 		codes(compiled).filter((code) => code.startsWith("CONSTRAINT")),
@@ -98,15 +97,6 @@ test("blocks: bare slot accepts any theme block", () => {
 	assert.deepEqual(schema.blocks, [{ type: "@theme" }]);
 });
 
-test("blocks: slot packages are dependency-checked", () => {
-	const result = compileNazareArtifact(
-		`<section>{% blocks "@nazare/notice" %}</section>`,
-		"board.nz.liquid",
-		{ kind: "section", dependencies: [] },
-	);
-	assert.ok(codes(result).includes("CONSTRAINT_UNDECLARED_DEPENDENCY"));
-});
-
 test("blocks: slot outside a section is an error", () => {
 	const result = compileNazareArtifact(
 		`<div>{% blocks %}</div>`,
@@ -127,7 +117,7 @@ test("blocks: more than one slot is an error", () => {
 
 test("blocks: malformed slot markup is a parse error", () => {
 	const result = compileNazareArtifact(
-		`<section>{% blocks @nazare/notice %}</section>`,
+		`<section>{% blocks notice %}</section>`,
 		"board.nz.liquid",
 	);
 	assert.ok(codes(result).includes("NAZARE_PARSE_BLOCKS_SLOT"));

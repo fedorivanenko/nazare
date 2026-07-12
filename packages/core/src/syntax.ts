@@ -71,7 +71,8 @@ export type ImportSyntaxNode = {
 	id: Id;
 	kind: "import";
 	localName: string;
-	packageId: string;
+	/** Project-relative path of the imported component file. */
+	path: string;
 	fileId: Id;
 	span?: SourceSpan;
 };
@@ -130,8 +131,8 @@ export type ScriptSyntaxNode = {
 export type BlocksSlotSyntaxNode = {
 	id: Id;
 	kind: "blocks-slot";
-	/** Accepted block package ids; empty means accept any theme block. */
-	packageIds: string[];
+	/** Accepted theme-block type names; empty means accept any theme block. */
+	blockTypes: string[];
 	ownerId: Id;
 	span?: SourceSpan;
 };

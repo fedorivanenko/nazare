@@ -6,20 +6,13 @@
 // slower than the rest of the pipeline, so callers opt in (the CLI does).
 import type { ArtifactIR, Diagnostic, SourceSpan } from "@nazare/core";
 import ts from "typescript";
-import { importSpecifiers } from "./bundle.js";
 import { type DataChannel, dataChannelFromIR } from "./data-channel.js";
 import { scriptTypeError } from "./diagnostics.js";
-
-// Rooted at "/" — TS's program-level module resolution silently skips
-// resolution for rootless containing files, so the virtual component lives
-// at the filesystem root and sidecars alongside it.
-const virtualFileName = "/component.ts";
+import { directoryOf } from "./paths.js";
 
 export type CheckComponentScriptsOptions = {
-	/** Resolves ./-relative script imports so cross-module types check. */
-	readAsset?: (relativePath: string) => string | undefined;
-	/** Supplies function-package sources for bare script imports. */
-	readPackageModule?: (packageId: string) => string | undefined;
+	/** Reads project files so relative script imports type-check (see index.ts). */
+	readFile?: (path: string) => string | undefined;
 };
 
 export function checkComponentScripts(
@@ -31,6 +24,8 @@ export function checkComponentScripts(
 	const scripts = ir.syntax.filter(
 		(node) => node.kind === "script" && node.lang === "ts",
 	);
+	const componentFile =
+		ir.syntax.find((node) => node.kind === "file")?.path ?? "";
 
 	const channel = dataChannelFromIR(ir);
 
@@ -39,11 +34,14 @@ export function checkComponentScripts(
 		const prelude = preludeFor(refs, channel);
 		const virtualSource = `${prelude}\n${script.source}`;
 		const preludeLines = prelude.split("\n").length;
+		// The virtual entry lives in the script's own directory so its
+		// relative imports resolve exactly as the bundler resolves them.
+		const scriptDir = directoryOf(script.bodySpan?.file ?? componentFile);
 
 		for (const diagnostic of typescriptDiagnostics(
 			virtualSource,
-			options.readAsset,
-			packageModules(script.source, options.readPackageModule),
+			scriptDir,
+			options.readFile,
 		)) {
 			if (isRedundantUnknownRef(diagnostic)) continue;
 			issues.push(
@@ -99,44 +97,21 @@ declare function island(
 ): (context: NazareContext) => void;`;
 }
 
-/**
- * Serves function-package sources at virtual paths, mapped via
- * compilerOptions.paths so bare specifiers type-check. Direct imports only;
- * a package importing another package is typed at bundle level, not here.
- */
-function packageModules(
-	scriptSource: string,
-	readPackageModule: ((packageId: string) => string | undefined) | undefined,
-): Map<string, { virtualPath: string; source: string }> {
-	const packages = new Map<string, { virtualPath: string; source: string }>();
-	if (!readPackageModule) return packages;
-	for (const specifier of importSpecifiers(scriptSource)) {
-		if (specifier.startsWith(".") || packages.has(specifier)) continue;
-		const source = readPackageModule(specifier);
-		if (source === undefined) continue;
-		packages.set(specifier, {
-			virtualPath: `/nz-packages/${specifier}.ts`,
-			source,
-		});
-	}
-	return packages;
-}
-
 function typescriptDiagnostics(
 	virtualSource: string,
-	readAsset: ((relativePath: string) => string | undefined) | undefined,
-	packages: Map<string, { virtualPath: string; source: string }>,
+	scriptDir: string,
+	readFile: ((path: string) => string | undefined) | undefined,
 ): readonly ts.Diagnostic[] {
-	const paths: Record<string, string[]> = {};
-	for (const [specifier, entry] of packages) {
-		paths[specifier] = [entry.virtualPath];
-	}
+	// Rooted at "/" — TS's program-level module resolution silently skips
+	// resolution for rootless containing files, so the project is mirrored
+	// under the filesystem root: "/<project-relative-path>" for every file
+	// readFile can serve, with the virtual entry beside the real script.
+	const virtualFileName = `${scriptDir ? `/${scriptDir}` : ""}/__nazare_entry__.ts`;
 	const options: ts.CompilerOptions = {
 		target: ts.ScriptTarget.ES2018,
 		module: ts.ModuleKind.ESNext,
 		moduleResolution: ts.ModuleResolutionKind.Bundler,
 		allowImportingTsExtensions: true,
-		paths,
 		lib: ["lib.es2018.d.ts", "lib.dom.d.ts"],
 		strict: true,
 		noEmit: true,
@@ -151,20 +126,12 @@ function typescriptDiagnostics(
 		ts.ScriptTarget.ES2018,
 		true,
 	);
-	// Relative imports resolve as component-dir files served by readAsset:
-	// the virtual entry lives at "/", so "./utils.ts" becomes "/utils.ts",
-	// which maps back to readAsset("./utils.ts"). Real fs paths (TS libs)
-	// miss readAsset and fall through to ts.sys.
-	const packagesByVirtualPath = new Map(
-		Array.from(packages.values()).map((entry) => [entry.virtualPath, entry]),
-	);
+	// Real fs paths (TS libs) miss readFile and fall through to ts.sys.
 	const virtualContents = (fileName: string): string | undefined => {
 		if (fileName === virtualFileName) return virtualSource;
-		const packageEntry = packagesByVirtualPath.get(fileName);
-		if (packageEntry) return packageEntry.source;
 		if (!fileName.startsWith("/") || fileName.includes("node_modules"))
 			return undefined;
-		return readAsset?.(`.${fileName}`);
+		return readFile?.(fileName.slice(1));
 	};
 
 	host.getSourceFile = (fileName, languageVersion, ...rest) => {
@@ -179,6 +146,12 @@ function typescriptDiagnostics(
 		virtualContents(fileName) !== undefined || ts.sys.fileExists(fileName);
 	host.readFile = (fileName) =>
 		virtualContents(fileName) ?? ts.sys.readFile(fileName);
+	// Virtual directories exist only as path prefixes; the default host would
+	// probe the real fs and silently skip resolution inside them.
+	host.directoryExists = (directoryName) =>
+		(directoryName.startsWith("/") &&
+			!directoryName.includes("node_modules")) ||
+		ts.sys.directoryExists(directoryName);
 	host.getCurrentDirectory = () => "/";
 	host.writeFile = () => undefined;
 

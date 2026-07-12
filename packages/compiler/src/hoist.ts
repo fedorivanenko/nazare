@@ -13,7 +13,7 @@ import type {
 	Id,
 	PropTypeInfo,
 } from "@nazare/core";
-import { componentSymbolIdForPackage } from "./ids.js";
+import { componentSymbolIdForFile } from "./ids.js";
 import {
 	hoistedAliasReused,
 	hoistedSettingCollision,
@@ -28,7 +28,8 @@ export type HoistedSetting = {
 	renderSiteId: Id;
 	/** Argument name the dependency expects for this value. */
 	argName: string;
-	sourcePackageId: string;
+	/** Project-relative path of the component file declaring the leaf prop. */
+	sourcePath: string;
 	sourcePropName: string;
 	typeInfo: PropTypeInfo;
 };
@@ -46,9 +47,9 @@ export function resolveHoistedSettings(
 	const contractsBySymbolId = new Map(
 		contracts.map((contract) => [contract.componentSymbolId, contract]),
 	);
-	const aliasByLocalName = new Map<string, string>();
+	const pathByLocalName = new Map<string, string>();
 	for (const node of index.nodesOfKind("import")) {
-		aliasByLocalName.set(node.localName, node.packageId);
+		pathByLocalName.set(node.localName, node.path);
 	}
 
 	const hoisted: HoistedSetting[] = [];
@@ -61,11 +62,9 @@ export function resolveHoistedSettings(
 	);
 
 	for (const site of index.nodesOfKind("render-site")) {
-		const packageId = aliasByLocalName.get(site.targetName);
-		if (!packageId) continue;
-		const contract = contractsBySymbolId.get(
-			componentSymbolIdForPackage(packageId),
-		);
+		const path = pathByLocalName.get(site.targetName);
+		if (!path) continue;
+		const contract = contractsBySymbolId.get(componentSymbolIdForFile(path));
 		if (!contract) continue;
 
 		const filled = new Set(
@@ -81,7 +80,7 @@ export function resolveHoistedSettings(
 			if (!prop.typeInfo.setting || filled.has(prop.name)) continue;
 			unfilled.push({
 				argName: prop.name,
-				sourcePackageId: contract.packageId,
+				sourcePath: contract.path,
 				sourcePropName: prop.name,
 				typeInfo: prop.typeInfo,
 			});
@@ -90,7 +89,7 @@ export function resolveHoistedSettings(
 			if (filled.has(entry.name)) continue;
 			unfilled.push({
 				argName: entry.name,
-				sourcePackageId: entry.sourcePackageId,
+				sourcePath: entry.sourcePath,
 				sourcePropName: entry.sourcePropName,
 				typeInfo: entry.typeInfo,
 			});

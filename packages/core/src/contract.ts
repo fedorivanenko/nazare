@@ -1,7 +1,8 @@
-// The compiled public interface of a package: which props its component
-// expects, with full type info. Contracts are what cross package
-// boundaries — a consumer is checked against contracts, never against
-// another package's source.
+// The compiled public interface of a component file: which props it
+// expects, with full type info. Contracts are what cross component
+// boundaries — a consumer is checked against the contract derived from an
+// imported file, never against that file's markup. A contract is keyed by
+// the project-relative path of the file it was derived from.
 import type { Id } from "./id.js";
 import type { PropTypeInfo } from "./semantic.js";
 
@@ -22,15 +23,16 @@ export type ArtifactContractProp = {
 export type ArtifactContractHoistedSetting = {
 	/** Render-argument name at this component's boundary, e.g. "button_label". */
 	name: string;
-	/** Package the setting originally comes from (the declaring leaf). */
-	sourcePackageId: string;
+	/** Project-relative path of the component file declaring the leaf prop. */
+	sourcePath: string;
 	/** The leaf prop's name. */
 	sourcePropName: string;
 	typeInfo: PropTypeInfo;
 };
 
 export type ArtifactContract = {
-	packageId: string;
+	/** Project-relative path of the component file this contract describes. */
+	path: string;
 	componentSymbolId: Id;
 	props: ArtifactContractProp[];
 	hoisted?: ArtifactContractHoistedSetting[];

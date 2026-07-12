@@ -6,26 +6,28 @@ import {
 	themeSchemaFromIR,
 } from "../dist/index.js";
 
-const linkContract = compileNazareArtifact(
-	`{% props {
+const files = {
+	"link.nz.liquid": `{% props {
   href: url.setting({ label: "Link" }),
   label: string.setting({ label: "Label", default: "Shop now" }),
   text: string.required(),
 } %}`,
-	"link.nz.liquid",
-	{ packageId: "@test/link" },
-).contract;
+	"button.nz.liquid": `{% props { label: string.setting({ label: "Button label" }) } %}`,
+	"card.nz.liquid": `{% import Button from "./button.nz.liquid" %}
+{% render Button {} %}`,
+};
 
-function compileSection(source, contracts = [linkContract]) {
+const readFile = (path) => files[path];
+
+function compileSection(source) {
 	return compileNazareArtifact(source, "promo.nz.liquid", {
-		contracts,
+		readFile,
 		kind: "section",
-		packageId: "@test/promo",
 	});
 }
 
 test("hoist: unfilled setting-props land in the section schema under a header", () => {
-	const source = `{% import PromoLink from "@test/link" %}
+	const source = `{% import PromoLink from "./link.nz.liquid" %}
 {% render PromoLink { text: "Go" } %}`;
 	const result = compileSection(source);
 	const schema = themeSchemaFromIR(result.ir, {
@@ -39,20 +41,20 @@ test("hoist: unfilled setting-props land in the section schema under a header", 
 			type: "url",
 			id: "promo_link_href",
 			label: "Link",
-			info: "From @test/link",
+			info: "From link.nz.liquid",
 		},
 		{
 			type: "text",
 			id: "promo_link_label",
 			label: "Label",
 			default: "Shop now",
-			info: "From @test/link",
+			info: "From link.nz.liquid",
 		},
 	]);
 });
 
 test("hoist: filling the argument is the opt-out", () => {
-	const source = `{% import PromoLink from "@test/link" %}
+	const source = `{% import PromoLink from "./link.nz.liquid" %}
 {% props { url: url.setting({ label: "URL" }) } %}
 {% render PromoLink { text: "Go", href: props.url, label: "Buy" } %}`;
 	const result = compileSection(source);
@@ -67,7 +69,7 @@ test("hoist: filling the argument is the opt-out", () => {
 });
 
 test("hoist: render site gains generated pass-through arguments", () => {
-	const source = `{% import PromoLink from "@test/link" %}
+	const source = `{% import PromoLink from "./link.nz.liquid" %}
 {% render PromoLink { text: "Go" } %}`;
 	const result = compileSection(source);
 	const liquid = emitTheme(source, result, {
@@ -83,7 +85,7 @@ test("hoist: render site gains generated pass-through arguments", () => {
 });
 
 test("hoist: unfilled setting-props do not trigger required-prop errors", () => {
-	const source = `{% import PromoLink from "@test/link" %}
+	const source = `{% import PromoLink from "./link.nz.liquid" %}
 {% render PromoLink { text: "Go" } %}`;
 	const result = compileSection(source);
 	assert.ok(
@@ -95,23 +97,15 @@ test("hoist: unfilled setting-props do not trigger required-prop errors", () => 
 
 test("hoist: chains propagate through intermediate snippet contracts", () => {
 	// button (leaf) → card (intermediate snippet) → section
-	const buttonContract = compileNazareArtifact(
-		`{% props { label: string.setting({ label: "Button label" }) } %}`,
-		"button.nz.liquid",
-		{ packageId: "@test/button" },
-	).contract;
-
-	const cardSource = `{% import Button from "@test/button" %}
-{% render Button {} %}`;
-	const card = compileNazareArtifact(cardSource, "card.nz.liquid", {
-		contracts: [buttonContract],
-		kind: "snippet",
-		packageId: "@test/card",
-	});
+	const card = compileNazareArtifact(
+		files["card.nz.liquid"],
+		"card.nz.liquid",
+		{ readFile, kind: "snippet" },
+	);
 	assert.deepEqual(card.contract.hoisted, [
 		{
 			name: "button_label",
-			sourcePackageId: "@test/button",
+			sourcePath: "button.nz.liquid",
 			sourcePropName: "label",
 			typeInfo: {
 				valueType: { kind: "string" },
@@ -121,17 +115,17 @@ test("hoist: chains propagate through intermediate snippet contracts", () => {
 	]);
 
 	// The intermediate snippet reads its own implicit render arg.
-	const cardLiquid = emitTheme(cardSource, card, {
+	const cardLiquid = emitTheme(files["card.nz.liquid"], card, {
 		name: "card",
 		kind: "snippet",
 	}).files.find((file) => file.path === "snippets/card.liquid")?.contents;
 	assert.ok(cardLiquid.includes(`{% render 'button', label: button_label %}`));
 
 	// The section hoists the accumulated id and supplies it from its schema.
-	const sectionSource = `{% import Card from "@test/card" %}
+	const sectionSource = `{% import Card from "./card.nz.liquid" %}
 {% render Card {} %}`;
 	const section = compileNazareArtifact(sectionSource, "hero.nz.liquid", {
-		contracts: [card.contract],
+		readFile,
 		kind: "section",
 	});
 	const schema = themeSchemaFromIR(section.ir, {
@@ -153,23 +147,9 @@ test("hoist: chains propagate through intermediate snippet contracts", () => {
 });
 
 test("hoist: explicitly filling a dependency's hoisted arg is legal", () => {
-	const cardContract = {
-		packageId: "@test/card",
-		componentSymbolId: "symbol:component:@test/card#default",
-		props: [],
-		hoisted: [
-			{
-				name: "button_label",
-				sourcePackageId: "@test/button",
-				sourcePropName: "label",
-				typeInfo: { valueType: { kind: "string" } },
-			},
-		],
-	};
 	const result = compileSection(
-		`{% import Card from "@test/card" %}
+		`{% import Card from "./card.nz.liquid" %}
 {% render Card { button_label: "Buy" } %}`,
-		[cardContract],
 	);
 	assert.ok(
 		!result.issues.some(
@@ -179,7 +159,7 @@ test("hoist: explicitly filling a dependency's hoisted arg is legal", () => {
 });
 
 test("hoist: same alias twice with unfilled settings is an error", () => {
-	const result = compileSection(`{% import PromoLink from "@test/link" %}
+	const result = compileSection(`{% import PromoLink from "./link.nz.liquid" %}
 {% render PromoLink { text: "A" } %}
 {% render PromoLink { text: "B" } %}`);
 	const issue = result.issues.find(
@@ -188,9 +168,9 @@ test("hoist: same alias twice with unfilled settings is an error", () => {
 	assert.equal(issue?.severity, "error");
 });
 
-test("hoist: two aliases of the same package resolve cleanly", () => {
-	const source = `{% import PromoLink from "@test/link" %}
-{% import FooterLink from "@test/link" %}
+test("hoist: two aliases of the same file resolve cleanly", () => {
+	const source = `{% import PromoLink from "./link.nz.liquid" %}
+{% import FooterLink from "./link.nz.liquid" %}
 {% render PromoLink { text: "A" } %}
 {% render FooterLink { text: "B" } %}`;
 	const result = compileSection(source);
@@ -209,7 +189,7 @@ test("hoist: two aliases of the same package resolve cleanly", () => {
 });
 
 test("hoist: collision with an own setting id is an error", () => {
-	const result = compileSection(`{% import PromoLink from "@test/link" %}
+	const result = compileSection(`{% import PromoLink from "./link.nz.liquid" %}
 {% props { promo_link_href: url.setting({ label: "Mine" }) } %}
 {% render PromoLink { text: "Go" } %}`);
 	assert.ok(

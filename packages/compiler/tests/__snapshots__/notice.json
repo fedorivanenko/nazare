@@ -591,12 +591,12 @@
     }
   ],
   "contract": {
-    "packageId": "@nazare/notice",
-    "componentSymbolId": "symbol:component:@nazare/notice#default",
+    "path": "examples/components/notice/notice.nz.liquid",
+    "componentSymbolId": "symbol:component:examples/components/notice/notice.nz.liquid#default",
     "props": [
       {
         "name": "message",
-        "symbolId": "symbol:prop:@nazare/notice#default.message",
+        "symbolId": "symbol:prop:examples/components/notice/notice.nz.liquid#default.message",
         "required": false,
         "hasDefault": true,
         "typeExpression": "string.setting({ label: \"Message\", default: \"Heads up!\" })",
@@ -612,7 +612,7 @@
       },
       {
         "name": "tone",
-        "symbolId": "symbol:prop:@nazare/notice#default.tone",
+        "symbolId": "symbol:prop:examples/components/notice/notice.nz.liquid#default.tone",
         "required": false,
         "hasDefault": true,
         "typeExpression": "string.enum(\"info\", \"success\", \"warning\").setting({\n    label: \"Tone\",\n    default: \"info\",\n  })",

@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compileNazareArtifact } from "../dist/index.js";
 
-function compile(script, readAsset) {
+function compile(script, readFile) {
 	return compileNazareArtifact(
 		`<div ref="root"></div>\n${script}`,
 		"components/widget/widget.nz.liquid",
-		{ readAsset },
+		{ readFile },
 	);
 }
 
@@ -67,11 +67,11 @@ export default island(({ root }) => root.setAttribute("s", s));
 	assert.deepEqual(moduleIssues(result), []);
 });
 
-test("module-syntax: sidecar behavior files are checked too, with sidecar spans", () => {
+test("module-syntax: imported behavior files are checked too, with their own spans", () => {
 	const result = compile(
-		`{% import "./widget.ts" %}`,
+		`{% import widget from "./widget.ts" %}`,
 		(path) =>
-			path === "./widget.ts"
+			path === "components/widget/widget.ts"
 				? `import express = require("express");\nexport default island(() => {});\n`
 				: undefined,
 	);

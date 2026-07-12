@@ -2,9 +2,15 @@
  * Public API of the Nazare compiler.
  *
  * Pipeline: parse → syntax → bind → check → graph → validate. Each pass is
- * exported individually for tooling that needs a single stage; the
- * compileNazareArtifact* functions run the whole pipeline. See README.md for
- * what each pass owns.
+ * exported individually for tooling that needs a single stage;
+ * compileNazareArtifact runs the whole pipeline. See README.md for what each
+ * pass owns.
+ *
+ * Files are identified by project-relative paths. All imports are relative
+ * paths to real files inside the project — there is no package resolution at
+ * compile time (installing a component copies its source into the project).
+ * Imported component files are compiled on the spot to derive their
+ * contracts; readFile is the only way the compiler touches other files.
  */
 import type {
 	ArtifactContract,
@@ -16,10 +22,7 @@ import type {
 import type { NazareAst, NazareNode } from "./ast.js";
 import { checkArtifactIR } from "./check.js";
 import { checkVanillaSchema } from "./check-vanilla.js";
-import {
-	assetImportNotFound,
-	contractResolutionFailed,
-} from "./diagnostics.js";
+import { importCycle, importNotFound } from "./diagnostics.js";
 import { artifactGraphFromIR } from "./graph.js";
 import {
 	parseNazareLiquid,
@@ -44,7 +47,7 @@ export type {
 export { checkArtifactIR } from "./check.js";
 export { checkComponentScripts } from "./check-script.js";
 export { artifactGraphFromIR } from "./graph.js";
-export { componentSymbolIdForPackage } from "./ids.js";
+export { componentSymbolIdForFile } from "./ids.js";
 export { parseNazareLiquid } from "./parser.js";
 export {
 	type EmitResult,
@@ -60,37 +63,18 @@ export { bindArtifactIR, contractFromIR } from "./symbols.js";
 export { syntaxFromAst } from "./syntax.js";
 export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 
-export type CompileNazareArtifactOptions = {
-	/** Contracts of imported packages; render sites are checked against them. */
-	contracts?: ArtifactContract[];
-	/** When set, the artifact's own contract is produced under this package id. */
-	packageId?: string;
-	/** Manifest kind; enables section/snippet provenance rules in check. */
-	kind?: NazareManifest["kind"];
-	/** Declared dependency ids from the manifest; enables dependency checks. */
-	dependencies?: string[];
-	/**
-	 * Reads a sidecar asset referenced by a relative {% import %}, given its
-	 * path relative to the component file. Undefined means not found. Without
-	 * a reader, relative imports diagnose as unreadable.
-	 */
-	readAsset?: (relativePath: string) => string | undefined;
-};
-
 /**
- * Supplies the compiled contract for an imported package, or undefined when
- * the package is unknown. Thrown errors surface as compile diagnostics.
+ * Reads a project file by its project-relative path. Undefined means the
+ * file does not exist. This is the compiler's entire filesystem: import
+ * resolution, contract derivation, and script bundling all go through it.
  */
-export type ContractResolver = (
-	packageId: string,
-) => Promise<ArtifactContract | undefined> | ArtifactContract | undefined;
+export type ReadFile = (path: string) => string | undefined;
 
-export type CompileWithResolverOptions = {
-	resolver?: ContractResolver;
-	packageId?: string;
+export type CompileNazareArtifactOptions = {
+	/** The entry's kind; enables section/block provenance rules in check. */
 	kind?: NazareManifest["kind"];
-	dependencies?: string[];
-	readAsset?: (relativePath: string) => string | undefined;
+	/** Without a reader, every import diagnoses as unreadable. */
+	readFile?: ReadFile;
 };
 
 export type CompileResult = {
@@ -102,9 +86,9 @@ export type CompileResult = {
 	graph: ArtifactGraph;
 	/** All diagnostics from every pass; any "error" severity fails the compile. */
 	issues: Diagnostic[];
-	/** Present only when options.packageId was given. */
-	contract?: ArtifactContract;
-	/** The dependency contracts this compile ran with (needed for hoisting at emit time). */
+	/** This artifact's own contract, keyed by its file path. */
+	contract: ArtifactContract;
+	/** Contracts of the imported component files (needed for hoisting at emit time). */
 	contracts: ArtifactContract[];
 };
 
@@ -113,87 +97,122 @@ export function artifactGraphFromAst(ast: NazareAst): ArtifactGraph {
 	return artifactGraphFromIR(bindArtifactIR(syntaxFromAst(ast)));
 }
 
-/** Compiles one artifact with contracts already in hand (sync). */
+/** Compiles one artifact, deriving imported components' contracts via readFile. */
 export function compileNazareArtifact(
 	source: string,
 	file: string,
 	options: CompileNazareArtifactOptions = {},
 ): CompileResult {
 	const ast = parseNazareLiquid(source, file);
-	resolveAssetImports(ast, options.readAsset);
-	return compileFromAst(ast, options);
-}
+	const issues: Diagnostic[] = [];
+	const contracts = resolveComponentImports(ast, options.readFile, issues);
+	resolveAssetImports(ast, options.readFile);
 
-/**
- * Compiles one artifact, fetching each imported package's contract through
- * the resolver first. Resolver failures do not abort the compile; they
- * surface as CONTRACT_RESOLUTION_FAILED and the import degrades to the
- * unresolved-contract warning.
- */
-export async function compileNazareArtifactWithResolver(
-	source: string,
-	file: string,
-	options: CompileWithResolverOptions = {},
-): Promise<CompileResult> {
-	const ast = parseNazareLiquid(source, file);
-	resolveAssetImports(ast, options.readAsset);
-	const imports = ast.nodes.filter(
-		(node) => node.type === "NazareImport",
+	const syntax = syntaxFromAst(ast);
+	const ir = bindArtifactIR(syntax, { contracts });
+	const graph = artifactGraphFromIR(ir);
+	issues.push(
+		...ast.diagnostics,
+		...checkVanillaSchema(ast),
+		...checkArtifactIR(ir, contracts, { kind: options.kind }),
+		...validateArtifactIR(ir),
+		...validateArtifactGraph(graph),
 	);
-	const contracts: ArtifactContract[] = [];
-	const resolutionIssues: Diagnostic[] = [];
-	const seen = new Set<string>();
+	const contract = contractFromIR(ir, file, contracts);
 
-	for (const node of imports) {
-		if (!options.resolver || seen.has(node.packageId)) continue;
-		seen.add(node.packageId);
-		try {
-			const contract = await options.resolver(node.packageId);
-			if (contract) contracts.push(contract);
-		} catch (error) {
-			resolutionIssues.push(
-				contractResolutionFailed(
-					node.packageId,
-					error instanceof Error ? error.message : String(error),
-					node.span,
-				),
-			);
-		}
-	}
-
-	const result = compileFromAst(ast, {
-		contracts,
-		packageId: options.packageId,
-		kind: options.kind,
-		dependencies: options.dependencies,
-	});
-	return { ...result, issues: [...resolutionIssues, ...result.issues] };
+	return { ast, ir, graph, issues, contract, contracts };
 }
 
 /**
- * Replaces each relative-import node with the script/style node its sidecar
+ * Derives a contract for each imported component file by compiling it —
+ * parse and bind only, recursively, so transitive hoisted settings surface.
+ * Diagnostics inside an imported file are its own compile's business; here
+ * only unreadable files and import cycles are reported.
+ */
+function resolveComponentImports(
+	ast: NazareAst,
+	readFile: ReadFile | undefined,
+	issues: Diagnostic[],
+): ArtifactContract[] {
+	const cache = new Map<string, ArtifactContract | undefined>();
+
+	const derive = (
+		path: string,
+		loading: Set<string>,
+	): ArtifactContract | undefined => {
+		if (cache.has(path)) return cache.get(path);
+		const contents = readFile?.(path);
+		if (contents === undefined) {
+			cache.set(path, undefined);
+			return undefined;
+		}
+
+		const importedAst = parseNazareLiquid(contents, path);
+		loading.add(path);
+		const dependencyContracts: ArtifactContract[] = [];
+		for (const node of importedAst.nodes) {
+			if (node.type !== "NazareImport") continue;
+			if (loading.has(node.path)) {
+				issues.push(importCycle(node.path, node.span));
+				continue;
+			}
+			const dependency = derive(node.path, loading);
+			if (dependency) dependencyContracts.push(dependency);
+		}
+		loading.delete(path);
+
+		const contract = contractFromIR(
+			bindArtifactIR(syntaxFromAst(importedAst), {
+				contracts: dependencyContracts,
+			}),
+			path,
+			dependencyContracts,
+		);
+		cache.set(path, contract);
+		return contract;
+	};
+
+	const contracts: ArtifactContract[] = [];
+	const seen = new Set<string>();
+	for (const node of ast.nodes) {
+		if (node.type !== "NazareImport" || seen.has(node.path)) continue;
+		seen.add(node.path);
+		if (node.path === ast.file) {
+			issues.push(importCycle(node.path, node.span));
+			continue;
+		}
+		const contract = derive(node.path, new Set([ast.file]));
+		if (!contract) {
+			issues.push(importNotFound(node.path, node.span));
+			continue;
+		}
+		contracts.push(contract);
+	}
+	return contracts;
+}
+
+/**
+ * Replaces each behavior/style import node with the script/style node its
  * file contains, in place — declaration order is mount order, and the
  * import tag's span becomes the synthesized node's span so emission removes
- * it. Sidecar-local spans (bodySpan, ref accesses) point into the sidecar
- * file itself.
+ * it. Imported-file spans (bodySpan, ref accesses) point into that file.
  */
 function resolveAssetImports(
 	ast: NazareAst,
-	readAsset: ((relativePath: string) => string | undefined) | undefined,
+	readFile: ReadFile | undefined,
 ): void {
 	ast.nodes = ast.nodes.map((node): NazareNode => {
 		if (node.type !== "NazareAssetImport") return node;
 
-		const contents = readAsset?.(node.path);
+		const contents = readFile?.(node.path);
 		if (contents === undefined) {
-			ast.diagnostics.push(assetImportNotFound(node.path, node.span));
+			ast.diagnostics.push(importNotFound(node.path, node.span));
 			return node;
 		}
 
-		const sidecarFile = sidecarPath(ast.file, node.path);
 		const lines = contents.split("\n");
 		const bodySpan = {
-			file: sidecarFile,
+			file: node.path,
 			start: { line: 1, column: 1 },
 			end: {
 				line: lines.length,
@@ -205,6 +224,7 @@ function resolveAssetImports(
 			return {
 				type: "NazareStyle",
 				source: contents,
+				bindingName: node.localName,
 				span: node.span,
 				bodySpan,
 			};
@@ -214,40 +234,11 @@ function resolveAssetImports(
 			type: "NazareScript",
 			lang: node.path.endsWith(".ts") ? "ts" : "js",
 			source: contents,
-			refAccesses: scanRefAccesses(contents, sidecarFile),
-			dataAccesses: scanDataAccesses(contents, sidecarFile),
+			refAccesses: scanRefAccesses(contents, node.path),
+			dataAccesses: scanDataAccesses(contents, node.path),
+			bindingName: node.localName,
 			span: node.span,
 			bodySpan,
 		};
 	});
-}
-
-function sidecarPath(componentFile: string, relativePath: string): string {
-	const directory = componentFile.split("/").slice(0, -1).join("/");
-	const local = relativePath.replace(/^\.\//, "");
-	return directory ? `${directory}/${local}` : local;
-}
-
-function compileFromAst(
-	ast: NazareAst,
-	options: CompileNazareArtifactOptions,
-): CompileResult {
-	const syntax = syntaxFromAst(ast);
-	const ir = bindArtifactIR(syntax, { contracts: options.contracts });
-	const graph = artifactGraphFromIR(ir);
-	const issues = [
-		...ast.diagnostics,
-		...checkVanillaSchema(ast),
-		...checkArtifactIR(ir, options.contracts, {
-			kind: options.kind,
-			dependencies: options.dependencies,
-		}),
-		...validateArtifactIR(ir),
-		...validateArtifactGraph(graph),
-	];
-	const contract = options.packageId
-		? contractFromIR(ir, options.packageId, options.contracts)
-		: undefined;
-
-	return { ast, ir, graph, issues, contract, contracts: options.contracts ?? [] };
 }

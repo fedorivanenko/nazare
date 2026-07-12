@@ -73,16 +73,17 @@ export function refAccessSyntaxId(
 	return `syntax:ref-access:${file}:${scriptIndex}:${index}`;
 }
 
-// Symbol layer. `scope` is what a component symbol is keyed by: a file path
-// for local components, a package id for external ones, or a bare target
-// name when a render site references something unknown.
+// Symbol layer. `scope` is what a component symbol is keyed by: the
+// project-relative file path (for local and imported components alike — an
+// imported component's symbol id equals the id its own compile produces),
+// or a bare target name when a render site references something unknown.
 
 export function componentSymbolId(scope: string): Id {
 	return `symbol:component:${scope}#default`;
 }
 
-export function componentSymbolIdForPackage(packageId: string): Id {
-	return componentSymbolId(packageId);
+export function componentSymbolIdForFile(path: string): Id {
+	return componentSymbolId(path);
 }
 
 export function propSymbolId(scope: string, propName: string): Id {

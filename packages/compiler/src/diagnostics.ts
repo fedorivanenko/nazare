@@ -10,31 +10,91 @@ export function parseInvalidImport(
 	return {
 		severity: "error",
 		code: "NAZARE_PARSE_IMPORT",
-		message: `Invalid Nazare import syntax: ${markup}`,
+		message: `Invalid import: ${markup} — every import binds a name to a relative path: {% import Name from "./name.nz.liquid" %} for components, {% import name from "./name.ts|.js|.css" %} for behaviors and styles`,
 		span,
 	};
 }
 
-export function parseInvalidAssetImport(
-	path: string,
+export function importBareSpecifier(
+	specifier: string,
 	span: SourceSpan,
 ): Diagnostic {
 	return {
 		severity: "error",
-		code: "NAZARE_PARSE_ASSET_IMPORT",
-		message: `Invalid asset import "${path}"; must be a ./-relative .ts, .js, or .css file inside the component directory`,
+		code: "NAZARE_IMPORT_BARE_SPECIFIER",
+		message: `"${specifier}" is not a relative path. Nazare has no packages at compile time — installing copies files into the project, so import them by relative path (./ or ../)`,
 		span,
 	};
 }
 
-export function assetImportNotFound(
+export function importOutsideProject(
+	specifier: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_IMPORT_OUTSIDE_PROJECT",
+		message: `"${specifier}" resolves outside the project root; imports can only reach files inside the project`,
+		span,
+	};
+}
+
+export function importUnsupportedExtension(
+	specifier: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_IMPORT_UNSUPPORTED_EXTENSION",
+		message: `Cannot import "${specifier}"; importable files are components (.liquid), behaviors (.ts, .js), and styles (.css)`,
+		span,
+	};
+}
+
+export function importComponentCase(
+	localName: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_IMPORT_COMPONENT_CASE",
+		message: `Component import names are capitalized: rename ${localName} to ${localName.charAt(0).toUpperCase()}${localName.slice(1)}`,
+		span,
+	};
+}
+
+export function importBindingCase(
+	localName: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_IMPORT_BINDING_CASE",
+		message: `Behavior and style import names are lowercase (only components are capitalized): rename ${localName} to ${localName.charAt(0).toLowerCase()}${localName.slice(1)}`,
+		span,
+	};
+}
+
+export function importNotFound(
 	path: string,
 	span: SourceSpan | undefined,
 ): Diagnostic {
 	return {
 		severity: "error",
-		code: "ASSET_IMPORT_NOT_FOUND",
-		message: `Imported asset "${path}" could not be read`,
+		code: "IMPORT_NOT_FOUND",
+		message: `Imported file "${path}" could not be read`,
+		span,
+	};
+}
+
+export function importCycle(
+	path: string,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "IMPORT_CYCLE",
+		message: `Import cycle: "${path}" is already being compiled while deriving its contract`,
 		span,
 	};
 }
@@ -46,7 +106,7 @@ export function parseInvalidBlocksSlot(
 	return {
 		severity: "error",
 		code: "NAZARE_PARSE_BLOCKS_SLOT",
-		message: `Invalid blocks slot: ${markup} — expected {% blocks %} or {% blocks "@pkg/a", "@pkg/b" %}`,
+		message: `Invalid blocks slot: ${markup} — expected {% blocks %} or {% blocks "notice", "quote" %} (theme-block type names)`,
 		span,
 	};
 }
@@ -85,28 +145,6 @@ export function parseInvalidRefAttribute(
 		code: "NAZARE_PARSE_REF_ATTRIBUTE",
 		message: `Ignored ref attribute: ${reason}`,
 		span,
-	};
-}
-
-export function undeclaredDependency(
-	packageId: string,
-	nodeId: Id | undefined,
-	span: SourceSpan | undefined,
-): Diagnostic {
-	return {
-		severity: "error",
-		code: "CONSTRAINT_UNDECLARED_DEPENDENCY",
-		message: `${packageId} is imported but not declared in the manifest's dependencies`,
-		nodeId,
-		span,
-	};
-}
-
-export function unusedDependency(packageId: string): Diagnostic {
-	return {
-		severity: "warning",
-		code: "CONSTRAINT_UNUSED_DEPENDENCY",
-		message: `${packageId} is declared in the manifest's dependencies but never imported`,
 	};
 }
 
@@ -313,19 +351,6 @@ export function htmlNotPromoted(span: SourceSpan): Diagnostic {
 	};
 }
 
-export function contractResolutionFailed(
-	packageId: string,
-	reason: string,
-	span: SourceSpan | undefined,
-): Diagnostic {
-	return {
-		severity: "warning",
-		code: "CONTRACT_RESOLUTION_FAILED",
-		message: `Failed to resolve contract for ${packageId}: ${reason}`,
-		span,
-	};
-}
-
 export function unresolvedExternalContract(
 	targetName: string,
 	nodeId: Id,
@@ -434,18 +459,18 @@ export function scriptImportInvalid(
 	return {
 		severity: "error",
 		code: "SCRIPT_IMPORT_INVALID",
-		message: `Cannot bundle "${specifier}" imported by ${importer}; imports must stay inside the component directory and name a .ts or .js file`,
+		message: `Cannot bundle "${specifier}" imported by ${importer}; imports must be relative .ts or .js paths inside the project`,
 	};
 }
 
-export function scriptPackageImportUnresolved(
-	packageId: string,
+export function scriptImportBare(
+	specifier: string,
 	importer: string,
 ): Diagnostic {
 	return {
 		severity: "error",
-		code: "SCRIPT_PACKAGE_IMPORT_UNRESOLVED",
-		message: `Cannot resolve "${packageId}" imported by ${importer}; only function packages (manifest kind "function") reachable by the resolver can be imported`,
+		code: "SCRIPT_IMPORT_BARE",
+		message: `Cannot bundle "${specifier}" imported by ${importer}; Nazare has no packages at build time — import the file by relative path`,
 	};
 }
 

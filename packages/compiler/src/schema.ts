@@ -63,23 +63,20 @@ export function themeSchemaFromIR(
 			entry.sourcePropName,
 		);
 		if (setting) {
-			setting.info = `From ${entry.sourcePackageId}`;
+			setting.info = `From ${entry.sourcePath}`;
 			settings.push(setting);
 		}
 	}
 
 	const schema: ThemeSchema = { name: options.name, settings };
 
-	// The section's blocks slot becomes the accepted-types array; block type
-	// is the package name's last segment (matching the emitted file name).
+	// The section's blocks slot lists theme-block type names verbatim.
 	const slot = ir.syntax.find((node) => node.kind === "blocks-slot");
 	if (slot) {
 		schema.blocks =
-			slot.packageIds.length > 0
-				? slot.packageIds.map(
-						(packageId): ThemeSchemaBlockType => ({
-							type: packageId.split("/").at(-1) ?? packageId,
-						}),
+			slot.blockTypes.length > 0
+				? slot.blockTypes.map(
+						(blockType): ThemeSchemaBlockType => ({ type: blockType }),
 					)
 				: [{ type: "@theme" }];
 	}

@@ -90,8 +90,8 @@ export default island(({ refs }) => {
 });
 
 test("script-check: types flow across relative imports", () => {
-	const readAsset = (path) =>
-		path === "./format.ts"
+	const readFile = (path) =>
+		path === "format.ts"
 			? `export function format(value: number): string { return String(value); }`
 			: undefined;
 	const source = `<output ref="value"></output>
@@ -102,9 +102,9 @@ export default island(({ refs }) => {
 });
 {% endscript %}`;
 	const result = compileNazareArtifact(source, "component.nz.liquid", {
-		readAsset,
+		readFile,
 	});
-	const issues = checkComponentScripts(result.ir, { readAsset });
+	const issues = checkComponentScripts(result.ir, { readFile });
 	assert.ok(
 		issues.some(
 			(issue) =>

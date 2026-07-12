@@ -70,9 +70,16 @@ test("emit: sections embed the generated schema", () => {
 });
 
 test("emit: render sites lower to plain liquid render tags", () => {
-	const source = `{% import Link from "@nazare/link" %}
+	const source = `{% import Link from "./link.nz.liquid" %}
 {% render Link {href: section.settings.link, text: "Go"} %}`;
-	const result = emit(source);
+	const readFile = (path) =>
+		path === "link.nz.liquid"
+			? `{% props { href: url.required(), text: string.required() } %}`
+			: undefined;
+	const compiled = compileNazareArtifact(source, "component.nz.liquid", {
+		readFile,
+	});
+	const result = emitTheme(source, compiled, { name: "widget" });
 	const liquid = fileByPath(result, "snippets/widget.liquid")?.contents;
 
 	assert.ok(liquid);

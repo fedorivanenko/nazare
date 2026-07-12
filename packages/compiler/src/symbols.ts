@@ -16,13 +16,13 @@ import { resolveHoistedSettings } from "./hoist.js";
 import {
 	aliasSymbolId,
 	componentSymbolId,
-	componentSymbolIdForPackage,
+	componentSymbolIdForFile,
 	propSymbolId,
 	refSymbolId,
 	settingSymbolId,
 } from "./ids.js";
 
-export { componentSymbolIdForPackage } from "./ids.js";
+export { componentSymbolIdForFile } from "./ids.js";
 
 export type BindArtifactIROptions = {
 	contracts?: ArtifactContract[];
@@ -65,7 +65,7 @@ export function bindArtifactIR(
 				scopes.forFileId(node.fileId),
 				node.localName,
 			);
-			const targetSymbolId = componentSymbolIdForPackage(node.packageId);
+			const targetSymbolId = componentSymbolIdForFile(node.path);
 			importTargetsByLocalName.set(node.localName, targetSymbolId);
 
 			addSymbol(symbols, {
@@ -79,15 +79,14 @@ export function bindArtifactIR(
 			addSymbol(symbols, {
 				id: targetSymbolId,
 				kind: "component",
-				name: node.packageId,
+				name: node.path,
 				declarations: [],
 				resolution: contractsByComponentSymbolId.has(targetSymbolId)
 					? "external-resolved"
 					: "external-unresolved",
 				source: contractsByComponentSymbolId.has(targetSymbolId)
 					? "compiled-contract"
-					: "manifest",
-				packageId: node.packageId,
+					: "syntax",
 			});
 			resolutions.push({
 				kind: "alias-target",
@@ -149,11 +148,10 @@ export function bindArtifactIR(
 		addSymbol(symbols, {
 			id: contract.componentSymbolId,
 			kind: "component",
-			name: contract.packageId,
+			name: contract.path,
 			declarations: [],
 			resolution: "external-resolved",
 			source: "compiled-contract",
-			packageId: contract.packageId,
 		});
 		for (const prop of contract.props) {
 			addSymbol(symbols, {
@@ -262,7 +260,7 @@ export function bindArtifactIR(
 
 export function contractFromIR(
 	ir: ArtifactIR,
-	packageId: string,
+	path: string,
 	dependencyContracts: ArtifactContract[] = [],
 ): ArtifactContract {
 	const props = ir.syntax
@@ -272,7 +270,7 @@ export function contractFromIR(
 		)
 		.map((node) => ({
 			name: node.name,
-			symbolId: propSymbolId(packageId, node.name),
+			symbolId: propSymbolId(path, node.name),
 			required: node.required,
 			hasDefault: node.hasDefault,
 			typeExpression: node.typeExpression,
@@ -284,15 +282,15 @@ export function contractFromIR(
 	const hoisted = resolveHoistedSettings(ir, dependencyContracts).hoisted.map(
 		(setting) => ({
 			name: setting.settingId,
-			sourcePackageId: setting.sourcePackageId,
+			sourcePath: setting.sourcePath,
 			sourcePropName: setting.sourcePropName,
 			typeInfo: setting.typeInfo,
 		}),
 	);
 
 	return {
-		packageId,
-		componentSymbolId: componentSymbolIdForPackage(packageId),
+		path,
+		componentSymbolId: componentSymbolIdForFile(path),
 		props,
 		...(hoisted.length > 0 ? { hoisted } : {}),
 	};

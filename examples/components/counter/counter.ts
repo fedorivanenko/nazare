@@ -1,4 +1,4 @@
-import { cn } from "@nazare/cn";
+import { cn } from "../cn/cn.ts";
 import { formatValue } from "./format.ts";
 
 export default island(({ root, refs, data }) => {

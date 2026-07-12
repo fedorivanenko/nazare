@@ -3,28 +3,30 @@ import { test } from "node:test";
 import vm from "node:vm";
 import { compileNazareArtifact, emitTheme } from "../dist/index.js";
 
-const sidecars = {
-	"./widget.ts": `import { clamp } from "./utils.ts";
+const files = {
+	"components/widget/widget.ts": `import { clamp } from "./utils.ts";
 export default island(({ refs }) => {
   refs.root.dataset.value = String(clamp(150, 0, 100));
 });
 `,
-	"./utils.ts": `import { max } from "./lib/math.ts";
+	"components/widget/utils.ts": `import { max } from "./lib/math.ts";
 export function clamp(value: number, low: number, high: number): number {
   return max(low, Math.min(value, high));
 }
 `,
-	"./lib/math.ts": `export function max(a: number, b: number): number {
+	"components/widget/lib/math.ts": `export function max(a: number, b: number): number {
   return a > b ? a : b;
 }
 `,
 };
 
-function build(source, readAsset = (path) => sidecars[path]) {
-	const compiled = compileNazareArtifact(source, "components/widget/widget.nz.liquid", {
-		readAsset,
-	});
-	const emitted = emitTheme(source, compiled, { name: "widget", readAsset });
+function build(source, readFile = (path) => files[path]) {
+	const compiled = compileNazareArtifact(
+		source,
+		"components/widget/widget.nz.liquid",
+		{ readFile },
+	);
+	const emitted = emitTheme(source, compiled, { name: "widget", readFile });
 	return {
 		compiled,
 		emitted,
@@ -33,7 +35,7 @@ function build(source, readAsset = (path) => sidecars[path]) {
 }
 
 test("bundle: relative imports are inlined into the emitted asset", () => {
-	const { emitted, script } = build(`{% import "./widget.ts" %}
+	const { emitted, script } = build(`{% import widget from "./widget.ts" %}
 <div ref="root"></div>`);
 	assert.deepEqual(
 		emitted.issues.filter((i) => i.severity === "error"),
@@ -45,7 +47,7 @@ test("bundle: relative imports are inlined into the emitted asset", () => {
 });
 
 test("bundle: the emitted asset actually executes", () => {
-	const { script } = build(`{% import "./widget.ts" %}
+	const { script } = build(`{% import widget from "./widget.ts" %}
 <div ref="root"></div>`);
 
 	// Minimal DOM double: run the asset, mount the island, observe the effect.
@@ -95,11 +97,13 @@ export default island(({ refs }) => refs.root.remove());
 });
 
 test("bundle: missing module is an emit error", () => {
-	const { emitted } = build(`{% import "./widget.ts" %}
-<div ref="root"></div>`, (path) =>
-		path === "./widget.ts"
-			? `import { gone } from "./missing.ts";\nexport default island(() => {});\n`
-			: undefined,
+	const { emitted } = build(
+		`{% import widget from "./widget.ts" %}
+<div ref="root"></div>`,
+		(path) =>
+			path === "components/widget/widget.ts"
+				? `import { gone } from "./missing.ts";\nexport default island(() => {});\n`
+				: undefined,
 	);
 	assert.ok(
 		emitted.issues.some((i) => i.code === "SCRIPT_IMPORT_NOT_FOUND"),
@@ -108,12 +112,15 @@ test("bundle: missing module is an emit error", () => {
 
 test("bundle: import cycles are an emit error", () => {
 	const cyclic = {
-		"./widget.ts": `import "./a.ts";\nexport default island(() => {});\n`,
-		"./a.ts": `import "./b.ts";\nexport const a = 1;\n`,
-		"./b.ts": `import "./a.ts";\nexport const b = 2;\n`,
+		"components/widget/widget.ts": `import "./a.ts";\nexport default island(() => {});\n`,
+		"components/widget/a.ts": `import "./b.ts";\nexport const a = 1;\n`,
+		"components/widget/b.ts": `import "./a.ts";\nexport const b = 2;\n`,
 	};
-	const { emitted } = build(`{% import "./widget.ts" %}
-<div ref="root"></div>`, (path) => cyclic[path]);
+	const { emitted } = build(
+		`{% import widget from "./widget.ts" %}
+<div ref="root"></div>`,
+		(path) => cyclic[path],
+	);
 	assert.ok(emitted.issues.some((i) => i.code === "SCRIPT_IMPORT_CYCLE"));
 });
 
@@ -129,19 +136,22 @@ export function cn(...values: ClassValue[]): string {
 }
 `;
 
-test("bundle: function packages resolve as bare imports and execute", () => {
+test("bundle: sibling-component imports resolve across directories", () => {
 	const source = `<div ref="root"></div>
 {% script lang="ts" %}
-import { cn } from "@test/cn";
+import { cn } from "../cn/cn.ts";
 export default island(({ root }) => {
   root.className = cn("a", { b: true, c: false });
 });
 {% endscript %}`;
-	const compiled = compileNazareArtifact(source, "components/w/w.nz.liquid");
-	const emitted = emitTheme(source, compiled, {
-		name: "widget",
-		readPackageModule: (id) => (id === "@test/cn" ? cnSource : undefined),
-	});
+	const readFile = (path) =>
+		path === "components/cn/cn.ts" ? cnSource : undefined;
+	const compiled = compileNazareArtifact(
+		source,
+		"components/w/w.nz.liquid",
+		{ readFile },
+	);
+	const emitted = emitTheme(source, compiled, { name: "widget", readFile });
 	assert.deepEqual(
 		emitted.issues.filter((i) => i.severity === "error"),
 		[],
@@ -162,7 +172,7 @@ export default island(({ root }) => {
 	assert.equal(element.className, "a b");
 });
 
-test("bundle: unresolvable package import is an emit error", () => {
+test("bundle: bare package import is an emit error", () => {
 	const source = `<div ref="root"></div>
 {% script %}
 import { gone } from "@test/missing";
@@ -170,36 +180,17 @@ export default island(() => {});
 {% endscript %}`;
 	const compiled = compileNazareArtifact(source, "components/w/w.nz.liquid");
 	const emitted = emitTheme(source, compiled, { name: "widget" });
-	assert.ok(
-		emitted.issues.some(
-			(i) => i.code === "SCRIPT_PACKAGE_IMPORT_UNRESOLVED",
-		),
-	);
+	assert.ok(emitted.issues.some((i) => i.code === "SCRIPT_IMPORT_BARE"));
 });
 
-test("bundle: function packages must be self-contained", () => {
-	const source = `<div ref="root"></div>
-{% script %}
-import { x } from "@test/pkg";
-export default island(() => {});
-{% endscript %}`;
-	const compiled = compileNazareArtifact(source, "components/w/w.nz.liquid");
-	const emitted = emitTheme(source, compiled, {
-		name: "widget",
-		readPackageModule: (id) =>
-			id === "@test/pkg"
-				? `import { y } from "./helper.ts";\nexport const x = y;\n`
+test("bundle: escaping the project root is an emit error", () => {
+	const { emitted } = build(
+		`{% import widget from "./widget.ts" %}
+<div ref="root"></div>`,
+		(path) =>
+			path === "components/widget/widget.ts"
+				? `import { x } from "../../../outside.ts";\nexport default island(() => {});\n`
 				: undefined,
-	});
-	assert.ok(emitted.issues.some((i) => i.code === "SCRIPT_IMPORT_INVALID"));
-});
-
-test("bundle: escaping the component directory is an emit error", () => {
-	const { emitted } = build(`{% import "./widget.ts" %}
-<div ref="root"></div>`, (path) =>
-		path === "./widget.ts"
-			? `import { x } from "../../shared.ts";\nexport default island(() => {});\n`
-			: undefined,
 	);
 	assert.ok(emitted.issues.some((i) => i.code === "SCRIPT_IMPORT_INVALID"));
 });

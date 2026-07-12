@@ -9,10 +9,12 @@ import type { DocumentNode, LiquidHtmlNode } from "@shopify/liquid-html-parser";
 /** @deprecated Use {@link Diagnostic} from @nazare/core. */
 export type ParseDiagnostic = Diagnostic;
 
+/** {% import Name from "./name.nz.liquid" %} — a component import. */
 export type NazareImportNode = {
 	type: "NazareImport";
 	localName: string;
-	packageId: string;
+	/** Project-relative path of the imported component file. */
+	path: string;
 	span: SourceSpan;
 };
 
@@ -86,28 +88,34 @@ export type NazareScriptNode = {
 	source: string;
 	refAccesses: NazareRefAccess[];
 	dataAccesses: NazareDataAccess[];
+	/** The import binding name, when the script came in via {% import %}. */
+	bindingName?: string;
 	span: SourceSpan;
 	/** Span of the script body only, excluding the {% script %} tags. */
 	bodySpan: SourceSpan;
 };
 
-/** Side-effect import of a sidecar asset: {% import "./x.ts" %} etc. */
+/** {% import name from "./x.ts|.js|.css" %} — a behavior or style import. */
 export type NazareAssetImportNode = {
 	type: "NazareAssetImport";
+	localName: string;
+	/** Project-relative path of the imported file. */
 	path: string;
 	span: SourceSpan;
 };
 
-/** {% blocks "@pkg/a", "@pkg/b" %} — the theme-block slot in a section. */
+/** {% blocks "notice", "quote" %} — the theme-block slot in a section. */
 export type NazareBlocksNode = {
 	type: "NazareBlocks";
-	packageIds: string[];
+	blockTypes: string[];
 	span: SourceSpan;
 };
 
 export type NazareStyleNode = {
 	type: "NazareStyle";
 	source: string;
+	/** The import binding name, when the style came in via {% import %}. */
+	bindingName?: string;
 	span: SourceSpan;
 	/** Span of the CSS body only, excluding the {% stylesheet %} tags. */
 	bodySpan: SourceSpan;

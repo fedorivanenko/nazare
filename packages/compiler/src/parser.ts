@@ -24,13 +24,18 @@ import type {
 import {
 	controlFlowNotLowered,
 	htmlNotPromoted,
-	parseInvalidAssetImport,
+	importBareSpecifier,
+	importBindingCase,
+	importComponentCase,
+	importOutsideProject,
+	importUnsupportedExtension,
 	parseInvalidBlocksSlot,
 	parseInvalidImport,
 	parseInvalidRefAttribute,
 	parseInvalidTypeExpression,
 	parseMalformedPropDeclaration,
 } from "./diagnostics.js";
+import { isRelativeSpecifier, resolveImportPath } from "./paths.js";
 import { scanScript } from "./script-scan.js";
 import { offsetFromPosition, spanFromOffsets } from "./source.js";
 import { parseTypeExpression } from "./type-expression.js";
@@ -115,29 +120,42 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 		const span = spanFromOffsets(source, file, tag.position);
 
 		if (tag.name === "import") {
-			const assetMatch = tag.markup.trim().match(/^["']([^"']+)["']$/);
-			if (assetMatch) {
-				const path = assetMatch[1];
-				if (!isValidAssetImportPath(path)) {
-					diagnostics.push(parseInvalidAssetImport(path, span));
-					return;
-				}
-				nodes.push({ type: "NazareAssetImport", path, span });
-				return;
-			}
-
 			const match = tag.markup.trim().match(importPattern);
 			if (!match) {
 				diagnostics.push(parseInvalidImport(tag.markup, span));
 				return;
 			}
+			const [, localName, specifier] = match;
 
-			nodes.push({
-				type: "NazareImport",
-				localName: match[1],
-				packageId: match[2],
-				span,
-			});
+			if (!isRelativeSpecifier(specifier)) {
+				diagnostics.push(importBareSpecifier(specifier, span));
+				return;
+			}
+			const path = resolveImportPath(file, specifier);
+			if (path === undefined) {
+				diagnostics.push(importOutsideProject(specifier, span));
+				return;
+			}
+
+			if (specifier.endsWith(".liquid")) {
+				if (!/^[A-Z]/.test(localName)) {
+					diagnostics.push(importComponentCase(localName, span));
+					return;
+				}
+				nodes.push({ type: "NazareImport", localName, path, span });
+				return;
+			}
+
+			if (/\.(ts|js|css)$/.test(specifier)) {
+				if (/^[A-Z]/.test(localName)) {
+					diagnostics.push(importBindingCase(localName, span));
+					return;
+				}
+				nodes.push({ type: "NazareAssetImport", localName, path, span });
+				return;
+			}
+
+			diagnostics.push(importUnsupportedExtension(specifier, span));
 			return;
 		}
 
@@ -158,23 +176,23 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 
 		if (tag.name === "blocks") {
 			const markup = tag.markup.trim();
-			const packageIds: string[] = [];
+			const blockTypes: string[] = [];
 			let valid = true;
 			if (markup.length > 0) {
 				for (const part of markup.split(",")) {
-					const id = part.trim().match(/^["']([^"']+)["']$/)?.[1];
-					if (!id) {
+					const blockType = part.trim().match(/^["']([^"']+)["']$/)?.[1];
+					if (!blockType) {
 						valid = false;
 						break;
 					}
-					packageIds.push(id);
+					blockTypes.push(blockType);
 				}
 			}
 			if (!valid) {
 				diagnostics.push(parseInvalidBlocksSlot(tag.markup, span));
 				return;
 			}
-			nodes.push({ type: "NazareBlocks", packageIds, span });
+			nodes.push({ type: "NazareBlocks", blockTypes, span });
 			return;
 		}
 
@@ -768,16 +786,6 @@ function unsupportedSyntaxDiagnostics(
 
 function isIdentifier(value: string): boolean {
 	return /^[A-Za-z_$][\w$]*$/.test(value);
-}
-
-// Sidecar imports stay inside the component's own directory so the package
-// remains a portable artifact.
-function isValidAssetImportPath(path: string): boolean {
-	return (
-		path.startsWith("./") &&
-		!path.includes("..") &&
-		/\.(ts|js|css)$/.test(path)
-	);
 }
 
 export function scanRefAccesses(

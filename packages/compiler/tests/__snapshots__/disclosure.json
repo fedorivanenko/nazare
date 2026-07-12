@@ -846,12 +846,12 @@
     }
   ],
   "contract": {
-    "packageId": "@nazare/disclosure",
-    "componentSymbolId": "symbol:component:@nazare/disclosure#default",
+    "path": "examples/components/disclosure/disclosure.nz.liquid",
+    "componentSymbolId": "symbol:component:examples/components/disclosure/disclosure.nz.liquid#default",
     "props": [
       {
         "name": "label",
-        "symbolId": "symbol:prop:@nazare/disclosure#default.label",
+        "symbolId": "symbol:prop:examples/components/disclosure/disclosure.nz.liquid#default.label",
         "required": false,
         "hasDefault": true,
         "typeExpression": "string.setting({\n    label: \"Trigger label\",\n    default: \"Details\",\n  })",

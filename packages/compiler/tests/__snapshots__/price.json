@@ -47,7 +47,7 @@
           },
           "end": {
             "line": 1,
-            "column": 27
+            "column": 39
           }
         },
         "bodySpan": {
@@ -76,7 +76,7 @@
           },
           "end": {
             "line": 2,
-            "column": 26
+            "column": 37
           }
         },
         "bodySpan": {
@@ -401,7 +401,7 @@
           },
           "end": {
             "line": 1,
-            "column": 27
+            "column": 39
           }
         }
       },
@@ -418,7 +418,7 @@
           },
           "end": {
             "line": 2,
-            "column": 26
+            "column": 37
           }
         }
       },
@@ -724,12 +724,12 @@
     }
   ],
   "contract": {
-    "packageId": "@nazare/price",
-    "componentSymbolId": "symbol:component:@nazare/price#default",
+    "path": "examples/components/price/price.nz.liquid",
+    "componentSymbolId": "symbol:component:examples/components/price/price.nz.liquid#default",
     "props": [
       {
         "name": "price",
-        "symbolId": "symbol:prop:@nazare/price#default.price",
+        "symbolId": "symbol:prop:examples/components/price/price.nz.liquid#default.price",
         "required": true,
         "hasDefault": false,
         "typeExpression": "Money.required()",
@@ -741,7 +741,7 @@
       },
       {
         "name": "compare_at_price",
-        "symbolId": "symbol:prop:@nazare/price#default.compare_at_price",
+        "symbolId": "symbol:prop:examples/components/price/price.nz.liquid#default.compare_at_price",
         "required": false,
         "hasDefault": false,
         "typeExpression": "Money.optional()",
@@ -761,7 +761,7 @@
       },
       {
         "name": "show_compare_at",
-        "symbolId": "symbol:prop:@nazare/price#default.show_compare_at",
+        "symbolId": "symbol:prop:examples/components/price/price.nz.liquid#default.show_compare_at",
         "required": false,
         "hasDefault": true,
         "typeExpression": "boolean.default(true)",
