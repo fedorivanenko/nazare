@@ -27,6 +27,7 @@ import {
 import { type HoistedSetting, resolveHoistedSettings } from "./hoist.js";
 import { baseNameOf, directoryOf } from "./paths.js";
 import { themeSchemaFromIR } from "./schema.js";
+import { runtimeSource } from "./runtime.js";
 import { hasDefaultExport } from "./script-scan.js";
 import { offsetFromPosition } from "./source.js";
 import { componentKindFromIR } from "./symbols.js";
@@ -284,9 +285,11 @@ function emitLiquid(
 			});
 		}
 		if (node.kind === "render-site" && node.span) {
+			// A render target always resolves to an import in a valid compile;
+			// an unresolved one is already reported by check, so keep the
+			// authored name verbatim rather than inventing a lowercased snippet.
 			const snippetName =
-				snippetNamesByLocalName.get(node.targetName) ??
-				node.targetName.toLowerCase();
+				snippetNamesByLocalName.get(node.targetName) ?? node.targetName;
 			const authored = node.argumentIds
 				.map((argumentId) => argumentsById.get(argumentId))
 				.filter((argument) => argument !== undefined)
@@ -671,78 +674,3 @@ function indent(text: string, prefix: string): string {
 		.map((line) => (line ? prefix + line : line))
 		.join("\n");
 }
-
-// Mount-per-instance DOM runtime, emitted verbatim as a theme asset. Grows
-// into @nazare/runtime once it needs its own build.
-const runtimeSource = `/* Nazare runtime */
-(function () {
-  "use strict";
-  if (window.Nazare) return;
-  function island(setup) { return setup; }
-  function refLookup(root, key) {
-    if (root.getAttribute("data-nz-ref") === key) return root;
-    return root.querySelector('[data-nz-ref="' + key + '"]');
-  }
-  function parseValue(raw, kind) {
-    if (raw === undefined) return undefined;
-    if (kind === "number") return Number(raw);
-    if (kind === "boolean") return raw === "true";
-    return raw;
-  }
-  function buildData(root, descriptor) {
-    var data = {};
-    Object.keys(descriptor || {}).forEach(function (refName) {
-      var element = refLookup(root, refName);
-      var entry = {};
-      Object.keys(descriptor[refName]).forEach(function (property) {
-        var raw = element ? element.dataset[property] : undefined;
-        entry[property] = parseValue(raw, descriptor[refName][property]);
-      });
-      data[refName] = entry;
-    });
-    return data;
-  }
-  function mountRoots(componentRoot, placement) {
-    if (!placement) return [componentRoot];
-    var targets = [];
-    if (componentRoot.getAttribute("data-nz-island") === placement) {
-      targets.push(componentRoot);
-    }
-    var placed = componentRoot.querySelectorAll(
-      '[data-nz-island="' + placement + '"]'
-    );
-    placed.forEach(function (element) { targets.push(element); });
-    return targets;
-  }
-  function mount(name, placement, setup, descriptor) {
-    var componentRoots = document.querySelectorAll(
-      '[data-nz-component="' + name + '"]'
-    );
-    componentRoots.forEach(function (componentRoot) {
-      mountRoots(componentRoot, placement).forEach(function (root) {
-        if (!root.nazareMounted) root.nazareMounted = [];
-        if (root.nazareMounted.indexOf(setup) !== -1) return;
-        root.nazareMounted.push(setup);
-        var refs = new Proxy({}, {
-          get: function (_, key) {
-            if (typeof key !== "string") return undefined;
-            return refLookup(root, key);
-          },
-        });
-        setup({ root: root, refs: refs, data: buildData(root, descriptor) });
-      });
-    });
-  }
-  function register(name, placement, setup, descriptor) {
-    if (typeof setup !== "function") return;
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", function () {
-        mount(name, placement, setup, descriptor);
-      });
-    } else {
-      mount(name, placement, setup, descriptor);
-    }
-  }
-  window.Nazare = { island: island, register: register, mount: mount };
-})();
-`;
