@@ -8,12 +8,14 @@ import type {
 	ArtifactIR,
 	Diagnostic,
 	ExpressionSyntaxNode,
+	Id,
 	NazareManifest,
 	PropArgumentSyntaxNode,
 	RenderSiteSyntaxNode,
 	SemanticType,
 	SourceSpan,
 } from "@nazare/core";
+import { cssClassTokens, parseStyleReference } from "./css-modules.js";
 import { dataChannelFromIR } from "./data-channel.js";
 import { resolveHoistedSettings } from "./hoist.js";
 import { findUnsupportedModuleSyntax } from "./script-modules.js";
@@ -30,9 +32,11 @@ import {
 	unknownPropArgument,
 	unknownPropsReference,
 	unknownRef,
+	unknownStyleClass,
 	unresolvedExternalContract,
 	unusedDataBinding,
 	unusedRef,
+	unusedStyleClass,
 } from "./diagnostics.js";
 import { type ArtifactIRIndex, indexArtifactIR } from "./ir-index.js";
 
@@ -83,8 +87,87 @@ export function checkArtifactIR(
 	issues.push(...checkPropProvenanceForKind(index, options.kind));
 	issues.push(...resolveHoistedSettings(ir, contracts).issues);
 	issues.push(...checkScriptModuleSyntax(index));
+	issues.push(...checkStyleBindings(index));
 
 	return issues;
+}
+
+/**
+ * Css-module linkage, the same guarantee refs give scripts: every
+ * {{ styles.x }} read must name a class a bound stylesheet defines, and
+ * every defined class must be read somewhere. Unbound stylesheets opt out
+ * of the mechanism entirely and are not inspected.
+ */
+function checkStyleBindings(index: ArtifactIRIndex): Diagnostic[] {
+	const issues: Diagnostic[] = [];
+	const boundStyles = index
+		.nodesOfKind("style")
+		.filter((style) => style.bindingName !== undefined);
+	if (boundStyles.length === 0) return [];
+	const bindingNames = new Set(
+		boundStyles.map((style) => style.bindingName as string),
+	);
+
+	const definitions = new Map<
+		string,
+		{ styleId: Id; span: SourceSpan | undefined }
+	>();
+	for (const style of boundStyles) {
+		for (const token of cssClassTokens(style.source)) {
+			if (definitions.has(token.name)) continue;
+			definitions.set(token.name, {
+				styleId: style.id,
+				span: spanWithinBody(style.source, style.bodySpan, token),
+			});
+		}
+	}
+
+	const referenced = new Set<string>();
+	for (const expression of index.nodesOfKind("expression")) {
+		const reference = parseStyleReference(expression.source, bindingNames);
+		if (!reference) continue;
+		referenced.add(reference.className);
+		if (!definitions.has(reference.className)) {
+			issues.push(
+				unknownStyleClass(
+					reference.binding,
+					reference.className,
+					expression.id,
+					expression.span,
+				),
+			);
+		}
+	}
+
+	for (const [className, definition] of definitions) {
+		if (referenced.has(className)) continue;
+		issues.push(
+			unusedStyleClass(className, definition.styleId, definition.span),
+		);
+	}
+
+	return issues;
+}
+
+/** Maps an offset range inside a style/script body onto file coordinates. */
+function spanWithinBody(
+	bodySource: string,
+	bodySpan: SourceSpan | undefined,
+	range: { start: number; end: number },
+): SourceSpan | undefined {
+	if (!bodySpan) return undefined;
+	const before = bodySource.slice(0, range.start);
+	const bodyLine = before.split("\n").length - 1;
+	const lastNewline = before.lastIndexOf("\n");
+	const character = range.start - (lastNewline + 1);
+	const line = bodySpan.start.line + bodyLine;
+	const column =
+		bodyLine === 0 ? bodySpan.start.column + character : character + 1;
+	return {
+		file: bodySpan.file,
+		start: { line, column },
+		end: { line, column: column + (range.end - range.start) },
+	};
 }
 
 /** Module syntax in behavior scripts breaks the emitted IIFE until bundling exists. */

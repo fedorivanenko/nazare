@@ -33,20 +33,22 @@ test("asset-import: ts import becomes a script node with its own spans", () => {
 	assert.equal(bindings.length, 1);
 });
 
-test("asset-import: css import becomes a style node and scoped asset", () => {
+test("asset-import: css import becomes a bound style node and scoped asset", () => {
 	const source = `{% import styles from "./widget.css" %}
-<div class="widget"></div>`;
+<div class="{{ styles.widget }}"></div>`;
 	const result = compile(source);
 	const style = result.ir.syntax.find((node) => node.kind === "style");
 	assert.ok(style?.source.includes(".widget { color: red; }"));
+	assert.equal(style?.bindingName, "styles");
 
 	const emitted = emitTheme(source, result, { name: "widget" });
 	const css = emitted.files.find((f) => f.path === "assets/widget.css");
-	assert.ok(css?.contents.includes('[data-nz-component="widget"] .widget'));
+	assert.ok(css?.contents.includes(".nz-widget__widget { color: red; }"));
 	const liquid = emitted.files.find(
 		(f) => f.path === "snippets/widget.liquid",
 	);
 	assert.ok(!liquid.contents.includes("{% import"));
+	assert.ok(liquid.contents.includes('class="nz-widget__widget"'));
 });
 
 test("asset-import: unreadable file is an error", () => {

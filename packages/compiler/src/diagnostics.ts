@@ -70,7 +70,7 @@ export function importBindingCase(
 	return {
 		severity: "error",
 		code: "NAZARE_IMPORT_BINDING_CASE",
-		message: `Behavior and style import names are lowercase (only components are capitalized): rename ${localName} to ${localName.charAt(0).toLowerCase()}${localName.slice(1)}`,
+		message: `Behavior and style bindings are lowercase (only components are capitalized): rename ${localName} to ${localName.charAt(0).toLowerCase()}${localName.slice(1)}`,
 		span,
 	};
 }
@@ -107,6 +107,47 @@ export function parseInvalidBlocksSlot(
 		severity: "error",
 		code: "NAZARE_PARSE_BLOCKS_SLOT",
 		message: `Invalid blocks slot: ${markup} — expected {% blocks %} or {% blocks "notice", "quote" %} (theme-block type names)`,
+		span,
+	};
+}
+
+export function parseInvalidStylesheetBinding(
+	markup: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_STYLESHEET_BINDING",
+		message: `Invalid stylesheet binding "${markup}"; expected {% stylesheet %} (unscoped pass-through) or {% stylesheet styles %} (css module)`,
+		span,
+	};
+}
+
+export function unknownStyleClass(
+	binding: string,
+	className: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_UNKNOWN_STYLE_CLASS",
+		message: `{{ ${binding}.${className} }} references class ".${className}" but no bound stylesheet defines it`,
+		nodeId,
+		span,
+	};
+}
+
+export function unusedStyleClass(
+	className: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "warning",
+		code: "CONSTRAINT_UNUSED_STYLE_CLASS",
+		message: `Class ".${className}" is defined in a bound stylesheet but never referenced by the markup`,
+		nodeId,
 		span,
 	};
 }

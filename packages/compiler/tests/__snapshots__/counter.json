@@ -102,6 +102,7 @@
             }
           }
         ],
+        "bindingName": "counter",
         "span": {
           "file": "examples/components/counter/counter.nz.liquid",
           "start": {

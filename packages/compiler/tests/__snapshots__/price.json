@@ -37,8 +37,9 @@
       {
         "id": "syntax:style:examples/components/price/price.nz.liquid:1",
         "kind": "style",
-        "source": ".price {\n  display: inline-flex;\n  align-items: baseline;\n  gap: 0.5rem;\n}\n\n.price__compare {\n  color: rgb(107 114 128);\n}\n",
+        "source": ".price {\n  display: inline-flex;\n  align-items: baseline;\n  gap: 0.5rem;\n}\n\n.price__compare {\n  color: rgb(107 114 128);\n}\n\n.price__current {\n  font-weight: 600;\n}\n",
         "ownerId": "syntax:component:examples/components/price/price.nz.liquid",
+        "bindingName": "styles",
         "span": {
           "file": "examples/components/price/price.nz.liquid",
           "start": {
@@ -57,7 +58,7 @@
             "column": 1
           },
           "end": {
-            "line": 10,
+            "line": 14,
             "column": 1
           }
         }
@@ -68,6 +69,7 @@
         "lang": "js",
         "source": "export default island(({ root }) => {\n\troot.dataset.priceReady = \"true\";\n});\n",
         "ownerId": "syntax:component:examples/components/price/price.nz.liquid",
+        "bindingName": "price",
         "span": {
           "file": "examples/components/price/price.nz.liquid",
           "start": {
@@ -198,32 +200,80 @@
       {
         "id": "syntax:expression:examples/components/price/price.nz.liquid:output:1",
         "kind": "expression",
-        "source": "props.price | money",
+        "source": "styles.price",
         "span": {
           "file": "examples/components/price/price.nz.liquid",
           "start": {
-            "line": 11,
-            "column": 35
+            "line": 10,
+            "column": 17
           },
           "end": {
-            "line": 11,
-            "column": 54
+            "line": 10,
+            "column": 29
           }
         }
       },
       {
         "id": "syntax:expression:examples/components/price/price.nz.liquid:output:2",
         "kind": "expression",
+        "source": "styles.price__current",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 11,
+            "column": 19
+          },
+          "end": {
+            "line": 11,
+            "column": 40
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/price/price.nz.liquid:output:3",
+        "kind": "expression",
+        "source": "props.price | money",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 11,
+            "column": 48
+          },
+          "end": {
+            "line": 11,
+            "column": 67
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/price/price.nz.liquid:output:4",
+        "kind": "expression",
+        "source": "styles.price__compare",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 14,
+            "column": 18
+          },
+          "end": {
+            "line": 14,
+            "column": 39
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/price/price.nz.liquid:output:5",
+        "kind": "expression",
         "source": "props.compare_at_price | money",
         "span": {
           "file": "examples/components/price/price.nz.liquid",
           "start": {
             "line": 14,
-            "column": 34
+            "column": 47
           },
           "end": {
             "line": 14,
-            "column": 64
+            "column": 77
           }
         }
       }
@@ -493,22 +543,73 @@
       {
         "id": "syntax:expression:examples/components/price/price.nz.liquid:output:1",
         "kind": "expression",
+        "name": "styles.price",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 10,
+            "column": 17
+          },
+          "end": {
+            "line": 10,
+            "column": 29
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/price/price.nz.liquid:output:2",
+        "kind": "expression",
+        "name": "styles.price__current",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 11,
+            "column": 19
+          },
+          "end": {
+            "line": 11,
+            "column": 40
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/price/price.nz.liquid:output:3",
+        "kind": "expression",
         "name": "props.price | money",
         "layer": "syntax",
         "span": {
           "file": "examples/components/price/price.nz.liquid",
           "start": {
             "line": 11,
-            "column": 35
+            "column": 48
           },
           "end": {
             "line": 11,
-            "column": 54
+            "column": 67
           }
         }
       },
       {
-        "id": "syntax:expression:examples/components/price/price.nz.liquid:output:2",
+        "id": "syntax:expression:examples/components/price/price.nz.liquid:output:4",
+        "kind": "expression",
+        "name": "styles.price__compare",
+        "layer": "syntax",
+        "span": {
+          "file": "examples/components/price/price.nz.liquid",
+          "start": {
+            "line": 14,
+            "column": 18
+          },
+          "end": {
+            "line": 14,
+            "column": 39
+          }
+        }
+      },
+      {
+        "id": "syntax:expression:examples/components/price/price.nz.liquid:output:5",
         "kind": "expression",
         "name": "props.compare_at_price | money",
         "layer": "syntax",
@@ -516,11 +617,11 @@
           "file": "examples/components/price/price.nz.liquid",
           "start": {
             "line": 14,
-            "column": 34
+            "column": 47
           },
           "end": {
             "line": 14,
-            "column": 64
+            "column": 77
           }
         }
       },
@@ -702,7 +803,7 @@
         },
         "end": {
           "line": 11,
-          "column": 64
+          "column": 77
         }
       }
     },

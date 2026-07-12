@@ -122,6 +122,8 @@ export type ScriptSyntaxNode = {
 	source: string;
 	ownerId: Id;
 	dataAccesses?: ScriptDataAccess[];
+	/** The import binding name, when the script came in via {% import %}. */
+	bindingName?: string;
 	span?: SourceSpan;
 	/** Span of the script body only, excluding the {% script %} tags. */
 	bodySpan?: SourceSpan;
@@ -143,6 +145,12 @@ export type StyleSyntaxNode = {
 	kind: "style";
 	source: string;
 	ownerId: Id;
+	/**
+	 * The css-module binding ({% stylesheet styles %} or a style import).
+	 * Bound sheets get their classes scoped and linked; unbound sheets pass
+	 * through untouched.
+	 */
+	bindingName?: string;
 	span?: SourceSpan;
 	bodySpan?: SourceSpan;
 };

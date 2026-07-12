@@ -22,11 +22,11 @@ import {
 	emitScriptWithoutRoot,
 } from "./diagnostics.js";
 import { bundleScript } from "./bundle.js";
+import { rewriteCssClasses, scopedClassName } from "./css-modules.js";
 import { type HoistedSetting, resolveHoistedSettings } from "./hoist.js";
 import { baseNameOf, directoryOf } from "./paths.js";
 import { hasDefaultExport } from "./script-scan.js";
 import { themeSchemaFromIR } from "./schema.js";
-import { scopeCss } from "./scope-css.js";
 import { offsetFromPosition } from "./source.js";
 
 export type EmitThemeOptions = {
@@ -87,9 +87,16 @@ export function emitTheme(
 	files.push({ path: `${directory}/${options.name}.liquid`, contents: liquid });
 
 	if (hasStyle) {
-		const scope = `[data-nz-component="${options.name}"]`;
+		// Bound sheets (css modules) scope by class rewrite; unbound sheets
+		// pass through untouched, as vanilla Shopify would.
 		const css = styles
-			.map((style) => scopeCss(style.source, scope))
+			.map((style) =>
+				style.bindingName
+					? rewriteCssClasses(style.source, (className) =>
+							scopedClassName(options.name, className),
+						)
+					: style.source,
+			)
 			.join("\n\n");
 		files.push({ path: `assets/${options.name}.css`, contents: `${css}\n` });
 	}
@@ -200,7 +207,9 @@ function emitLiquid(
 		}
 	}
 
-	if (hasScript || hasStyle || options.kind === "block") {
+	// data-nz-component is only the island mount hook now — styles scope by
+	// class rewrite and need no root attribute.
+	if (hasScript || options.kind === "block") {
 		const root = rootElement(source, compiled.ast);
 		if (!root) {
 			if (hasScript) issues.push(emitScriptWithoutRoot(options.name));
@@ -211,9 +220,7 @@ function emitLiquid(
 				);
 			}
 			const stamps = [
-				...(hasScript || hasStyle
-					? [` data-nz-component="${options.name}"`]
-					: []),
+				...(hasScript ? [` data-nz-component="${options.name}"`] : []),
 				// The editor needs this to map a block instance to its DOM.
 				...(options.kind === "block" ? [" {{ block.shopify_attributes }}"] : []),
 			];
@@ -227,6 +234,7 @@ function emitLiquid(
 
 	let liquid = applyEdits(source, edits);
 	liquid = lowerPropsReads(liquid, compiled.ir, options.kind);
+	liquid = lowerStyleReads(liquid, compiled.ir, options.name);
 	liquid = `${liquid.replace(/\n{3,}/g, "\n\n").trim()}\n`;
 	liquid =
 		generatedHeader(
@@ -302,6 +310,55 @@ function lowerPropsReads(
 		/\bprops\.([A-Za-z_$][\w$]*)/g,
 		(match, name: string) => accessByProp.get(name) ?? match,
 	);
+}
+
+/**
+ * Lowers css-module reads to their generated class names at compile time:
+ * output tags ({{ styles.wrapper }}) become the bare literal, remaining
+ * expression-position reads (render arguments) become a quoted string.
+ * Textual over the whole output so control-flow Liquid lowers too.
+ */
+function lowerStyleReads(
+	liquid: string,
+	ir: ArtifactIR,
+	componentName: string,
+): string {
+	const bindingNames = ir.syntax
+		.filter((node) => node.kind === "style")
+		.map((node) => node.bindingName)
+		.filter((name): name is string => name !== undefined);
+
+	let output = liquid;
+	for (const binding of new Set(bindingNames)) {
+		const dotOutput = new RegExp(
+			`\\{\\{-?\\s*${binding}\\.([A-Za-z_$][\\w$]*)\\s*-?\\}\\}`,
+			"g",
+		);
+		const bracketOutput = new RegExp(
+			`\\{\\{-?\\s*${binding}\\[\\s*["']([^"']+)["']\\s*\\]\\s*-?\\}\\}`,
+			"g",
+		);
+		const dotExpression = new RegExp(
+			`\\b${binding}\\.([A-Za-z_$][\\w$]*)\\b`,
+			"g",
+		);
+		const bracketExpression = new RegExp(
+			`\\b${binding}\\[\\s*["']([^"']+)["']\\s*\\]`,
+			"g",
+		);
+		const scoped = (className: string) =>
+			scopedClassName(componentName, className);
+
+		output = output
+			.replace(dotOutput, (_, className: string) => scoped(className))
+			.replace(bracketOutput, (_, className: string) => scoped(className))
+			.replace(dotExpression, (_, className: string) => `"${scoped(className)}"`)
+			.replace(
+				bracketExpression,
+				(_, className: string) => `"${scoped(className)}"`,
+			);
+	}
+	return output;
 }
 
 /** The first top-level element (which gets stamped) and how many compete with it. */

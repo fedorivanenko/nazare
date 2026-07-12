@@ -7,3 +7,7 @@
 .price__compare {
   color: rgb(107 114 128);
 }
+
+.price__current {
+  font-weight: 600;
+}

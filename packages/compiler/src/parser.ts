@@ -32,6 +32,7 @@ import {
 	parseInvalidBlocksSlot,
 	parseInvalidImport,
 	parseInvalidRefAttribute,
+	parseInvalidStylesheetBinding,
 	parseInvalidTypeExpression,
 	parseMalformedPropDeclaration,
 } from "./diagnostics.js";
@@ -45,7 +46,7 @@ const renderPattern = /^([A-Za-z_$][\w$]*)\s*\{([\s\S]*)\}$/;
 const scriptBlockPattern =
 	/{%-?\s*script\b([^%]*?)-?%}([\s\S]*?){%-?\s*endscript\s*-?%}/g;
 const styleBlockPattern =
-	/{%-?\s*stylesheet\s*-?%}([\s\S]*?){%-?\s*endstylesheet\s*-?%}/g;
+	/{%-?\s*stylesheet\b([^%]*?)-?%}([\s\S]*?){%-?\s*endstylesheet\s*-?%}/g;
 const refIdentifierPattern = /^[A-Za-z_$][\w$]*$/;
 
 type SourceRange = { start: number; end: number };
@@ -76,6 +77,7 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 		scriptExtraction.blankedSource,
 		source,
 		file,
+		diagnostics,
 	);
 	nodes.push(...styleExtraction.styles);
 
@@ -368,22 +370,40 @@ function extractStyleBlocks(
 	scanSource: string,
 	originalSource: string,
 	file: string,
+	diagnostics: NazareAst["diagnostics"],
 ): { styles: NazareStyleNode[]; blankedSource: string } {
 	const styles: NazareStyleNode[] = [];
 	let blankedSource = scanSource;
 
 	for (const match of scanSource.matchAll(styleBlockPattern)) {
-		const [block, body] = match;
+		const [block, markup, body] = match;
 		const blockStart = match.index;
-		const bodyStart = blockStart + block.indexOf(body);
+		const bodyStart = blockStart + block.indexOf(body, markup.length);
+		const span = spanFromOffsets(originalSource, file, {
+			start: blockStart,
+			end: blockStart + block.length,
+		});
+
+		// {% stylesheet styles %} binds the sheet's class map (a css module);
+		// a bare {% stylesheet %} passes through unscoped, as vanilla Shopify.
+		let bindingName: string | undefined;
+		const trimmedMarkup = markup.trim();
+		if (trimmedMarkup.length > 0) {
+			if (!refIdentifierPattern.test(trimmedMarkup)) {
+				diagnostics.push(parseInvalidStylesheetBinding(trimmedMarkup, span));
+			} else if (/^[A-Z]/.test(trimmedMarkup)) {
+				diagnostics.push(importBindingCase(trimmedMarkup, span));
+				bindingName = trimmedMarkup;
+			} else {
+				bindingName = trimmedMarkup;
+			}
+		}
 
 		styles.push({
 			type: "NazareStyle",
 			source: originalSource.slice(bodyStart, bodyStart + body.length),
-			span: spanFromOffsets(originalSource, file, {
-				start: blockStart,
-				end: blockStart + block.length,
-			}),
+			bindingName,
+			span,
 			bodySpan: spanFromOffsets(originalSource, file, {
 				start: bodyStart,
 				end: bodyStart + body.length,

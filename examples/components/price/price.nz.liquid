@@ -7,10 +7,10 @@
   show_compare_at: boolean.default(true),
 } %}
 
-<span class="price" data-price>
-  <span class="price__current">{{ props.price | money }}</span>
+<span class="{{ styles.price }}" data-price>
+  <span class="{{ styles.price__current }}">{{ props.price | money }}</span>
 
   {% if props.show_compare_at and props.compare_at_price and props.compare_at_price > props.price %}
-    <s class="price__compare">{{ props.compare_at_price | money }}</s>
+    <s class="{{ styles.price__compare }}">{{ props.compare_at_price | money }}</s>
   {% endif %}
 </span>

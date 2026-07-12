@@ -110,3 +110,20 @@ All 17 steps done; 140 tests green; every example builds error-free via the
 CLI. Hard-won fix along the way: TS module resolution silently skips files in
 directories the compiler host says don't exist — check-script now overrides
 `host.directoryExists` for virtual `/`-rooted paths (see check-script.ts).
+
+## Step 2: CSS modules (completed 2026-07-12)
+
+- `{% stylesheet styles %}` and `{% import styles from "./x.css" %}` bind a
+  class map; `{{ styles.wrapper }}` / `{{ styles["hero-image"] }}` lower at
+  compile time to `nz-<component>__<class>`; bound sheets' selectors are
+  rewritten to match (css-modules.ts: prelude-scanned class tokens, so
+  url(...)/0.5rem/keyframe percentages never match).
+- Unknown `styles.x` = CONSTRAINT_UNKNOWN_STYLE_CLASS (error); defined but
+  unread class = CONSTRAINT_UNUSED_STYLE_CLASS (warning, span into the css).
+- Bare `{% stylesheet %}` passes through untouched (vanilla behavior);
+  binding is the scoping opt-in. scope-css.ts deleted; `data-nz-component`
+  is stamped only for scripts/blocks (island mount hook).
+- Render-argument reads (`class: styles.cta`) lower to a quoted literal.
+- Examples: price fully migrated (import-bound); counter/disclosure/notice
+  stay unbound on purpose — their scripts toggle class strings at runtime
+  (`nazare-counter--positive`), which a static class map cannot see.

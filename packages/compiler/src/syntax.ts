@@ -155,6 +155,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 				dataAccesses: node.dataAccesses.length
 					? node.dataAccesses
 					: undefined,
+				bindingName: node.bindingName,
 				span: node.span,
 				bodySpan: node.bodySpan,
 			});
@@ -177,6 +178,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 				kind: "style",
 				source: node.source,
 				ownerId: componentId,
+				bindingName: node.bindingName,
 				span: node.span,
 				bodySpan: node.bodySpan,
 			});

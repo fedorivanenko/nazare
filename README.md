@@ -63,9 +63,16 @@ all of them with a diagnostic that says what to do instead.
   project root are all errors.
 - Importing a component compiles that file on the spot to derive its
   props contract — there is no registry lookup at compile time.
-- `{% stylesheet %}` blocks are extracted and scoped under the component
-  (this is stricter than vanilla Shopify); `{% style %}` passes through
-  untouched. Scoping expects a single top-level root element — the first one
+- Styles are css modules, opt-in by binding: `{% stylesheet styles %}` and
+  `{% import styles from "./x.css" %}` expose the sheet's classes as a map.
+  `{{ styles.wrapper }}` (or `{{ styles["hero-image"] }}`) lowers at compile
+  time to `nz-<component>__<class>`, and the sheet's selectors are rewritten
+  to match — scoping is the class rewrite, no wrapper attribute involved.
+  Referencing an undefined class is an error; a defined class the markup
+  never reads warns. A bare `{% stylesheet %}` (and `{% style %}`) passes
+  through untouched, exactly as vanilla Shopify.
+- `data-nz-component` on the root element exists only to mount islands;
+  components with a script expect a single top-level root — the first one
   is stamped, and multiple roots warn.
 - Liquid control flow is preserved but not modeled: render-site
   reachability is approximate, and hoisting ignores branches.
