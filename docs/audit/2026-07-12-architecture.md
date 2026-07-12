@@ -182,8 +182,12 @@ byte-identical, so the emit snapshots barely move.
    footgun is gone and control-flow conditions are now checked. Replacement
    computation lives in emit (`referenceLowering`) rather than bind — a small
    deviation from the sketch, kept for scope.
-2. Mode rule registry; delete `filterIssuesForMode`; move partial-lowering
-   notices to a `notes` channel.
+2. ✅ **DONE** (commit 912758f) — `CHECK_RULES` registry in `check.ts`: each
+   rule tagged with the modes it runs in, so `checkArtifactIR` filters the
+   list instead of an `if (mode === "strict")` branch. The two
+   `IR_PARTIAL_LOWERING_*` notices moved from `issues` to a `notes` channel on
+   the compile result (and `NazareAst.notes`), mode-independent;
+   `filterIssuesForMode` deleted. CLI surfaces `notes` alongside `issues`.
 3. Resolver split: `checkDependencies` as an explicit call; drop the policy.
 
 Smaller cleanups (#4 silent fallback → assert; #5 runtime typing) can ride

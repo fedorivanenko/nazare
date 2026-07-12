@@ -58,30 +58,27 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 	);
 });
 
-test("cli: --dependency-diagnostics controls build dependency diagnostics", async () => {
+test("cli: build validates dependencies, validate checks only the entry", async () => {
 	await withProject(
 		{
 			"component.nz.liquid": `{% import Child from "./child.nz.liquid" %}\n{% render Child {} %}`,
 			"child.nz.liquid": `{% props { title: string.requried() } %}<span>{{ props.title }}</span>`,
 		},
 		async (cwd) => {
-			const surfaced = runCli(cwd, "build", "component.nz.liquid");
-			const hidden = runCli(
-				cwd,
-				"build",
-				"component.nz.liquid",
-				"--dependency-diagnostics=hidden",
-			);
-
-			assert.notEqual(surfaced.status, 0);
-			assert.equal(hidden.status, 0, hidden.stderr);
+			// build checks imported files, so the child's parse error surfaces.
+			const built = runCli(cwd, "build", "component.nz.liquid");
+			assert.notEqual(built.status, 0);
 			assert.ok(
-				JSON.parse(surfaced.stdout).issues.some(
+				JSON.parse(built.stdout).issues.some(
 					(issue) => issue.code === "NAZARE_PARSE_TYPE_EXPRESSION",
 				),
 			);
+
+			// validate compiles the entry only — the child is not checked here.
+			const validated = runCli(cwd, "validate", "component.nz.liquid");
+			assert.equal(validated.status, 0, validated.stderr);
 			assert.ok(
-				!JSON.parse(hidden.stdout).issues.some(
+				!JSON.parse(validated.stdout).issues.some(
 					(issue) => issue.code === "NAZARE_PARSE_TYPE_EXPRESSION",
 				),
 			);

@@ -117,51 +117,38 @@ test("check category APIs expose the strict check groups", () => {
 	assert.deepEqual(checkStyleConstraints(compiled.ir), []);
 });
 
-test("dependency diagnostics policy defaults and overrides are explicit", () => {
+test("checking dependencies is an explicit call, not a compile-time policy", async () => {
+	const { checkDependencies, parseNazareLiquid: parse } = await import(
+		"../dist/index.js"
+	);
 	const source = `{% import Child from "./child.nz.liquid" %}\n{% render Child {} %}`;
 	const files = {
 		"child.nz.liquid": `{% props { title: string.requried() } %}<span>{{ props.title }}</span>`,
 	};
 	const readFile = (path) => files[path];
-	const hasDependencyParseError = (result) =>
-		result.issues.some(
-			(issue) => issue.code === "NAZARE_PARSE_TYPE_EXPRESSION",
-		);
+	const hasChildError = (issues) =>
+		issues.some((issue) => issue.code === "NAZARE_PARSE_TYPE_EXPRESSION");
 
+	// A plain compile derives the child's contract but never checks the child.
+	const compiled = compileNazareArtifact(source, "component.nz.liquid", {
+		readFile,
+	});
+	assert.equal(hasChildError(compiled.issues), false);
+
+	// checkDependencies surfaces the child's own diagnostics, on demand.
 	assert.equal(
-		hasDependencyParseError(
-			compileNazareArtifact(source, "component.nz.liquid", { readFile }),
-		),
-		false,
-	);
-	assert.equal(
-		hasDependencyParseError(
-			compileNazareArtifact(source, "component.nz.liquid", {
-				readFile,
-				dependencyDiagnostics: "surface",
-			}),
+		hasChildError(
+			checkDependencies(parse(source, "component.nz.liquid"), readFile),
 		),
 		true,
 	);
-	assert.equal(
-		hasDependencyParseError(
-			buildNazareTheme(source, "component.nz.liquid", {
-				name: "component",
-				readFile,
-			}),
-		),
-		true,
-	);
-	assert.equal(
-		hasDependencyParseError(
-			buildNazareTheme(source, "component.nz.liquid", {
-				name: "component",
-				readFile,
-				dependencyDiagnostics: "hidden",
-			}),
-		),
-		false,
-	);
+
+	// build validates its dependencies, so the child error appears there.
+	const built = buildNazareTheme(source, "component.nz.liquid", {
+		name: "component",
+		readFile,
+	});
+	assert.equal(hasChildError(built.issues), true);
 });
 
 test("resolveAssetImports returns a resolved AST without mutating parse output", () => {

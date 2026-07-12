@@ -65,7 +65,6 @@ try {
 		compiled ??= compileNazareArtifact(source, entryPath, {
 			readFile: readProjectFile,
 			strictness: cliOptions.strictness,
-			dependencyDiagnostics: cliOptions.dependencyDiagnostics,
 		});
 		return compiled;
 	};
@@ -143,7 +142,6 @@ try {
 			name: artifactBaseName(entryPath),
 			readFile: readProjectFile,
 			strictness: cliOptions.strictness,
-			dependencyDiagnostics: cliOptions.dependencyDiagnostics,
 		});
 		const issues = [
 			...built.issues,
@@ -180,7 +178,6 @@ try {
 
 type CliOptions = {
 	strictness?: "loose" | "strict";
-	dependencyDiagnostics?: "hidden" | "surface";
 };
 
 function parseCliOptions(args: string[]): CliOptions {
@@ -197,19 +194,6 @@ function parseCliOptions(args: string[]): CliOptions {
 			options.strictness = parseStrictness(arg.slice("--strictness=".length));
 			continue;
 		}
-		if (arg === "--dependency-diagnostics") {
-			options.dependencyDiagnostics = parseDependencyDiagnostics(
-				args[index + 1],
-			);
-			index += 1;
-			continue;
-		}
-		if (arg.startsWith("--dependency-diagnostics=")) {
-			options.dependencyDiagnostics = parseDependencyDiagnostics(
-				arg.slice("--dependency-diagnostics=".length),
-			);
-			continue;
-		}
 		throw new Error(`Unknown option ${arg}`);
 	}
 
@@ -220,15 +204,6 @@ function parseStrictness(value: string | undefined): "loose" | "strict" {
 	if (value === "loose" || value === "strict") return value;
 	throw new Error(
 		`Invalid --strictness ${value ?? "<missing>"}; expected loose or strict`,
-	);
-}
-
-function parseDependencyDiagnostics(
-	value: string | undefined,
-): "hidden" | "surface" {
-	if (value === "hidden" || value === "surface") return value;
-	throw new Error(
-		`Invalid --dependency-diagnostics ${value ?? "<missing>"}; expected hidden or surface`,
 	);
 }
 
@@ -287,6 +262,5 @@ function printHelp(): void {
   nazare dump <file>
 
 Options:
-  --strictness loose|strict
-  --dependency-diagnostics hidden|surface`);
+  --strictness loose|strict`);
 }

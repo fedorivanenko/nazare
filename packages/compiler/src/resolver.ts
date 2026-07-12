@@ -1,12 +1,7 @@
 // Resolver passes that need project files. Parse is pure over one source file;
 // this module is the explicit boundary where imports become contracts or inline
 // behavior/style nodes. All filesystem access goes through ReadFile.
-import type {
-	ArtifactContract,
-	ArtifactIR,
-	Diagnostic,
-	SourceSpan,
-} from "@nazare/core";
+import type { ArtifactContract, Diagnostic, SourceSpan } from "@nazare/core";
 import type {
 	NazareAst,
 	NazareNode,
@@ -27,13 +22,6 @@ import { validateArtifactIR } from "./validate.js";
 
 export type ReadFile = (path: string) => string | undefined;
 
-export type DependencyDiagnosticsPolicy = "hidden" | "surface";
-
-export type ResolveComponentContractsOptions = {
-	dependencyDiagnostics?: DependencyDiagnosticsPolicy;
-	mode?: CompilerMode;
-};
-
 export type ComponentContractResolution = {
 	contracts: ArtifactContract[];
 	issues: Diagnostic[];
@@ -46,19 +34,17 @@ export type AssetImportResolution = {
 
 /**
  * Derives contracts for imported component files by parsing/binding them
- * recursively. Imported-file diagnostics are not surfaced here; this pass only
- * reports import graph failures for the requesting file.
+ * recursively. This pass does one thing: contracts. It reports only import
+ * graph failures for the requesting file (missing files, cycles) — never the
+ * imported files' own diagnostics. Checking those is checkDependencies, an
+ * explicit call the build makes and a plain compile does not.
  */
 export function resolveComponentContracts(
 	ast: NazareAst,
 	readFile: ReadFile | undefined,
-	options: ResolveComponentContractsOptions = {},
 ): ComponentContractResolution {
 	const issues: Diagnostic[] = [];
-	const surfaceDependencyDiagnostics =
-		options.dependencyDiagnostics === "surface";
 	const cache = new Map<string, ArtifactContract | undefined>();
-	const reportedDiagnostics = new Set<string>();
 
 	const derive = (
 		path: string,
@@ -89,18 +75,6 @@ export function resolveComponentContracts(
 			contracts: dependencyContracts,
 		});
 		const contract = contractFromIR(importedIr, path, dependencyContracts);
-		if (surfaceDependencyDiagnostics) {
-			issues.push(
-				...diagnosticsForImportedFile(
-					path,
-					importedAst,
-					importedIr,
-					dependencyContracts,
-					reportedDiagnostics,
-					options.mode,
-				),
-			);
-		}
 		cache.set(path, contract);
 		return contract;
 	};
@@ -125,22 +99,47 @@ export function resolveComponentContracts(
 	return { contracts, issues };
 }
 
-function diagnosticsForImportedFile(
-	path: string,
+/**
+ * Fully checks every transitively-imported component file and returns their
+ * diagnostics (deduped per path). This is the explicit opt-in the build makes
+ * to validate its dependencies; a plain compile checks only the entry file.
+ * Unreadable imports are silent here — resolveComponentContracts reports them.
+ */
+export function checkDependencies(
 	ast: NazareAst,
-	ir: ArtifactIR,
-	contracts: ArtifactContract[],
-	reported: Set<string>,
-	mode: CompilerMode | undefined,
+	readFile: ReadFile | undefined,
+	options: { mode?: CompilerMode } = {},
 ): Diagnostic[] {
-	if (reported.has(path)) return [];
-	reported.add(path);
-	return [
-		...ast.diagnostics,
-		...checkVanillaSchema(ast),
-		...checkArtifactIR(ir, contracts, { mode }),
-		...validateArtifactIR(ir),
-	];
+	const issues: Diagnostic[] = [];
+	const checked = new Set<string>();
+
+	const visit = (path: string): void => {
+		if (checked.has(path)) return;
+		checked.add(path);
+		const contents = readFile?.(path);
+		if (contents === undefined) return;
+
+		const importedAst = parseNazareLiquid(contents, path);
+		const { contracts } = resolveComponentContracts(importedAst, readFile);
+		const ir = bindArtifactIR(syntaxFromAst(importedAst), { contracts });
+		issues.push(
+			...importedAst.diagnostics,
+			...checkVanillaSchema(importedAst),
+			...checkArtifactIR(ir, contracts, { mode: options.mode }),
+			...validateArtifactIR(ir),
+		);
+
+		for (const node of importedAst.nodes) {
+			if (node.type === "NazareImport") visit(node.path);
+		}
+	};
+
+	for (const node of ast.nodes) {
+		if (node.type === "NazareImport" && node.path !== ast.file)
+			visit(node.path);
+	}
+
+	return issues;
 }
 
 /**

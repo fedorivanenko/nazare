@@ -20,8 +20,8 @@ import { type EmitResult, type EmitThemeOptions, emitTheme } from "./emit.js";
 import { artifactGraphFromIR } from "./graph.js";
 import { parseNazareLiquid } from "./parser.js";
 import {
-	type DependencyDiagnosticsPolicy,
 	type ReadFile,
+	checkDependencies,
 	resolveAssetImports,
 	resolveComponentContracts,
 } from "./resolver.js";
@@ -68,8 +68,8 @@ export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
 export { parseNazareLiquid } from "./parser.js";
 export {
-	type DependencyDiagnosticsPolicy,
 	type ReadFile,
+	checkDependencies,
 	resolveAssetImports,
 	resolveComponentContracts,
 } from "./resolver.js";
@@ -90,8 +90,6 @@ export type CompileNazareArtifactOptions = {
 	readFile?: ReadFile;
 	/** strict is current package-author behavior; loose keeps migration checks minimal. */
 	strictness?: CompilerMode;
-	/** Imported-file diagnostics are hidden for contract-only compile, surfaced for build. */
-	dependencyDiagnostics?: DependencyDiagnosticsPolicy;
 };
 
 export type CompileResult = {
@@ -142,10 +140,6 @@ export function compileNazareArtifact(
 	const contractResolution = resolveComponentContracts(
 		parsedAst,
 		options.readFile,
-		{
-			dependencyDiagnostics: options.dependencyDiagnostics,
-			mode: options.strictness,
-		},
 	);
 	const assetResolution = resolveAssetImports(parsedAst, options.readFile);
 	const ast = assetResolution.ast;
@@ -176,20 +170,24 @@ export function compileNazareArtifact(
 	};
 }
 
-/** Compiles and emits theme files with one aggregated diagnostic list. */
+/**
+ * Compiles and emits theme files with one aggregated diagnostic list. A build
+ * validates its dependencies, so it checks every imported file explicitly —
+ * the one difference from a plain compile.
+ */
 export function buildNazareTheme(
 	source: string,
 	file: string,
 	options: BuildNazareThemeOptions,
 ): BuildResult {
-	const compiled = compileNazareArtifact(source, file, {
-		...options,
-		dependencyDiagnostics: options.dependencyDiagnostics ?? "surface",
+	const compiled = compileNazareArtifact(source, file, options);
+	const dependencyIssues = checkDependencies(compiled.ast, options.readFile, {
+		mode: options.strictness,
 	});
 	const emitted = emitTheme(source, compiled, options);
 	return {
 		...compiled,
 		emitted,
-		issues: [...compiled.issues, ...emitted.issues],
+		issues: [...compiled.issues, ...dependencyIssues, ...emitted.issues],
 	};
 }
