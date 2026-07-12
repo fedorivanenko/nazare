@@ -72,6 +72,7 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 		}
 		if (
 			syntaxNode.kind === "element-ref" ||
+			syntaxNode.kind === "island-placement" ||
 			syntaxNode.kind === "script" ||
 			syntaxNode.kind === "style" ||
 			syntaxNode.kind === "blocks-slot"
