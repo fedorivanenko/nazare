@@ -47,6 +47,11 @@ all of them with a diagnostic that says what to do instead.
   hydrate, and props do not reach JS — data crosses in the markup.
 - Multiple behaviors per component are fine; declaration order is mount
   order.
+- A behavior imported by name mounts on the component root by default, or on
+  a chosen subtree when an element carries `island="<name>"` — then `root`
+  and `refs` are scoped to that element. `island` must name an imported
+  behavior, and a behavior can be placed at most once (refs are
+  component-global in v1).
 - Relative imports (`./utils.ts`, `../cn/cn.ts` — anywhere inside the
   project) are bundled into the emitted asset, and types flow across them.
   Bare imports (`import { x } from "pkg"`) fail at build: Nazare has no

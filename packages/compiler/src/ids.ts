@@ -73,6 +73,10 @@ export function refAccessSyntaxId(
 	return `syntax:ref-access:${file}:${scriptIndex}:${index}`;
 }
 
+export function islandPlacementSyntaxId(file: string, index: number): Id {
+	return `syntax:island-placement:${file}:${index}`;
+}
+
 // Symbol layer. `scope` is what a component symbol is keyed by: the
 // project-relative file path (for local and imported components alike — an
 // imported component's symbol id equals the id its own compile produces),

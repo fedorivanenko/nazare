@@ -164,6 +164,20 @@ export type RefAccessSyntaxNode = {
 	span?: SourceSpan;
 };
 
+/**
+ * An island="name" attribute placing an imported behavior on a subtree.
+ * The behavior mounts on this element (refs scoped to it) instead of the
+ * component root; the name matches a behavior import's binding name.
+ */
+export type IslandPlacementSyntaxNode = {
+	id: Id;
+	kind: "island-placement";
+	name: string;
+	tagName: string;
+	ownerId: Id;
+	span?: SourceSpan;
+};
+
 export type ArtifactSyntaxNode =
 	| FileSyntaxNode
 	| ComponentSyntaxNode
@@ -177,6 +191,7 @@ export type ArtifactSyntaxNode =
 	| ScriptSyntaxNode
 	| StyleSyntaxNode
 	| BlocksSlotSyntaxNode
-	| RefAccessSyntaxNode;
+	| RefAccessSyntaxNode
+	| IslandPlacementSyntaxNode;
 
 export type ArtifactSyntaxKind = ArtifactSyntaxNode["kind"];

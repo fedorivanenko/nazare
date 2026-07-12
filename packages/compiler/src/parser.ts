@@ -443,36 +443,47 @@ function collectElementRef(
 		) {
 			continue;
 		}
-		if (staticText(attribute.name) !== "ref") continue;
+		const attributeName = staticText(attribute.name);
+		if (attributeName !== "ref" && attributeName !== "island") continue;
 
 		const span = spanFromOffsets(source, file, attribute.position);
-		const refName =
+		const value =
 			attribute.type === NodeTypes.AttrEmpty
 				? undefined
 				: staticText(attribute.value);
 
-		if (refName === undefined) {
+		if (value === undefined) {
 			diagnostics.push(
 				parseInvalidRefAttribute(
-					"ref value must be a static string, not Liquid output",
+					`${attributeName} value must be a static string, not Liquid output`,
 					span,
 				),
 			);
 			continue;
 		}
-		if (!refIdentifierPattern.test(refName)) {
+		if (!refIdentifierPattern.test(value)) {
 			diagnostics.push(
 				parseInvalidRefAttribute(
-					`ref value "${refName}" is not a valid identifier`,
+					`${attributeName} value "${value}" is not a valid identifier`,
 					span,
 				),
 			);
+			continue;
+		}
+
+		if (attributeName === "island") {
+			nodes.push({
+				type: "NazareIsland",
+				name: value,
+				tagName: elementTagName(node),
+				span,
+			});
 			continue;
 		}
 
 		nodes.push({
 			type: "NazareElementRef",
-			name: refName,
+			name: value,
 			tagName: elementTagName(node),
 			dataBindings: collectDataBindings(node, source, file),
 			span,

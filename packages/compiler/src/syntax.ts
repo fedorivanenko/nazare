@@ -24,6 +24,7 @@ import {
 	elementRefSyntaxId,
 	fileSyntaxId,
 	importSyntaxId,
+	islandPlacementSyntaxId,
 	outputExpressionSyntaxId,
 	propArgumentSyntaxId,
 	propDeclarationSyntaxId,
@@ -70,6 +71,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 	let renderIndex = 0;
 	let outputExpressionIndex = 0;
 	let elementRefIndex = 0;
+	let islandPlacementIndex = 0;
 	let scriptIndex = 0;
 	let styleIndex = 0;
 	let blocksSlotIndex = 0;
@@ -138,6 +140,19 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 				dataBindings: node.dataBindings.length
 					? node.dataBindings
 					: undefined,
+				span: node.span,
+			});
+			continue;
+		}
+
+		if (node.type === "NazareIsland") {
+			islandPlacementIndex += 1;
+			syntax.push({
+				id: islandPlacementSyntaxId(ast.file, islandPlacementIndex),
+				kind: "island-placement",
+				name: node.name,
+				tagName: node.tagName,
+				ownerId: componentId,
 				span: node.span,
 			});
 			continue;

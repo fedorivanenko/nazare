@@ -21,6 +21,7 @@ import { resolveHoistedSettings } from "./hoist.js";
 import { findUnsupportedModuleSyntax } from "./script-modules.js";
 import {
 	blocksSlotOutsideSection,
+	duplicateIsland,
 	duplicateRef,
 	multipleBlocksSlots,
 	propTypeMismatch,
@@ -29,6 +30,7 @@ import {
 	scriptModuleSyntaxUnsupported,
 	sectionPropWithoutSetting,
 	unknownDataAccess,
+	unknownIsland,
 	unknownPropArgument,
 	unknownPropsReference,
 	unknownRef,
@@ -82,6 +84,7 @@ export function checkArtifactIR(
 	}
 
 	issues.push(...checkRefs(index));
+	issues.push(...checkIslands(index));
 	issues.push(...checkPropsReferences(index));
 	issues.push(...checkDataChannel(ir, index));
 	issues.push(...checkPropProvenanceForKind(index, options.kind));
@@ -352,6 +355,42 @@ function checkRefs(index: ArtifactIRIndex): Diagnostic[] {
 				unusedRef(declaration.name, declaration.id, declaration.span),
 			);
 		}
+	}
+
+	return issues;
+}
+
+/**
+ * Island placement linkage: every island="name" must name an imported
+ * behavior (a script with that binding name), and a behavior can be placed
+ * at most once — refs are component-global in v1, so a second placement
+ * would fight over the same ref elements.
+ */
+function checkIslands(index: ArtifactIRIndex): Diagnostic[] {
+	const issues: Diagnostic[] = [];
+	const placements = index.nodesOfKind("island-placement");
+	if (placements.length === 0) return [];
+
+	const behaviorNames = new Set(
+		index
+			.nodesOfKind("script")
+			.map((script) => script.bindingName)
+			.filter((name): name is string => name !== undefined),
+	);
+	const seen = new Set<string>();
+
+	for (const placement of placements) {
+		if (!behaviorNames.has(placement.name)) {
+			issues.push(unknownIsland(placement.name, placement.id, placement.span));
+			continue;
+		}
+		if (seen.has(placement.name)) {
+			issues.push(
+				duplicateIsland(placement.name, placement.id, placement.span),
+			);
+			continue;
+		}
+		seen.add(placement.name);
 	}
 
 	return issues;

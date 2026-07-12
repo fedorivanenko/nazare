@@ -71,6 +71,14 @@ export type NazareElementRefNode = {
 	span: SourceSpan;
 };
 
+/** An island="name" attribute placing an imported behavior on a subtree. */
+export type NazareIslandNode = {
+	type: "NazareIsland";
+	name: string;
+	tagName: string;
+	span: SourceSpan;
+};
+
 export type NazareRefAccess = {
 	name: string;
 	span: SourceSpan;
@@ -133,6 +141,7 @@ export type NazareNode =
 	| NazareRenderNode
 	| NazareOutputExpressionNode
 	| NazareElementRefNode
+	| NazareIslandNode
 	| NazareScriptNode
 	| NazareStyleNode
 	| NazareBlocksNode

@@ -127,3 +127,20 @@ directories the compiler host says don't exist — check-script now overrides
 - Examples: price fully migrated (import-bound); counter/disclosure/notice
   stay unbound on purpose — their scripts toggle class strings at runtime
   (`nazare-counter--positive`), which a static class map cannot see.
+
+## Step 3: island placement (completed 2026-07-12)
+
+- `island="<name>"` on an element mounts the named imported behavior on that
+  subtree (root + refs scoped to it) instead of the component root; unplaced
+  named behaviors and inline scripts mount at root. New syntax node kind
+  `island-placement` (core + ids + parser/ast + syntax lowering).
+- Emit rewrites `island="x"` → `data-nz-island="x"`; register gains a
+  placement arg: `register(component, placement, setup, data)`. Runtime
+  `mount` scopes placed behaviors to `[data-nz-island="name"]` within each
+  `[data-nz-component]` root (root element itself matches too).
+- Checks: CONSTRAINT_UNKNOWN_ISLAND (names no imported behavior),
+  CONSTRAINT_DUPLICATE_ISLAND (placed twice — v1 refs are component-global).
+  Dynamic island values fall out via the existing ref-attribute warning.
+- Compile-time ref linkage stays component-global in v1 (a placed behavior
+  may still reference any ref); runtime scoping is what isolates subtrees.
+- Examples left unplaced (valid, unchanged); feature is test-covered.

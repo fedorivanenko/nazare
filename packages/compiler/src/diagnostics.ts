@@ -328,6 +328,34 @@ export function duplicateRef(
 	};
 }
 
+export function unknownIsland(
+	name: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_UNKNOWN_ISLAND",
+		message: `island="${name}" names no imported behavior; import one with {% import ${name} from "./${name}.ts" %}, or remove the attribute`,
+		nodeId,
+		span,
+	};
+}
+
+export function duplicateIsland(
+	name: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_DUPLICATE_ISLAND",
+		message: `behavior "${name}" is placed on more than one element; in v1 refs are component-global, so a behavior mounts on a single subtree`,
+		nodeId,
+		span,
+	};
+}
+
 export function unknownDataAccess(
 	refName: string,
 	property: string,

@@ -61,7 +61,8 @@ test("bundle: the emitted asset actually executes", () => {
 		window: {
 			Nazare: {
 				island: (setup) => setup,
-				register: (name, setup, data) => registered.push({ name, setup, data }),
+				register: (name, placement, setup, data) =>
+					registered.push({ name, placement, setup, data }),
 			},
 		},
 	};
@@ -164,7 +165,7 @@ export default island(({ root }) => {
 		window: {
 			Nazare: {
 				island: (setup) => setup,
-				register: (name, setup, data) => registered.push(setup),
+				register: (name, placement, setup, data) => registered.push(setup),
 			},
 		},
 	});

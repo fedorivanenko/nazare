@@ -102,6 +102,11 @@ export function emitTheme(
 	}
 
 	if (hasScript) {
+		const placedBehaviors = new Set(
+			compiled.ir.syntax
+				.filter((node) => node.kind === "island-placement")
+				.map((node) => node.name),
+		);
 		files.push({
 			path: `assets/${options.name}.js`,
 			contents: emitComponentScript(
@@ -109,6 +114,7 @@ export function emitTheme(
 				compiled.ast.file,
 				options,
 				dataDescriptor(compiled.ir),
+				placedBehaviors,
 				issues,
 			),
 		});
@@ -171,6 +177,12 @@ function emitLiquid(
 			edits.push({
 				...editRange(source, node.span),
 				replacement: `data-nz-ref="${node.name}"`,
+			});
+		}
+		if (node.kind === "island-placement" && node.span) {
+			edits.push({
+				...editRange(source, node.span),
+				replacement: `data-nz-island="${node.name}"`,
 			});
 		}
 		if (node.kind === "render-site" && node.span) {
@@ -419,6 +431,7 @@ function emitComponentScript(
 	componentFile: string,
 	options: EmitThemeOptions,
 	descriptor: Record<string, Record<string, string>>,
+	placedBehaviors: Set<string>,
 	issues: Diagnostic[],
 ): string {
 	const componentDir = directoryOf(componentFile);
@@ -439,7 +452,13 @@ function emitComponentScript(
 		const bundle = bundleScript(script.source, entryFile, options.readFile);
 		issues.push(...bundle.issues);
 
-		return `window.Nazare.register(${JSON.stringify(options.name)}, ${bundle.code}, __data);`;
+		// A placed behavior (island="name") mounts on its subtree; everything
+		// else mounts on the component root.
+		const placement =
+			script.bindingName && placedBehaviors.has(script.bindingName)
+				? JSON.stringify(script.bindingName)
+				: "null";
+		return `window.Nazare.register(${JSON.stringify(options.name)}, ${placement}, ${bundle.code}, __data);`;
 	});
 
 	return [
@@ -512,29 +531,45 @@ const runtimeSource = `/* Nazare runtime */
     });
     return data;
   }
-  function mount(name, setup, descriptor) {
-    var roots = document.querySelectorAll('[data-nz-component="' + name + '"]');
-    roots.forEach(function (root) {
-      if (!root.nazareMounted) root.nazareMounted = [];
-      if (root.nazareMounted.indexOf(setup) !== -1) return;
-      root.nazareMounted.push(setup);
-      var refs = new Proxy({}, {
-        get: function (_, key) {
-          if (typeof key !== "string") return undefined;
-          return refLookup(root, key);
-        },
+  function mountRoots(componentRoot, placement) {
+    if (!placement) return [componentRoot];
+    var targets = [];
+    if (componentRoot.getAttribute("data-nz-island") === placement) {
+      targets.push(componentRoot);
+    }
+    var placed = componentRoot.querySelectorAll(
+      '[data-nz-island="' + placement + '"]'
+    );
+    placed.forEach(function (element) { targets.push(element); });
+    return targets;
+  }
+  function mount(name, placement, setup, descriptor) {
+    var componentRoots = document.querySelectorAll(
+      '[data-nz-component="' + name + '"]'
+    );
+    componentRoots.forEach(function (componentRoot) {
+      mountRoots(componentRoot, placement).forEach(function (root) {
+        if (!root.nazareMounted) root.nazareMounted = [];
+        if (root.nazareMounted.indexOf(setup) !== -1) return;
+        root.nazareMounted.push(setup);
+        var refs = new Proxy({}, {
+          get: function (_, key) {
+            if (typeof key !== "string") return undefined;
+            return refLookup(root, key);
+          },
+        });
+        setup({ root: root, refs: refs, data: buildData(root, descriptor) });
       });
-      setup({ root: root, refs: refs, data: buildData(root, descriptor) });
     });
   }
-  function register(name, setup, descriptor) {
+  function register(name, placement, setup, descriptor) {
     if (typeof setup !== "function") return;
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", function () {
-        mount(name, setup, descriptor);
+        mount(name, placement, setup, descriptor);
       });
     } else {
-      mount(name, setup, descriptor);
+      mount(name, placement, setup, descriptor);
     }
   }
   window.Nazare = { island: island, register: register, mount: mount };
