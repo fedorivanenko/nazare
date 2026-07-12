@@ -1,10 +1,9 @@
 // CSS modules: a bound stylesheet ({% import styles from "./x.css" %} or
-// {% stylesheet styles %}) exposes its class names as a map, and markup
-// reads {{ styles.wrapper }}. Scoping IS the class rewrite — every class in
-// a bound sheet becomes nz-<component>__<class>, and the markup reference
-// lowers to the same literal at compile time. No runtime, no descendant
-// selectors, and an unbound {% stylesheet %} passes through untouched
-// (vanilla Shopify behavior); binding is the opt-in.
+// {% stylesheet styles %}) exposes selector class names as a map. Scoping is
+// done by parsing CSS, renaming class selectors, and lowering matching Liquid
+// reads to the same generated names. Unbound stylesheets pass through.
+import postcss from "postcss";
+import selectorParser from "postcss-selector-parser";
 
 /** "counter" + "wrapper" -> "nz-counter__wrapper" (readable by design). */
 export function scopedClassName(component: string, className: string): string {
@@ -19,54 +18,81 @@ export type CssClassToken = {
 };
 
 /**
- * Class tokens in selector position. Selectors are the text between a
- * block boundary ({, }, or ;) and the next {, so declarations (url(a.png),
- * 0.5rem) and at-rule bodies never match; media queries and nesting keep
- * yielding preludes naturally.
+ * Class tokens in selector position, parsed with PostCSS + selector parser.
+ * Declaration values such as url(.icon.png), strings, and comments are never
+ * inspected. Invalid CSS is treated as uninspectable by this helper; CSS parse
+ * diagnostics belong in the checker once CSS validation becomes a first-class
+ * pass.
  */
 export function cssClassTokens(source: string): CssClassToken[] {
-	const blanked = blankCommentsAndStrings(source);
-	const tokens: CssClassToken[] = [];
-	let preludeStart = 0;
-
-	const collect = (end: number): void => {
-		const prelude = blanked.slice(preludeStart, end);
-		for (const match of prelude.matchAll(/\.(-?[A-Za-z_][\w-]*)/g)) {
-			const start = preludeStart + match.index + 1;
-			tokens.push({
-				name: match[1],
-				start,
-				end: start + match[1].length,
-			});
-		}
-	};
-
-	for (let index = 0; index < blanked.length; index += 1) {
-		const char = blanked[index];
-		if (char === "{") {
-			collect(index);
-			preludeStart = index + 1;
-		} else if (char === "}" || char === ";") {
-			preludeStart = index + 1;
-		}
+	let root: postcss.Root;
+	try {
+		root = postcss.parse(source);
+	} catch {
+		return [];
 	}
+
+	const lineStarts = lineStartOffsets(source);
+	const tokens: CssClassToken[] = [];
+
+	root.walkRules((rule) => {
+		const selectorStart = rule.source?.start
+			? offsetFromLineColumn(
+					lineStarts,
+					rule.source.start.line,
+					rule.source.start.column,
+				)
+			: source.indexOf(rule.selector);
+		if (selectorStart < 0) return;
+
+		let selectorAst: selectorParser.Root;
+		try {
+			selectorAst = selectorParser().astSync(rule.selector);
+		} catch {
+			return;
+		}
+
+		selectorAst.walkClasses((classNode) => {
+			const sourceIndex = classNode.sourceIndex;
+			if (sourceIndex === undefined) return;
+			const start = selectorStart + sourceIndex + 1;
+			tokens.push({
+				name: classNode.value,
+				start,
+				end: start + classNode.value.length,
+			});
+		});
+	});
 
 	return tokens;
 }
 
-/** Rewrites every selector-position class name through `rename`. */
+/** Rewrites selector-position class names through `rename`. */
 export function rewriteCssClasses(
 	source: string,
 	rename: (className: string) => string,
 ): string {
-	let output = source;
-	for (const token of cssClassTokens(source).reverse()) {
-		output =
-			output.slice(0, token.start) +
-			rename(token.name) +
-			output.slice(token.end);
+	let root: postcss.Root;
+	try {
+		root = postcss.parse(source);
+	} catch {
+		return source;
 	}
-	return output;
+
+	root.walkRules((rule) => {
+		try {
+			rule.selector = selectorParser((selectors) => {
+				selectors.walkClasses((classNode) => {
+					classNode.value = rename(classNode.value);
+				});
+			}).processSync(rule.selector);
+		} catch {
+			// Leave malformed selectors untouched; full CSS parse diagnostics live
+			// outside this lowering helper.
+		}
+	});
+
+	return root.toString();
 }
 
 export type StyleReference = {
@@ -97,9 +123,18 @@ export function parseStyleReference(
 	return undefined;
 }
 
-/** Comments and quoted strings blanked to spaces, newlines kept — offsets stay valid. */
-function blankCommentsAndStrings(source: string): string {
-	return source
-		.replace(/\/\*[\s\S]*?\*\//g, (match) => match.replace(/[^\n]/g, " "))
-		.replace(/"[^"\n]*"|'[^'\n]*'/g, (match) => " ".repeat(match.length));
+function lineStartOffsets(source: string): number[] {
+	const starts = [0];
+	for (let index = 0; index < source.length; index += 1) {
+		if (source[index] === "\n") starts.push(index + 1);
+	}
+	return starts;
+}
+
+function offsetFromLineColumn(
+	lineStarts: readonly number[],
+	line: number,
+	column: number,
+): number {
+	return (lineStarts[line - 1] ?? 0) + column - 1;
 }

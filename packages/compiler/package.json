@@ -11,6 +11,8 @@
   "dependencies": {
     "@nazare/core": "workspace:^",
     "@shopify/liquid-html-parser": "^2.9.2",
+    "postcss": "^8.5.17",
+    "postcss-selector-parser": "^7.1.4",
     "typescript": "^5.5.0"
   }
 }
