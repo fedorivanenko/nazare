@@ -14,11 +14,23 @@ export type FileSyntaxNode = {
 	span?: SourceSpan;
 };
 
+/**
+ * What filename-addressed Shopify artifact this file becomes. Declared in
+ * the source by {% component section|block %} ({% component snippet %} or no
+ * tag = snippet); decides output directory, provenance, and schema
+ * emission. `function` is not here — a function is a plain .ts file, not a
+ * component. This is the compiler's kind; NazareManifest.kind is registry
+ * publish metadata, derivable from this.
+ */
+export type ComponentKind = "snippet" | "section" | "block";
+
 export type ComponentSyntaxNode = {
 	id: Id;
 	kind: "component";
 	name: string;
 	fileId: Id;
+	/** The declared artifact kind; snippet unless the source says otherwise. */
+	componentKind: ComponentKind;
 	span?: SourceSpan;
 };
 

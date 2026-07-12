@@ -144,3 +144,27 @@ directories the compiler host says don't exist — check-script now overrides
 - Compile-time ref linkage stays component-global in v1 (a placed behavior
   may still reference any ref); runtime scoping is what isolates subtrees.
 - Examples left unplaced (valid, unchanged); feature is test-covered.
+
+## Step 3.5: kind declared in source (completed 2026-07-12)
+
+Moved `kind` (snippet/section/block) out of the CLI-read manifest and into
+the source as `{% component section|block %}` (absent / `snippet` = default).
+
+- New `ComponentKind = snippet|section|block` in core; `ComponentSyntaxNode`
+  gains `componentKind`; `ArtifactContract` gains `kind`. `function` dropped
+  (post-shadcn a function is a plain `.ts`, not a component).
+- Parser reads `{% component X %}` (NazareComponent AST node, folded into the
+  component syntax node's kind); errors on unknown kind
+  (NAZARE_PARSE_COMPONENT_KIND) and on a second tag
+  (NAZARE_PARSE_DUPLICATE_COMPONENT, first wins). Emit strips the tag.
+- `compileNazareArtifact`, `checkArtifactIR`, `themeSchemaFromIR`, `emitTheme`
+  all lose their `kind` option and read it from the IR via
+  `componentKindFromIR`. CLI stops reading nazare.json entirely (kind was its
+  last use) — strengthens the nazare.json-is-registry-only boundary.
+- New capability the contract now enables: CONSTRAINT_RENDER_TARGET_NOT_SNIPPET
+  — `{% render %}`-ing an imported section/block is an error (editor places
+  them). `{% blocks %}` verifying block-kind is still future (blocks are named
+  by type string, not imported by path — step 4).
+- Examples marked ({% component section %} on announcement-bar/counter/
+  disclosure/notice-board, block on notice; link/price stay snippet). CLI
+  build routes each to sections/ blocks/ snippets/ by the source marker.

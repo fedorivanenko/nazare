@@ -5,6 +5,7 @@
 // the project-relative path of the file it was derived from.
 import type { Id } from "./id.js";
 import type { PropTypeInfo } from "./semantic.js";
+import type { ComponentKind } from "./syntax.js";
 
 export type ArtifactContractProp = {
 	name: string;
@@ -34,6 +35,8 @@ export type ArtifactContract = {
 	/** Project-relative path of the component file this contract describes. */
 	path: string;
 	componentSymbolId: Id;
+	/** The artifact kind, so consumers can reject rendering a section/block. */
+	kind: ComponentKind;
 	props: ArtifactContractProp[];
 	hoisted?: ArtifactContractHoistedSetting[];
 };

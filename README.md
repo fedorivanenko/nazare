@@ -14,6 +14,15 @@ Every valid Shopify theme should be at least partially readable by Nazare withou
 Every restriction below buys a compile-time guarantee. The compiler enforces
 all of them with a diagnostic that says what to do instead.
 
+**Kind**
+- A file declares what it becomes with `{% component section %}` or
+  `{% component block %}`; no tag (or `{% component snippet %}`) means a
+  snippet. Kind is stated in the source, never in a sidecar — it decides the
+  output directory, provenance, and schema, and it travels on the contract,
+  so importing and `{% render %}`-ing a section or block is a compile error
+  (the theme editor places those; you don't render them). At most one
+  `{% component %}` per file.
+
 **Props**
 - Markup reads `{{ props.x }}`; the compiler lowers each read to its
   declared provenance — `section.settings.x` for `.setting()` props, the

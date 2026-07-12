@@ -5,7 +5,6 @@
 import type {
 	ArtifactContract,
 	ArtifactIR,
-	NazareManifest,
 	PropDeclarationSyntaxNode,
 	PropTypeInfo,
 	SemanticType,
@@ -14,6 +13,7 @@ import type {
 	ThemeSchemaSetting,
 } from "@nazare/core";
 import { humanizeAlias, resolveHoistedSettings } from "./hoist.js";
+import { componentKindFromIR } from "./symbols.js";
 
 const shopifyObjectSettingTypes: Record<string, string> = {
 	ShopifyArticle: "article",
@@ -30,8 +30,6 @@ const shopifyObjectSettingTypes: Record<string, string> = {
 
 export type ThemeSchemaFromIROptions = {
 	name: string;
-	/** Manifest kind; blocks get a default preset, sections a blocks array. */
-	kind?: NazareManifest["kind"];
 	/** Dependency contracts; enables hoisted settings in the schema. */
 	contracts?: ArtifactContract[];
 };
@@ -82,7 +80,7 @@ export function themeSchemaFromIR(
 	}
 
 	// One default preset so the block is addable from the editor's picker.
-	if (options.kind === "block") {
+	if (componentKindFromIR(ir) === "block") {
 		schema.presets = [{ name: humanizeAlias(options.name) }];
 	}
 

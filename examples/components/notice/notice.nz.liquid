@@ -1,3 +1,5 @@
+{% component block %}
+
 {% props {
   message: string.setting({ label: "Message", default: "Heads up!" }),
   tone: string.enum("info", "success", "warning").setting({

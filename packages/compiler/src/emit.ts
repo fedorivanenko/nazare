@@ -8,9 +8,9 @@
 import type {
 	ArtifactContract,
 	ArtifactIR,
+	ComponentKind,
 	Diagnostic,
 	Id,
-	NazareManifest,
 	PropArgumentSyntaxNode,
 } from "@nazare/core";
 import { NodeTypes } from "@shopify/liquid-html-parser";
@@ -28,10 +28,10 @@ import { baseNameOf, directoryOf } from "./paths.js";
 import { hasDefaultExport } from "./script-scan.js";
 import { themeSchemaFromIR } from "./schema.js";
 import { offsetFromPosition } from "./source.js";
+import { componentKindFromIR } from "./symbols.js";
 
 export type EmitThemeOptions = {
 	name: string;
-	kind?: NazareManifest["kind"];
 	/** Reads project files (see index.ts); enables bundling of script imports. */
 	readFile?: (path: string) => string | undefined;
 };
@@ -70,20 +70,18 @@ export function emitTheme(
 	const styles = compiled.ir.syntax.filter((node) => node.kind === "style");
 	const hasScript = scripts.length > 0;
 	const hasStyle = styles.length > 0;
+	const kind = componentKindFromIR(compiled.ir);
 
 	const liquid = emitLiquid(
 		source,
 		compiled,
 		options,
+		kind,
 		{ hasScript, hasStyle },
 		issues,
 	);
 	const directory =
-		options.kind === "section"
-			? "sections"
-			: options.kind === "block"
-				? "blocks"
-				: "snippets";
+		kind === "section" ? "sections" : kind === "block" ? "blocks" : "snippets";
 	files.push({ path: `${directory}/${options.name}.liquid`, contents: liquid });
 
 	if (hasStyle) {
@@ -128,6 +126,7 @@ function emitLiquid(
 	source: string,
 	compiled: CompiledComponent,
 	options: EmitThemeOptions,
+	kind: ComponentKind,
 	{ hasScript, hasStyle }: { hasScript: boolean; hasStyle: boolean },
 	issues: Diagnostic[],
 ): string {
@@ -156,6 +155,7 @@ function emitLiquid(
 
 	for (const node of compiled.ast.nodes) {
 		if (
+			node.type === "NazareComponent" ||
 			node.type === "NazareProps" ||
 			node.type === "NazareImport" ||
 			node.type === "NazareAssetImport" ||
@@ -202,9 +202,9 @@ function emitLiquid(
 			const generated = (hoistedBySiteId.get(node.id) ?? []).map(
 				(setting) =>
 					`${setting.argName}: ${
-						options.kind === "section"
+						kind === "section"
 							? `section.settings.${setting.settingId}`
-							: options.kind === "block"
+							: kind === "block"
 								? `block.settings.${setting.settingId}`
 								: setting.settingId
 					}`,
@@ -221,7 +221,7 @@ function emitLiquid(
 
 	// data-nz-component is only the island mount hook now — styles scope by
 	// class rewrite and need no root attribute.
-	if (hasScript || options.kind === "block") {
+	if (hasScript || kind === "block") {
 		const root = rootElement(source, compiled.ast);
 		if (!root) {
 			if (hasScript) issues.push(emitScriptWithoutRoot(options.name));
@@ -234,7 +234,7 @@ function emitLiquid(
 			const stamps = [
 				...(hasScript ? [` data-nz-component="${options.name}"`] : []),
 				// The editor needs this to map a block instance to its DOM.
-				...(options.kind === "block" ? [" {{ block.shopify_attributes }}"] : []),
+				...(kind === "block" ? [" {{ block.shopify_attributes }}"] : []),
 			];
 			edits.push({
 				start: root.tagEnd,
@@ -245,7 +245,7 @@ function emitLiquid(
 	}
 
 	let liquid = applyEdits(source, edits);
-	liquid = lowerPropsReads(liquid, compiled.ir, options.kind);
+	liquid = lowerPropsReads(liquid, compiled.ir, kind);
 	liquid = lowerStyleReads(liquid, compiled.ir, options.name);
 	liquid = `${liquid.replace(/\n{3,}/g, "\n\n").trim()}\n`;
 	liquid =
@@ -263,10 +263,9 @@ function emitLiquid(
 			`{{ '${options.name}.js' | asset_url | script_tag }}\n`;
 	}
 
-	if (options.kind === "section" || options.kind === "block") {
+	if (kind === "section" || kind === "block") {
 		const schema = themeSchemaFromIR(compiled.ir, {
 			name: options.name,
-			kind: options.kind,
 			contracts: compiled.contracts,
 		});
 		liquid += `\n{% schema %}\n${JSON.stringify(schema, null, 2)}\n{% endschema %}\n`;
@@ -306,7 +305,7 @@ function generatedHeader(
 function lowerPropsReads(
 	liquid: string,
 	ir: ArtifactIR,
-	kind: NazareManifest["kind"] | undefined,
+	kind: ComponentKind,
 ): string {
 	const settingsObject = kind === "block" ? "block.settings" : "section.settings";
 	const accessByProp = new Map<string, string>();

@@ -3,7 +3,12 @@
 // alongside the untouched LiquidHTML AST. Anything Nazare doesn't model stays
 // opaque rather than being rejected — every valid Shopify theme should be at
 // least partially readable.
-import type { Diagnostic, PropTypeInfo, SourceSpan } from "@nazare/core";
+import type {
+	ComponentKind,
+	Diagnostic,
+	PropTypeInfo,
+	SourceSpan,
+} from "@nazare/core";
 import type { DocumentNode, LiquidHtmlNode } from "@shopify/liquid-html-parser";
 
 /** @deprecated Use {@link Diagnostic} from @nazare/core. */
@@ -24,6 +29,13 @@ export type NazarePropDeclaration = {
 	typeInfo: PropTypeInfo;
 	required: boolean;
 	hasDefault: boolean;
+	span: SourceSpan;
+};
+
+/** {% component section %} — declares the file's artifact kind. */
+export type NazareComponentNode = {
+	type: "NazareComponent";
+	componentKind: ComponentKind;
 	span: SourceSpan;
 };
 
@@ -137,6 +149,7 @@ export type NazareOpaqueNode = {
 
 export type NazareNode =
 	| NazareImportNode
+	| NazareComponentNode
 	| NazarePropsNode
 	| NazareRenderNode
 	| NazareOutputExpressionNode

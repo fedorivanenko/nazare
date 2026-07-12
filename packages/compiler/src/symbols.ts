@@ -9,6 +9,7 @@ import type {
 	ArtifactResolution,
 	ArtifactSymbol,
 	ArtifactSyntaxNode,
+	ComponentKind,
 	Id,
 	PropDeclarationSyntaxNode,
 } from "@nazare/core";
@@ -258,6 +259,14 @@ export function bindArtifactIR(
 	};
 }
 
+/** The artifact kind the source declared (snippet unless stated). */
+export function componentKindFromIR(ir: ArtifactIR): ComponentKind {
+	for (const node of ir.syntax) {
+		if (node.kind === "component") return node.componentKind;
+	}
+	return "snippet";
+}
+
 export function contractFromIR(
 	ir: ArtifactIR,
 	path: string,
@@ -291,6 +300,7 @@ export function contractFromIR(
 	return {
 		path,
 		componentSymbolId: componentSymbolIdForFile(path),
+		kind: componentKindFromIR(ir),
 		props,
 		...(hoisted.length > 0 ? { hoisted } : {}),
 	};

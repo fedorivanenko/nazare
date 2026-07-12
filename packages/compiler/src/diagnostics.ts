@@ -111,6 +111,43 @@ export function parseInvalidBlocksSlot(
 	};
 }
 
+export function parseInvalidComponentKind(
+	markup: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_COMPONENT_KIND",
+		message: `Invalid component kind "${markup}"; expected {% component section %}, {% component block %}, or {% component snippet %} (snippet is also the default when the tag is absent)`,
+		span,
+	};
+}
+
+export function parseDuplicateComponent(span: SourceSpan): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_DUPLICATE_COMPONENT",
+		message:
+			"A file declares its kind at most once; remove the extra {% component %} tag",
+		span,
+	};
+}
+
+export function renderTargetNotSnippet(
+	targetName: string,
+	kind: "section" | "block",
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_RENDER_TARGET_NOT_SNIPPET",
+		message: `${targetName} is a ${kind}, which the theme editor places — it cannot be rendered with {% render %}${kind === "block" ? "; offer it through a {% blocks %} slot instead" : ""}`,
+		nodeId,
+		span,
+	};
+}
+
 export function parseInvalidStylesheetBinding(
 	markup: string,
 	span: SourceSpan,

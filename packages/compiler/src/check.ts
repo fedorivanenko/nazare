@@ -6,10 +6,10 @@
 import type {
 	ArtifactContract,
 	ArtifactIR,
+	ComponentKind,
 	Diagnostic,
 	ExpressionSyntaxNode,
 	Id,
-	NazareManifest,
 	PropArgumentSyntaxNode,
 	RenderSiteSyntaxNode,
 	SemanticType,
@@ -26,6 +26,7 @@ import {
 	multipleBlocksSlots,
 	propTypeMismatch,
 	propValueOutOfRange,
+	renderTargetNotSnippet,
 	requiredPropMissing,
 	scriptModuleSyntaxUnsupported,
 	sectionPropWithoutSetting,
@@ -41,19 +42,15 @@ import {
 	unusedStyleClass,
 } from "./diagnostics.js";
 import { type ArtifactIRIndex, indexArtifactIR } from "./ir-index.js";
-
-export type CheckArtifactIROptions = {
-	/** The component's kind; enables kind-specific provenance rules. */
-	kind?: NazareManifest["kind"];
-};
+import { componentKindFromIR } from "./symbols.js";
 
 export function checkArtifactIR(
 	ir: ArtifactIR,
 	contracts: ArtifactContract[] = [],
-	options: CheckArtifactIROptions = {},
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const index = indexArtifactIR(ir);
+	const kind = componentKindFromIR(ir);
 	const contractsByComponentSymbolId = new Map(
 		contracts.map((contract) => [contract.componentSymbolId, contract]),
 	);
@@ -78,6 +75,18 @@ export function checkArtifactIR(
 			continue;
 		}
 
+		// Sections and blocks are placed by the theme editor, not rendered.
+		if (contract.kind !== "snippet") {
+			issues.push(
+				renderTargetNotSnippet(
+					node.targetName,
+					contract.kind,
+					node.id,
+					node.span,
+				),
+			);
+		}
+
 		issues.push(
 			...checkRenderSiteAgainstContract(index, node, contract, settingTypesByName),
 		);
@@ -87,7 +96,7 @@ export function checkArtifactIR(
 	issues.push(...checkIslands(index));
 	issues.push(...checkPropsReferences(index));
 	issues.push(...checkDataChannel(ir, index));
-	issues.push(...checkPropProvenanceForKind(index, options.kind));
+	issues.push(...checkPropProvenanceForKind(index, kind));
 	issues.push(...resolveHoistedSettings(ir, contracts).issues);
 	issues.push(...checkScriptModuleSyntax(index));
 	issues.push(...checkStyleBindings(index));
@@ -215,7 +224,7 @@ function checkScriptModuleSyntax(index: ArtifactIRIndex): Diagnostic[] {
  */
 function checkPropProvenanceForKind(
 	index: ArtifactIRIndex,
-	kind: NazareManifest["kind"] | undefined,
+	kind: ComponentKind,
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 
@@ -229,7 +238,7 @@ function checkPropProvenanceForKind(
 	}
 
 	const slots = index.nodesOfKind("blocks-slot");
-	if (kind !== undefined && kind !== "section") {
+	if (kind !== "section") {
 		for (const slot of slots) {
 			issues.push(blocksSlotOutsideSection(slot.id, slot.span));
 		}

@@ -35,7 +35,6 @@ for (const component of components) {
 		const entryPath = join(component.dir, component.manifest.entry);
 		const file = relative(repoRoot, entryPath);
 		const result = compileNazareArtifact(readFileSync(entryPath, "utf8"), file, {
-			kind: component.manifest.kind,
 			readFile,
 		});
 		const actual = `${JSON.stringify(

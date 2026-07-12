@@ -8,7 +8,6 @@ import {
 	emitTheme,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
-import type { NazareManifest } from "@nazare/core";
 
 const [, , command, file] = process.argv;
 
@@ -46,10 +45,10 @@ try {
 		}
 	};
 
+	// The file declares its own kind ({% component section %}); the CLI no
+	// longer reads nazare.json to compile — that stays registry-only.
 	const source = await readFile(file, "utf8");
-	const manifest = await manifestForEntry(file);
 	const result = compileNazareArtifact(source, entryPath, {
-		kind: manifest?.kind,
 		readFile: readProjectFile,
 	});
 
@@ -91,7 +90,6 @@ try {
 	if (command === "schema") {
 		const schema = themeSchemaFromIR(result.ir, {
 			name: artifactBaseName(entryPath),
-			kind: manifest?.kind,
 			contracts: result.contracts,
 		});
 		console.log(
@@ -103,7 +101,6 @@ try {
 	if (command === "build") {
 		const emitted = emitTheme(source, result, {
 			name: artifactBaseName(entryPath),
-			kind: manifest?.kind,
 			readFile: readProjectFile,
 		});
 		const issues = [
@@ -135,20 +132,6 @@ try {
 } catch (error) {
 	console.error(error instanceof Error ? error.message : String(error));
 	process.exit(1);
-}
-
-/**
- * The entry's nazare.json is registry metadata; the CLI (registry layer)
- * reads it only to learn the component's kind. The compiler never sees it.
- */
-async function manifestForEntry(
-	entryFile: string,
-): Promise<NazareManifest | undefined> {
-	const manifestSource = await readOptional(
-		join(dirname(entryFile), "nazare.json"),
-	);
-	if (manifestSource === undefined) return undefined;
-	return JSON.parse(manifestSource) as NazareManifest;
 }
 
 async function writeDumpFiles(
@@ -186,21 +169,6 @@ function artifactBaseName(entryFile: string): string {
 	let name = basename(entryFile);
 	while (extname(name)) name = basename(name, extname(name));
 	return name;
-}
-
-async function readOptional(path: string): Promise<string | undefined> {
-	try {
-		return await readFile(path, "utf8");
-	} catch (error) {
-		if (
-			error instanceof Error &&
-			"code" in error &&
-			(error.code === "ENOENT" || error.code === "ENOTDIR")
-		) {
-			return undefined;
-		}
-		throw error;
-	}
 }
 
 function hasErrors(

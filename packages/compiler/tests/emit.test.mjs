@@ -60,7 +60,7 @@ test("emit: component script is transpiled and registered", () => {
 });
 
 test("emit: sections embed the generated schema", () => {
-	const result = emit(disclosureLike, { kind: "section" });
+	const result = emit(`{% component section %}\n${disclosureLike}`);
 	const liquid = fileByPath(result, "sections/widget.liquid")?.contents;
 
 	assert.ok(liquid);

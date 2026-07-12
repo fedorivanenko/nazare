@@ -29,7 +29,9 @@ import {
 	importComponentCase,
 	importOutsideProject,
 	importUnsupportedExtension,
+	parseDuplicateComponent,
 	parseInvalidBlocksSlot,
+	parseInvalidComponentKind,
 	parseInvalidImport,
 	parseInvalidRefAttribute,
 	parseInvalidStylesheetBinding,
@@ -103,6 +105,8 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 		collectElementRef(node, source, file, nodes, diagnostics);
 	});
 
+	let componentDeclared = false;
+
 	walk(ast, (node) => {
 		if (node.type === NodeTypes.LiquidVariableOutput) {
 			const outputExpression = parseOutputExpression(
@@ -120,6 +124,21 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 		if (typeof tag.name !== "string" || typeof tag.markup !== "string") return;
 
 		const span = spanFromOffsets(source, file, tag.position);
+
+		if (tag.name === "component") {
+			const markup = tag.markup.trim();
+			if (markup !== "section" && markup !== "block" && markup !== "snippet") {
+				diagnostics.push(parseInvalidComponentKind(markup, span));
+				return;
+			}
+			if (componentDeclared) {
+				diagnostics.push(parseDuplicateComponent(span));
+				return;
+			}
+			componentDeclared = true;
+			nodes.push({ type: "NazareComponent", componentKind: markup, span });
+			return;
+		}
 
 		if (tag.name === "import") {
 			const match = tag.markup.trim().match(importPattern);

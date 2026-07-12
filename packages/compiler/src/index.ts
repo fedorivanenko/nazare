@@ -17,7 +17,6 @@ import type {
 	ArtifactGraph,
 	ArtifactIR,
 	Diagnostic,
-	NazareManifest,
 } from "@nazare/core";
 import type { NazareAst, NazareNode } from "./ast.js";
 import { checkArtifactIR } from "./check.js";
@@ -48,6 +47,7 @@ export { checkArtifactIR } from "./check.js";
 export { checkComponentScripts } from "./check-script.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
+export { componentKindFromIR } from "./symbols.js";
 export { parseNazareLiquid } from "./parser.js";
 export {
 	type EmitResult,
@@ -71,8 +71,6 @@ export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 export type ReadFile = (path: string) => string | undefined;
 
 export type CompileNazareArtifactOptions = {
-	/** The entry's kind; enables section/block provenance rules in check. */
-	kind?: NazareManifest["kind"];
 	/** Without a reader, every import diagnoses as unreadable. */
 	readFile?: ReadFile;
 };
@@ -114,7 +112,7 @@ export function compileNazareArtifact(
 	issues.push(
 		...ast.diagnostics,
 		...checkVanillaSchema(ast),
-		...checkArtifactIR(ir, contracts, { kind: options.kind }),
+		...checkArtifactIR(ir, contracts),
 		...validateArtifactIR(ir),
 		...validateArtifactGraph(graph),
 	);

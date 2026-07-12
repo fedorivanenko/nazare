@@ -12,7 +12,7 @@
             "column": 1
           },
           "end": {
-            "line": 26,
+            "line": 28,
             "column": 1
           }
         }
@@ -22,6 +22,7 @@
         "kind": "component",
         "name": "examples/components/announcement-bar/announcement-bar.nz.liquid",
         "fileId": "syntax:file:examples/components/announcement-bar/announcement-bar.nz.liquid",
+        "componentKind": "section",
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
@@ -29,7 +30,7 @@
             "column": 1
           },
           "end": {
-            "line": 26,
+            "line": 28,
             "column": 1
           }
         }
@@ -43,11 +44,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 1,
+            "line": 3,
             "column": 1
           },
           "end": {
-            "line": 1,
+            "line": 3,
             "column": 48
           }
         }
@@ -63,11 +64,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 3,
+            "line": 5,
             "column": 1
           },
           "end": {
-            "line": 11,
+            "line": 13,
             "column": 5
           }
         }
@@ -92,11 +93,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 4,
+            "line": 6,
             "column": 3
           },
           "end": {
-            "line": 4,
+            "line": 6,
             "column": 7
           }
         }
@@ -120,11 +121,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 8,
+            "line": 10,
             "column": 3
           },
           "end": {
-            "line": 8,
+            "line": 10,
             "column": 7
           }
         }
@@ -143,11 +144,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 15,
+            "line": 17,
             "column": 5
           },
           "end": {
-            "line": 19,
+            "line": 21,
             "column": 9
           }
         }
@@ -159,11 +160,11 @@
         "nameSpan": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 16,
+            "line": 18,
             "column": 7
           },
           "end": {
-            "line": 16,
+            "line": 18,
             "column": 11
           }
         },
@@ -172,11 +173,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 16,
+            "line": 18,
             "column": 7
           },
           "end": {
-            "line": 16,
+            "line": 18,
             "column": 23
           }
         }
@@ -188,11 +189,11 @@
         "nameSpan": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 17,
+            "line": 19,
             "column": 7
           },
           "end": {
-            "line": 17,
+            "line": 19,
             "column": 11
           }
         },
@@ -201,11 +202,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 17,
+            "line": 19,
             "column": 7
           },
           "end": {
-            "line": 17,
+            "line": 19,
             "column": 23
           }
         }
@@ -217,11 +218,11 @@
         "nameSpan": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 18,
+            "line": 20,
             "column": 7
           },
           "end": {
-            "line": 18,
+            "line": 20,
             "column": 12
           }
         },
@@ -230,11 +231,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 18,
+            "line": 20,
             "column": 7
           },
           "end": {
-            "line": 18,
+            "line": 20,
             "column": 45
           }
         }
@@ -246,11 +247,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 16,
+            "line": 18,
             "column": 13
           },
           "end": {
-            "line": 16,
+            "line": 18,
             "column": 23
           }
         }
@@ -262,11 +263,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 17,
+            "line": 19,
             "column": 13
           },
           "end": {
-            "line": 17,
+            "line": 19,
             "column": 23
           }
         }
@@ -282,11 +283,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 18,
+            "line": 20,
             "column": 14
           },
           "end": {
-            "line": 18,
+            "line": 20,
             "column": 45
           }
         }
@@ -298,11 +299,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 22,
+            "line": 24,
             "column": 10
           },
           "end": {
-            "line": 22,
+            "line": 24,
             "column": 20
           }
         }
@@ -528,7 +529,7 @@
             "column": 1
           },
           "end": {
-            "line": 26,
+            "line": 28,
             "column": 1
           }
         }
@@ -545,7 +546,7 @@
             "column": 1
           },
           "end": {
-            "line": 26,
+            "line": 28,
             "column": 1
           }
         }
@@ -558,11 +559,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 1,
+            "line": 3,
             "column": 1
           },
           "end": {
-            "line": 1,
+            "line": 3,
             "column": 48
           }
         }
@@ -575,11 +576,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 3,
+            "line": 5,
             "column": 1
           },
           "end": {
-            "line": 11,
+            "line": 13,
             "column": 5
           }
         }
@@ -592,11 +593,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 4,
+            "line": 6,
             "column": 3
           },
           "end": {
-            "line": 4,
+            "line": 6,
             "column": 7
           }
         }
@@ -609,11 +610,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 8,
+            "line": 10,
             "column": 3
           },
           "end": {
-            "line": 8,
+            "line": 10,
             "column": 7
           }
         }
@@ -626,11 +627,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 15,
+            "line": 17,
             "column": 5
           },
           "end": {
-            "line": 19,
+            "line": 21,
             "column": 9
           }
         }
@@ -643,11 +644,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 16,
+            "line": 18,
             "column": 7
           },
           "end": {
-            "line": 16,
+            "line": 18,
             "column": 23
           }
         }
@@ -660,11 +661,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 17,
+            "line": 19,
             "column": 7
           },
           "end": {
-            "line": 17,
+            "line": 19,
             "column": 23
           }
         }
@@ -677,11 +678,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 18,
+            "line": 20,
             "column": 7
           },
           "end": {
-            "line": 18,
+            "line": 20,
             "column": 45
           }
         }
@@ -694,11 +695,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 16,
+            "line": 18,
             "column": 13
           },
           "end": {
-            "line": 16,
+            "line": 18,
             "column": 23
           }
         }
@@ -711,11 +712,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 17,
+            "line": 19,
             "column": 13
           },
           "end": {
-            "line": 17,
+            "line": 19,
             "column": 23
           }
         }
@@ -728,11 +729,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 18,
+            "line": 20,
             "column": 14
           },
           "end": {
-            "line": 18,
+            "line": 20,
             "column": 45
           }
         }
@@ -745,11 +746,11 @@
         "span": {
           "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
           "start": {
-            "line": 22,
+            "line": 24,
             "column": 10
           },
           "end": {
-            "line": 22,
+            "line": 24,
             "column": 20
           }
         }
@@ -1056,11 +1057,11 @@
       "span": {
         "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
         "start": {
-          "line": 14,
+          "line": 16,
           "column": 31
         },
         "end": {
-          "line": 20,
+          "line": 22,
           "column": 3
         }
       }
@@ -1072,11 +1073,11 @@
       "span": {
         "file": "examples/components/announcement-bar/announcement-bar.nz.liquid",
         "start": {
-          "line": 21,
+          "line": 23,
           "column": 5
         },
         "end": {
-          "line": 23,
+          "line": 25,
           "column": 12
         }
       }
@@ -1085,6 +1086,7 @@
   "contract": {
     "path": "examples/components/announcement-bar/announcement-bar.nz.liquid",
     "componentSymbolId": "symbol:component:examples/components/announcement-bar/announcement-bar.nz.liquid#default",
+    "kind": "section",
     "props": [
       {
         "name": "text",

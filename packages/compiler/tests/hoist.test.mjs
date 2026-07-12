@@ -6,6 +6,8 @@ import {
 	themeSchemaFromIR,
 } from "../dist/index.js";
 
+// Dependencies are snippets (default kind) — they get rendered, so they must
+// be. The consuming files declare {% component section %}.
 const files = {
 	"link.nz.liquid": `{% props {
   href: url.setting({ label: "Link" }),
@@ -19,17 +21,17 @@ const files = {
 
 const readFile = (path) => files[path];
 
-function compileSection(source) {
-	return compileNazareArtifact(source, "promo.nz.liquid", {
-		readFile,
-		kind: "section",
-	});
+function compileSection(body) {
+	return compileNazareArtifact(
+		`{% component section %}\n${body}`,
+		"promo.nz.liquid",
+		{ readFile },
+	);
 }
 
 test("hoist: unfilled setting-props land in the section schema under a header", () => {
-	const source = `{% import PromoLink from "./link.nz.liquid" %}
-{% render PromoLink { text: "Go" } %}`;
-	const result = compileSection(source);
+	const result = compileSection(`{% import PromoLink from "./link.nz.liquid" %}
+{% render PromoLink { text: "Go" } %}`);
 	const schema = themeSchemaFromIR(result.ir, {
 		name: "promo",
 		contracts: result.contracts,
@@ -54,10 +56,9 @@ test("hoist: unfilled setting-props land in the section schema under a header", 
 });
 
 test("hoist: filling the argument is the opt-out", () => {
-	const source = `{% import PromoLink from "./link.nz.liquid" %}
+	const result = compileSection(`{% import PromoLink from "./link.nz.liquid" %}
 {% props { url: url.setting({ label: "URL" }) } %}
-{% render PromoLink { text: "Go", href: props.url, label: "Buy" } %}`;
-	const result = compileSection(source);
+{% render PromoLink { text: "Go", href: props.url, label: "Buy" } %}`);
 	const schema = themeSchemaFromIR(result.ir, {
 		name: "promo",
 		contracts: result.contracts,
@@ -69,13 +70,13 @@ test("hoist: filling the argument is the opt-out", () => {
 });
 
 test("hoist: render site gains generated pass-through arguments", () => {
-	const source = `{% import PromoLink from "./link.nz.liquid" %}
+	const source = `{% component section %}
+{% import PromoLink from "./link.nz.liquid" %}
 {% render PromoLink { text: "Go" } %}`;
-	const result = compileSection(source);
-	const liquid = emitTheme(source, result, {
-		name: "promo",
-		kind: "section",
-	}).files.find((file) => file.path === "sections/promo.liquid")?.contents;
+	const result = compileNazareArtifact(source, "promo.nz.liquid", { readFile });
+	const liquid = emitTheme(source, result, { name: "promo" }).files.find(
+		(file) => file.path === "sections/promo.liquid",
+	)?.contents;
 
 	assert.ok(
 		liquid.includes(
@@ -85,9 +86,8 @@ test("hoist: render site gains generated pass-through arguments", () => {
 });
 
 test("hoist: unfilled setting-props do not trigger required-prop errors", () => {
-	const source = `{% import PromoLink from "./link.nz.liquid" %}
-{% render PromoLink { text: "Go" } %}`;
-	const result = compileSection(source);
+	const result = compileSection(`{% import PromoLink from "./link.nz.liquid" %}
+{% render PromoLink { text: "Go" } %}`);
 	assert.ok(
 		!result.issues.some(
 			(issue) => issue.code === "CONSTRAINT_REQUIRED_PROP_MISSING",
@@ -100,7 +100,7 @@ test("hoist: chains propagate through intermediate snippet contracts", () => {
 	const card = compileNazareArtifact(
 		files["card.nz.liquid"],
 		"card.nz.liquid",
-		{ readFile, kind: "snippet" },
+		{ readFile },
 	);
 	assert.deepEqual(card.contract.hoisted, [
 		{
@@ -117,16 +117,15 @@ test("hoist: chains propagate through intermediate snippet contracts", () => {
 	// The intermediate snippet reads its own implicit render arg.
 	const cardLiquid = emitTheme(files["card.nz.liquid"], card, {
 		name: "card",
-		kind: "snippet",
 	}).files.find((file) => file.path === "snippets/card.liquid")?.contents;
 	assert.ok(cardLiquid.includes(`{% render 'button', label: button_label %}`));
 
 	// The section hoists the accumulated id and supplies it from its schema.
-	const sectionSource = `{% import Card from "./card.nz.liquid" %}
+	const sectionSource = `{% component section %}
+{% import Card from "./card.nz.liquid" %}
 {% render Card {} %}`;
 	const section = compileNazareArtifact(sectionSource, "hero.nz.liquid", {
 		readFile,
-		kind: "section",
 	});
 	const schema = themeSchemaFromIR(section.ir, {
 		name: "hero",
@@ -137,7 +136,6 @@ test("hoist: chains propagate through intermediate snippet contracts", () => {
 	);
 	const sectionLiquid = emitTheme(sectionSource, section, {
 		name: "hero",
-		kind: "section",
 	}).files.find((file) => file.path === "sections/hero.liquid")?.contents;
 	assert.ok(
 		sectionLiquid.includes(
@@ -147,10 +145,8 @@ test("hoist: chains propagate through intermediate snippet contracts", () => {
 });
 
 test("hoist: explicitly filling a dependency's hoisted arg is legal", () => {
-	const result = compileSection(
-		`{% import Card from "./card.nz.liquid" %}
-{% render Card { button_label: "Buy" } %}`,
-	);
+	const result = compileSection(`{% import Card from "./card.nz.liquid" %}
+{% render Card { button_label: "Buy" } %}`);
 	assert.ok(
 		!result.issues.some(
 			(issue) => issue.code === "CONSTRAINT_UNKNOWN_PROP_ARGUMENT",
@@ -169,11 +165,10 @@ test("hoist: same alias twice with unfilled settings is an error", () => {
 });
 
 test("hoist: two aliases of the same file resolve cleanly", () => {
-	const source = `{% import PromoLink from "./link.nz.liquid" %}
+	const result = compileSection(`{% import PromoLink from "./link.nz.liquid" %}
 {% import FooterLink from "./link.nz.liquid" %}
 {% render PromoLink { text: "A" } %}
-{% render FooterLink { text: "B" } %}`;
-	const result = compileSection(source);
+{% render FooterLink { text: "B" } %}`);
 	assert.ok(
 		!result.issues.some((issue) =>
 			issue.code.startsWith("CONSTRAINT_HOISTED"),

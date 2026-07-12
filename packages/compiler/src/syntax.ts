@@ -58,11 +58,15 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 		path: ast.file,
 		span: fileSpan,
 	};
+	const declaredKind = ast.nodes.find(
+		(node) => node.type === "NazareComponent",
+	)?.componentKind;
 	const componentNode: ComponentSyntaxNode = {
 		id: componentId,
 		kind: "component",
 		name: ast.file,
 		fileId,
+		componentKind: declaredKind ?? "snippet",
 		span: fileSpan,
 	};
 

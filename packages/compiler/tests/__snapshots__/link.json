@@ -22,6 +22,7 @@
         "kind": "component",
         "name": "examples/components/link/link.nz.liquid",
         "fileId": "syntax:file:examples/components/link/link.nz.liquid",
+        "componentKind": "snippet",
         "span": {
           "file": "examples/components/link/link.nz.liquid",
           "start": {
@@ -808,6 +809,7 @@
   "contract": {
     "path": "examples/components/link/link.nz.liquid",
     "componentSymbolId": "symbol:component:examples/components/link/link.nz.liquid#default",
+    "kind": "snippet",
     "props": [
       {
         "name": "href",

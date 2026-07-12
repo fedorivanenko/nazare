@@ -12,7 +12,7 @@
             "column": 1
           },
           "end": {
-            "line": 32,
+            "line": 34,
             "column": 1
           }
         }
@@ -22,6 +22,7 @@
         "kind": "component",
         "name": "examples/components/disclosure/disclosure.nz.liquid",
         "fileId": "syntax:file:examples/components/disclosure/disclosure.nz.liquid",
+        "componentKind": "section",
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
@@ -29,7 +30,7 @@
             "column": 1
           },
           "end": {
-            "line": 32,
+            "line": 34,
             "column": 1
           }
         }
@@ -44,11 +45,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 1,
+            "line": 3,
             "column": 1
           },
           "end": {
-            "line": 6,
+            "line": 8,
             "column": 5
           }
         }
@@ -73,11 +74,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 2,
+            "line": 4,
             "column": 3
           },
           "end": {
-            "line": 2,
+            "line": 4,
             "column": 8
           }
         }
@@ -91,11 +92,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 8,
+            "line": 10,
             "column": 6
           },
           "end": {
-            "line": 8,
+            "line": 10,
             "column": 16
           }
         }
@@ -109,11 +110,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 9,
+            "line": 11,
             "column": 11
           },
           "end": {
-            "line": 9,
+            "line": 11,
             "column": 24
           }
         }
@@ -125,11 +126,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 9,
+            "line": 11,
             "column": 42
           },
           "end": {
-            "line": 9,
+            "line": 11,
             "column": 53
           }
         }
@@ -143,11 +144,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 10,
+            "line": 12,
             "column": 8
           },
           "end": {
-            "line": 10,
+            "line": 12,
             "column": 19
           }
         }
@@ -160,22 +161,22 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 15,
+            "line": 17,
             "column": 1
           },
           "end": {
-            "line": 22,
+            "line": 24,
             "column": 20
           }
         },
         "bodySpan": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 15,
+            "line": 17,
             "column": 17
           },
           "end": {
-            "line": 22,
+            "line": 24,
             "column": 1
           }
         }
@@ -189,22 +190,22 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 24,
+            "line": 26,
             "column": 1
           },
           "end": {
-            "line": 31,
+            "line": 33,
             "column": 16
           }
         },
         "bodySpan": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 24,
+            "line": 26,
             "column": 23
           },
           "end": {
-            "line": 31,
+            "line": 33,
             "column": 1
           }
         }
@@ -217,11 +218,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 26,
+            "line": 28,
             "column": 3
           },
           "end": {
-            "line": 26,
+            "line": 28,
             "column": 15
           }
         }
@@ -234,11 +235,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 27,
+            "line": 29,
             "column": 5
           },
           "end": {
-            "line": 27,
+            "line": 29,
             "column": 15
           }
         }
@@ -251,11 +252,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 27,
+            "line": 29,
             "column": 26
           },
           "end": {
-            "line": 27,
+            "line": 29,
             "column": 36
           }
         }
@@ -268,11 +269,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 28,
+            "line": 30,
             "column": 5
           },
           "end": {
-            "line": 28,
+            "line": 30,
             "column": 14
           }
         }
@@ -393,7 +394,7 @@
             "column": 1
           },
           "end": {
-            "line": 32,
+            "line": 34,
             "column": 1
           }
         }
@@ -410,7 +411,7 @@
             "column": 1
           },
           "end": {
-            "line": 32,
+            "line": 34,
             "column": 1
           }
         }
@@ -423,11 +424,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 1,
+            "line": 3,
             "column": 1
           },
           "end": {
-            "line": 6,
+            "line": 8,
             "column": 5
           }
         }
@@ -440,11 +441,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 2,
+            "line": 4,
             "column": 3
           },
           "end": {
-            "line": 2,
+            "line": 4,
             "column": 8
           }
         }
@@ -457,11 +458,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 8,
+            "line": 10,
             "column": 6
           },
           "end": {
-            "line": 8,
+            "line": 10,
             "column": 16
           }
         }
@@ -474,11 +475,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 9,
+            "line": 11,
             "column": 11
           },
           "end": {
-            "line": 9,
+            "line": 11,
             "column": 24
           }
         }
@@ -491,11 +492,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 9,
+            "line": 11,
             "column": 42
           },
           "end": {
-            "line": 9,
+            "line": 11,
             "column": 53
           }
         }
@@ -508,11 +509,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 10,
+            "line": 12,
             "column": 8
           },
           "end": {
-            "line": 10,
+            "line": 12,
             "column": 19
           }
         }
@@ -525,11 +526,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 15,
+            "line": 17,
             "column": 1
           },
           "end": {
-            "line": 22,
+            "line": 24,
             "column": 20
           }
         }
@@ -542,11 +543,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 24,
+            "line": 26,
             "column": 1
           },
           "end": {
-            "line": 31,
+            "line": 33,
             "column": 16
           }
         }
@@ -559,11 +560,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 26,
+            "line": 28,
             "column": 3
           },
           "end": {
-            "line": 26,
+            "line": 28,
             "column": 15
           }
         }
@@ -576,11 +577,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 27,
+            "line": 29,
             "column": 5
           },
           "end": {
-            "line": 27,
+            "line": 29,
             "column": 15
           }
         }
@@ -593,11 +594,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 27,
+            "line": 29,
             "column": 26
           },
           "end": {
-            "line": 27,
+            "line": 29,
             "column": 36
           }
         }
@@ -610,11 +611,11 @@
         "span": {
           "file": "examples/components/disclosure/disclosure.nz.liquid",
           "start": {
-            "line": 28,
+            "line": 30,
             "column": 5
           },
           "end": {
-            "line": 28,
+            "line": 30,
             "column": 14
           }
         }
@@ -835,11 +836,11 @@
       "span": {
         "file": "examples/components/disclosure/disclosure.nz.liquid",
         "start": {
-          "line": 9,
+          "line": 11,
           "column": 3
         },
         "end": {
-          "line": 9,
+          "line": 11,
           "column": 65
         }
       }
@@ -848,6 +849,7 @@
   "contract": {
     "path": "examples/components/disclosure/disclosure.nz.liquid",
     "componentSymbolId": "symbol:component:examples/components/disclosure/disclosure.nz.liquid#default",
+    "kind": "section",
     "props": [
       {
         "name": "label",
