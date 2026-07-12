@@ -17,8 +17,6 @@ import type {
 } from "@nazare/core";
 import { cssClassTokens, parseStyleReference } from "./css-modules.js";
 import { dataChannelFromIR } from "./data-channel.js";
-import { resolveHoistedSettings } from "./hoist.js";
-import { findUnsupportedModuleSyntax } from "./script-modules.js";
 import {
 	blocksSlotNotABlock,
 	blocksSlotOutsideSection,
@@ -31,6 +29,7 @@ import {
 	renderTargetNotSnippet,
 	requiredPropMissing,
 	scriptModuleSyntaxUnsupported,
+	scriptReservedContextShadowed,
 	sectionPropWithoutSetting,
 	unknownDataAccess,
 	unknownIsland,
@@ -43,27 +42,50 @@ import {
 	unusedRef,
 	unusedStyleClass,
 } from "./diagnostics.js";
+import { resolveHoistedSettings } from "./hoist.js";
 import { type ArtifactIRIndex, indexArtifactIR } from "./ir-index.js";
+import { findUnsupportedModuleSyntax } from "./script-modules.js";
+import { findReservedContextShadows } from "./script-scan.js";
 import { componentKindFromIR } from "./symbols.js";
 
+export type CompilerMode = "loose" | "strict";
+
+export type CheckArtifactIROptions = {
+	/** strict keeps component-author guarantees; loose keeps only contract/build basics. */
+	mode?: CompilerMode;
+};
+
 export function checkArtifactIR(
+	ir: ArtifactIR,
+	contracts: ArtifactContract[] = [],
+	options: CheckArtifactIROptions = {},
+): Diagnostic[] {
+	const mode = options.mode ?? "strict";
+	const issues = [
+		...checkContractConstraints(ir, contracts),
+		...checkScriptConstraints(ir),
+	];
+
+	if (mode === "strict") {
+		issues.push(
+			...checkComponentAuthoringConstraints(ir, contracts),
+			...checkStyleConstraints(ir),
+		);
+	}
+
+	return issues;
+}
+
+export function checkContractConstraints(
 	ir: ArtifactIR,
 	contracts: ArtifactContract[] = [],
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const index = indexArtifactIR(ir);
-	const kind = componentKindFromIR(ir);
 	const contractsByComponentSymbolId = new Map(
 		contracts.map((contract) => [contract.componentSymbolId, contract]),
 	);
-	const settingTypesByName = new Map(
-		ir.symbols
-			.filter((symbol) => symbol.kind === "setting")
-			.map((symbol) => [symbol.name, symbol.semanticType]),
-	);
-	for (const node of index.nodesOfKind("prop-declaration")) {
-		settingTypesByName.set(`props.${node.name}`, node.typeInfo.valueType);
-	}
+	const settingTypesByName = settingTypesByNameFromIR(ir, index);
 
 	for (const node of index.nodesOfKind("render-site")) {
 		const [renderTarget] = index.renderTargetsBySiteId.get(node.id) ?? [];
@@ -90,21 +112,60 @@ export function checkArtifactIR(
 		}
 
 		issues.push(
-			...checkRenderSiteAgainstContract(index, node, contract, settingTypesByName),
+			...checkRenderSiteAgainstContract(
+				index,
+				node,
+				contract,
+				settingTypesByName,
+			),
 		);
 	}
 
-	issues.push(...checkRefs(index));
-	issues.push(...checkIslands(index));
-	issues.push(...checkBlocksReferences(index, contracts));
-	issues.push(...checkPropsReferences(index));
-	issues.push(...checkDataChannel(ir, index));
-	issues.push(...checkPropProvenanceForKind(index, kind));
-	issues.push(...resolveHoistedSettings(ir, contracts).issues);
-	issues.push(...checkScriptModuleSyntax(index));
-	issues.push(...checkStyleBindings(index));
-
 	return issues;
+}
+
+export function checkComponentAuthoringConstraints(
+	ir: ArtifactIR,
+	contracts: ArtifactContract[] = [],
+): Diagnostic[] {
+	const index = indexArtifactIR(ir);
+	const kind = componentKindFromIR(ir);
+	return [
+		...checkRefs(index),
+		...checkIslands(index),
+		...checkBlocksReferences(index, contracts),
+		...checkPropsReferences(index),
+		...checkDataChannel(ir, index),
+		...checkPropProvenanceForKind(index, kind),
+		...resolveHoistedSettings(ir, contracts).issues,
+	];
+}
+
+export function checkScriptConstraints(ir: ArtifactIR): Diagnostic[] {
+	const index = indexArtifactIR(ir);
+	return [
+		...checkScriptReservedContexts(index),
+		...checkScriptModuleSyntax(index),
+	];
+}
+
+export function checkStyleConstraints(ir: ArtifactIR): Diagnostic[] {
+	return checkStyleBindings(indexArtifactIR(ir));
+}
+
+function settingTypesByNameFromIR(
+	ir: ArtifactIR,
+	index: ArtifactIRIndex,
+): Map<string, SemanticType | undefined> {
+	const settingTypesByName = new Map(
+		ir.symbols
+			.filter((symbol) => symbol.kind === "setting")
+			.map((symbol) => [symbol.name, symbol.semanticType]),
+	);
+	for (const node of index.nodesOfKind("prop-declaration")) {
+		settingTypesByName.set(`props.${node.name}`, node.typeInfo.valueType);
+	}
+	return settingTypesByName;
 }
 
 /**
@@ -183,6 +244,24 @@ function spanWithinBody(
 		start: { line, column },
 		end: { line, column: column + (range.end - range.start) },
 	};
+}
+
+function checkScriptReservedContexts(index: ArtifactIRIndex): Diagnostic[] {
+	const issues: Diagnostic[] = [];
+
+	for (const script of index.nodesOfKind("script")) {
+		for (const shadow of findReservedContextShadows(script.source)) {
+			issues.push(
+				scriptReservedContextShadowed(
+					shadow.name,
+					script.id,
+					spanWithinBody(script.source, script.bodySpan, shadow),
+				),
+			);
+		}
+	}
+
+	return issues;
 }
 
 /** Module syntax in behavior scripts breaks the emitted IIFE until bundling exists. */
@@ -286,9 +365,7 @@ function checkDataChannel(
 		for (const binding of node.dataBindings ?? []) {
 			const propsRead = binding.expression.trim().match(/^props\.([\w$]+)$/);
 			if (propsRead && !declaredProps.has(propsRead[1])) {
-				issues.push(
-					unknownPropsReference(propsRead[1], node.id, binding.span),
-				);
+				issues.push(unknownPropsReference(propsRead[1], node.id, binding.span));
 			}
 			if (
 				scripts.length > 0 &&
@@ -457,8 +534,7 @@ function checkRenderSiteAgainstContract(
 	const arguments_ = renderSite.argumentIds
 		.map((argumentId) => index.nodeById.get(argumentId))
 		.filter(
-			(node): node is PropArgumentSyntaxNode =>
-				node?.kind === "prop-argument",
+			(node): node is PropArgumentSyntaxNode => node?.kind === "prop-argument",
 		);
 	const argumentNames = new Set(arguments_.map((argument) => argument.name));
 
@@ -545,7 +621,9 @@ function inferExpressionType(
 ): SemanticType | undefined {
 	if (!expression) return { kind: "unknown" };
 	if (expression.inferredType) return expression.inferredType;
-	return settingTypesByName.get(expression.source.trim()) ?? { kind: "unknown" };
+	return (
+		settingTypesByName.get(expression.source.trim()) ?? { kind: "unknown" }
+	);
 }
 
 /**

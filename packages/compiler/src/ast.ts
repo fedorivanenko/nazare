@@ -83,6 +83,13 @@ export type NazareElementRefNode = {
 	span: SourceSpan;
 };
 
+/** An explicit nz-root marker selecting the emitted runtime root element. */
+export type NazareRootMarkerNode = {
+	type: "NazareRootMarker";
+	tagName: string;
+	span: SourceSpan;
+};
+
 /** An island="name" attribute placing an imported behavior on a subtree. */
 export type NazareIslandNode = {
 	type: "NazareIsland";
@@ -154,6 +161,7 @@ export type NazareNode =
 	| NazareRenderNode
 	| NazareOutputExpressionNode
 	| NazareElementRefNode
+	| NazareRootMarkerNode
 	| NazareIslandNode
 	| NazareScriptNode
 	| NazareStyleNode

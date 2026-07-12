@@ -15,18 +15,20 @@ import type {
 } from "@nazare/core";
 import { NodeTypes } from "@shopify/liquid-html-parser";
 import type { NazareAst } from "./ast.js";
+import { bundleScript } from "./bundle.js";
+import { rewriteCssClasses, scopedClassName } from "./css-modules.js";
 import { dataChannelFromIR } from "./data-channel.js";
 import {
 	emitAmbiguousRoot,
+	emitMultipleRootMarkers,
 	emitScriptWithoutDefaultExport,
 	emitScriptWithoutRoot,
 } from "./diagnostics.js";
-import { bundleScript } from "./bundle.js";
-import { rewriteCssClasses, scopedClassName } from "./css-modules.js";
 import { type HoistedSetting, resolveHoistedSettings } from "./hoist.js";
+import { lowerPropsReads, lowerStyleReads } from "./liquid-lowering.js";
 import { baseNameOf, directoryOf } from "./paths.js";
-import { hasDefaultExport } from "./script-scan.js";
 import { themeSchemaFromIR } from "./schema.js";
+import { hasDefaultExport } from "./script-scan.js";
 import { offsetFromPosition } from "./source.js";
 import { componentKindFromIR } from "./symbols.js";
 
@@ -46,7 +48,7 @@ export type EmitResult = {
 	issues: Diagnostic[];
 };
 
-type CompiledComponent = {
+export type CompiledComponent = {
 	ast: NazareAst;
 	ir: ArtifactIR;
 	/** Dependency contracts; enables hoisted settings in schema and lowering. */
@@ -59,67 +61,138 @@ type SourceEdit = {
 	replacement: string;
 };
 
+export function checkEmitPreconditions(
+	source: string,
+	compiled: CompiledComponent,
+	options: { name: string },
+): Diagnostic[] {
+	const issues: Diagnostic[] = [];
+	const scripts = compiled.ir.syntax.filter((node) => node.kind === "script");
+	const hasScript = scripts.length > 0;
+	const kind = componentKindFromIR(compiled.ir);
+
+	if (hasScript || kind === "block") {
+		const root = rootElement(source, compiled.ast);
+		if (!root) {
+			if (hasScript) issues.push(emitScriptWithoutRoot(options.name));
+		} else {
+			if (root.markerCount > 1) {
+				issues.push(emitMultipleRootMarkers(options.name, root.markerCount));
+			}
+			if (root.topLevelCount > 1) {
+				issues.push(
+					emitAmbiguousRoot(options.name, root.tagName, root.topLevelCount),
+				);
+			}
+		}
+	}
+
+	for (const script of scripts) {
+		if (!hasDefaultExport(script.source)) {
+			issues.push(emitScriptWithoutDefaultExport(options.name, script.span));
+		}
+	}
+
+	return issues;
+}
+
 export function emitTheme(
 	source: string,
 	compiled: CompiledComponent,
 	options: EmitThemeOptions,
 ): EmitResult {
-	const issues: Diagnostic[] = [];
-	const files: EmittedFile[] = [];
+	const parts = [
+		{
+			files: [],
+			issues: checkEmitPreconditions(source, compiled, { name: options.name }),
+		},
+		emitLiquidFile(source, compiled, options),
+		emitCssFiles(compiled, options),
+		emitScriptFiles(compiled, options),
+	];
+
+	return {
+		files: parts.flatMap((part) => part.files),
+		issues: parts.flatMap((part) => part.issues),
+	};
+}
+
+export function emitLiquidFile(
+	source: string,
+	compiled: CompiledComponent,
+	options: EmitThemeOptions,
+): EmitResult {
 	const scripts = compiled.ir.syntax.filter((node) => node.kind === "script");
 	const styles = compiled.ir.syntax.filter((node) => node.kind === "style");
-	const hasScript = scripts.length > 0;
-	const hasStyle = styles.length > 0;
 	const kind = componentKindFromIR(compiled.ir);
-
-	const liquid = emitLiquid(
-		source,
-		compiled,
-		options,
-		kind,
-		{ hasScript, hasStyle },
-		issues,
-	);
 	const directory =
 		kind === "section" ? "sections" : kind === "block" ? "blocks" : "snippets";
-	files.push({ path: `${directory}/${options.name}.liquid`, contents: liquid });
+	return {
+		files: [
+			{
+				path: `${directory}/${options.name}.liquid`,
+				contents: emitLiquid(source, compiled, options, kind, {
+					hasScript: scripts.length > 0,
+					hasStyle: styles.length > 0,
+				}),
+			},
+		],
+		issues: [],
+	};
+}
 
-	if (hasStyle) {
-		// Bound sheets (css modules) scope by class rewrite; unbound sheets
-		// pass through untouched, as vanilla Shopify would.
-		const css = styles
-			.map((style) =>
-				style.bindingName
-					? rewriteCssClasses(style.source, (className) =>
-							scopedClassName(options.name, className),
-						)
-					: style.source,
-			)
-			.join("\n\n");
-		files.push({ path: `assets/${options.name}.css`, contents: `${css}\n` });
-	}
+export function emitCssFiles(
+	compiled: CompiledComponent,
+	options: EmitThemeOptions,
+): EmitResult {
+	const styles = compiled.ir.syntax.filter((node) => node.kind === "style");
+	if (styles.length === 0) return { files: [], issues: [] };
 
-	if (hasScript) {
-		const placedBehaviors = new Set(
-			compiled.ir.syntax
-				.filter((node) => node.kind === "island-placement")
-				.map((node) => node.name),
-		);
-		files.push({
-			path: `assets/${options.name}.js`,
-			contents: emitComponentScript(
-				scripts,
-				compiled.ast.file,
-				options,
-				dataDescriptor(compiled.ir),
-				placedBehaviors,
-				issues,
-			),
-		});
-		files.push({ path: "assets/nazare-runtime.js", contents: runtimeSource });
-	}
+	// Bound sheets (css modules) scope by class rewrite; unbound sheets pass
+	// through untouched, as vanilla Shopify would.
+	const css = styles
+		.map((style) =>
+			style.bindingName
+				? rewriteCssClasses(style.source, (className) =>
+						scopedClassName(options.name, className),
+					)
+				: style.source,
+		)
+		.join("\n\n");
 
-	return { files, issues };
+	return {
+		files: [{ path: `assets/${options.name}.css`, contents: `${css}\n` }],
+		issues: [],
+	};
+}
+
+export function emitScriptFiles(
+	compiled: CompiledComponent,
+	options: EmitThemeOptions,
+): EmitResult {
+	const scripts = compiled.ir.syntax.filter((node) => node.kind === "script");
+	if (scripts.length === 0) return { files: [], issues: [] };
+
+	const placedBehaviors = new Set(
+		compiled.ir.syntax
+			.filter((node) => node.kind === "island-placement")
+			.map((node) => node.name),
+	);
+	const componentScript = emitComponentScript(
+		scripts,
+		compiled.ast.file,
+		options,
+		dataDescriptor(compiled.ir),
+		placedBehaviors,
+	);
+
+	return {
+		files: [
+			{ path: `assets/${options.name}.js`, contents: componentScript.contents },
+			{ path: "assets/nazare-runtime.js", contents: runtimeSource },
+		],
+		issues: componentScript.issues,
+	};
 }
 
 function emitLiquid(
@@ -128,17 +201,14 @@ function emitLiquid(
 	options: EmitThemeOptions,
 	kind: ComponentKind,
 	{ hasScript, hasStyle }: { hasScript: boolean; hasStyle: boolean },
-	issues: Diagnostic[],
 ): string {
 	const edits: SourceEdit[] = [];
 	const snippetNamesByLocalName = new Map<string, string>();
 	const argumentsById = new Map<Id, PropArgumentSyntaxNode>();
 	const expressionsById = new Map<Id, string>();
 	const hoistedBySiteId = new Map<Id, HoistedSetting[]>();
-	for (const setting of resolveHoistedSettings(
-		compiled.ir,
-		compiled.contracts,
-	).hoisted) {
+	for (const setting of resolveHoistedSettings(compiled.ir, compiled.contracts)
+		.hoisted) {
 		const bucket = hoistedBySiteId.get(setting.renderSiteId);
 		if (bucket) bucket.push(setting);
 		else hoistedBySiteId.set(setting.renderSiteId, [setting]);
@@ -223,13 +293,9 @@ function emitLiquid(
 	// class rewrite and need no root attribute.
 	if (hasScript || kind === "block") {
 		const root = rootElement(source, compiled.ast);
-		if (!root) {
-			if (hasScript) issues.push(emitScriptWithoutRoot(options.name));
-		} else {
-			if (root.topLevelCount > 1) {
-				issues.push(
-					emitAmbiguousRoot(options.name, root.tagName, root.topLevelCount),
-				);
+		if (root) {
+			if (root.marker) {
+				edits.push({ ...root.marker, replacement: "" });
 			}
 			const stamps = [
 				...(hasScript ? [` data-nz-component="${options.name}"`] : []),
@@ -296,125 +362,118 @@ function generatedHeader(
 	return `{%- comment -%}\n${lines.join("\n")}\n{%- endcomment -%}\n`;
 }
 
-/**
- * Lowers canonical props.x reads to their provenance: setting props read
- * section.settings.x, render-passed props read the bare argument name.
- * Textual over the whole output so control-flow Liquid (which Nazare does
- * not model) lowers too; undeclared names are left for check to report.
- */
-function lowerPropsReads(
-	liquid: string,
-	ir: ArtifactIR,
-	kind: ComponentKind,
-): string {
-	const settingsObject = kind === "block" ? "block.settings" : "section.settings";
-	const accessByProp = new Map<string, string>();
-	for (const node of ir.syntax) {
-		if (node.kind !== "prop-declaration") continue;
-		accessByProp.set(
-			node.name,
-			node.typeInfo.setting ? `${settingsObject}.${node.name}` : node.name,
-		);
+type RootElement = {
+	tagEnd: number;
+	tagName: string;
+	topLevelCount: number;
+	markerCount: number;
+	marker?: { start: number; end: number };
+};
+
+/** Explicit nz-root if present, otherwise the first top-level element. */
+function rootElement(source: string, ast: NazareAst): RootElement | undefined {
+	let first: RootElement | undefined;
+	let explicit: RootElement | undefined;
+	let count = 0;
+	let markerCount = 0;
+
+	for (const node of ast.liquidAst.children) {
+		if (!isHtmlElementLike(node)) continue;
+		count += 1;
+
+		const candidate = rootElementCandidate(source, node);
+		if (candidate.marker) markerCount += 1;
+		first ??= candidate;
+		if (candidate.marker && !explicit) explicit = candidate;
 	}
 
-	return liquid.replace(
-		/\bprops\.([A-Za-z_$][\w$]*)/g,
-		(match, name: string) => accessByProp.get(name) ?? match,
+	const selected = explicit ?? first;
+	if (!selected) return undefined;
+	return {
+		...selected,
+		markerCount,
+		// Explicit marker resolves the root intentionally; multiple top-level
+		// elements are no longer ambiguous for runtime stamping.
+		topLevelCount: explicit ? 1 : count,
+	};
+}
+
+function isHtmlElementLike(
+	node: NazareAst["liquidAst"]["children"][number],
+): boolean {
+	return (
+		node.type === NodeTypes.HtmlElement ||
+		node.type === NodeTypes.HtmlVoidElement ||
+		node.type === NodeTypes.HtmlSelfClosingElement
 	);
 }
 
-/**
- * Lowers css-module reads to their generated class names at compile time:
- * output tags ({{ styles.wrapper }}) become the bare literal, remaining
- * expression-position reads (render arguments) become a quoted string.
- * Textual over the whole output so control-flow Liquid lowers too.
- */
-function lowerStyleReads(
-	liquid: string,
-	ir: ArtifactIR,
-	componentName: string,
-): string {
-	const bindingNames = ir.syntax
-		.filter((node) => node.kind === "style")
-		.map((node) => node.bindingName)
-		.filter((name): name is string => name !== undefined);
-
-	let output = liquid;
-	for (const binding of new Set(bindingNames)) {
-		const dotOutput = new RegExp(
-			`\\{\\{-?\\s*${binding}\\.([A-Za-z_$][\\w$]*)\\s*-?\\}\\}`,
-			"g",
-		);
-		const bracketOutput = new RegExp(
-			`\\{\\{-?\\s*${binding}\\[\\s*["']([^"']+)["']\\s*\\]\\s*-?\\}\\}`,
-			"g",
-		);
-		const dotExpression = new RegExp(
-			`\\b${binding}\\.([A-Za-z_$][\\w$]*)\\b`,
-			"g",
-		);
-		const bracketExpression = new RegExp(
-			`\\b${binding}\\[\\s*["']([^"']+)["']\\s*\\]`,
-			"g",
-		);
-		const scoped = (className: string) =>
-			scopedClassName(componentName, className);
-
-		output = output
-			.replace(dotOutput, (_, className: string) => scoped(className))
-			.replace(bracketOutput, (_, className: string) => scoped(className))
-			.replace(dotExpression, (_, className: string) => `"${scoped(className)}"`)
-			.replace(
-				bracketExpression,
-				(_, className: string) => `"${scoped(className)}"`,
-			);
-	}
-	return output;
+function rootElementCandidate(source: string, node: unknown): RootElement {
+	const tagEnd = (node as { blockStartPosition: { end: number } })
+		.blockStartPosition.end;
+	const name = (node as { name?: unknown }).name;
+	const tagName =
+		typeof name === "string"
+			? name
+			: Array.isArray(name) &&
+					typeof (name[0] as { value?: unknown })?.value === "string"
+				? String((name[0] as { value: string }).value)
+				: "unknown";
+	return {
+		tagEnd: source[tagEnd - 2] === "/" ? tagEnd - 2 : tagEnd - 1,
+		tagName,
+		topLevelCount: 0,
+		markerCount: 0,
+		marker: rootMarkerRange(source, node),
+	};
 }
 
-/** The first top-level element (which gets stamped) and how many compete with it. */
-function rootElement(
+function rootMarkerRange(
 	source: string,
-	ast: NazareAst,
-): { tagEnd: number; tagName: string; topLevelCount: number } | undefined {
-	let first:
-		| { tagEnd: number; tagName: string; topLevelCount: number }
-		| undefined;
-	let count = 0;
-
-	for (const node of ast.liquidAst.children) {
-		if (
-			node.type !== NodeTypes.HtmlElement &&
-			node.type !== NodeTypes.HtmlVoidElement &&
-			node.type !== NodeTypes.HtmlSelfClosingElement
-		) {
-			continue;
-		}
-		count += 1;
-		if (first) continue;
-
-		const tagEnd = (node as { blockStartPosition: { end: number } })
-			.blockStartPosition.end;
-		const name = (node as { name?: unknown }).name;
-		const tagName =
-			typeof name === "string"
-				? name
-				: Array.isArray(name) &&
-						typeof (name[0] as { value?: unknown })?.value === "string"
-					? String((name[0] as { value: string }).value)
-					: "unknown";
-		first = {
-			tagEnd: source[tagEnd - 2] === "/" ? tagEnd - 2 : tagEnd - 1,
-			tagName,
-			topLevelCount: 0,
-		};
+	node: unknown,
+): { start: number; end: number } | undefined {
+	for (const attribute of (node as { attributes?: unknown[] }).attributes ??
+		[]) {
+		if (!isAttributeLike(attribute)) continue;
+		if (attributeName(attribute) !== "nz-root") continue;
+		let start = attribute.position.start;
+		while (start > 0 && /[ \t]/.test(source[start - 1])) start -= 1;
+		return { start, end: attribute.position.end };
 	}
+	return undefined;
+}
 
-	return first ? { ...first, topLevelCount: count } : undefined;
+function isAttributeLike(attribute: unknown): attribute is {
+	type: string;
+	name: { type: string; value?: unknown }[];
+	position: { start: number; end: number };
+} {
+	return (
+		typeof attribute === "object" &&
+		attribute !== null &&
+		"type" in attribute &&
+		"name" in attribute &&
+		"position" in attribute
+	);
+}
+
+function attributeName(attribute: {
+	name: { type: string; value?: unknown }[];
+}): string | undefined {
+	let text = "";
+	for (const part of attribute.name) {
+		if (part.type !== NodeTypes.TextNode || typeof part.value !== "string") {
+			return undefined;
+		}
+		text += part.value;
+	}
+	return text;
 }
 
 /** Descriptor telling the runtime how to parse each ref's data-* strings. */
-function dataDescriptor(ir: ArtifactIR): Record<string, Record<string, string>> {
+function dataDescriptor(
+	ir: ArtifactIR,
+): Record<string, Record<string, string>> {
 	const descriptor: Record<string, Record<string, string>> = {};
 	for (const [refName, bindings] of dataChannelFromIR(ir)) {
 		descriptor[refName] = {};
@@ -431,16 +490,13 @@ function emitComponentScript(
 	options: EmitThemeOptions,
 	descriptor: Record<string, Record<string, string>>,
 	placedBehaviors: Set<string>,
-	issues: Diagnostic[],
-): string {
+): { contents: string; issues: Diagnostic[] } {
+	const issues: Diagnostic[] = [];
 	const componentDir = directoryOf(componentFile);
 
 	// Each behavior registers separately so declaration order is mount order
 	// and one default export cannot clobber another.
 	const registrations = scripts.map((script, index) => {
-		if (!hasDefaultExport(script.source)) {
-			issues.push(emitScriptWithoutDefaultExport(options.name, script.span));
-		}
 		// Imported behaviors bundle under their own path; inline scripts get a
 		// synthetic entry beside the component so relative imports resolve.
 		const entryFile =
@@ -460,21 +516,29 @@ function emitComponentScript(
 		return `window.Nazare.register(${JSON.stringify(options.name)}, ${placement}, ${bundle.code}, __data);`;
 	});
 
-	return [
-		`/* Generated by Nazare. Component: ${options.name} */`,
-		"(function () {",
-		'  "use strict";',
-		"  var island = window.Nazare.island;",
-		`  var __data = ${JSON.stringify(descriptor)};`,
-		...registrations.map((registration) => indent(registration, "  ")),
-		"})();",
-		"",
-	].join("\n");
+	return {
+		contents: [
+			`/* Generated by Nazare. Component: ${options.name} */`,
+			"(function () {",
+			'  "use strict";',
+			"  var island = window.Nazare.island;",
+			`  var __data = ${JSON.stringify(descriptor)};`,
+			...registrations.map((registration) => indent(registration, "  ")),
+			"})();",
+			"",
+		].join("\n"),
+		issues,
+	};
 }
 
 function editRange(
 	source: string,
-	span: { start: { line: number; column: number }; end: { line: number; column: number } } | undefined,
+	span:
+		| {
+				start: { line: number; column: number };
+				end: { line: number; column: number };
+		  }
+		| undefined,
 ): { start: number; end: number } {
 	if (!span) return { start: 0, end: 0 };
 	return {

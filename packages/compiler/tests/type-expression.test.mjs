@@ -35,14 +35,20 @@ test("type-expression: non-string default survives", () => {
 });
 
 test("type-expression: array and object bases", () => {
-	assert.deepEqual(parseTypeExpression("array(ShopifyProduct)").typeInfo.valueType, {
-		kind: "array",
-		element: { kind: "object", name: "ShopifyProduct" },
-	});
-	assert.deepEqual(parseTypeExpression(`object("ShopifyImage")`).typeInfo.valueType, {
-		kind: "object",
-		name: "ShopifyImage",
-	});
+	assert.deepEqual(
+		parseTypeExpression("array(ShopifyProduct)").typeInfo.valueType,
+		{
+			kind: "array",
+			element: { kind: "object", name: "ShopifyProduct" },
+		},
+	);
+	assert.deepEqual(
+		parseTypeExpression(`object("ShopifyImage")`).typeInfo.valueType,
+		{
+			kind: "object",
+			name: "ShopifyImage",
+		},
+	);
 	assert.deepEqual(parseTypeExpression("Money").typeInfo.valueType, {
 		kind: "money",
 	});
@@ -65,6 +71,13 @@ test("type-expression: malformed input reports error, falls back to unknown", ()
 	const parsed = parseTypeExpression("string.setting({ label: })");
 	assert.ok(parsed.error);
 	assert.deepEqual(parsed.typeInfo.valueType, { kind: "unknown" });
+});
+
+test("type-expression: unknown calls report error", () => {
+	const parsed = parseTypeExpression("string.requried()");
+	assert.equal(parsed.error, "unknown call: requried");
+	assert.equal(parsed.required, false);
+	assert.deepEqual(parsed.typeInfo.valueType, { kind: "string" });
 });
 
 test("type-expression: or() builds a union", () => {
@@ -122,10 +135,7 @@ test("type-expression: constrained number stays number when optional", () => {
 	const parsed = parseTypeExpression("number.min(1).optional()");
 	assert.deepEqual(parsed.typeInfo.valueType, {
 		kind: "union",
-		members: [
-			{ kind: "number", constraints: { min: 1 } },
-			{ kind: "nil" },
-		],
+		members: [{ kind: "number", constraints: { min: 1 } }, { kind: "nil" }],
 	});
 });
 

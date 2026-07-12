@@ -31,6 +31,12 @@ const cases = [
 		clean: true,
 	},
 	{
+		name: "malformed Nazare render is an error",
+		files: { "link.nz.liquid": LINK },
+		src: `{% import Link from "./link.nz.liquid" %}\n{% render Link href: "https://x.dev" %}`,
+		expect: "NAZARE_PARSE_RENDER",
+	},
+	{
 		name: "missing required prop",
 		files: { "link.nz.liquid": LINK },
 		src: `{% import Link from "./link.nz.liquid" %}\n{% render Link { href: "https://x.dev" } %}`,
@@ -53,8 +59,7 @@ const cases = [
 		files: { "link.nz.liquid": LINK },
 		src: `{% import Link from "./link.nz.liquid" %}\n{% render Link { href: "not-a-url-typed", text: "Go" } %}`,
 		// a string literal that is not a url still mismatches url
-		check: (r) =>
-			assert.ok(codes(r).includes("CONSTRAINT_PROP_TYPE_MISMATCH")),
+		check: (r) => assert.ok(codes(r).includes("CONSTRAINT_PROP_TYPE_MISMATCH")),
 	},
 	{
 		name: "union prop accepts a member",
@@ -85,6 +90,11 @@ const cases = [
 		files: { "g.nz.liquid": GAUGE },
 		src: `{% import G from "./g.nz.liquid" %}\n{% render G { size: 27 } %}`,
 		expect: "CONSTRAINT_PROP_VALUE_OUT_OF_RANGE",
+	},
+	{
+		name: "unknown type-expression call is an error",
+		src: `{% props { title: string.requried() } %}`,
+		expect: "NAZARE_PARSE_TYPE_EXPRESSION",
 	},
 	{
 		name: "unreadable import: not found + unresolved contract",
@@ -166,12 +176,15 @@ const cases = [
 		name: "ref mentions in comments/strings are not accesses",
 		src: `<div ref="root"></div>\n<div ref="ghost"></div>\n{% script %}\n// refs.ghost in a comment\nconst note = "refs.ghost";\nisland(({ refs }) => refs.root.setAttribute("n", note));\n{% endscript %}`,
 		check: (r) => {
-			const unused = r.issues.filter(
-				(i) => i.code === "CONSTRAINT_UNUSED_REF",
-			);
+			const unused = r.issues.filter((i) => i.code === "CONSTRAINT_UNUSED_REF");
 			assert.equal(unused.length, 1);
 			assert.ok(unused[0].message.includes("ghost"));
 		},
+	},
+	{
+		name: "script cannot shadow reserved refs/data context names",
+		src: `<div></div>\n{% script %}\nconst refs = {};\nexport default island(({ data }) => data);\n{% endscript %}`,
+		expect: "SCRIPT_RESERVED_CONTEXT_SHADOWED",
 	},
 
 	// --- data channel -----------------------------------------------------
@@ -193,8 +206,7 @@ const cases = [
 	{
 		name: "kebab-case data attributes are clean",
 		src: `{% props { max_count: number.default(9) } %}\n<div ref="root" data-max-count="{{ props.max_count }}"></div>\n{% script %}\nexport default island(({ data }) => console.log(data.root.maxCount));\n{% endscript %}`,
-		check: (r) =>
-			assert.ok(!codes(r).some((c) => c.includes("DATA"))),
+		check: (r) => assert.ok(!codes(r).some((c) => c.includes("DATA"))),
 	},
 
 	// --- blocks -----------------------------------------------------------
@@ -428,9 +440,7 @@ for (const c of cases) {
 		);
 		const issues = [...result.issues];
 		if (c.emit) {
-			issues.push(
-				...emitTheme(c.src, result, { name: "w", readFile }).issues,
-			);
+			issues.push(...emitTheme(c.src, result, { name: "w", readFile }).issues);
 		}
 		const merged = { ...result, issues };
 

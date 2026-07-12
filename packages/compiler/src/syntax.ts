@@ -8,7 +8,6 @@ import type {
 	ComponentSyntaxNode,
 	ExpressionSyntaxNode,
 	FileSyntaxNode,
-	Id,
 	ImportSyntaxNode,
 	PropArgumentSyntaxNode,
 	PropDeclarationSyntaxNode,
@@ -31,6 +30,7 @@ import {
 	propsInterfaceSyntaxId,
 	refAccessSyntaxId,
 	renderSiteSyntaxId,
+	rootMarkerSyntaxId,
 	scriptSyntaxId,
 	styleSyntaxId,
 } from "./ids.js";
@@ -75,6 +75,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 	let renderIndex = 0;
 	let outputExpressionIndex = 0;
 	let elementRefIndex = 0;
+	let rootMarkerIndex = 0;
 	let islandPlacementIndex = 0;
 	let scriptIndex = 0;
 	let styleIndex = 0;
@@ -141,9 +142,19 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 				name: node.name,
 				tagName: node.tagName,
 				ownerId: componentId,
-				dataBindings: node.dataBindings.length
-					? node.dataBindings
-					: undefined,
+				dataBindings: node.dataBindings.length ? node.dataBindings : undefined,
+				span: node.span,
+			});
+			continue;
+		}
+
+		if (node.type === "NazareRootMarker") {
+			rootMarkerIndex += 1;
+			syntax.push({
+				id: rootMarkerSyntaxId(ast.file, rootMarkerIndex),
+				kind: "root-marker",
+				tagName: node.tagName,
+				ownerId: componentId,
 				span: node.span,
 			});
 			continue;
@@ -171,9 +182,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 				lang: node.lang,
 				source: node.source,
 				ownerId: componentId,
-				dataAccesses: node.dataAccesses.length
-					? node.dataAccesses
-					: undefined,
+				dataAccesses: node.dataAccesses.length ? node.dataAccesses : undefined,
 				bindingName: node.bindingName,
 				span: node.span,
 				bodySpan: node.bodySpan,
@@ -279,4 +288,3 @@ function inferExpressionType(source: string): SemanticType | undefined {
 	if (trimmed === "true" || trimmed === "false") return { kind: "boolean" };
 	return undefined;
 }
-

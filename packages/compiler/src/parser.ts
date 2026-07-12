@@ -34,6 +34,7 @@ import {
 	parseInvalidComponentKind,
 	parseInvalidImport,
 	parseInvalidRefAttribute,
+	parseInvalidRender,
 	parseInvalidStylesheetBinding,
 	parseInvalidTypeExpression,
 	parseMalformedPropDeclaration,
@@ -102,7 +103,7 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 	walk(ast, (node) => {
 		collectUnsupportedSyntax(node, unsupportedSyntax);
 		collectControlFlowRange(node, controlFlowRanges);
-		collectElementRef(node, source, file, nodes, diagnostics);
+		collectElementAttributes(node, source, file, nodes, diagnostics);
 	});
 
 	let componentDeclared = false;
@@ -121,9 +122,24 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 		if (node.type !== NodeTypes.LiquidTag) return;
 
 		const tag = node as LiquidTagLike;
-		if (typeof tag.name !== "string" || typeof tag.markup !== "string") return;
+		if (typeof tag.name !== "string") return;
 
 		const span = spanFromOffsets(source, file, tag.position);
+
+		if (tag.name === "render") {
+			const render = parseNazareRenderTag(
+				tag,
+				source,
+				file,
+				span,
+				controlFlowRanges,
+				diagnostics,
+			);
+			if (render) nodes.push(render);
+			return;
+		}
+
+		if (typeof tag.markup !== "string") return;
 
 		if (tag.name === "component") {
 			const markup = tag.markup.trim();
@@ -141,42 +157,13 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 		}
 
 		if (tag.name === "import") {
-			const match = tag.markup.trim().match(importPattern);
-			if (!match) {
-				diagnostics.push(parseInvalidImport(tag.markup, span));
-				return;
-			}
-			const [, localName, specifier] = match;
-
-			if (!isRelativeSpecifier(specifier)) {
-				diagnostics.push(importBareSpecifier(specifier, span));
-				return;
-			}
-			const path = resolveImportPath(file, specifier);
-			if (path === undefined) {
-				diagnostics.push(importOutsideProject(specifier, span));
-				return;
-			}
-
-			if (specifier.endsWith(".liquid")) {
-				if (!/^[A-Z]/.test(localName)) {
-					diagnostics.push(importComponentCase(localName, span));
-					return;
-				}
-				nodes.push({ type: "NazareImport", localName, path, span });
-				return;
-			}
-
-			if (/\.(ts|js|css)$/.test(specifier)) {
-				if (/^[A-Z]/.test(localName)) {
-					diagnostics.push(importBindingCase(localName, span));
-					return;
-				}
-				nodes.push({ type: "NazareAssetImport", localName, path, span });
-				return;
-			}
-
-			diagnostics.push(importUnsupportedExtension(specifier, span));
+			const importNode = parseNazareImportTag(
+				tag.markup,
+				file,
+				span,
+				diagnostics,
+			);
+			if (importNode) nodes.push(importNode);
 			return;
 		}
 
@@ -214,28 +201,6 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 				return;
 			}
 			nodes.push({ type: "NazareBlocks", blockNames, span });
-			return;
-		}
-
-		if (tag.name === "render") {
-			const match = tag.markup.trim().match(renderPattern);
-			if (!match) return;
-
-			const bodyOffset = source.indexOf(match[2], tag.position.start);
-			nodes.push({
-				type: "NazareRender",
-				target: match[1],
-				props: parsePassedProps(
-					match[2],
-					source,
-					file,
-					bodyOffset >= 0 ? bodyOffset : tag.position.start,
-				),
-				reachability: isInsideControlFlow(tag.position, controlFlowRanges)
-					? "conditional-unmodeled"
-					: "unconditional",
-				span,
-			});
 			return;
 		}
 	});
@@ -314,9 +279,98 @@ function extractScriptBlocks(
 	return { scripts, blankedSource };
 }
 
+function liquidTagMarkup(
+	source: string,
+	position: SourceRange,
+	name: string,
+): string {
+	const raw = source.slice(position.start, position.end);
+	return raw
+		.replace(new RegExp(`^\\s*\\{%-?\\s*${name}\\b`), "")
+		.replace(/-?%}\s*$/, "")
+		.trim();
+}
+
+function parseNazareRenderTag(
+	tag: LiquidTagLike,
+	source: string,
+	file: string,
+	span: SourceSpan,
+	controlFlowRanges: SourceRange[],
+	diagnostics: NazareAst["diagnostics"],
+): NazareNode | undefined {
+	const markup = liquidTagMarkup(source, tag.position, "render");
+	const match = markup.match(renderPattern);
+	if (!match) {
+		if (/^[A-Z][\w$]*\b/.test(markup)) {
+			diagnostics.push(parseInvalidRender(markup, span));
+		}
+		return undefined;
+	}
+
+	const bodyOffset = source.indexOf(match[2], tag.position.start);
+	return {
+		type: "NazareRender",
+		target: match[1],
+		props: parsePassedProps(
+			match[2],
+			source,
+			file,
+			bodyOffset >= 0 ? bodyOffset : tag.position.start,
+		),
+		reachability: isInsideControlFlow(tag.position, controlFlowRanges)
+			? "conditional-unmodeled"
+			: "unconditional",
+		span,
+	};
+}
+
+function parseNazareImportTag(
+	markup: string,
+	file: string,
+	span: SourceSpan,
+	diagnostics: NazareAst["diagnostics"],
+): NazareNode | undefined {
+	const match = markup.trim().match(importPattern);
+	if (!match) {
+		diagnostics.push(parseInvalidImport(markup, span));
+		return undefined;
+	}
+	const [, localName, specifier] = match;
+
+	if (!isRelativeSpecifier(specifier)) {
+		diagnostics.push(importBareSpecifier(specifier, span));
+		return undefined;
+	}
+	const path = resolveImportPath(file, specifier);
+	if (path === undefined) {
+		diagnostics.push(importOutsideProject(specifier, span));
+		return undefined;
+	}
+
+	if (specifier.endsWith(".liquid")) {
+		if (!/^[A-Z]/.test(localName)) {
+			diagnostics.push(importComponentCase(localName, span));
+			return undefined;
+		}
+		return { type: "NazareImport", localName, path, span };
+	}
+
+	if (/\.(ts|js|css)$/.test(specifier)) {
+		if (/^[A-Z]/.test(localName)) {
+			diagnostics.push(importBindingCase(localName, span));
+			return undefined;
+		}
+		return { type: "NazareAssetImport", localName, path, span };
+	}
+
+	diagnostics.push(importUnsupportedExtension(specifier, span));
+	return undefined;
+}
+
 function parseLiquidError(
 	error: unknown,
-	source: string,
+	_source: string,
 	file: string,
 ): NazareAst["diagnostics"][number] {
 	const loc = (error as { loc?: { start?: { line: number; column: number } } })
@@ -438,7 +492,7 @@ function extractStyleBlocks(
 	return { styles, blankedSource };
 }
 
-function collectElementRef(
+function collectElementAttributes(
 	node: LiquidHtmlNode,
 	source: string,
 	file: string,
@@ -463,9 +517,24 @@ function collectElementRef(
 			continue;
 		}
 		const attributeName = staticText(attribute.name);
-		if (attributeName !== "ref" && attributeName !== "island") continue;
+		if (
+			attributeName !== "ref" &&
+			attributeName !== "island" &&
+			attributeName !== "nz-root"
+		) {
+			continue;
+		}
 
 		const span = spanFromOffsets(source, file, attribute.position);
+		if (attributeName === "nz-root") {
+			nodes.push({
+				type: "NazareRootMarker",
+				tagName: elementTagName(node),
+				span,
+			});
+			continue;
+		}
+
 		const value =
 			attribute.type === NodeTypes.AttrEmpty
 				? undefined

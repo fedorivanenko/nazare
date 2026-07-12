@@ -15,6 +15,18 @@ export function parseInvalidImport(
 	};
 }
 
+export function parseInvalidRender(
+	markup: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_RENDER",
+		message: `Invalid Nazare render: ${markup} — expected {% render Component { prop: expression } %}`,
+		span,
+	};
+}
+
 export function importBareSpecifier(
 	specifier: string,
 	span: SourceSpan,
@@ -236,7 +248,7 @@ export function parseInvalidTypeExpression(
 	span: SourceSpan,
 ): Diagnostic {
 	return {
-		severity: "warning",
+		severity: "error",
 		code: "NAZARE_PARSE_TYPE_EXPRESSION",
 		message: `Could not parse type expression for prop ${propName}: ${reason}`,
 		span,
@@ -562,6 +574,20 @@ export function propValueOutOfRange(
 	};
 }
 
+export function scriptReservedContextShadowed(
+	name: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "SCRIPT_RESERVED_CONTEXT_SHADOWED",
+		message: `Behavior script declares "${name}", but Nazare reserves that context name for island setup; rename the local binding`,
+		nodeId,
+		span,
+	};
+}
+
 export function scriptModuleSyntaxUnsupported(
 	statementText: string,
 	nodeId: Id,
@@ -641,7 +667,18 @@ export function emitAmbiguousRoot(
 	return {
 		severity: "warning",
 		code: "EMIT_AMBIGUOUS_ROOT_ELEMENT",
-		message: `Component ${componentName} has ${topLevelCount} top-level elements; the first (<${stampedTag}>) was stamped data-nz-component, so scripts and scoped styles only reach that subtree — wrap the markup in a single root element`,
+		message: `Component ${componentName} has ${topLevelCount} top-level elements; the first (<${stampedTag}>) was stamped data-nz-component, so scripts and scoped styles only reach that subtree — wrap the markup in a single root element or mark one with nz-root`,
+	};
+}
+
+export function emitMultipleRootMarkers(
+	componentName: string,
+	markerCount: number,
+): Diagnostic {
+	return {
+		severity: "warning",
+		code: "EMIT_MULTIPLE_ROOT_MARKERS",
+		message: `Component ${componentName} has ${markerCount} nz-root markers; the first one is used as the runtime root`,
 	};
 }
 

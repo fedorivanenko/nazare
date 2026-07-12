@@ -53,6 +53,10 @@ export function elementRefSyntaxId(file: string, index: number): Id {
 	return `syntax:element-ref:${file}:${index}`;
 }
 
+export function rootMarkerSyntaxId(file: string, index: number): Id {
+	return `syntax:root-marker:${file}:${index}`;
+}
+
 export function scriptSyntaxId(file: string, index: number): Id {
 	return `syntax:script:${file}:${index}`;
 }

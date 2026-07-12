@@ -23,6 +23,12 @@ export type ScriptScan = {
 	dataAccesses: ScannedDataAccess[];
 };
 
+export type ReservedContextShadow = {
+	name: "refs" | "data";
+	start: number;
+	end: number;
+};
+
 export function scanScript(source: string): ScriptScan {
 	const sourceFile = parse(source);
 	const refAccesses: ScannedRefAccess[] = [];
@@ -58,6 +64,39 @@ export function scanScript(source: string): ScriptScan {
 	return { refAccesses, dataAccesses };
 }
 
+export function findReservedContextShadows(
+	source: string,
+): ReservedContextShadow[] {
+	const sourceFile = parse(source);
+	const shadows: ReservedContextShadow[] = [];
+
+	const recordBindingName = (name: ts.BindingName): void => {
+		if (ts.isIdentifier(name)) {
+			if (name.text === "refs" || name.text === "data") {
+				shadows.push({
+					name: name.text,
+					start: name.getStart(sourceFile),
+					end: name.getEnd(),
+				});
+			}
+			return;
+		}
+		for (const element of name.elements) {
+			if (ts.isBindingElement(element)) recordBindingName(element.name);
+		}
+	};
+
+	const visit = (node: ts.Node): void => {
+		if (ts.isVariableDeclaration(node)) recordBindingName(node.name);
+		if (ts.isFunctionDeclaration(node) && node.name)
+			recordBindingName(node.name);
+		ts.forEachChild(node, visit);
+	};
+	visit(sourceFile);
+
+	return shadows;
+}
+
 export function hasDefaultExport(source: string): boolean {
 	return parse(source).statements.some(
 		(statement) =>
@@ -66,10 +105,5 @@ export function hasDefaultExport(source: string): boolean {
 }
 
 function parse(source: string): ts.SourceFile {
-	return ts.createSourceFile(
-		"script.ts",
-		source,
-		ts.ScriptTarget.ES2018,
-		true,
-	);
+	return ts.createSourceFile("script.ts", source, ts.ScriptTarget.ES2018, true);
 }

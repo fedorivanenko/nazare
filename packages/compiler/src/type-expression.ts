@@ -79,6 +79,13 @@ export function parseTypeExpression(source: string): ParsedTypeExpression {
 		};
 	}
 
+	const unknownCalls = ast.calls
+		.map((call) => call.name)
+		.filter((name) => !knownCallNames.has(name));
+	const error = unknownCalls.length
+		? `unknown call${unknownCalls.length === 1 ? "" : "s"}: ${unknownCalls.join(", ")}`
+		: undefined;
+
 	const settingCall = ast.calls.find((call) => call.name === "setting");
 	const settingArgument = settingCall?.arguments[0];
 	// isObject excludes type refs at runtime; the cast is needed because a
@@ -111,10 +118,24 @@ export function parseTypeExpression(source: string): ParsedTypeExpression {
 					(argument) => isObject(argument) && "default" in argument,
 				),
 			),
+		error,
 	};
 }
 
 const numberConstraintCalls = ["min", "max", "step", "unit"] as const;
+const knownCallNames = new Set([
+	"default",
+	"enum",
+	"max",
+	"min",
+	"optional",
+	"or",
+	"required",
+	"returns",
+	"setting",
+	"step",
+	"unit",
+]);
 
 function valueTypeFromAst(ast: TypeExpressionAst): SemanticType {
 	let members = [applyBaseCalls(valueTypeFromBase(ast.base), ast.calls)];

@@ -119,6 +119,15 @@ export type ElementRefSyntaxNode = {
 	span?: SourceSpan;
 };
 
+/** An HTML element in the component's markup carrying an nz-root marker. */
+export type RootMarkerSyntaxNode = {
+	id: Id;
+	kind: "root-marker";
+	tagName: string;
+	ownerId: Id;
+	span?: SourceSpan;
+};
+
 /** A data.<ref>.<property> access inside a script. */
 export type ScriptDataAccess = {
 	ref: string;
@@ -203,6 +212,7 @@ export type ArtifactSyntaxNode =
 	| ImportSyntaxNode
 	| ExpressionSyntaxNode
 	| ElementRefSyntaxNode
+	| RootMarkerSyntaxNode
 	| ScriptSyntaxNode
 	| StyleSyntaxNode
 	| BlocksSlotSyntaxNode

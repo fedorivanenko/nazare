@@ -29,13 +29,34 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 
 	for (const syntaxNode of ir.syntax) {
 		if (syntaxNode.kind === "component") {
-			pushEdge(edges, edgeIds,"declares", syntaxNode.fileId, syntaxNode.id, "syntax");
+			pushEdge(
+				edges,
+				edgeIds,
+				"declares",
+				syntaxNode.fileId,
+				syntaxNode.id,
+				"syntax",
+			);
 		}
 		if (syntaxNode.kind === "import") {
-			pushEdge(edges, edgeIds,"declares", syntaxNode.fileId, syntaxNode.id, "syntax");
+			pushEdge(
+				edges,
+				edgeIds,
+				"declares",
+				syntaxNode.fileId,
+				syntaxNode.id,
+				"syntax",
+			);
 		}
 		if (syntaxNode.kind === "props-interface") {
-			pushEdge(edges, edgeIds,"declares", syntaxNode.ownerId, syntaxNode.id, "syntax");
+			pushEdge(
+				edges,
+				edgeIds,
+				"declares",
+				syntaxNode.ownerId,
+				syntaxNode.id,
+				"syntax",
+			);
 		}
 		if (syntaxNode.kind === "prop-declaration") {
 			pushEdge(
@@ -48,7 +69,14 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 			);
 		}
 		if (syntaxNode.kind === "render-site") {
-			pushEdge(edges, edgeIds,"declares", syntaxNode.ownerId, syntaxNode.id, "syntax");
+			pushEdge(
+				edges,
+				edgeIds,
+				"declares",
+				syntaxNode.ownerId,
+				syntaxNode.id,
+				"syntax",
+			);
 			for (const argumentId of syntaxNode.argumentIds) {
 				pushEdge(
 					edges,
@@ -72,21 +100,43 @@ export function artifactGraphFromIR(ir: ArtifactIR): ArtifactGraph {
 		}
 		if (
 			syntaxNode.kind === "element-ref" ||
+			syntaxNode.kind === "root-marker" ||
 			syntaxNode.kind === "island-placement" ||
 			syntaxNode.kind === "script" ||
 			syntaxNode.kind === "style" ||
 			syntaxNode.kind === "blocks-slot"
 		) {
-			pushEdge(edges, edgeIds, "declares", syntaxNode.ownerId, syntaxNode.id, "syntax");
+			pushEdge(
+				edges,
+				edgeIds,
+				"declares",
+				syntaxNode.ownerId,
+				syntaxNode.id,
+				"syntax",
+			);
 		}
 		if (syntaxNode.kind === "ref-access") {
-			pushEdge(edges, edgeIds, "declares", syntaxNode.scriptId, syntaxNode.id, "syntax");
+			pushEdge(
+				edges,
+				edgeIds,
+				"declares",
+				syntaxNode.scriptId,
+				syntaxNode.id,
+				"syntax",
+			);
 		}
 	}
 
 	for (const symbol of ir.symbols) {
 		for (const declaration of symbol.declarations) {
-			pushEdge(edges, edgeIds,"resolves-to", declaration, symbol.id, "resolved");
+			pushEdge(
+				edges,
+				edgeIds,
+				"resolves-to",
+				declaration,
+				symbol.id,
+				"resolved",
+			);
 		}
 	}
 
