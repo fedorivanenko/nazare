@@ -209,7 +209,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 			syntax.push({
 				id: blocksSlotSyntaxId(ast.file, blocksSlotIndex),
 				kind: "blocks-slot",
-				blockTypes: node.blockTypes,
+				blockNames: node.blockNames,
 				ownerId: componentId,
 				span: node.span,
 			});

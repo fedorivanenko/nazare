@@ -124,10 +124,10 @@ export type NazareAssetImportNode = {
 	span: SourceSpan;
 };
 
-/** {% blocks "notice", "quote" %} — the theme-block slot in a section. */
+/** {% blocks Notice, Quote %} — the theme-block slot; names are block imports. */
 export type NazareBlocksNode = {
 	type: "NazareBlocks";
-	blockTypes: string[];
+	blockNames: string[];
 	span: SourceSpan;
 };
 

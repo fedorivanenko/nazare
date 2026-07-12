@@ -197,23 +197,23 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 
 		if (tag.name === "blocks") {
 			const markup = tag.markup.trim();
-			const blockTypes: string[] = [];
+			const blockNames: string[] = [];
 			let valid = true;
 			if (markup.length > 0) {
 				for (const part of markup.split(",")) {
-					const blockType = part.trim().match(/^["']([^"']+)["']$/)?.[1];
-					if (!blockType) {
+					const name = part.trim();
+					if (!isIdentifier(name)) {
 						valid = false;
 						break;
 					}
-					blockTypes.push(blockType);
+					blockNames.push(name);
 				}
 			}
 			if (!valid) {
 				diagnostics.push(parseInvalidBlocksSlot(tag.markup, span));
 				return;
 			}
-			nodes.push({ type: "NazareBlocks", blockTypes, span });
+			nodes.push({ type: "NazareBlocks", blockNames, span });
 			return;
 		}
 

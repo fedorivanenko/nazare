@@ -106,7 +106,36 @@ export function parseInvalidBlocksSlot(
 	return {
 		severity: "error",
 		code: "NAZARE_PARSE_BLOCKS_SLOT",
-		message: `Invalid blocks slot: ${markup} — expected {% blocks %} or {% blocks "notice", "quote" %} (theme-block type names)`,
+		message: `Invalid blocks slot: ${markup} — expected {% blocks %} or {% blocks Notice, Quote %} (names of imported block components)`,
+		span,
+	};
+}
+
+export function blocksSlotUnknownReference(
+	name: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_BLOCKS_SLOT_UNKNOWN_REFERENCE",
+		message: `{% blocks %} lists ${name}, but no block component is imported under that name; add {% import ${name} from "./${name.toLowerCase()}.nz.liquid" %}`,
+		nodeId,
+		span,
+	};
+}
+
+export function blocksSlotNotABlock(
+	name: string,
+	kind: "snippet" | "section",
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_BLOCKS_SLOT_NOT_A_BLOCK",
+		message: `{% blocks %} accepts only block components, but ${name} is a ${kind}; declare it with {% component block %} or offer it differently`,
+		nodeId,
 		span,
 	};
 }

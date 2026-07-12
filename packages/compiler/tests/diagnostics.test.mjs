@@ -18,6 +18,9 @@ const GAUGE = `{% props { size: number.min(0).max(100).step(5).required() } %}`;
 const SECTION = `{% component section %}
 {% props { h: string.setting({ label: "H" }) } %}
 <section>{{ props.h }}</section>`;
+const BLOCK = `{% component block %}
+{% props { m: string.setting({ label: "M" }) } %}
+<div>{{ props.m }}</div>`;
 
 const cases = [
 	// --- render sites against a contract -----------------------------------
@@ -206,9 +209,31 @@ const cases = [
 		expect: "CONSTRAINT_MULTIPLE_BLOCKS_SLOTS",
 	},
 	{
-		name: "malformed blocks markup",
-		src: `<section>{% blocks notice %}</section>`,
+		name: "quoted blocks markup is invalid (names are imports now)",
+		src: `{% component section %}\n<section>{% blocks "notice" %}</section>`,
 		expect: "NAZARE_PARSE_BLOCKS_SLOT",
+	},
+	{
+		name: "valid block slot is clean",
+		files: { "notice.nz.liquid": BLOCK },
+		src: `{% component section %}\n{% import Notice from "./notice.nz.liquid" %}\n<section>{% blocks Notice %}</section>`,
+		clean: true,
+	},
+	{
+		name: "bare blocks slot (any theme block) is clean",
+		src: `{% component section %}\n<section>{% blocks %}</section>`,
+		clean: true,
+	},
+	{
+		name: "blocks names an unimported component",
+		src: `{% component section %}\n<section>{% blocks Ghost %}</section>`,
+		expect: "CONSTRAINT_BLOCKS_SLOT_UNKNOWN_REFERENCE",
+	},
+	{
+		name: "offering a section as a block",
+		files: { "s.nz.liquid": SECTION },
+		src: `{% component section %}\n{% import S from "./s.nz.liquid" %}\n<section>{% blocks S %}</section>`,
+		expect: "CONSTRAINT_BLOCKS_SLOT_NOT_A_BLOCK",
 	},
 
 	// --- css modules ------------------------------------------------------

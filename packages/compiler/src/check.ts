@@ -20,7 +20,9 @@ import { dataChannelFromIR } from "./data-channel.js";
 import { resolveHoistedSettings } from "./hoist.js";
 import { findUnsupportedModuleSyntax } from "./script-modules.js";
 import {
+	blocksSlotNotABlock,
 	blocksSlotOutsideSection,
+	blocksSlotUnknownReference,
 	duplicateIsland,
 	duplicateRef,
 	multipleBlocksSlots,
@@ -94,6 +96,7 @@ export function checkArtifactIR(
 
 	issues.push(...checkRefs(index));
 	issues.push(...checkIslands(index));
+	issues.push(...checkBlocksReferences(index, contracts));
 	issues.push(...checkPropsReferences(index));
 	issues.push(...checkDataChannel(ir, index));
 	issues.push(...checkPropProvenanceForKind(index, kind));
@@ -363,6 +366,45 @@ function checkRefs(index: ArtifactIRIndex): Diagnostic[] {
 			issues.push(
 				unusedRef(declaration.name, declaration.id, declaration.span),
 			);
+		}
+	}
+
+	return issues;
+}
+
+/**
+ * Blocks-slot linkage: every name in {% blocks A, B %} must be an imported
+ * component whose kind is block. Reuses the derived contracts (kind travels
+ * on them), so offering a section or snippet as a block is caught here.
+ * Unresolved imports are skipped — IMPORT_NOT_FOUND already reported them.
+ */
+function checkBlocksReferences(
+	index: ArtifactIRIndex,
+	contracts: ArtifactContract[],
+): Diagnostic[] {
+	const issues: Diagnostic[] = [];
+	const slots = index.nodesOfKind("blocks-slot");
+	if (slots.length === 0) return [];
+
+	const pathByImportName = new Map(
+		index.nodesOfKind("import").map((node) => [node.localName, node.path]),
+	);
+	const contractByPath = new Map(contracts.map((c) => [c.path, c]));
+
+	for (const slot of slots) {
+		for (const name of slot.blockNames) {
+			const path = pathByImportName.get(name);
+			if (path === undefined) {
+				issues.push(blocksSlotUnknownReference(name, slot.id, slot.span));
+				continue;
+			}
+			const contract = contractByPath.get(path);
+			if (!contract) continue; // unresolved import, already reported
+			if (contract.kind !== "block") {
+				issues.push(
+					blocksSlotNotABlock(name, contract.kind, slot.id, slot.span),
+				);
+			}
 		}
 	}
 

@@ -168,3 +168,21 @@ the source as `{% component section|block %}` (absent / `snippet` = default).
 - Examples marked ({% component section %} on announcement-bar/counter/
   disclosure/notice-board, block on notice; link/price stay snippet). CLI
   build routes each to sections/ blocks/ snippets/ by the source marker.
+
+## Step 4a: blocks referenced by import (completed 2026-07-12)
+
+Closed the block-kind gap flagged during kind-in-source. `{% blocks %}` now
+names imported block components instead of bare type strings:
+`{% import Notice from "./notice.nz.liquid" %}` + `{% blocks Notice, Quote %}`.
+
+- BlocksSlotSyntaxNode.blockTypes → blockNames (import local names). Parser
+  takes identifiers, not quoted strings (quoted = NAZARE_PARSE_BLOCKS_SLOT).
+- New check resolves each name → import path → contract, verifies
+  kind === "block": CONSTRAINT_BLOCKS_SLOT_UNKNOWN_REFERENCE (no such import),
+  CONSTRAINT_BLOCKS_SLOT_NOT_A_BLOCK (a section/snippet offered as a block).
+  Reuses the contract.kind added in step 3.5.
+- Schema `type` = the import path's basename (unchanged output: {type:"notice"});
+  bare {% blocks %} still emits [{type:"@theme"}]. Emit strips the import and
+  lowers the slot to {% content_for 'blocks' %} as before.
+- notice-board example migrated. Blocks are now just imported components whose
+  kind is block, offered through a slot rather than rendered.

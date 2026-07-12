@@ -29,10 +29,12 @@ all of them with a diagnostic that says what to do instead.
   bare render-argument name otherwise.
 - Section and block components receive no render arguments, so every prop
   must be a `.setting()` (otherwise it would render silently blank).
-- Blocks (`kind: "block"`) compile to theme blocks with their own schema
-  and a default preset; a section offers the slot with
-  `{% blocks "notice" %}` (theme-block type names; bare `{% blocks %}`
-  accepts any theme block). One slot per section; blocks cannot nest in v1.
+- Blocks (`{% component block %}`) compile to theme blocks with their own
+  schema and a default preset; a section imports block components and offers
+  the slot with `{% blocks Notice, Quote %}` (bare `{% blocks %}` accepts any
+  theme block). Each name must resolve to a block-kind import — offering a
+  section or snippet as a block is an error. One slot per section; blocks
+  cannot nest in v1.
 - A setting-prop argument you leave unfilled at a render site hoists into
   the consuming section's schema. Filling the argument is the opt-out.
 - The same import alias rendered twice with unfilled setting-props is an

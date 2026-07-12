@@ -145,8 +145,11 @@ export type ScriptSyntaxNode = {
 export type BlocksSlotSyntaxNode = {
 	id: Id;
 	kind: "blocks-slot";
-	/** Accepted theme-block type names; empty means accept any theme block. */
-	blockTypes: string[];
+	/**
+	 * Local names of imported block components the slot accepts; empty means
+	 * accept any theme block. Each name must resolve to a block-kind import.
+	 */
+	blockNames: string[];
 	ownerId: Id;
 	span?: SourceSpan;
 };

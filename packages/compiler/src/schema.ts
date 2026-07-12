@@ -13,6 +13,7 @@ import type {
 	ThemeSchemaSetting,
 } from "@nazare/core";
 import { humanizeAlias, resolveHoistedSettings } from "./hoist.js";
+import { baseNameOf } from "./paths.js";
 import { componentKindFromIR } from "./symbols.js";
 
 const shopifyObjectSettingTypes: Record<string, string> = {
@@ -68,14 +69,21 @@ export function themeSchemaFromIR(
 
 	const schema: ThemeSchema = { name: options.name, settings };
 
-	// The section's blocks slot lists theme-block type names verbatim.
+	// The section's blocks slot names imported block components; the schema
+	// type is each import's file basename (matching its emitted block file).
 	const slot = ir.syntax.find((node) => node.kind === "blocks-slot");
 	if (slot) {
+		const pathByName = new Map(
+			ir.syntax
+				.filter((node) => node.kind === "import")
+				.map((node) => [node.localName, node.path]),
+		);
 		schema.blocks =
-			slot.blockTypes.length > 0
-				? slot.blockTypes.map(
-						(blockType): ThemeSchemaBlockType => ({ type: blockType }),
-					)
+			slot.blockNames.length > 0
+				? slot.blockNames.map((name): ThemeSchemaBlockType => {
+						const path = pathByName.get(name);
+						return { type: path ? baseNameOf(path) : name.toLowerCase() };
+					})
 				: [{ type: "@theme" }];
 	}
 
