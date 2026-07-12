@@ -201,5 +201,7 @@ locates, bind resolves, check judges, emit projects; emit only replaces spans;
 no pass re-reads another pass's output; mode and dependency behavior are each
 one visible thing rather than a scattered default.
 
-Smaller cleanups (#4 silent fallback → assert; #5 runtime typing) remain
-optional.
+Smaller cleanups also done (commit 3c2c1ae): #4 the unresolved render target
+keeps its authored name instead of inventing a lowercased one; #5 the runtime
+is a DOM-typed function in `runtime.ts`, type-checked (DOM added to the
+compiler lib) and shipped via `toString()`. Nothing from the audit remains.
