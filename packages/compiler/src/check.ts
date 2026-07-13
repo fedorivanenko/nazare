@@ -210,12 +210,20 @@ function checkStyleBindings(index: ArtifactIRIndex): Diagnostic[] {
 
 	const definitions = new Map<
 		string,
-		{ styleId: Id; span: SourceSpan | undefined }
+		{
+			className: string;
+			styleId: Id;
+			span: SourceSpan | undefined;
+		}
 	>();
 	for (const style of boundStyles) {
+		const bindingName = style.bindingName;
+		if (bindingName === undefined) continue;
 		for (const token of cssClassTokens(style.source)) {
-			if (definitions.has(token.name)) continue;
-			definitions.set(token.name, {
+			const key = `${bindingName}:${token.name}`;
+			if (definitions.has(key)) continue;
+			definitions.set(key, {
+				className: token.name,
 				styleId: style.id,
 				span: spanWithinBody(style.source, style.bodySpan, token),
 			});
@@ -225,8 +233,9 @@ function checkStyleBindings(index: ArtifactIRIndex): Diagnostic[] {
 	const referenced = new Set<string>();
 	for (const reference of index.nodesOfKind("reference")) {
 		if (reference.target !== "style") continue;
-		referenced.add(reference.name);
-		if (!definitions.has(reference.name)) {
+		const key = `${reference.binding}:${reference.name}`;
+		referenced.add(key);
+		if (!definitions.has(key)) {
 			issues.push(
 				unknownStyleClass(
 					reference.binding,
@@ -238,10 +247,14 @@ function checkStyleBindings(index: ArtifactIRIndex): Diagnostic[] {
 		}
 	}
 
-	for (const [className, definition] of definitions) {
-		if (referenced.has(className)) continue;
+	for (const [key, definition] of definitions) {
+		if (referenced.has(key)) continue;
 		issues.push(
-			unusedStyleClass(className, definition.styleId, definition.span),
+			unusedStyleClass(
+				definition.className,
+				definition.styleId,
+				definition.span,
+			),
 		);
 	}
 

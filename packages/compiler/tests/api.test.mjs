@@ -45,6 +45,24 @@ test("buildNazareTheme aggregates emit diagnostics", () => {
 			(issue) => issue.code === "EMIT_SCRIPT_WITHOUT_DEFAULT_EXPORT",
 		),
 	);
+	assert.ok(
+		built.issues
+			.filter((issue) => issue.code.startsWith("EMIT_"))
+			.every((issue) => issue.phase === "emit"),
+	);
+});
+
+test("buildNazareTheme can skip emit when compile errors exist", () => {
+	const source = `{% import Missing from "./missing.nz.liquid" %}\n{% render Missing {} %}`;
+	const built = buildNazareTheme(source, "component.nz.liquid", {
+		name: "component",
+		emitOnError: false,
+	});
+
+	assert.equal(built.canEmit, false);
+	assert.equal(built.emittedOnError, false);
+	assert.deepEqual(built.emitted.files, []);
+	assert.ok(built.issues.some((issue) => issue.phase === "resolve"));
 });
 
 test("compile strictness: loose mode skips component-author linkage checks", () => {
@@ -149,6 +167,26 @@ test("checking dependencies is an explicit call, not a compile-time policy", asy
 		readFile,
 	});
 	assert.equal(hasChildError(built.issues), true);
+});
+
+test("dependency checking surfaces nested import graph failures", async () => {
+	const { checkDependencies, parseNazareLiquid: parse } = await import(
+		"../dist/index.js"
+	);
+	const source = `{% import Child from "./child.nz.liquid" %}\n{% render Child {} %}`;
+	const files = {
+		"child.nz.liquid": `{% import Grandchild from "./missing.nz.liquid" %}\n<span>child</span>`,
+	};
+	const readFile = (path) => files[path];
+	const issues = checkDependencies(
+		parse(source, "component.nz.liquid"),
+		readFile,
+	);
+
+	assert.ok(issues.some((issue) => issue.code === "IMPORT_NOT_FOUND"));
+	assert.ok(
+		issues.some((issue) => issue.message.includes("missing.nz.liquid")),
+	);
 });
 
 test("resolveAssetImports returns a resolved AST without mutating parse output", () => {

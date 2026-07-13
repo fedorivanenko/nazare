@@ -72,6 +72,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 
 	syntax.push(fileNode, componentNode);
 
+	let importIndex = 0;
 	let renderIndex = 0;
 	let referenceIndex = 0;
 	let elementRefIndex = 0;
@@ -83,8 +84,9 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 
 	for (const node of ast.nodes) {
 		if (node.type === "NazareImport") {
+			importIndex += 1;
 			const importNode: ImportSyntaxNode = {
-				id: importSyntaxId(ast.file, node.localName),
+				id: importSyntaxId(ast.file, node.localName, importIndex),
 				kind: "import",
 				localName: node.localName,
 				path: node.path,
@@ -98,8 +100,8 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 		if (node.type === "NazareProps") {
 			const propsInterfaceId = propsInterfaceSyntaxId(ast.file);
 			const propDeclarations: PropDeclarationSyntaxNode[] = node.props.map(
-				(prop) => ({
-					id: propDeclarationSyntaxId(ast.file, prop.name),
+				(prop, propIndex) => ({
+					id: propDeclarationSyntaxId(ast.file, prop.name, propIndex + 1),
 					kind: "prop-declaration",
 					name: prop.name,
 					typeExpression: prop.typeExpression,
@@ -234,15 +236,17 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 			const argumentNodes: PropArgumentSyntaxNode[] = [];
 			const expressionNodes: ExpressionSyntaxNode[] = [];
 
-			for (const prop of node.props) {
+			for (const [argumentIndex, prop] of node.props.entries()) {
 				const expressionId = argumentExpressionSyntaxId(
 					ast.file,
 					renderIndex,
+					argumentIndex + 1,
 					prop.name,
 				);
 				const argumentId = propArgumentSyntaxId(
 					ast.file,
 					renderIndex,
+					argumentIndex + 1,
 					prop.name,
 				);
 				expressionNodes.push({

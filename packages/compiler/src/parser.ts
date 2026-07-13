@@ -12,8 +12,10 @@ import {
 } from "@shopify/liquid-html-parser";
 import type {
 	AuthoredSchema,
+	NazareAssetImportNode,
 	NazareAst,
 	NazareDataBinding,
+	NazareImportNode,
 	NazareNode,
 	NazarePassedProp,
 	NazarePropDeclaration,
@@ -31,6 +33,9 @@ import {
 	importOutsideProject,
 	importUnsupportedExtension,
 	parseDuplicateComponent,
+	parseDuplicateImport,
+	parseDuplicatePropDeclaration,
+	parseDuplicateRenderArgument,
 	parseInvalidBlocksSlot,
 	parseInvalidComponentKind,
 	parseInvalidImport,
@@ -109,6 +114,7 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 	});
 
 	let componentDeclared = false;
+	const importLocalNames = new Set<string>();
 
 	walk(ast, (node) => {
 		if (node.type !== NodeTypes.LiquidTag) return;
@@ -155,7 +161,14 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 				span,
 				diagnostics,
 			);
-			if (importNode) nodes.push(importNode);
+			if (importNode) {
+				if (importLocalNames.has(importNode.localName)) {
+					diagnostics.push(parseDuplicateImport(importNode.localName, span));
+				} else {
+					importLocalNames.add(importNode.localName);
+				}
+				nodes.push(importNode);
+			}
 			return;
 		}
 
@@ -322,6 +335,7 @@ function parseNazareRenderTag(
 			source,
 			file,
 			bodyOffset >= 0 ? bodyOffset : tag.position.start,
+			diagnostics,
 		),
 		reachability: isInsideControlFlow(tag.position, controlFlowRanges)
 			? "conditional-unmodeled"
@@ -335,7 +349,7 @@ function parseNazareImportTag(
 	file: string,
 	span: SourceSpan,
 	diagnostics: NazareAst["diagnostics"],
-): NazareNode | undefined {
+): NazareImportNode | NazareAssetImportNode | undefined {
 	const match = markup.trim().match(importPattern);
 	if (!match) {
 		diagnostics.push(parseInvalidImport(markup, span));
@@ -801,6 +815,7 @@ function parseProps(
 ): NazarePropDeclaration[] {
 	const body = trimBraces(markup);
 	const props: NazarePropDeclaration[] = [];
+	const seen = new Set<string>();
 
 	for (const entry of splitTopLevel(body)) {
 		const separator = entry.indexOf(":");
@@ -817,6 +832,11 @@ function parseProps(
 		if (!isIdentifier(name) || !typeExpression) {
 			diagnostics.push(parseMalformedPropDeclaration(entry, span));
 			continue;
+		}
+		if (seen.has(name)) {
+			diagnostics.push(parseDuplicatePropDeclaration(name, span));
+		} else {
+			seen.add(name);
 		}
 
 		const parsed = parseTypeExpression(typeExpression);
@@ -842,8 +862,10 @@ function parsePassedProps(
 	source: string,
 	file: string,
 	bodyStart: number,
+	diagnostics: NazareAst["diagnostics"],
 ): NazarePassedProp[] {
 	const props: NazarePassedProp[] = [];
+	const seen = new Set<string>();
 
 	for (const entry of splitTopLevelWithOffsets(body)) {
 		const separator = entry.text.indexOf(":");
@@ -861,13 +883,20 @@ function parsePassedProps(
 		const expressionStart =
 			entryStart + separator + 1 + Math.max(expressionLeadingWhitespace, 0);
 
+		const span = spanFromOffsets(source, file, {
+			start: entryStart,
+			end: bodyStart + entry.end,
+		});
+		if (seen.has(name)) {
+			diagnostics.push(parseDuplicateRenderArgument(name, span));
+		} else {
+			seen.add(name);
+		}
+
 		props.push({
 			name,
 			expression,
-			span: spanFromOffsets(source, file, {
-				start: entryStart,
-				end: bodyStart + entry.end,
-			}),
+			span,
 			nameSpan: spanFromOffsets(source, file, {
 				start: nameStart,
 				end: nameStart + name.length,

@@ -17,12 +17,20 @@ export function propsInterfaceSyntaxId(file: string): Id {
 	return `syntax:props-interface:${file}`;
 }
 
-export function propDeclarationSyntaxId(file: string, name: string): Id {
-	return `syntax:prop-declaration:${file}:${name}`;
+export function propDeclarationSyntaxId(
+	file: string,
+	name: string,
+	index: number,
+): Id {
+	return `syntax:prop-declaration:${file}:${index}:${name}`;
 }
 
-export function importSyntaxId(file: string, localName: string): Id {
-	return `syntax:import:${file}:${localName}`;
+export function importSyntaxId(
+	file: string,
+	localName: string,
+	index: number,
+): Id {
+	return `syntax:import:${file}:${index}:${localName}`;
 }
 
 export function renderSiteSyntaxId(file: string, renderIndex: number): Id {
@@ -36,17 +44,19 @@ export function referenceSyntaxId(file: string, index: number): Id {
 export function argumentExpressionSyntaxId(
 	file: string,
 	renderIndex: number,
+	argumentIndex: number,
 	propName: string,
 ): Id {
-	return `syntax:expression:${file}:${renderIndex}:${propName}`;
+	return `syntax:expression:${file}:${renderIndex}:${argumentIndex}:${propName}`;
 }
 
 export function propArgumentSyntaxId(
 	file: string,
 	renderIndex: number,
+	argumentIndex: number,
 	propName: string,
 ): Id {
-	return `syntax:prop-argument:${file}:${renderIndex}:${propName}`;
+	return `syntax:prop-argument:${file}:${renderIndex}:${argumentIndex}:${propName}`;
 }
 
 export function elementRefSyntaxId(file: string, index: number): Id {

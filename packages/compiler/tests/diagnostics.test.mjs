@@ -49,6 +49,12 @@ const cases = [
 		expect: "CONSTRAINT_UNKNOWN_PROP_ARGUMENT",
 	},
 	{
+		name: "duplicate render argument",
+		files: { "link.nz.liquid": LINK },
+		src: `{% import Link from "./link.nz.liquid" %}\n{% render Link { href: "https://x.dev", href: "https://y.dev", text: "Go" } %}`,
+		expect: "NAZARE_PARSE_DUPLICATE_RENDER_ARGUMENT",
+	},
+	{
 		name: "type mismatch: number into text prop",
 		files: { "link.nz.liquid": LINK },
 		src: `{% import Link from "./link.nz.liquid" %}\n{% render Link { href: "https://x.dev", text: 42 } %}`,
@@ -116,6 +122,11 @@ const cases = [
 		name: "reading an undeclared prop",
 		src: `{% props { text: string.required() } %}\n<span>{{ props.ghost }}</span>`,
 		expect: "CONSTRAINT_UNKNOWN_PROPS_REFERENCE",
+	},
+	{
+		name: "duplicate prop declaration",
+		src: `{% props { text: string.required(), text: string.default("x") } %}`,
+		expect: "NAZARE_PARSE_DUPLICATE_PROP_DECLARATION",
 	},
 
 	// --- kind -------------------------------------------------------------
@@ -255,6 +266,11 @@ const cases = [
 		expect: "CONSTRAINT_UNKNOWN_STYLE_CLASS",
 	},
 	{
+		name: "style references are checked against their own binding",
+		src: `{% stylesheet cardStyles %}\n.card { color: red; }\n{% endstylesheet %}\n{% stylesheet linkStyles %}\n.link { color: blue; }\n{% endstylesheet %}\n<div class="{{ cardStyles.link }}"></div>`,
+		expect: "CONSTRAINT_UNKNOWN_STYLE_CLASS",
+	},
+	{
 		name: "unused class in a bound sheet warns",
 		src: `<div class="{{ styles.wrapper }}"></div>\n{% stylesheet styles %}\n.wrapper { display: flex; }\n.orphan { color: red; }\n{% endstylesheet %}`,
 		expect: "CONSTRAINT_UNUSED_STYLE_CLASS",
@@ -328,6 +344,15 @@ const cases = [
 		name: "unsupported import extension",
 		src: `{% import data from "./data.json" %}\n<div></div>`,
 		expect: "NAZARE_IMPORT_UNSUPPORTED_EXTENSION",
+	},
+	{
+		name: "duplicate import binding",
+		files: {
+			"a.ts": `export default island(() => {});`,
+			"b.ts": `export default island(() => {});`,
+		},
+		src: `{% import behavior from "./a.ts" %}\n{% import behavior from "./b.ts" %}\n<div></div>`,
+		expect: "NAZARE_PARSE_DUPLICATE_IMPORT",
 	},
 	{
 		name: "lowercase component import name",

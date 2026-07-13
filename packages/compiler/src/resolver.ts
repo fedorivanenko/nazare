@@ -8,17 +8,16 @@ import type {
 	NazareScriptNode,
 	NazareStyleNode,
 } from "./ast.js";
-import { type CompilerMode, checkArtifactIR } from "./check.js";
-import { checkVanillaSchema } from "./check-vanilla.js";
+import type { CompilerMode } from "./check.js";
 import { importCycle, importNotFound } from "./diagnostics.js";
 import {
 	parseNazareLiquid,
 	scanDataAccesses,
 	scanRefAccesses,
 } from "./parser.js";
+import { markDiagnostics, projectArtifact } from "./pipeline.js";
 import { bindArtifactIR, contractFromIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
-import { validateArtifactIR } from "./validate.js";
 
 export type ReadFile = (path: string) => string | undefined;
 
@@ -67,7 +66,11 @@ export function resolveComponentContracts(
 				continue;
 			}
 			const dependency = derive(node.path, loading);
-			if (dependency) dependencyContracts.push(dependency);
+			if (dependency) {
+				dependencyContracts.push(dependency);
+			} else {
+				issues.push(importNotFound(node.path, node.span));
+			}
 		}
 		loading.delete(path);
 
@@ -120,14 +123,16 @@ export function checkDependencies(
 		if (contents === undefined) return;
 
 		const importedAst = parseNazareLiquid(contents, path);
-		const { contracts } = resolveComponentContracts(importedAst, readFile);
-		const ir = bindArtifactIR(syntaxFromAst(importedAst), { contracts });
-		issues.push(
-			...importedAst.diagnostics,
-			...checkVanillaSchema(importedAst),
-			...checkArtifactIR(ir, contracts, { mode: options.mode }),
-			...validateArtifactIR(ir),
+		const { contracts, issues: contractIssues } = resolveComponentContracts(
+			importedAst,
+			readFile,
 		);
+		const projected = projectArtifact(importedAst, {
+			contracts,
+			mode: options.mode,
+			resolveIssues: contractIssues,
+		});
+		issues.push(...projected.issues);
 
 		for (const node of importedAst.nodes) {
 			if (node.type === "NazareImport") visit(node.path);
@@ -167,13 +172,14 @@ export function resolveAssetImports(
 		return scriptNodeFromAsset(node.path, contents, node.localName, node.span);
 	});
 
+	const resolvedIssues = markDiagnostics(issues, "resolve");
 	return {
 		ast: {
 			...ast,
 			nodes,
-			diagnostics: [...ast.diagnostics, ...issues],
+			diagnostics: [...ast.diagnostics, ...resolvedIssues],
 		},
-		issues,
+		issues: resolvedIssues,
 	};
 }
 

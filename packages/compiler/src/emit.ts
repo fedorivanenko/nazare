@@ -20,14 +20,16 @@ import { rewriteCssClasses, scopedClassName } from "./css-modules.js";
 import { dataChannelFromIR } from "./data-channel.js";
 import {
 	emitAmbiguousRoot,
+	emitImplicitRootElement,
 	emitMultipleRootMarkers,
 	emitScriptWithoutDefaultExport,
 	emitScriptWithoutRoot,
 } from "./diagnostics.js";
 import { type HoistedSetting, resolveHoistedSettings } from "./hoist.js";
 import { baseNameOf, directoryOf } from "./paths.js";
-import { themeSchemaFromIR } from "./schema.js";
+import { markDiagnostics } from "./pipeline.js";
 import { runtimeSource } from "./runtime.js";
+import { themeSchemaFromIR } from "./schema.js";
 import { hasDefaultExport } from "./script-scan.js";
 import { offsetFromPosition } from "./source.js";
 import { componentKindFromIR } from "./symbols.js";
@@ -84,6 +86,9 @@ export function checkEmitPreconditions(
 					emitAmbiguousRoot(options.name, root.tagName, root.topLevelCount),
 				);
 			}
+			if (!root.marker && root.topLevelCount === 1) {
+				issues.push(emitImplicitRootElement(options.name, root.tagName));
+			}
 		}
 	}
 
@@ -113,7 +118,10 @@ export function emitTheme(
 
 	return {
 		files: parts.flatMap((part) => part.files),
-		issues: parts.flatMap((part) => part.issues),
+		issues: markDiagnostics(
+			parts.flatMap((part) => part.issues),
+			"emit",
+		),
 	};
 }
 
@@ -154,7 +162,7 @@ export function emitCssFiles(
 		.map((style) =>
 			style.bindingName
 				? rewriteCssClasses(style.source, (className) =>
-						scopedClassName(options.name, className),
+						scopedClassName(options.name, className, style.bindingName),
 					)
 				: style.source,
 		)
@@ -619,7 +627,7 @@ function referenceLowering(
 
 	const replacementFor = (node: ReferenceNode): string | undefined => {
 		if (node.target === "prop") return provenance.get(node.name);
-		const scoped = scopedClassName(componentName, node.name);
+		const scoped = scopedClassName(componentName, node.name, node.binding);
 		return node.form === "quoted-class" ? `"${scoped}"` : scoped;
 	};
 
@@ -659,6 +667,7 @@ function editRange(
 }
 
 function applyEdits(source: string, edits: SourceEdit[]): string {
+	assertNonOverlappingEdits(edits);
 	const ordered = [...edits].sort((a, b) => b.start - a.start);
 	let output = source;
 	for (const edit of ordered) {
@@ -666,6 +675,18 @@ function applyEdits(source: string, edits: SourceEdit[]): string {
 			output.slice(0, edit.start) + edit.replacement + output.slice(edit.end);
 	}
 	return output;
+}
+
+function assertNonOverlappingEdits(edits: SourceEdit[]): void {
+	const ordered = [...edits].sort((a, b) => a.start - b.start);
+	for (let index = 1; index < ordered.length; index += 1) {
+		const previous = ordered[index - 1];
+		const current = ordered[index];
+		if (current.start >= previous.end) continue;
+		throw new Error(
+			`Overlapping emit edits: ${previous.start}-${previous.end} overlaps ${current.start}-${current.end}`,
+		);
+	}
 }
 
 function indent(text: string, prefix: string): string {

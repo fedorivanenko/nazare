@@ -23,6 +23,20 @@ test("compile: nz-root is explicit syntax", () => {
 	);
 });
 
+test("emit: implicit single-root fallback is surfaced", () => {
+	const source = `<div></div>
+{% script %}
+export default island(() => {});
+{% endscript %}`;
+	const built = buildNazareTheme(source, "component.nz.liquid", {
+		name: "component",
+	});
+
+	assert.ok(
+		built.issues.some((issue) => issue.code === "EMIT_IMPLICIT_ROOT_ELEMENT"),
+	);
+});
+
 test("emit: nz-root selects explicit root and is stripped", () => {
 	const source = `<section></section>
 <div nz-root></div>

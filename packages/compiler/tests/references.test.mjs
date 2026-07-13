@@ -49,7 +49,7 @@ test("references: a styles-looking token in literal text is NOT scoped", () => {
 		`<p>see styles.wrapper in the docs</p>\n<div class="{{ styles.wrapper }}"></div>\n{% stylesheet styles %}\n.wrapper { display: flex; }\n{% endstylesheet %}`,
 	);
 	assert.ok(liquid.includes("see styles.wrapper in the docs"));
-	assert.ok(liquid.includes('class="nz-w__wrapper"'));
+	assert.ok(liquid.includes('class="nz-w__styles__wrapper"'));
 });
 
 test("references: style output drops braces, render-arg style is quoted", () => {
@@ -71,6 +71,9 @@ test("references: style output drops braces, render-arg style is quoted", () => 
 		name: "w",
 		readFile,
 	}).files.find((f) => f.path === "snippets/w.liquid")?.contents;
-	assert.ok(liquid.includes('class="nz-w__box"'), "output: bare class");
-	assert.ok(liquid.includes(`class: "nz-w__cta"`), "render arg: quoted class");
+	assert.ok(liquid.includes('class="nz-w__styles__box"'), "output: bare class");
+	assert.ok(
+		liquid.includes(`class: "nz-w__styles__cta"`),
+		"render arg: quoted class",
+	);
 });

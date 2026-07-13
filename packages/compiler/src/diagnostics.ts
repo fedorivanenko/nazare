@@ -174,6 +174,42 @@ export function parseDuplicateComponent(span: SourceSpan): Diagnostic {
 	};
 }
 
+export function parseDuplicateImport(
+	localName: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_DUPLICATE_IMPORT",
+		message: `Import binding ${localName} is declared more than once; import local names must be unique within a file`,
+		span,
+	};
+}
+
+export function parseDuplicatePropDeclaration(
+	propName: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_DUPLICATE_PROP_DECLARATION",
+		message: `Prop ${propName} is declared more than once; prop names must be unique within a component`,
+		span,
+	};
+}
+
+export function parseDuplicateRenderArgument(
+	propName: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_DUPLICATE_RENDER_ARGUMENT",
+		message: `Render argument ${propName} is supplied more than once; each prop can be passed at most once per render site`,
+		span,
+	};
+}
+
 export function renderTargetNotSnippet(
 	targetName: string,
 	kind: "section" | "block",
@@ -679,6 +715,17 @@ export function emitMultipleRootMarkers(
 		severity: "warning",
 		code: "EMIT_MULTIPLE_ROOT_MARKERS",
 		message: `Component ${componentName} has ${markerCount} nz-root markers; the first one is used as the runtime root`,
+	};
+}
+
+export function emitImplicitRootElement(
+	componentName: string,
+	stampedTag: string,
+): Diagnostic {
+	return {
+		severity: "info",
+		code: "EMIT_IMPLICIT_ROOT_ELEMENT",
+		message: `Component ${componentName} has no nz-root marker; the only top-level <${stampedTag}> element is used as the runtime root`,
 	};
 }
 

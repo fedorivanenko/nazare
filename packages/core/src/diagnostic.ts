@@ -6,10 +6,18 @@ import type { SourceSpan } from "./source.js";
 
 export type DiagnosticSeverity = "error" | "warning" | "info";
 
+export type DiagnosticPhase =
+	| "parse"
+	| "resolve"
+	| "check"
+	| "validate"
+	| "emit";
+
 export type Diagnostic = {
 	severity: DiagnosticSeverity;
 	code: string;
 	message: string;
+	phase?: DiagnosticPhase;
 	nodeId?: Id;
 	edgeId?: Id;
 	span?: SourceSpan;

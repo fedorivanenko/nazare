@@ -5,9 +5,19 @@
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 
-/** "counter" + "wrapper" -> "nz-counter__wrapper" (readable by design). */
-export function scopedClassName(component: string, className: string): string {
-	return `nz-${component}__${className}`;
+/**
+ * "counter" + "styles" + "wrapper" -> "nz-counter__styles__wrapper".
+ * Binding is part of the generated name so two css modules in one component
+ * cannot collide; callers may omit it for legacy component-wide scoping.
+ */
+export function scopedClassName(
+	component: string,
+	className: string,
+	binding?: string,
+): string {
+	return binding
+		? `nz-${component}__${binding}__${className}`
+		: `nz-${component}__${className}`;
 }
 
 export type CssClassToken = {

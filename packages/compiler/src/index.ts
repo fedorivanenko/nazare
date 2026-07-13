@@ -14,20 +14,19 @@ import type {
 	Diagnostic,
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
-import { type CompilerMode, checkArtifactIR } from "./check.js";
-import { checkVanillaSchema } from "./check-vanilla.js";
+import type { CompilerMode } from "./check.js";
 import { type EmitResult, type EmitThemeOptions, emitTheme } from "./emit.js";
 import { artifactGraphFromIR } from "./graph.js";
 import { parseNazareLiquid } from "./parser.js";
+import { markDiagnostics, projectArtifact } from "./pipeline.js";
 import {
-	type ReadFile,
 	checkDependencies,
+	type ReadFile,
 	resolveAssetImports,
 	resolveComponentContracts,
 } from "./resolver.js";
-import { bindArtifactIR, contractFromIR } from "./symbols.js";
+import { bindArtifactIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
-import { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 
 export type {
 	NazareAst,
@@ -68,8 +67,8 @@ export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
 export { parseNazareLiquid } from "./parser.js";
 export {
-	type ReadFile,
 	checkDependencies,
+	type ReadFile,
 	resolveAssetImports,
 	resolveComponentContracts,
 } from "./resolver.js";
@@ -109,6 +108,8 @@ export type CompileResult = {
 	 * if they want; they never affect whether a compile fails.
 	 */
 	notes: Diagnostic[];
+	/** True when no error-severity compile diagnostics were produced. */
+	canEmit: boolean;
 	/** This artifact's own contract, keyed by its file path. */
 	contract: ArtifactContract;
 	/** Contracts of the imported component files (needed for hoisting at emit time). */
@@ -116,13 +117,18 @@ export type CompileResult = {
 };
 
 export type BuildNazareThemeOptions = CompileNazareArtifactOptions &
-	EmitThemeOptions;
+	EmitThemeOptions & {
+		/** Defaults to true for tooling previews; set false to skip emit when compile/dependency errors exist. */
+		emitOnError?: boolean;
+	};
 
 export type BuildResult = CompileResult & {
 	/** Theme files emitted from the compiled artifact. */
 	emitted: EmitResult;
 	/** Compile and emit diagnostics, in order. */
 	issues: Diagnostic[];
+	/** True when emit ran despite compile/dependency errors. */
+	emittedOnError: boolean;
 };
 
 /** Shortcut to a graph when diagnostics and contracts are not needed. */
@@ -145,27 +151,21 @@ export function compileNazareArtifact(
 	const ast = assetResolution.ast;
 	const contracts = contractResolution.contracts;
 
-	const syntax = syntaxFromAst(ast);
-	const ir = bindArtifactIR(syntax, { contracts });
-	const graph = artifactGraphFromIR(ir);
-	const issues = [
-		...contractResolution.issues,
-		...ast.diagnostics,
-		...checkVanillaSchema(ast),
-		...checkArtifactIR(ir, contracts, { mode: options.strictness }),
-		...validateArtifactIR(ir),
-		...validateArtifactGraph(graph),
-	];
-	const contract = contractFromIR(ir, file, contracts);
+	const projected = projectArtifact(ast, {
+		contracts,
+		mode: options.strictness,
+		resolveIssues: contractResolution.issues,
+	});
 
 	return {
 		ast,
-		syntax,
-		ir,
-		graph,
-		issues,
-		notes: ast.notes,
-		contract,
+		syntax: projected.syntax,
+		ir: projected.ir,
+		graph: projected.graph,
+		issues: projected.issues,
+		notes: markDiagnostics(ast.notes, "parse"),
+		canEmit: !hasErrors(projected.issues),
+		contract: projected.contract,
 		contracts,
 	};
 }
@@ -184,10 +184,21 @@ export function buildNazareTheme(
 	const dependencyIssues = checkDependencies(compiled.ast, options.readFile, {
 		mode: options.strictness,
 	});
-	const emitted = emitTheme(source, compiled, options);
+	const preEmitIssues = [...compiled.issues, ...dependencyIssues];
+	const shouldEmit = (options.emitOnError ?? true) || !hasErrors(preEmitIssues);
+	const emitted = shouldEmit
+		? emitTheme(source, compiled, options)
+		: { files: [], issues: [] };
+	const issues = [...preEmitIssues, ...markDiagnostics(emitted.issues, "emit")];
 	return {
 		...compiled,
+		canEmit: !hasErrors(preEmitIssues),
 		emitted,
-		issues: [...compiled.issues, ...dependencyIssues, ...emitted.issues],
+		emittedOnError: shouldEmit && hasErrors(preEmitIssues),
+		issues,
 	};
+}
+
+function hasErrors(issues: Diagnostic[]): boolean {
+	return issues.some((issue) => issue.severity === "error");
 }
