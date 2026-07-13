@@ -521,9 +521,9 @@ Nazare reconciles merchant-editable state and checks cross-component contracts, 
 
 - **Shopify schema-rule validation.** Generated `{% schema %}` is checked as JSON and for Nazare contracts, but not against Shopify's editor and upload limits (max settings and blocks per section, block-type character rules, preset shape, section-group compatibility). An over-large or malformed schema fails at push time, not at build.
 - **Liquid dialect validation.** Emitted Liquid targets a known Shopify subset through span-based lowering, but there is no post-codegen dialect validator and no Theme Check or `shopify theme push --dry-run` hook in the build. Run Theme Check yourself before pushing.
-- **Unowned output files.** The build regenerates code and reconciles merchant data and locales, but it does not track per-file ownership. A hand-written or app-added file placed directly in the built theme (outside your source) is not preserved across rebuilds.
-- **Registry integrity lock.** Installed components are pinned by version in `nazare.theme.json`, but there is no content-digest lock. The build itself is offline and never resolves `latest`, so output is deterministic from your source.
+- **Registry integrity lock.** Installed components are pinned by version and local file hashes in `nazare.theme.json`, but there is no registry provenance/content-digest lock for the originally fetched package. This does not make a malicious first install safe; it would mainly detect later registry drift for the same `id@version`.
 - **Migration coverage.** Migrations handle section, setting, and block renames and removals. Block-scoped setting renames and value type-conversion are not supported, and the schema-lock and locale-base baselines assume you build immediately before pushing.
+- **Internal modularity.** Several compiler internals are still large files (`parser`, diagnostics, checks, emit). Public boundaries are stable, but more splitting is planned to keep concerns easier to audit.
 
 ## Repository layout
 
