@@ -534,3 +534,107 @@ test("a duplicate migration id is rejected", async () => {
 		},
 	);
 });
+
+const localeSource = (tree) => ({
+	"nazare/locales/en.default.json": JSON.stringify(tree),
+});
+const readLocale = (projectRoot) =>
+	JSON.parse(readOutput(projectRoot, "locales/en.default.json"));
+const editLocale = (projectRoot, tree) =>
+	writeOut(projectRoot, "locales/en.default.json", JSON.stringify(tree));
+
+test("a locale preserves a merchant edit the developer did not touch", async () => {
+	await withProject(
+		localeSource({ general: { greeting: "Hi" }, cta: "Shop" }),
+		async (projectRoot) => {
+			const first = await buildTheme({ projectRoot });
+			assert.deepEqual(first.mergedLocales, []); // nothing live yet
+			// Merchant edits one nested string in the admin.
+			editLocale(projectRoot, { general: { greeting: "Hey" }, cta: "Shop" });
+			const result = await buildTheme({ projectRoot });
+			assert.ok(result.mergedLocales.includes("locales/en.default.json"));
+			assert.deepEqual(readLocale(projectRoot), {
+				general: { greeting: "Hey" },
+				cta: "Shop",
+			});
+		},
+	);
+});
+
+test("a locale propagates a developer update the merchant did not touch", async () => {
+	await withProject(localeSource({ greeting: "Hi" }), async (projectRoot) => {
+		await buildTheme({ projectRoot });
+		editLocale(projectRoot, { greeting: "Hi" }); // merchant left it alone
+		writeFileSync(
+			join(projectRoot, "nazare/locales/en.default.json"),
+			JSON.stringify({ greeting: "Hello" }), // developer updates the string
+		);
+		await buildTheme({ projectRoot });
+		assert.deepEqual(readLocale(projectRoot), { greeting: "Hello" });
+	});
+});
+
+test("a locale adds new developer keys while keeping merchant edits", async () => {
+	await withProject(localeSource({ greeting: "Hi" }), async (projectRoot) => {
+		await buildTheme({ projectRoot });
+		editLocale(projectRoot, { greeting: "Hey" }); // merchant edit
+		writeFileSync(
+			join(projectRoot, "nazare/locales/en.default.json"),
+			JSON.stringify({ greeting: "Hi", farewell: "Bye" }), // dev adds a key
+		);
+		await buildTheme({ projectRoot });
+		assert.deepEqual(readLocale(projectRoot), {
+			greeting: "Hey",
+			farewell: "Bye",
+		});
+	});
+});
+
+test("a locale key changed on both sides keeps the merchant value and warns", async () => {
+	await withProject(localeSource({ greeting: "Hi" }), async (projectRoot) => {
+		await buildTheme({ projectRoot });
+		editLocale(projectRoot, { greeting: "Hey" }); // merchant
+		writeFileSync(
+			join(projectRoot, "nazare/locales/en.default.json"),
+			JSON.stringify({ greeting: "Hello" }), // developer
+		);
+		const result = await buildTheme({ projectRoot });
+		assert.ok(result.issues.some((i) => i.code === "THEME_LOCALE_CONFLICT"));
+		assert.deepEqual(readLocale(projectRoot), { greeting: "Hey" });
+	});
+});
+
+test("schema locales are developer-owned and copied, not merged", async () => {
+	await withProject(
+		{ "nazare/locales/en.default.schema.json": '{"label":"Heading"}' },
+		async (projectRoot) => {
+			await buildTheme({ projectRoot });
+			// Overwrite as if a merchant touched it — the developer's source wins.
+			writeOut(
+				projectRoot,
+				"locales/en.default.schema.json",
+				'{"label":"Tampered"}',
+			);
+			const result = await buildTheme({ projectRoot });
+			assert.deepEqual(result.mergedLocales, []);
+			assert.equal(
+				readOutput(projectRoot, "locales/en.default.schema.json"),
+				'{"label":"Heading"}',
+			);
+		},
+	);
+});
+
+test("a locale the merchant added with no source is preserved", async () => {
+	await withProject(localeSource({ greeting: "Hi" }), async (projectRoot) => {
+		await buildTheme({ projectRoot });
+		writeOut(projectRoot, "locales/fr.json", '{"greeting":"Bonjour"}');
+		const result = await buildTheme({ projectRoot });
+		// fr has no source, so it is preserved rather than merged.
+		assert.ok(!result.mergedLocales.includes("locales/fr.json"));
+		assert.equal(
+			readOutput(projectRoot, "locales/fr.json"),
+			'{"greeting":"Bonjour"}',
+		);
+	});
+});

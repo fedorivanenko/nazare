@@ -23,6 +23,7 @@ import {
 	themeSchemaFromIR,
 } from "@nazare/compiler";
 import type { Diagnostic } from "@nazare/core";
+import { mergeLocale } from "./locales.js";
 import {
 	applyMigrationsToData,
 	applyMigrationsToManifest,
@@ -42,6 +43,9 @@ const DEFAULT_MIGRATIONS = "nazare.migrations.json";
 // Committed alongside the source: which migration ids have been applied to each
 // target theme, so each migration runs exactly once per target.
 const DEFAULT_MIGRATIONS_LEDGER = "nazare.migrations-applied.json";
+// Committed alongside the source: the source locale strings as of the last
+// build, the common ancestor for the 3-way locale merge.
+const DEFAULT_LOCALE_BASE = "nazare.locales-base.json";
 const THEME_DIRS = new Set([
 	"layout",
 	"templates",
@@ -65,6 +69,8 @@ export type ThemeBuildOptions = {
 	migrationsLedgerPath?: string;
 	/** Identity of the target theme for the migrations ledger. Default is the output dir. */
 	targetId?: string;
+	/** Locale merge base path, relative to projectRoot. Default nazare.locales-base.json. */
+	localeBasePath?: string;
 };
 
 /** A single schema-drift finding between the prior and current schema lock. */
@@ -87,6 +93,8 @@ export type ThemeBuildResult = {
 	migrated: string[];
 	/** Migration ids applied this build (empty when all were already applied). */
 	applied: string[];
+	/** Storefront locale files reconciled by the 3-way merge. */
+	mergedLocales: string[];
 };
 
 type PlannedFile = { contents: string; from: string };
@@ -123,6 +131,9 @@ export async function buildTheme(
 	// the output when the target has no value yet, but an existing target's copy
 	// wins so a rebuild never resets live theme state edited in the Shopify admin.
 	const seeds = new Map<string, PlannedFile>();
+	// Storefront locale files from source. These are the developer's translations,
+	// merged field-by-field with the merchant's edits rather than copied over.
+	const sourceLocales = new Map<string, PlannedFile>();
 	const conflicts: string[] = [];
 	const issues: Diagnostic[] = [];
 	const notes: Diagnostic[] = [];
@@ -197,6 +208,8 @@ export async function buildTheme(
 		if (outputPath) {
 			if (isMerchantDataPath(outputPath)) {
 				seeds.set(outputPath, { contents, from: file });
+			} else if (isLocaleMergePath(outputPath)) {
+				sourceLocales.set(outputPath, { contents, from: file });
 			} else {
 				copied.push(file);
 				planFile(planned, conflicts, outputPath, contents, file);
@@ -206,9 +219,10 @@ export async function buildTheme(
 
 	const outputRoot = join(projectRoot, outDir);
 
-	// Snapshot merchant-owned data already in the target before clearing it, so
-	// the rebuild carries live theme state forward rather than the source seeds.
+	// Snapshot merchant-owned data + storefront locales already in the target
+	// before clearing it, so the rebuild carries live theme state forward.
 	let existingData = await readExistingData(outputRoot);
+	const existingLocales = await readExistingLocales(outputRoot);
 
 	// Author-written migrations rewrite that data so saved values survive a
 	// section/setting rename. The same migrations are applied to the prior schema
@@ -271,6 +285,53 @@ export async function buildTheme(
 		}
 	}
 
+	// 3-way merge storefront locales: developer source, merchant edits pulled into
+	// the target, and the committed base (last build's source) as ancestor. The
+	// base is then rewritten to the current source for next time.
+	const localeBasePath = options.localeBasePath ?? DEFAULT_LOCALE_BASE;
+	const localeBase = await readLocaleBase(join(projectRoot, localeBasePath));
+	const nextLocaleBase: Record<string, unknown> = {};
+	const mergedLocales: string[] = [];
+	for (const path of new Set([
+		...sourceLocales.keys(),
+		...existingLocales.keys(),
+	])) {
+		const source = parseLocale(sourceLocales.get(path)?.contents, path, issues);
+		const target = parseLocale(existingLocales.get(path), path, issues);
+
+		// A locale only the merchant has (added in the admin) is preserved as-is
+		// and not tracked as a base — it is not the developer's to own.
+		if (source === undefined) {
+			if (existingLocales.has(path)) {
+				planned.set(path, {
+					contents: existingLocales.get(path) ?? "",
+					from: "<target>",
+				});
+			}
+			continue;
+		}
+
+		const { value, conflicts: localeConflicts } = mergeLocale(
+			localeBase[path],
+			source,
+			target,
+		);
+		nextLocaleBase[path] = source;
+		if (existingLocales.has(path)) mergedLocales.push(path);
+		for (const key of localeConflicts) {
+			issues.push({
+				severity: "warning",
+				phase: "emit",
+				code: "THEME_LOCALE_CONFLICT",
+				message: `${path}: "${key}" changed in both source and target; kept the target's value`,
+			});
+		}
+		planned.set(path, {
+			contents: `${JSON.stringify(value, null, 2)}\n`,
+			from: sourceLocales.get(path)?.from ?? path,
+		});
+	}
+
 	const written: string[] = [];
 	for (const path of [...planned.keys()].sort()) {
 		const full = join(outputRoot, path);
@@ -311,6 +372,14 @@ export async function buildTheme(
 		);
 	}
 
+	// Advance the locale merge base to the current source for the next build.
+	if (sourceLocales.size > 0) {
+		await writeFile(
+			join(projectRoot, localeBasePath),
+			`${JSON.stringify({ version: 1, files: nextLocaleBase }, null, 2)}\n`,
+		);
+	}
+
 	return {
 		compiled: compiled.sort(),
 		copied: copied.sort(),
@@ -324,6 +393,7 @@ export async function buildTheme(
 		manifestPath,
 		migrated: migrated.sort(),
 		applied,
+		mergedLocales: mergedLocales.sort(),
 	};
 }
 
@@ -333,6 +403,66 @@ async function readManifest(path: string): Promise<SchemaManifest | undefined> {
 	try {
 		return JSON.parse(raw) as SchemaManifest;
 	} catch {
+		return undefined;
+	}
+}
+
+// Storefront locale files the merchant can edit in the admin. Schema locales
+// (*.schema.json) are editor labels the developer owns, so they stay code.
+function isLocaleMergePath(path: string): boolean {
+	return (
+		path.startsWith("locales/") &&
+		path.endsWith(".json") &&
+		!path.endsWith(".schema.json")
+	);
+}
+
+async function readExistingLocales(
+	outputRoot: string,
+): Promise<Map<string, string>> {
+	const found = new Map<string, string>();
+	const dir = join(outputRoot, "locales");
+	const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+	for (const dirent of entries) {
+		const rel = `locales/${dirent.name}`;
+		if (dirent.isFile() && isLocaleMergePath(rel)) {
+			found.set(rel, await readFile(join(dir, dirent.name), "utf8"));
+		}
+	}
+	return found;
+}
+
+// The committed merge base maps each locale path to its source tree from the
+// last build. A missing or malformed base yields an empty ancestor set, which
+// the merge treats as a safe 2-way (merchant-preserving) merge.
+async function readLocaleBase(path: string): Promise<Record<string, unknown>> {
+	const raw = await readFile(path, "utf8").catch(() => undefined);
+	if (raw !== undefined) {
+		try {
+			const parsed = JSON.parse(raw) as { files?: Record<string, unknown> };
+			if (parsed.files && typeof parsed.files === "object") return parsed.files;
+		} catch {
+			// fall through to an empty base
+		}
+	}
+	return {};
+}
+
+function parseLocale(
+	raw: string | undefined,
+	path: string,
+	issues: Diagnostic[],
+): unknown {
+	if (raw === undefined) return undefined;
+	try {
+		return JSON.parse(raw);
+	} catch {
+		issues.push({
+			severity: "warning",
+			phase: "emit",
+			code: "THEME_LOCALE_INVALID_JSON",
+			message: `${path}: not valid JSON, left unmerged`,
+		});
 		return undefined;
 	}
 }
