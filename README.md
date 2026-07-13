@@ -4,7 +4,48 @@ Components for Shopify themes, authored as local source files.
 
 Nazare compiles `.nz.liquid` components into theme files. Registry support is optional and copy-based: `nazare add` copies component source into your project; builds never talk to a registry.
 
+## Shape
+
+```text
+author component source
+  nazare/<name>/nazare.json
+  nazare/<name>/<entry>.nz.liquid | <entry>.ts
+        │
+        ├─ nazare build
+        │    local source -> .nazare-out/theme
+        │    registry is not involved
+        │
+        ├─ nazare pack
+        │    local source -> .nazare-out/pack/<scope>/<name>/<version>.json
+        │
+        └─ nazare publish
+             local source -> registry
+
+consume component source
+  registry -> nazare add @scope/name -> nazare/<name>/...
+           -> nazare build -> .nazare-out/theme
+```
+
+Registry choices:
+
+```text
+file:.nazare-registry          local dev/team registry, no server
+https://registry.example.com   self-hosted HTTP registry
+```
+
 ## Install the CLI
+
+Curl install from GitHub:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh | sh
+```
+
+Install another branch/ref:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh | NAZARE_REF=my-branch sh
+```
 
 From this repo during development:
 
@@ -14,7 +55,7 @@ pnpm -s tsc -b
 pnpm --filter @nazare/cli-client link --global
 ```
 
-Then verify:
+Verify:
 
 ```sh
 nazare help
@@ -26,17 +67,30 @@ Unlink:
 pnpm --filter @nazare/cli-client unlink --global
 ```
 
-## CLI
+## Daily workflow
 
-```sh
-nazare build                         # compile nazare/ into .nazare-out/theme
-nazare add @scope/name               # copy component + deps from registry
-nazare update [@scope/name]          # re-fetch latest source
-nazare pack ./nazare/button          # write registry JSON to .nazare-out/pack
-nazare publish ./nazare/button       # publish component to registry
+### 1. Build local components
+
+Put source under `nazare/`:
+
+```text
+nazare/button/nazare.json
+nazare/button/button.nz.liquid
 ```
 
-## Set up a local registry
+Build:
+
+```sh
+nazare build
+```
+
+Output goes to:
+
+```text
+.nazare-out/theme
+```
+
+### 2. Use a local registry while developing
 
 A registry can be a folder. No server, no auth.
 
@@ -44,22 +98,56 @@ A registry can be a folder. No server, no auth.
 export NAZARE_REGISTRY=file:.nazare-registry
 ```
 
-Publish into it:
+Publish a component into it:
 
 ```sh
 nazare publish ./nazare/button
 ```
 
-Install from it:
+Install it into another project:
 
 ```sh
 nazare add @scope/button
 ```
 
-The folder layout is:
+Local registry layout:
 
 ```text
 .nazare-registry/<scope>/<name>/<version>.json
+```
+
+### 3. Inspect before publishing
+
+```sh
+nazare pack ./nazare/button
+```
+
+Output:
+
+```text
+.nazare-out/pack/<scope>/<name>/<version>.json
+```
+
+That folder is also a valid `file:` registry.
+
+### 4. Publish to an HTTP registry
+
+```sh
+export NAZARE_REGISTRY=https://registry.example.com
+export NAZARE_TOKEN=long-random-token
+nazare publish ./nazare/button
+```
+
+Versions are immutable. To publish new bytes, bump `version` in `nazare.json`.
+
+## CLI reference
+
+```sh
+nazare build                         # compile nazare/ into .nazare-out/theme
+nazare add @scope/name               # copy component + deps from registry
+nazare update [@scope/name]          # re-fetch latest source
+nazare pack ./nazare/button          # write registry JSON to .nazare-out/pack
+nazare publish ./nazare/button       # publish component to registry
 ```
 
 ## Set up an HTTP registry
