@@ -89,6 +89,37 @@ test("buildTheme reports invalid JSON", async () => {
 	);
 });
 
+test("buildTheme refuses dangerous output directories before deleting", async () => {
+	await withProject(
+		{
+			"keep.txt": "do not delete",
+			"nazare/sections/hero.liquid": "<section>Hero</section>",
+		},
+		async (projectRoot) => {
+			await assert.rejects(
+				buildTheme({ projectRoot, outDir: "." }),
+				/Refusing to use project root as output directory/,
+			);
+			await assert.rejects(
+				buildTheme({ projectRoot, outDir: "nazare" }),
+				/Refusing to use source directory as output directory/,
+			);
+			await assert.rejects(
+				buildTheme({ projectRoot, outDir: "../theme" }),
+				/Refusing to delete output directory outside project root/,
+			);
+			assert.equal(
+				readFileSync(join(projectRoot, "keep.txt"), "utf8"),
+				"do not delete",
+			);
+			assert.equal(
+				readFileSync(join(projectRoot, "nazare/sections/hero.liquid"), "utf8"),
+				"<section>Hero</section>",
+			);
+		},
+	);
+});
+
 test("buildTheme seeds merchant data on a first build", async () => {
 	await withProject(
 		{
@@ -103,6 +134,75 @@ test("buildTheme seeds merchant data on a first build", async () => {
 			assert.equal(
 				readOutput(projectRoot, "config/settings_data.json"),
 				'{"current":{"colors_accent":"#000"}}',
+			);
+		},
+	);
+});
+
+test("buildTheme refuses to overwrite unowned generated output files", async () => {
+	await withProject(
+		{
+			"nazare/sections/hero.liquid": "<section>Source</section>\n",
+			".nazare-out/theme/sections/hero.liquid": "<section>Manual</section>\n",
+		},
+		async (projectRoot) => {
+			const result = await buildTheme({ projectRoot });
+			assert.deepEqual(result.written, []);
+			assert.ok(
+				result.conflicts.some((conflict) =>
+					conflict.includes("not owned by Nazare"),
+				),
+			);
+			assert.equal(
+				readOutput(projectRoot, "sections/hero.liquid"),
+				"<section>Manual</section>\n",
+			);
+		},
+	);
+});
+
+test("buildTheme refuses to overwrite modified Nazare-owned output files", async () => {
+	await withProject(
+		{ "nazare/sections/hero.liquid": "<section>Source</section>\n" },
+		async (projectRoot) => {
+			await buildTheme({ projectRoot });
+			writeFileSync(
+				join(projectRoot, ".nazare-out/theme/sections/hero.liquid"),
+				"<section>Manual edit</section>\n",
+			);
+			const result = await buildTheme({ projectRoot });
+			assert.deepEqual(result.written, []);
+			assert.ok(
+				result.conflicts.some((conflict) =>
+					conflict.includes("modified in output"),
+				),
+			);
+			assert.equal(
+				readOutput(projectRoot, "sections/hero.liquid"),
+				"<section>Manual edit</section>\n",
+			);
+		},
+	);
+});
+
+test("buildTheme deletes stale Nazare-owned output files", async () => {
+	await withProject(
+		{
+			"nazare/sections/hero.liquid": "<section>Hero</section>\n",
+			"nazare/snippets/price.liquid": "<span>Price</span>\n",
+		},
+		async (projectRoot) => {
+			await buildTheme({ projectRoot });
+			rmSync(join(projectRoot, "nazare/snippets/price.liquid"));
+			const result = await buildTheme({ projectRoot });
+			assert.equal(
+				existsSync(
+					join(projectRoot, ".nazare-out/theme/snippets/price.liquid"),
+				),
+				false,
+			);
+			assert.ok(
+				result.written.includes(".nazare-out/theme/sections/hero.liquid"),
 			);
 		},
 	);
@@ -609,7 +709,6 @@ test("schema locales are developer-owned and copied, not merged", async () => {
 		{ "nazare/locales/en.default.schema.json": '{"label":"Heading"}' },
 		async (projectRoot) => {
 			await buildTheme({ projectRoot });
-			// Overwrite as if a merchant touched it — the developer's source wins.
 			writeOut(
 				projectRoot,
 				"locales/en.default.schema.json",
@@ -617,9 +716,14 @@ test("schema locales are developer-owned and copied, not merged", async () => {
 			);
 			const result = await buildTheme({ projectRoot });
 			assert.deepEqual(result.mergedLocales, []);
+			assert.ok(
+				result.conflicts.some((conflict) =>
+					conflict.includes("modified in output"),
+				),
+			);
 			assert.equal(
 				readOutput(projectRoot, "locales/en.default.schema.json"),
-				'{"label":"Heading"}',
+				'{"label":"Tampered"}',
 			);
 		},
 	);

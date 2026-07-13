@@ -30,6 +30,22 @@ import {
 	type Migration,
 	parseMigrations,
 } from "./migrations.js";
+import {
+	checkOutputOwnership,
+	OUTPUT_OWNERSHIP_MANIFEST,
+	type OutputOwnershipManifest,
+	readOutputFileHashes,
+	readOutputOwnershipManifest,
+	sha256,
+	writeOutputOwnershipManifest,
+} from "./ownership.js";
+import {
+	type DriftEntry,
+	diffSchemaManifests,
+	readSchemaManifest,
+	type SchemaManifest,
+	sortSchemaManifest,
+} from "./schema-lock.js";
 
 const DEFAULT_SOURCE_ROOT = "nazare";
 const DEFAULT_OUT_DIR = ".nazare-out/theme";
@@ -74,7 +90,7 @@ export type ThemeBuildOptions = {
 };
 
 /** A single schema-drift finding between the prior and current schema lock. */
-export type DriftEntry = { code: string; message: string };
+export type { DriftEntry };
 
 export type ThemeBuildResult = {
 	compiled: string[];
@@ -98,10 +114,6 @@ export type ThemeBuildResult = {
 };
 
 type PlannedFile = { contents: string; from: string };
-
-type SchemaSetting = { id: string; type: string };
-type SchemaEntry = { settings: SchemaSetting[]; blocks: { type: string }[] };
-type SchemaManifest = { version: 1; sections: Record<string, SchemaEntry> };
 
 export async function buildTheme(
 	options: ThemeBuildOptions,
@@ -217,7 +229,10 @@ export async function buildTheme(
 		}
 	}
 
-	const outputRoot = join(projectRoot, outDir);
+	assertSafeOutDir(projectRoot, sourceRoot, outDir);
+	const outputRoot = resolve(projectRoot, outDir);
+	const ownershipManifest = await readOutputOwnershipManifest(outputRoot);
+	const existingOutputFiles = await readOutputFileHashes(outputRoot);
 
 	// Snapshot merchant-owned data + storefront locales already in the target
 	// before clearing it, so the rebuild carries live theme state forward.
@@ -258,8 +273,6 @@ export async function buildTheme(
 	issues.push(...migratedData.issues);
 	const migrated = migratedData.changed;
 	const applied = unapplied.map((m) => m.id);
-
-	await rm(outputRoot, { recursive: true, force: true });
 
 	const seeded: string[] = [];
 	const preserved: string[] = [];
@@ -332,22 +345,60 @@ export async function buildTheme(
 		});
 	}
 
+	const ownership = checkOutputOwnership(
+		planned,
+		existingOutputFiles,
+		ownershipManifest,
+		isGeneratedOwnedPath,
+	);
+	conflicts.push(...ownership.conflicts);
+	if (conflicts.length > 0) {
+		return {
+			compiled: compiled.sort(),
+			copied: copied.sort(),
+			seeded: seeded.sort(),
+			preserved: preserved.sort(),
+			written: [],
+			issues,
+			notes,
+			conflicts,
+			drift: [],
+			manifestPath: options.manifestPath ?? DEFAULT_MANIFEST,
+			migrated: migrated.sort(),
+			applied: [],
+			mergedLocales: mergedLocales.sort(),
+		};
+	}
+
+	for (const path of ownership.staleOwned) {
+		await rm(join(outputRoot, path), { force: true });
+	}
+
 	const written: string[] = [];
+	const nextOwnership: OutputOwnershipManifest = { version: 1, files: {} };
 	for (const path of [...planned.keys()].sort()) {
 		const full = join(outputRoot, path);
+		const contents = planned.get(path)?.contents ?? "";
 		await mkdir(dirname(full), { recursive: true });
-		await writeFile(full, planned.get(path)?.contents ?? "");
+		await writeFile(full, contents);
 		written.push(join(outDir, path));
+		if (isGeneratedOwnedPath(path)) {
+			nextOwnership.files[path] = {
+				hash: sha256(contents),
+				source: planned.get(path)?.from ?? "<unknown>",
+			};
+		}
 	}
+	await writeOutputOwnershipManifest(outputRoot, nextOwnership);
 
 	// Diff the current schema against the committed lock, warn on breaking drift,
 	// then rewrite the lock as the new baseline. Warnings do not fail the build.
 	const manifestPath = options.manifestPath ?? DEFAULT_MANIFEST;
-	const prior = await readManifest(join(projectRoot, manifestPath));
+	const prior = await readSchemaManifest(join(projectRoot, manifestPath));
 	const migratedPrior = prior
 		? applyMigrationsToManifest(prior, migrations)
 		: undefined;
-	const drift = diffManifests(migratedPrior, manifest);
+	const drift = diffSchemaManifests(migratedPrior, manifest);
 	for (const entry of drift) {
 		issues.push({
 			severity: "warning",
@@ -358,7 +409,7 @@ export async function buildTheme(
 	}
 	await writeFile(
 		join(projectRoot, manifestPath),
-		`${JSON.stringify(sortManifest(manifest), null, 2)}\n`,
+		`${JSON.stringify(sortSchemaManifest(manifest), null, 2)}\n`,
 	);
 
 	// Record the migrations applied this build so they never re-run on this
@@ -395,16 +446,6 @@ export async function buildTheme(
 		applied,
 		mergedLocales: mergedLocales.sort(),
 	};
-}
-
-async function readManifest(path: string): Promise<SchemaManifest | undefined> {
-	const raw = await readFile(path, "utf8").catch(() => undefined);
-	if (raw === undefined) return undefined;
-	try {
-		return JSON.parse(raw) as SchemaManifest;
-	} catch {
-		return undefined;
-	}
 }
 
 // Storefront locale files the merchant can edit in the admin. Schema locales
@@ -485,66 +526,6 @@ async function readLedger(path: string): Promise<MigrationLedger> {
 	return { version: 1, applied: {} };
 }
 
-// Stable key order so the committed lock produces clean diffs.
-function sortManifest(manifest: SchemaManifest): SchemaManifest {
-	const sections: Record<string, SchemaEntry> = {};
-	for (const key of Object.keys(manifest.sections).sort()) {
-		sections[key] = manifest.sections[key];
-	}
-	return { version: manifest.version, sections };
-}
-
-function sectionType(path: string): string {
-	return basename(path, ".liquid");
-}
-
-// Reports only breaking changes: a rename cannot be told apart from a
-// remove-plus-add without author intent, so it surfaces as a removal here.
-// Additions are non-breaking (Shopify fills defaults) and stay silent.
-function diffManifests(
-	prior: SchemaManifest | undefined,
-	next: SchemaManifest,
-): DriftEntry[] {
-	if (!prior) return [];
-	const drift: DriftEntry[] = [];
-	for (const [path, oldEntry] of Object.entries(prior.sections)) {
-		const type = sectionType(path);
-		const newEntry = next.sections[path];
-		if (!newEntry) {
-			drift.push({
-				code: "THEME_SECTION_REMOVED",
-				message: `section "${type}" removed — templates and settings_data that reference it will break`,
-			});
-			continue;
-		}
-		const newTypeById = new Map(newEntry.settings.map((s) => [s.id, s.type]));
-		for (const setting of oldEntry.settings) {
-			const newType = newTypeById.get(setting.id);
-			if (newType === undefined) {
-				drift.push({
-					code: "THEME_SETTING_REMOVED",
-					message: `setting "${setting.id}" removed from "${type}" — saved merchant values are orphaned`,
-				});
-			} else if (newType !== setting.type) {
-				drift.push({
-					code: "THEME_SETTING_RETYPED",
-					message: `setting "${setting.id}" in "${type}" changed type ${setting.type} → ${newType} — saved value may not migrate`,
-				});
-			}
-		}
-		const newBlockTypes = new Set(newEntry.blocks.map((block) => block.type));
-		for (const block of oldEntry.blocks) {
-			if (!newBlockTypes.has(block.type)) {
-				drift.push({
-					code: "THEME_BLOCK_REMOVED",
-					message: `block type "${block.type}" removed from "${type}"`,
-				});
-			}
-		}
-	}
-	return drift;
-}
-
 // Files the Shopify theme editor writes back on the merchant's behalf: setting
 // values, section instances and their order, block values, and section groups.
 // These belong to the live theme, not the source repo — the compiler never
@@ -604,6 +585,55 @@ async function collectSourceFiles(
 	};
 	await walk(rootAbs);
 	return found.sort();
+}
+
+function assertSafeOutDir(
+	projectRoot: string,
+	sourceRoot: string,
+	outDir: string,
+): void {
+	if (outDir.trim().length === 0) {
+		throw new Error("outDir must not be empty");
+	}
+
+	const projectAbs = resolve(projectRoot);
+	const sourceAbs = resolve(projectRoot, sourceRoot);
+	const outputAbs = resolve(projectRoot, outDir);
+
+	if (!isInsideOrEqual(outputAbs, projectAbs)) {
+		throw new Error(
+			`Refusing to delete output directory outside project root: ${outDir}`,
+		);
+	}
+	if (outputAbs === projectAbs) {
+		throw new Error("Refusing to use project root as output directory");
+	}
+	if (isInsideOrEqual(outputAbs, sourceAbs)) {
+		throw new Error(
+			`Refusing to use source directory as output directory: ${outDir}`,
+		);
+	}
+	if (isInsideOrEqual(sourceAbs, outputAbs)) {
+		throw new Error(
+			`Refusing to use output directory that contains source directory: ${outDir}`,
+		);
+	}
+}
+
+function isInsideOrEqual(child: string, parent: string): boolean {
+	const relativePath = relative(parent, child);
+	return (
+		relativePath === "" ||
+		(!relativePath.startsWith("..") && !relativePath.startsWith(sep))
+	);
+}
+
+function isGeneratedOwnedPath(path: string): boolean {
+	return (
+		path !== OUTPUT_OWNERSHIP_MANIFEST &&
+		!isMerchantDataPath(path) &&
+		!isLocaleMergePath(path)
+	);
 }
 
 function outputPathForSource(sourceRelative: string): string | undefined {
