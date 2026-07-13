@@ -45,6 +45,8 @@ export type ThemeBuildOptions = {
 export type ThemeBuildResult = {
 	compiled: string[];
 	copied: string[];
+	seeded: string[];
+	preserved: string[];
 	written: string[];
 	issues: Diagnostic[];
 	notes: Diagnostic[];
@@ -76,6 +78,11 @@ export async function buildTheme(
 	};
 
 	const planned = new Map<string, PlannedFile>();
+	// Merchant-owned data files (settings values, section instances, block
+	// values) discovered in the source tree. These are only seeds: they populate
+	// the output when the target has no value yet, but an existing target's copy
+	// wins so a rebuild never resets live theme state edited in the Shopify admin.
+	const seeds = new Map<string, PlannedFile>();
 	const conflicts: string[] = [];
 	const issues: Diagnostic[] = [];
 	const notes: Diagnostic[] = [];
@@ -124,13 +131,47 @@ export async function buildTheme(
 
 		const outputPath = outputPathForSource(sourceRelative);
 		if (outputPath) {
-			copied.push(file);
-			planFile(planned, conflicts, outputPath, contents, file);
+			if (isMerchantDataPath(outputPath)) {
+				seeds.set(outputPath, { contents, from: file });
+			} else {
+				copied.push(file);
+				planFile(planned, conflicts, outputPath, contents, file);
+			}
 		}
 	}
 
 	const outputRoot = join(projectRoot, outDir);
+
+	// Snapshot merchant-owned data already in the target before clearing it, so
+	// the rebuild carries live theme state forward rather than the source seeds.
+	const existingData = await readExistingData(outputRoot);
+
 	await rm(outputRoot, { recursive: true, force: true });
+
+	const seeded: string[] = [];
+	const preserved: string[] = [];
+	for (const path of new Set([...existingData.keys(), ...seeds.keys()])) {
+		const live = existingData.get(path);
+		if (live !== undefined) {
+			planned.set(path, { contents: live, from: "<target>" });
+			preserved.push(path);
+			if (seeds.has(path)) {
+				notes.push({
+					severity: "info",
+					phase: "emit",
+					code: "THEME_DATA_PRESERVED",
+					message: `${path}: kept the target's data; source is only a seed once the theme exists`,
+				});
+			}
+			continue;
+		}
+		const seed = seeds.get(path);
+		if (seed) {
+			planned.set(path, seed);
+			seeded.push(path);
+		}
+	}
+
 	const written: string[] = [];
 	for (const path of [...planned.keys()].sort()) {
 		const full = join(outputRoot, path);
@@ -142,11 +183,54 @@ export async function buildTheme(
 	return {
 		compiled: compiled.sort(),
 		copied: copied.sort(),
+		seeded: seeded.sort(),
+		preserved: preserved.sort(),
 		written,
 		issues,
 		notes,
 		conflicts,
 	};
+}
+
+// Files the Shopify theme editor writes back on the merchant's behalf: setting
+// values, section instances and their order, block values, and section groups.
+// These belong to the live theme, not the source repo — the compiler never
+// emits them, so preserving them across a rebuild is safe.
+function isMerchantDataPath(path: string): boolean {
+	if (path === "config/settings_data.json") return true;
+	if (path.startsWith("templates/") && path.endsWith(".json")) return true;
+	// Section groups live at the top level of sections/ (e.g. header-group.json);
+	// nested paths under sections/ are not a Shopify concept, so require a flat name.
+	if (
+		path.startsWith("sections/") &&
+		path.endsWith(".json") &&
+		!path.slice("sections/".length).includes("/")
+	) {
+		return true;
+	}
+	return false;
+}
+
+// Reads the merchant-owned data files already present in the output directory.
+// Returns an empty map when the directory does not exist (a first build).
+async function readExistingData(
+	outputRoot: string,
+): Promise<Map<string, string>> {
+	const found = new Map<string, string>();
+	const walk = async (dir: string, base: string): Promise<void> => {
+		const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+		for (const dirent of entries) {
+			const full = join(dir, dirent.name);
+			const rel = base ? `${base}/${dirent.name}` : dirent.name;
+			if (dirent.isDirectory()) {
+				await walk(full, rel);
+			} else if (dirent.isFile() && isMerchantDataPath(rel)) {
+				found.set(rel, await readFile(full, "utf8"));
+			}
+		}
+	};
+	await walk(outputRoot, "");
+	return found;
 }
 
 async function collectSourceFiles(

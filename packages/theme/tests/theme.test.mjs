@@ -87,3 +87,94 @@ test("buildTheme reports invalid JSON", async () => {
 		},
 	);
 });
+
+test("buildTheme seeds merchant data on a first build", async () => {
+	await withProject(
+		{
+			"nazare/config/settings_data.json":
+				'{"current":{"colors_accent":"#000"}}',
+			"nazare/templates/index.json": '{"sections":{}}',
+		},
+		async (projectRoot) => {
+			const result = await buildTheme({ projectRoot });
+			assert.deepEqual(result.preserved, []);
+			assert.ok(result.seeded.includes("config/settings_data.json"));
+			assert.equal(
+				readOutput(projectRoot, "config/settings_data.json"),
+				'{"current":{"colors_accent":"#000"}}',
+			);
+		},
+	);
+});
+
+test("buildTheme preserves target settings_data over the source seed on rebuild", async () => {
+	await withProject(
+		{
+			"nazare/config/settings_data.json":
+				'{"current":{"colors_accent":"#000"}}',
+			"nazare/sections/hero.nz.liquid":
+				"{% component section %}<section>Hero</section>\n",
+		},
+		async (projectRoot) => {
+			await buildTheme({ projectRoot });
+			// Simulate a merchant editing the setting in the Shopify admin, which
+			// writes back into the built theme's settings_data.json.
+			writeFileSync(
+				join(projectRoot, ".nazare-out/theme/config/settings_data.json"),
+				'{"current":{"colors_accent":"#ff0000"}}',
+			);
+			const result = await buildTheme({ projectRoot });
+			assert.ok(result.preserved.includes("config/settings_data.json"));
+			assert.ok(
+				result.notes.some((note) => note.code === "THEME_DATA_PRESERVED"),
+			);
+			assert.equal(
+				readOutput(projectRoot, "config/settings_data.json"),
+				'{"current":{"colors_accent":"#ff0000"}}',
+			);
+			// Code is still regenerated fresh.
+			assert.ok(
+				readOutput(projectRoot, "sections/hero.liquid").includes("Hero"),
+			);
+		},
+	);
+});
+
+test("buildTheme keeps a merchant-added template that the source never had", async () => {
+	await withProject(
+		{ "nazare/templates/index.json": '{"sections":{}}' },
+		async (projectRoot) => {
+			await buildTheme({ projectRoot });
+			// A merchant creates a new template variant in the admin.
+			writeFileSync(
+				join(projectRoot, ".nazare-out/theme/templates/page.contact.json"),
+				'{"sections":{"main":{"type":"contact"}}}',
+			);
+			const result = await buildTheme({ projectRoot });
+			assert.ok(result.preserved.includes("templates/page.contact.json"));
+			assert.equal(
+				readOutput(projectRoot, "templates/page.contact.json"),
+				'{"sections":{"main":{"type":"contact"}}}',
+			);
+		},
+	);
+});
+
+test("buildTheme preserves section-group JSON but regenerates section code", async () => {
+	await withProject(
+		{ "nazare/sections/header-group.json": '{"type":"header","sections":{}}' },
+		async (projectRoot) => {
+			await buildTheme({ projectRoot });
+			writeFileSync(
+				join(projectRoot, ".nazare-out/theme/sections/header-group.json"),
+				'{"type":"header","sections":{"logo":{"type":"logo"}}}',
+			);
+			const result = await buildTheme({ projectRoot });
+			assert.ok(result.preserved.includes("sections/header-group.json"));
+			assert.equal(
+				readOutput(projectRoot, "sections/header-group.json"),
+				'{"type":"header","sections":{"logo":{"type":"logo"}}}',
+			);
+		},
+	);
+});
