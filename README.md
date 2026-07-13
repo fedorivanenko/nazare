@@ -22,7 +22,7 @@ The ecosystem offers many excellent tools, but each addresses only part of the p
 
 ## Quickstart
 
-Install the CLI first:
+Install the CLI first. The installer requires Node.js and `pnpm` (or Corepack, which can activate `pnpm`) and downloads the latest GitHub release artifact:
 
 ```sh
 curl -fsSL https://nazare.engineering/install.sh | sh
@@ -524,6 +524,7 @@ Nazare reconciles merchant-editable state and checks cross-component contracts, 
 - **Registry integrity lock.** Installed components are pinned by version and local file hashes in `nazare.theme.json`, but there is no registry provenance/content-digest lock for the originally fetched package. This does not make a malicious first install safe; it would mainly detect later registry drift for the same `id@version`.
 - **Migration coverage.** Migrations handle section, setting, and block renames and removals. Block-scoped setting renames and value type-conversion are not supported, and the schema-lock and locale-base baselines assume you build immediately before pushing.
 - **Internal modularity.** Several compiler internals are still large files (`parser`, diagnostics, checks, emit). Public boundaries are stable, but more splitting is planned to keep concerns easier to audit.
+- **Release packaging.** The source repository does not commit generated `dist/` files. GitHub releases package built CLI artifacts for the curl installer.
 
 ## Repository layout
 

@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.release/
 .nazare-out/
 *.tsbuildinfo
 .claude/settings.local.json
