@@ -202,6 +202,7 @@ type CliOptions = {
 	pull?: boolean;
 	store?: string;
 	theme?: string;
+	json?: boolean;
 	positionals: string[];
 };
 
@@ -272,6 +273,10 @@ function parseCliOptions(args: string[]): CliOptions {
 		}
 		if (arg === "--pull") {
 			options.pull = true;
+			continue;
+		}
+		if (arg === "--json") {
+			options.json = true;
 			continue;
 		}
 		if (arg.startsWith("--")) {
@@ -358,9 +363,13 @@ async function runThemeBuild(
 				[cliOptions.store, cliOptions.theme].filter(Boolean).join("#") ||
 				undefined,
 		});
-		console.log(
-			JSON.stringify({ ...result, components: result.compiled }, null, 2),
-		);
+		if (cliOptions.json) {
+			console.log(
+				JSON.stringify({ ...result, components: result.compiled }, null, 2),
+			);
+		} else {
+			printBuildSummary(result, outDir);
+		}
 		process.exit(
 			hasErrors(result.issues) || result.conflicts.length > 0 ? 1 : 0,
 		);
@@ -374,6 +383,48 @@ function artifactBaseName(entryFile: string): string {
 	let name = basename(entryFile);
 	while (extname(name)) name = basename(name, extname(name));
 	return name;
+}
+
+// Human-readable build summary. Leads with what was produced, then the
+// reconciliation outcomes (what was kept from the live theme, migrated, or
+// merged), then warnings and errors. `--json` prints the raw result instead.
+function printBuildSummary(
+	result: Awaited<ReturnType<typeof buildTheme>>,
+	outDir: string,
+): void {
+	const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+	const errors = result.issues.filter((i) => i.severity === "error");
+	const warnings = result.issues.filter((i) => i.severity === "warning");
+
+	const lines: string[] = [
+		`Built ${count(result.compiled.length, "component")} → ${count(result.written.length, "file")} in ${outDir}`,
+	];
+
+	const recon: string[] = [];
+	if (result.preserved.length || result.seeded.length)
+		recon.push(
+			`data: ${result.preserved.length} preserved, ${result.seeded.length} seeded`,
+		);
+	if (result.applied.length)
+		recon.push(`migrations applied: ${result.applied.join(", ")}`);
+	if (result.mergedLocales.length)
+		recon.push(`locales: ${count(result.mergedLocales.length, "file")} merged`);
+	if (recon.length) lines.push(`  ${recon.join("  ·  ")}`);
+
+	for (const conflict of result.conflicts)
+		lines.push(`  ✖ conflict: ${conflict}`);
+	for (const warning of warnings) lines.push(`  ⚠ ${warning.message}`);
+	for (const error of errors) lines.push(`  ✖ ${error.message}`);
+
+	if (errors.length || result.conflicts.length)
+		lines.push(
+			`Build failed: ${count(errors.length, "error")}, ${count(result.conflicts.length, "conflict")}`,
+		);
+	else if (warnings.length)
+		lines.push(`Build OK with ${count(warnings.length, "warning")}`);
+	else lines.push("Build OK");
+
+	console.log(lines.join("\n"));
 }
 
 /**
@@ -642,6 +693,7 @@ Options:
   --pull                            build: fetch live theme data before building
   --store <domain>                  build --pull: Shopify store to pull from
   --theme <id|name>                 build --pull: theme to pull from
+  --json                            build: print the raw result as JSON
 
 Env:
   NAZARE_REGISTRY                   registry base URL, or file:<dir> for a local one
