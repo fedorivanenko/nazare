@@ -7,6 +7,7 @@ export * from "./graph.js";
 export * from "./id.js";
 export * from "./ir.js";
 export * from "./manifest.js";
+export * from "./registry.js";
 export * from "./semantic.js";
 export * from "./source.js";
 export * from "./symbol.js";

@@ -29,6 +29,9 @@ importers:
       '@nazare/core':
         specifier: workspace:^
         version: link:../core
+      '@nazare/registry':
+        specifier: workspace:^
+        version: link:../registry
 
   packages/cli-dev: {}
 
@@ -51,6 +54,12 @@ importers:
         version: 5.9.3
 
   packages/core: {}
+
+  packages/registry:
+    dependencies:
+      '@nazare/core':
+        specifier: workspace:^
+        version: link:../core
 
 packages:
 

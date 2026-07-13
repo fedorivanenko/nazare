@@ -23,7 +23,9 @@ import {
 	compileNazareArtifact,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
-import type { Diagnostic } from "@nazare/core";
+import type { Diagnostic, RegistryClient } from "@nazare/core";
+import { FileSystemRegistry, HttpRegistry } from "@nazare/registry";
+import { installComponent, updateAll } from "./install.js";
 
 const DEFAULT_SOURCE_ROOT = "nazare";
 
@@ -62,6 +64,15 @@ try {
 	// `nazare/` source root — rather than one entry file.
 	if (command === "build") {
 		await runThemeBuild(projectRoot, readProjectFile, file, cliOptions);
+	}
+
+	// `add` / `update` talk to the registry, not a local entry file: they copy
+	// component source (and its dependency closure) into the source root.
+	if (command === "add") {
+		await runAdd(projectRoot, file, cliOptions);
+	}
+	if (command === "update") {
+		await runUpdate(projectRoot, file, cliOptions);
 	}
 
 	// Every other command targets exactly one entry file.
@@ -173,21 +184,49 @@ try {
 
 type CliOptions = {
 	strictness?: "loose" | "strict";
+	version?: string;
+	sourceRoot?: string;
 	positionals: string[];
 };
+
+// A value option is either `--name value` (consuming the next arg) or
+// `--name=value`. Returns the value, and how many args it consumed so the
+// caller can advance past a consumed `value`.
+function readValueOption(
+	args: string[],
+	index: number,
+	name: string,
+): { value: string | undefined; consumed: number } | undefined {
+	const arg = args[index];
+	if (arg === name) return { value: args[index + 1], consumed: 2 };
+	if (arg.startsWith(`${name}=`)) {
+		return { value: arg.slice(name.length + 1), consumed: 1 };
+	}
+	return undefined;
+}
 
 function parseCliOptions(args: string[]): CliOptions {
 	const options: CliOptions = { positionals: [] };
 
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index];
-		if (arg === "--strictness") {
-			options.strictness = parseStrictness(args[index + 1]);
-			index += 1;
+
+		const strictness = readValueOption(args, index, "--strictness");
+		if (strictness) {
+			options.strictness = parseStrictness(strictness.value);
+			index += strictness.consumed - 1;
 			continue;
 		}
-		if (arg.startsWith("--strictness=")) {
-			options.strictness = parseStrictness(arg.slice("--strictness=".length));
+		const version = readValueOption(args, index, "--version");
+		if (version) {
+			options.version = version.value;
+			index += version.consumed - 1;
+			continue;
+		}
+		const sourceRoot = readValueOption(args, index, "--source-root");
+		if (sourceRoot) {
+			options.sourceRoot = sourceRoot.value;
+			index += sourceRoot.consumed - 1;
 			continue;
 		}
 		if (arg.startsWith("--")) {
@@ -369,6 +408,71 @@ function artifactBaseName(entryFile: string): string {
 	return name;
 }
 
+/**
+ * Selects the registry from NAZARE_REGISTRY: an http(s) base URL in production,
+ * or `file:<dir>` for a local filesystem registry (used in tests and offline
+ * development). The client is the CLI's only contact with the registry.
+ */
+function registryFromEnv(): RegistryClient {
+	const url = process.env.NAZARE_REGISTRY;
+	if (!url) {
+		throw new Error(
+			"NAZARE_REGISTRY is not set (a registry base URL, or file:<dir> for a local registry)",
+		);
+	}
+	if (url.startsWith("file:")) {
+		return new FileSystemRegistry(url.slice("file:".length));
+	}
+	return new HttpRegistry(url);
+}
+
+async function runAdd(
+	projectRoot: string,
+	id: string | undefined,
+	cliOptions: CliOptions,
+): Promise<void> {
+	if (!id) {
+		console.error("Usage: nazare add <@scope/name> [--version x.y.z]");
+		process.exit(1);
+	}
+	const outcome = await installComponent(
+		id,
+		cliOptions.version ?? "latest",
+		"add",
+		{
+			client: registryFromEnv(),
+			projectRoot,
+			sourceRoot: cliOptions.sourceRoot ?? DEFAULT_SOURCE_ROOT,
+		},
+	);
+	for (const warning of outcome.warnings) console.error(`warning: ${warning}`);
+	console.log(JSON.stringify(outcome, null, 2));
+	process.exit(0);
+}
+
+async function runUpdate(
+	projectRoot: string,
+	id: string | undefined,
+	cliOptions: CliOptions,
+): Promise<void> {
+	const options = {
+		client: registryFromEnv(),
+		projectRoot,
+		sourceRoot: cliOptions.sourceRoot ?? DEFAULT_SOURCE_ROOT,
+	};
+	const outcome = id
+		? await installComponent(
+				id,
+				cliOptions.version ?? "latest",
+				"update",
+				options,
+			)
+		: await updateAll(options);
+	for (const warning of outcome.warnings) console.error(`warning: ${warning}`);
+	console.log(JSON.stringify(outcome, null, 2));
+	process.exit(0);
+}
+
 function hasErrors(
 	issues: { severity: "error" | "warning" | "info" }[],
 ): boolean {
@@ -383,9 +487,16 @@ function printHelp(): void {
   nazare validate <file>
   nazare schema <file>
   nazare build [source-root|file]   walks nazare/ by default
+  nazare add <@scope/name>          copy a component + deps into the source root
+  nazare update [@scope/name]       re-fetch latest; all installed if omitted
   nazare artifact <file>
   nazare dump <file>
 
 Options:
-  --strictness loose|strict`);
+  --strictness loose|strict
+  --version x.y.z                   add/update: exact version (default latest)
+  --source-root <dir>               add/update/build: default nazare/
+
+Env:
+  NAZARE_REGISTRY                   registry base URL, or file:<dir> for a local one`);
 }
