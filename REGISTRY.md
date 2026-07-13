@@ -12,7 +12,30 @@ This document is the frozen contract between three parts:
   copies their folders into the project. Never publishes.
 - **`nazare-dev` (cli-dev)** — `publish`. Verifies a component, then uploads it.
 - **`registry-api` (apps/registry-api)** — stores and serves published
-  components. A dumb content store: it does not compile or validate.
+  components. A dumb content store: it does not compile or validate. Shipped as
+  a **self-hostable reference server**, not a service we gate.
+
+## Ownership: the registry is yours (decentralized-first)
+
+There is no registry baked into the tooling. A registry is defined entirely by
+this wire contract plus where `NAZARE_REGISTRY` points — the client talks to
+whatever that is. Consequences, by design:
+
+- **No default, ever.** `NAZARE_REGISTRY` unset is an error, not a silent
+  fallback to some blessed host. You always choose your registry.
+- **A registry can be a folder.** `NAZARE_REGISTRY=file:<dir>` is a complete
+  registry: `publish` writes into it, `add` reads from it, no server, no auth.
+  Make that folder a git repo or a shared drive and it is a team registry with
+  still zero infrastructure.
+- **A registry can be your own server.** Deploy `registry-api` on your own
+  infra and point `NAZARE_REGISTRY` at it. This is the "spawn your own infra"
+  path — it is just the reference server, run by you, with auth you control.
+- **Any hosted instance is just an instance.** If a public one exists, it holds
+  no special status in the client; it is a URL like any other.
+
+So self-hosting is not a feature bolted on — it is the only posture. The
+compiler and CLI are registry-agnostic by construction; the reference server is
+built to be deployed by anyone.
 
 ## The unit: a published component
 
@@ -100,9 +123,12 @@ Every error is `{ "error": { "code": "...", "message": "..." } }` with a status:
 ## Authentication
 
 Publish only. `nazare-dev` sends `Authorization: Bearer <token>`; the token
-comes from `NAZARE_TOKEN` in the environment. Reads are public. Token issuance
-and per-scope authorization are an infra concern (step 3), out of this
-contract; the contract only fixes the header and the `401` shape.
+comes from `NAZARE_TOKEN` in the environment. Reads are public. **Each registry
+owner decides issuance and per-scope authorization** — the contract fixes only
+the header and the `401` shape, never who may publish what. A `file:` registry
+needs no token at all (there is no server to authenticate to; the fake ignores
+it). A self-hosted server picks whatever scheme its owner wants behind the same
+`Bearer` header.
 
 ## Client behavior
 
@@ -156,21 +182,24 @@ type RegistryClient = {
 ```
 
 - **Production** — an HTTP implementation against the surface above.
-- **Tests / offline** — a filesystem-backed fake: a directory of
-  `<scope>/<name>/<version>.json` files. `add`/`update`/`publish` are fully
-  unit-testable with no network, and the `registry-api` app can be built and
-  deployed independently as long as it honors the same surface.
+- **Tests / offline / personal registry** — the filesystem-backed
+  `FileSystemRegistry`: a directory of `<scope>/<name>/<version>.json` files.
+  This is not only a test double — `NAZARE_REGISTRY=file:<dir>` makes it a real,
+  zero-infra personal or team registry. `add`/`update`/`publish` are fully
+  usable (and unit-testable) with no network, and any server that honors the
+  same surface is a drop-in replacement.
 
 This is why **the CLI does not block on infra**: it is coded to
-`RegistryClient`, tested against the fake, and pointed at the real API whenever
-that ships.
+`RegistryClient`, tested against the fake, and pointed at any registry — a
+folder, your server, or someone else's — through `NAZARE_REGISTRY`.
 
 ## Build order
 
 1. **This contract** (frozen here).
 2. **CLI** `add` / `update` (cli-client) and `publish` (cli-dev), against the
    fake `RegistryClient`.
-3. **Infra** `registry-api` (Vercel): store `RegistryComponent` by `(id,
-   version)` immutably, maintain the `latest` pointer + version list, serve the
-   three routes. Storage backend (blob + metadata KV/Postgres) chosen at that
-   step; it does not affect this contract.
+3. **Reference server** `registry-api`: a **self-hostable** app that stores
+   `RegistryComponent` by `(id, version)` immutably, maintains the `latest`
+   pointer + version list, and serves the three routes. Deployable by anyone on
+   their own infra (Vercel or otherwise); the storage backend (blob + metadata
+   KV/Postgres) is the deployer's choice and does not affect this contract.
