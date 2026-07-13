@@ -19,7 +19,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -s typecheck
-      - run: biome check .
+      - run: pnpm dlx @biomejs/biome@2.4.14 check .
       - run: pnpm -s test:all
       - name: dist is not committed
         run: test -z "$(git ls-files '*/dist/*')"
