@@ -6,8 +6,8 @@
 	"scripts": {
 		"typecheck": "tsc -b",
 		"test:compiler": "tsc -b && node --test packages/compiler/tests/*.test.mjs",
-		"test:all": "tsc -b && node --test packages/compiler/tests/*.test.mjs packages/registry/tests/*.test.mjs packages/cli-client/tests/*.test.mjs",
-		"test:registry": "tsc -b && node --test packages/registry/tests/*.test.mjs packages/cli-client/tests/install.test.mjs",
+		"test:all": "tsc -b && node --test packages/compiler/tests/*.test.mjs packages/registry/tests/*.test.mjs packages/cli-client/tests/*.test.mjs packages/cli-dev/tests/*.test.mjs",
+		"test:registry": "tsc -b && node --test packages/registry/tests/*.test.mjs packages/cli-client/tests/install.test.mjs packages/cli-dev/tests/*.test.mjs",
 		"test:types": "tsc -b && node --test packages/compiler/tests/type-expression.test.mjs",
 		"test:diagnostics": "tsc -b && node --test packages/compiler/tests/diagnostics.test.mjs",
 		"test:emit": "tsc -b && node --test packages/compiler/tests/emit.test.mjs packages/compiler/tests/root-marker.test.mjs packages/compiler/tests/references.test.mjs packages/compiler/tests/css-modules.test.mjs",

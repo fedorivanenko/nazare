@@ -23,8 +23,8 @@ import {
 	compileNazareArtifact,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
-import type { Diagnostic, RegistryClient } from "@nazare/core";
-import { FileSystemRegistry, HttpRegistry } from "@nazare/registry";
+import type { Diagnostic } from "@nazare/core";
+import { registryFromEnv } from "@nazare/registry";
 import { installComponent, updateAll } from "./install.js";
 
 const DEFAULT_SOURCE_ROOT = "nazare";
@@ -406,24 +406,6 @@ function artifactBaseName(entryFile: string): string {
 	let name = basename(entryFile);
 	while (extname(name)) name = basename(name, extname(name));
 	return name;
-}
-
-/**
- * Selects the registry from NAZARE_REGISTRY: an http(s) base URL in production,
- * or `file:<dir>` for a local filesystem registry (used in tests and offline
- * development). The client is the CLI's only contact with the registry.
- */
-function registryFromEnv(): RegistryClient {
-	const url = process.env.NAZARE_REGISTRY;
-	if (!url) {
-		throw new Error(
-			"NAZARE_REGISTRY is not set (a registry base URL, or file:<dir> for a local registry)",
-		);
-	}
-	if (url.startsWith("file:")) {
-		return new FileSystemRegistry(url.slice("file:".length));
-	}
-	return new HttpRegistry(url);
 }
 
 async function runAdd(
