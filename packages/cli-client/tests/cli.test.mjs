@@ -71,7 +71,7 @@ test("cli: build validates dependencies, validate checks only the entry", async 
 		},
 		async (cwd) => {
 			// build checks imported files, so the child's parse error surfaces.
-			const built = runCli(cwd, "build", "component.nz.liquid");
+			const built = runCli(cwd, "build", "component.nz.liquid", "--json");
 			assert.notEqual(built.status, 0);
 			assert.ok(
 				JSON.parse(built.stdout).issues.some(
@@ -103,7 +103,7 @@ test("cli: build with no path walks the default nazare/ source root", async () =
 			"stray/stray.nz.liquid": componentWithScript("c"),
 		},
 		async (cwd) => {
-			const built = runCli(cwd, "build");
+			const built = runCli(cwd, "build", "--json");
 			assert.equal(built.status, 0, built.stderr);
 			const output = JSON.parse(built.stdout);
 
@@ -134,7 +134,7 @@ test("cli: build supports custom output directory", async () => {
 			"nazare/button.nz.liquid": "<button>Button</button>\n",
 		},
 		async (cwd) => {
-			const built = runCli(cwd, "build", "--out-dir", "theme");
+			const built = runCli(cwd, "build", "--out-dir", "theme", "--json");
 			assert.equal(built.status, 0, built.stderr);
 			const output = JSON.parse(built.stdout);
 			assert.ok(output.written.includes("theme/snippets/button.liquid"));
@@ -153,7 +153,7 @@ test("cli: build reports a conflict when two components emit the same path", asy
 			"nazare/two/widget.nz.liquid": "<div>two</div>",
 		},
 		async (cwd) => {
-			const built = runCli(cwd, "build", "nazare");
+			const built = runCli(cwd, "build", "nazare", "--json");
 			assert.notEqual(built.status, 0);
 			const output = JSON.parse(built.stdout);
 			assert.equal(output.conflicts.length, 1);
@@ -168,6 +168,20 @@ test("cli: build errors when the source root is missing", async () => {
 		assert.notEqual(built.status, 0);
 		assert.match(built.stderr, /Source path not found/);
 	});
+});
+
+test("cli: build prints a human-readable summary by default", async () => {
+	await withProject(
+		{ "nazare/button.nz.liquid": "<button>Button</button>\n" },
+		async (cwd) => {
+			const built = runCli(cwd, "build");
+			assert.equal(built.status, 0, built.stderr);
+			// Not JSON, and it leads with a plain summary line.
+			assert.throws(() => JSON.parse(built.stdout));
+			assert.match(built.stdout, /Built 1 component/);
+			assert.match(built.stdout, /Build OK/);
+		},
+	);
 });
 
 test("cli: pack is available on the main nazare command", async () => {
