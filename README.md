@@ -407,8 +407,9 @@ theme/
 What the build does:
 
 - compiles every `.nz.liquid` component into Shopify `sections/`, `blocks/`, `snippets/`, and `assets/`;
-- copies plain Shopify theme files from `layout/`, `templates/`, `sections/`, `snippets/`, `assets/`, `config/`, and `locales/`;
-- validates plain `.liquid` files and JSON files during the copy step;
+- carries plain Shopify code files from `layout/`, `templates/*.liquid`, `sections/`, `snippets/`, and `assets/` straight through;
+- reconciles merchant-owned state — settings, section and block instances, and translations — instead of overwriting it (see [Reconciliation](#reconciliation) below);
+- validates plain `.liquid` files and JSON files;
 - resolves local imports so CSS, JavaScript islands, and component dependencies land in the final theme;
 - reports conflicts when two source files try to write the same Shopify output path.
 
@@ -422,12 +423,57 @@ nazare build --out-dir theme
 shopify theme dev --path theme
 ```
 
+### Reconciliation
+
+Nazare source compiles one way, but a live Shopify theme is edited from both sides: merchants change settings, add and reorder sections and blocks, and translate content in the admin, and Shopify writes all of that back into the theme. A naive rebuild would overwrite those edits. Nazare instead treats the theme filesystem as three ownership zones and reconciles each on every build:
+
+- **Code** — `sections/`, `blocks/`, `snippets/`, `assets/`: regenerated from source.
+- **Merchant data** — `config/settings_data.json`, `templates/**/*.json`, and section-group `sections/*.json`: carried forward from the existing target. Your source versions are only *seeds*, used when a theme has no value yet; once a theme exists, its live data wins.
+- **Storefront locales** — `locales/*.json` (excluding developer-owned `*.schema.json`): merged field by field, so a translation a merchant edited and one a developer updated each win where the other side is untouched.
+
+To reconcile against a real live theme, pull its merchant-owned data first (requires the Shopify CLI):
+
+```sh
+nazare build --pull --store your-store.myshopify.com --theme 123456789
+shopify theme push --path .nazare-out/theme
+```
+
+**Schema drift.** Each build fingerprints every generated section and block schema into `nazare.schema-lock.json` and diffs it against the committed baseline. Removing or retyping a setting, or removing a section or block — the changes that strand saved merchant values — surface as warnings:
+
+```txt
+⚠ setting "heading" removed from "hero" — saved merchant values are orphaned
+```
+
+**Migrations.** When a rename is intentional, describe it in `nazare.migrations.json`. Each op rewrites the saved merchant data so values survive the rename, and silences the corresponding drift warning:
+
+```json
+{
+  "migrations": [
+    { "id": "2026-07-rename-hero", "op": "renameSection", "from": "hero", "to": "banner" },
+    { "id": "2026-07-rename-heading", "op": "renameSetting", "section": "banner", "from": "heading", "to": "title" }
+  ]
+}
+```
+
+Each migration runs exactly once per target theme (tracked in `nazare.migrations-applied.json`), so a later setting that reuses a retired name is never clobbered by a stale rename.
+
+Commit the reconciliation baselines — `nazare.schema-lock.json`, `nazare.migrations.json`, `nazare.migrations-applied.json`, and `nazare.locales-base.json` — so your whole team and CI reconcile against the same history.
+
+`nazare build` prints a summary of what it reconciled; pass `--json` for the machine-readable result:
+
+```txt
+Built 1 component → 2 files in .nazare-out/theme
+  data: 3 preserved, 0 seeded  ·  migrations applied: 2026-07-rename-hero  ·  locales: 1 file merged
+Build OK
+```
+
 Also, Nazare includes JS island architecture, supports any JavaScript framework you want, can check and validate plain Liquid, compile and minimize CSS and JS, and many more.
 
 ## CLI reference
 
 ```txt
 nazare build [source-root|file]     build a complete Shopify theme output
+nazare build --pull                 reconcile against a live theme before building
 nazare add <@scope/name>            install a registry component and dependencies
 nazare update [@scope/name]         update one component, or all installed components
 nazare registry add <name> <url>    save a project registry in `nazare.theme.json`
@@ -451,6 +497,10 @@ Common options and environment variables:
 --version x.y.z                     add/update exact registry version
 --source-root <dir>                 add/update/build source root, default `nazare/`
 --out-dir <dir>                     build output directory, default `.nazare-out/theme`
+--pull                              build: fetch live theme data before building
+--store <domain>                    build --pull: Shopify store to pull from
+--theme <id|name>                   build --pull: theme to pull from
+--json                              build: print the raw result as JSON
 NAZARE_REGISTRY                     one-command registry override, or `file:<dir>`
 NAZARE_TOKEN                        publish token
 ```
@@ -464,6 +514,16 @@ export default island(({ root }) => {
   // mount vanilla JavaScript, React, Vue, Svelte, or anything else here
 });
 ```
+
+## Known gaps
+
+Nazare reconciles merchant-editable state and checks cross-component contracts, but a few pre-upload safety nets are not built yet. Until they are, keep the Shopify CLI and Theme Check in your workflow before pushing.
+
+- **Shopify schema-rule validation.** Generated `{% schema %}` is checked as JSON and for Nazare contracts, but not against Shopify's editor and upload limits (max settings and blocks per section, block-type character rules, preset shape, section-group compatibility). An over-large or malformed schema fails at push time, not at build.
+- **Liquid dialect validation.** Emitted Liquid targets a known Shopify subset through span-based lowering, but there is no post-codegen dialect validator and no Theme Check or `shopify theme push --dry-run` hook in the build. Run Theme Check yourself before pushing.
+- **Unowned output files.** The build regenerates code and reconciles merchant data and locales, but it does not track per-file ownership. A hand-written or app-added file placed directly in the built theme (outside your source) is not preserved across rebuilds.
+- **Registry integrity lock.** Installed components are pinned by version in `nazare.theme.json`, but there is no content-digest lock. The build itself is offline and never resolves `latest`, so output is deterministic from your source.
+- **Migration coverage.** Migrations handle section, setting, and block renames and removals. Block-scoped setting renames and value type-conversion are not supported, and the schema-lock and locale-base baselines assume you build immediately before pushing.
 
 ## Repository layout
 
