@@ -1,29 +1,57 @@
 # Nazare
 
-Components for Shopify themes, authored as local source files.
+Liquid-first tooling for Shopify themes.
 
-Nazare compiles `.nz.liquid` components into theme files. Registry support is optional and copy-based: `nazare add` copies component source into your project; builds never talk to a registry.
+Nazare is two things in one ecosystem:
+
+1. **shadcn/ui for Shopify** — a registry workflow for copying component source into your theme project. You install source, own it, edit it, and build it locally.
+2. **A TS-ish upgrade for Liquid** — `.nz.liquid` adds type-safety, composability, diagnostics, safer imports, and less boilerplate.
+
+Both parts work with normal Liquid files. `.nz.liquid` is optional: use plain `.liquid` when you want, upgrade to `.nz.liquid` when you want stronger checks and better authoring.
+
+The theme builder and registry are independent products that share conventions. The registry copies source; it does not compile. The theme builder builds local source; it does not need a registry.
 
 ## Shape
 
 ```text
-author component source
-  nazare/<name>/nazare.json
-  nazare/<name>/<entry>.nz.liquid | <entry>.ts
-        │
-        ├─ nazare build
-        │    local source -> .nazare-out/theme
-        │    registry is not involved
-        │
-        ├─ nazare pack
-        │    local source -> .nazare-out/pack/<scope>/<name>/<version>.json
-        │
-        └─ nazare publish
-             local source -> registry
+Nazare ecosystem
 
-consume component source
-  registry -> nazare add @scope/name -> nazare/<name>/...
-           -> nazare build -> .nazare-out/theme
+  theme builder product
+    local Shopify theme source
+      layout/ templates/ sections/ snippets/ assets/ config/ locales/
+      -> nazare build
+      -> .nazare-out/theme
+
+    calls compiler for .nz.liquid files
+    copies plain .liquid, .json, and assets
+    no registry involved
+
+  registry product
+    local Liquid / .nz.liquid source
+      -> nazare pack
+      -> registry JSON
+
+    local Liquid / .nz.liquid source
+      -> nazare publish
+      -> file: registry or HTTP registry
+
+    registry
+      -> nazare add @scope/name
+      -> local source files copied into nazare/<name>/...
+
+    no compile step involved
+```
+
+Typical source folder:
+
+```text
+nazare/layout/theme.liquid
+nazare/templates/product.json
+nazare/sections/main-product.nz.liquid
+nazare/snippets/price.liquid
+nazare/assets/theme.css
+nazare/config/settings_schema.json
+nazare/locales/en.default.json
 ```
 
 Registry choices:
@@ -69,13 +97,16 @@ pnpm --filter @nazare/cli-client unlink --global
 
 ## Daily workflow
 
-### 1. Build local components
+### 1. Build local theme source
 
-Put source under `nazare/`:
+Put Shopify theme source under `nazare/`:
 
 ```text
-nazare/button/nazare.json
-nazare/button/button.nz.liquid
+nazare/layout/theme.liquid
+nazare/templates/product.json
+nazare/sections/main-product.nz.liquid
+nazare/snippets/price.liquid
+nazare/assets/theme.css
 ```
 
 Build:
@@ -90,6 +121,8 @@ Output goes to:
 .nazare-out/theme
 ```
 
+This is theme-builder workflow. It reads local files only. Plain Shopify files are copied; `.nz.liquid` files are compiled.
+
 ### 2. Use a local registry while developing
 
 A registry can be a folder. No server, no auth.
@@ -98,13 +131,13 @@ A registry can be a folder. No server, no auth.
 export NAZARE_REGISTRY=file:.nazare-registry
 ```
 
-Publish a component into it:
+Publish source into it:
 
 ```sh
 nazare publish ./nazare/button
 ```
 
-Install it into another project:
+Install source into another project:
 
 ```sh
 nazare add @scope/button
@@ -115,6 +148,8 @@ Local registry layout:
 ```text
 .nazare-registry/<scope>/<name>/<version>.json
 ```
+
+This is registry workflow. It copies source files only.
 
 ### 3. Inspect before publishing
 
@@ -142,12 +177,26 @@ Versions are immutable. To publish new bytes, bump `version` in `nazare.json`.
 
 ## CLI reference
 
+Compiler commands:
+
 ```sh
-nazare build                         # compile nazare/ into .nazare-out/theme
+nazare build                         # build nazare/ into .nazare-out/theme
+nazare validate <file>               # check one file
+nazare artifact <file>               # print compiled artifact JSON
+nazare ast <file>
+nazare ir <file>
+nazare graph <file>
+nazare schema <file>
+nazare dump <file>
+```
+
+Registry commands:
+
+```sh
 nazare add @scope/name               # copy component + deps from registry
 nazare update [@scope/name]          # re-fetch latest source
 nazare pack ./nazare/button          # write registry JSON to .nazare-out/pack
-nazare publish ./nazare/button       # publish component to registry
+nazare publish ./nazare/button       # publish source to registry
 ```
 
 ## Set up an HTTP registry
@@ -196,7 +245,8 @@ More registry docs:
 ## Packages
 
 - `packages/core` — shared types and compiler data model
-- `packages/compiler` — parser, checks, IR, emit
+- `packages/compiler` — parser, checks, IR, emit for `.nz.liquid`
+- `packages/theme` — Shopify theme builder: copy plain files, compile `.nz.liquid`
 - `packages/cli-client` — `nazare` CLI
 - `packages/registry` — registry clients: HTTP and `file:`
 - `apps/registry-api` — self-hostable HTTP registry server
