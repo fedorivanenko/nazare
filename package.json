@@ -5,7 +5,7 @@
 	"packageManager": "pnpm@10.0.0",
 	"scripts": {
 		"typecheck": "tsc -b",
-		"test": "tsc -b && node --test packages/compiler/tests/*.test.mjs",
+		"test:compiler": "tsc -b && node --test packages/compiler/tests/*.test.mjs",
 		"test:all": "tsc -b && node --test packages/compiler/tests/*.test.mjs packages/cli-client/tests/*.test.mjs",
 		"test:types": "tsc -b && node --test packages/compiler/tests/type-expression.test.mjs",
 		"test:diagnostics": "tsc -b && node --test packages/compiler/tests/diagnostics.test.mjs",
