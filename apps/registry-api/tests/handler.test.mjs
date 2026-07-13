@@ -135,6 +135,16 @@ test("id / version mismatch between path and body is refused", async () => {
 	assert.match(res.body.error.message, /version must equal/);
 });
 
+test("versions are canonical x.y.z", async () => {
+	const handler = handlerWith();
+	const res = await call(handler, "PUT", "/components/nazare/counter/1.0", {
+		token: TOKEN,
+		body: component({ version: "1.0" }),
+	});
+	assert.equal(res.status, 400);
+	assert.match(res.body.error.message, /Invalid version/);
+});
+
 test("invalid JSON body is 400, not 500", async () => {
 	const handler = handlerWith();
 	const response = await handler(

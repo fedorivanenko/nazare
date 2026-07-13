@@ -8,7 +8,10 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { RegistryClient, RegistryComponent } from "@nazare/core";
-import { componentFolderName } from "@nazare/registry";
+import {
+	componentFolderName,
+	validateBasicRegistryComponent,
+} from "@nazare/registry";
 
 const THEME_MANIFEST = "nazare.theme.json";
 
@@ -74,6 +77,13 @@ export async function installComponent(
 		if (!component) {
 			throw new Error(
 				`${request.id}@${request.version} was not found in the registry`,
+			);
+		}
+
+		const invalid = validateBasicRegistryComponent(component);
+		if (invalid) {
+			throw new Error(
+				`${request.id}@${request.version} returned an invalid registry component: ${invalid}`,
 			);
 		}
 

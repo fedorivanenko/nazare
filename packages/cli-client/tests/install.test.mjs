@@ -154,3 +154,22 @@ test("adding an unknown component fails", async () => {
 		assert.equal(existsSync(join(options.projectRoot, "nazare")), false);
 	});
 });
+
+test("install refuses unsafe file paths returned by a registry", async () => {
+	await withProject([], async ({ projectRoot, options }) => {
+		const client = {
+			fetchMetadata: async () => undefined,
+			fetchComponent: async () =>
+				component("@nazare/bad", "0.1.0", {}, { "../escape.ts": "x" }),
+			publish: async () => ({ ok: true, id: "@nazare/bad", version: "0.1.0" }),
+		};
+		await assert.rejects(
+			installComponent("@nazare/bad", "0.1.0", "add", {
+				...options,
+				client,
+			}),
+			/unsafe file path/,
+		);
+		assert.equal(existsSync(join(projectRoot, "escape.ts")), false);
+	});
+});

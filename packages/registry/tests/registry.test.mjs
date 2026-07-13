@@ -43,6 +43,24 @@ test("compareVersions orders numerically, not lexically", () => {
 	assert.equal(compareVersions("0.1.0", "0.1.0"), 0);
 });
 
+test("fake registry rejects malformed publish payloads", async () => {
+	await withRegistry(async (registry) => {
+		const badVersion = await registry.publish(
+			component("@nazare/link", "1.0"),
+			"t",
+		);
+		assert.equal(badVersion.ok, false);
+		assert.equal(badVersion.code, "MALFORMED_COMPONENT");
+
+		const badPath = await registry.publish(
+			component("@nazare/link", "1.0.0", {}, { "../escape.ts": "x" }),
+			"t",
+		);
+		assert.equal(badPath.ok, false);
+		assert.equal(badPath.code, "MALFORMED_COMPONENT");
+	});
+});
+
 test("fake registry round-trips publish -> fetch and resolves latest", async () => {
 	await withRegistry(async (registry) => {
 		await registry.publish(component("@nazare/link", "0.1.0"), "t");

@@ -11,6 +11,7 @@ import type {
 	RegistryComponent,
 } from "@nazare/core";
 import { compareVersions, parseComponentId } from "./id.js";
+import { validateBasicRegistryComponent } from "./validation.js";
 
 export class FileSystemRegistry implements RegistryClient {
 	constructor(private readonly root: string) {}
@@ -46,6 +47,10 @@ export class FileSystemRegistry implements RegistryClient {
 		component: RegistryComponent,
 		_token: string,
 	): Promise<PublishResult> {
+		const invalid = validateBasicRegistryComponent(component);
+		if (invalid) {
+			return { ok: false, code: "MALFORMED_COMPONENT", message: invalid };
+		}
 		const dir = this.componentDir(component.id);
 		const file = join(dir, `${component.version}.json`);
 		const exists = await readFile(file, "utf8").then(

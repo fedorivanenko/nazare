@@ -10,3 +10,9 @@ export {
 	componentFolderName,
 	parseComponentId,
 } from "./id.js";
+export {
+	isSafeRelativePath,
+	isValidVersion,
+	VERSION_PATTERN,
+	validateBasicRegistryComponent,
+} from "./validation.js";

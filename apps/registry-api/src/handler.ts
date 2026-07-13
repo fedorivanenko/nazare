@@ -12,7 +12,12 @@
 //   - malformed JSON / shape -> 400, never a 500 that leaks a stack
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { RegistryComponent, RegistryErrorCode } from "@nazare/core";
-import { parseComponentId } from "@nazare/registry";
+import {
+	isSafeRelativePath,
+	isValidVersion,
+	parseComponentId,
+	validateBasicRegistryComponent,
+} from "@nazare/registry";
 import type { RegistryStore } from "./store.js";
 
 export type Handler = (request: Request) => Promise<Response>;
@@ -26,7 +31,6 @@ export type HandlerOptions = {
 };
 
 const DEFAULT_MAX_BODY_BYTES = 5 * 1024 * 1024;
-const VERSION_PATTERN = /^[0-9]+(\.[0-9]+){0,3}$/;
 
 export function createHandler(options: HandlerOptions): Handler {
 	const { store, tokens } = options;
@@ -87,7 +91,7 @@ async function getComponent(
 			);
 		}
 		resolved = metadata.latest;
-	} else if (!VERSION_PATTERN.test(version)) {
+	} else if (!isValidVersion(version)) {
 		return errorResponse(404, "VERSION_NOT_FOUND", `No version ${version}`);
 	}
 
@@ -117,7 +121,7 @@ async function putComponent(
 			"A valid publish token is required",
 		);
 	}
-	if (!VERSION_PATTERN.test(version)) {
+	if (!isValidVersion(version)) {
 		return errorResponse(
 			400,
 			"MALFORMED_COMPONENT",
@@ -192,7 +196,7 @@ function validateComponent(
 			return `unsafe file path "${path}"`;
 		}
 	}
-	return undefined;
+	return validateBasicRegistryComponent(body as RegistryComponent);
 }
 
 function isStringMap(value: unknown): boolean {
@@ -200,16 +204,6 @@ function isStringMap(value: unknown): boolean {
 	return Object.values(value as Record<string, unknown>).every(
 		(entry) => typeof entry === "string",
 	);
-}
-
-// A file path that is safe to write under a component folder on the consumer's
-// machine: relative, no absolute root, no `..`/`.` segments, no null byte.
-function isSafeRelativePath(path: string): boolean {
-	if (path.length === 0 || path.includes("\0")) return false;
-	if (path.startsWith("/") || /^[A-Za-z]:/.test(path)) return false;
-	return path
-		.split(/[\\/]/)
-		.every((segment) => segment !== "" && segment !== "." && segment !== "..");
 }
 
 // --- auth ------------------------------------------------------------------
