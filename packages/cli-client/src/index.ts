@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
@@ -13,7 +14,19 @@ import { installComponent, updateAll } from "./install.js";
 import { packComponent, publishComponent } from "./publish.js";
 
 const DEFAULT_SOURCE_ROOT = "nazare";
+const DEFAULT_OUT_DIR = ".nazare-out/theme";
 const THEME_MANIFEST = "nazare.theme.json";
+
+// Merchant-owned data the Shopify theme editor writes back. `nazare build
+// --pull` fetches only these into the output dir so buildTheme can carry the
+// live theme's settings, section instances, and block values forward. Code is
+// regenerated from source, so there is no reason to pull it.
+const MERCHANT_DATA_PATTERNS = [
+	"config/settings_data.json",
+	"templates/*.json",
+	"templates/**/*.json",
+	"sections/*.json",
+];
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -186,6 +199,9 @@ type CliOptions = {
 	version?: string;
 	sourceRoot?: string;
 	outDir?: string;
+	pull?: boolean;
+	store?: string;
+	theme?: string;
 	positionals: string[];
 };
 
@@ -240,6 +256,22 @@ function parseCliOptions(args: string[]): CliOptions {
 		if (outDir) {
 			options.outDir = outDir.value;
 			index += outDir.consumed - 1;
+			continue;
+		}
+		const store = readValueOption(args, index, "--store");
+		if (store) {
+			options.store = store.value;
+			index += store.consumed - 1;
+			continue;
+		}
+		const theme = readValueOption(args, index, "--theme");
+		if (theme) {
+			options.theme = theme.value;
+			index += theme.consumed - 1;
+			continue;
+		}
+		if (arg === "--pull") {
+			options.pull = true;
 			continue;
 		}
 		if (arg.startsWith("--")) {
@@ -303,11 +335,28 @@ async function runThemeBuild(
 	cliOptions: CliOptions,
 ): Promise<void> {
 	try {
+		const outDir = cliOptions.outDir ?? DEFAULT_OUT_DIR;
+		// Reconcile against a live theme: pull its merchant-owned data into the
+		// output dir first, so buildTheme snapshots and preserves it instead of
+		// resetting it to the source seeds.
+		if (cliOptions.pull) {
+			const outDirAbs = join(projectRoot, outDir);
+			await mkdir(outDirAbs, { recursive: true });
+			pullThemeData(outDirAbs, {
+				store: cliOptions.store,
+				theme: cliOptions.theme,
+			});
+		}
 		const result = await buildTheme({
 			projectRoot,
 			sourceRoot: target ?? DEFAULT_SOURCE_ROOT,
-			outDir: cliOptions.outDir,
+			outDir,
 			strictness: cliOptions.strictness,
+			// Key the run-once migrations ledger by the pulled store/theme so each
+			// target tracks its own applied history; falls back to the output dir.
+			targetId:
+				[cliOptions.store, cliOptions.theme].filter(Boolean).join("#") ||
+				undefined,
 		});
 		console.log(
 			JSON.stringify({ ...result, components: result.compiled }, null, 2),
@@ -325,6 +374,39 @@ function artifactBaseName(entryFile: string): string {
 	let name = basename(entryFile);
 	while (extname(name)) name = basename(name, extname(name));
 	return name;
+}
+
+/**
+ * Pulls a live theme's merchant-owned data into `outDir` via the Shopify CLI so
+ * the following build preserves it. Only data files are fetched (`--only`);
+ * generated code is regenerated from source. Throws with an actionable message
+ * when the CLI is missing or the pull fails.
+ */
+function pullThemeData(
+	outDir: string,
+	options: { store?: string; theme?: string },
+): void {
+	const args = ["theme", "pull", "--path", outDir];
+	if (options.store) args.push("--store", options.store);
+	if (options.theme) args.push("--theme", options.theme);
+	for (const pattern of MERCHANT_DATA_PATTERNS) args.push("--only", pattern);
+
+	console.error(`Pulling live theme data: shopify ${args.join(" ")}`);
+	const result = spawnSync("shopify", args, { stdio: "inherit" });
+	if (result.error) {
+		const code = (result.error as NodeJS.ErrnoException).code;
+		if (code === "ENOENT") {
+			throw new Error(
+				"--pull needs the Shopify CLI. Install it (https://shopify.dev/docs/api/shopify-cli) or drop --pull to build without reconciling.",
+			);
+		}
+		throw result.error;
+	}
+	if (result.status !== 0) {
+		throw new Error(
+			`shopify theme pull failed (exit ${result.status ?? "unknown"}). Check --store/--theme and your Shopify auth.`,
+		);
+	}
 }
 
 async function runAdd(
@@ -541,6 +623,7 @@ function printHelp(): void {
   nazare validate <file>
   nazare schema <file>
   nazare build [source-root|file]   walks nazare/ by default
+                                    --pull reconciles against a live theme first
   nazare add <@scope/name>          copy a component + deps into the source root
   nazare update [@scope/name]       re-fetch latest; all installed if omitted
   nazare registry add <name> <url>  save a project registry in nazare.theme.json
@@ -556,6 +639,9 @@ Options:
   --version x.y.z                   add/update: exact version (default latest)
   --source-root <dir>               add/update/build: default nazare/
   --out-dir <dir>                   build output directory: default .nazare-out/theme
+  --pull                            build: fetch live theme data before building
+  --store <domain>                  build --pull: Shopify store to pull from
+  --theme <id|name>                 build --pull: theme to pull from
 
 Env:
   NAZARE_REGISTRY                   registry base URL, or file:<dir> for a local one

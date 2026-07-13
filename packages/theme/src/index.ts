@@ -20,11 +20,32 @@ import {
 	buildNazareTheme,
 	checkComponentScripts,
 	parseNazareLiquid,
+	themeSchemaFromIR,
 } from "@nazare/compiler";
 import type { Diagnostic } from "@nazare/core";
+import { mergeLocale } from "./locales.js";
+import {
+	applyMigrationsToData,
+	applyMigrationsToManifest,
+	type Migration,
+	parseMigrations,
+} from "./migrations.js";
 
 const DEFAULT_SOURCE_ROOT = "nazare";
 const DEFAULT_OUT_DIR = ".nazare-out/theme";
+// Committed alongside the source: a fingerprint of every generated section's
+// schema (setting ids/types, accepted block types). Diffing it across builds
+// surfaces schema drift that would break saved merchant data.
+const DEFAULT_MANIFEST = "nazare.schema-lock.json";
+// Committed alongside the source: an append-only list of rename/remove ops that
+// rewrite saved merchant data so it survives schema renames.
+const DEFAULT_MIGRATIONS = "nazare.migrations.json";
+// Committed alongside the source: which migration ids have been applied to each
+// target theme, so each migration runs exactly once per target.
+const DEFAULT_MIGRATIONS_LEDGER = "nazare.migrations-applied.json";
+// Committed alongside the source: the source locale strings as of the last
+// build, the common ancestor for the 3-way locale merge.
+const DEFAULT_LOCALE_BASE = "nazare.locales-base.json";
 const THEME_DIRS = new Set([
 	"layout",
 	"templates",
@@ -40,18 +61,47 @@ export type ThemeBuildOptions = {
 	sourceRoot?: string;
 	outDir?: string;
 	strictness?: "loose" | "strict";
+	/** Schema-lock path, relative to projectRoot. Default nazare.schema-lock.json. */
+	manifestPath?: string;
+	/** Migrations file path, relative to projectRoot. Default nazare.migrations.json. */
+	migrationsPath?: string;
+	/** Applied-migrations ledger path, relative to projectRoot. Default nazare.migrations-applied.json. */
+	migrationsLedgerPath?: string;
+	/** Identity of the target theme for the migrations ledger. Default is the output dir. */
+	targetId?: string;
+	/** Locale merge base path, relative to projectRoot. Default nazare.locales-base.json. */
+	localeBasePath?: string;
 };
+
+/** A single schema-drift finding between the prior and current schema lock. */
+export type DriftEntry = { code: string; message: string };
 
 export type ThemeBuildResult = {
 	compiled: string[];
 	copied: string[];
+	seeded: string[];
+	preserved: string[];
 	written: string[];
 	issues: Diagnostic[];
 	notes: Diagnostic[];
 	conflicts: string[];
+	/** Breaking schema changes vs the committed schema lock. */
+	drift: DriftEntry[];
+	/** Path (relative to projectRoot) the schema lock was written to. */
+	manifestPath: string;
+	/** Merchant-data files rewritten by migrations. */
+	migrated: string[];
+	/** Migration ids applied this build (empty when all were already applied). */
+	applied: string[];
+	/** Storefront locale files reconciled by the 3-way merge. */
+	mergedLocales: string[];
 };
 
 type PlannedFile = { contents: string; from: string };
+
+type SchemaSetting = { id: string; type: string };
+type SchemaEntry = { settings: SchemaSetting[]; blocks: { type: string }[] };
+type SchemaManifest = { version: 1; sections: Record<string, SchemaEntry> };
 
 export async function buildTheme(
 	options: ThemeBuildOptions,
@@ -76,11 +126,20 @@ export async function buildTheme(
 	};
 
 	const planned = new Map<string, PlannedFile>();
+	// Merchant-owned data files (settings values, section instances, block
+	// values) discovered in the source tree. These are only seeds: they populate
+	// the output when the target has no value yet, but an existing target's copy
+	// wins so a rebuild never resets live theme state edited in the Shopify admin.
+	const seeds = new Map<string, PlannedFile>();
+	// Storefront locale files from source. These are the developer's translations,
+	// merged field-by-field with the merchant's edits rather than copied over.
+	const sourceLocales = new Map<string, PlannedFile>();
 	const conflicts: string[] = [];
 	const issues: Diagnostic[] = [];
 	const notes: Diagnostic[] = [];
 	const compiled: string[] = [];
 	const copied: string[] = [];
+	const manifest: SchemaManifest = { version: 1, sections: {} };
 
 	for (const file of sourceFiles) {
 		const sourceRelative = relativeSourcePath(sourceRoot, file);
@@ -100,6 +159,29 @@ export async function buildTheme(
 			notes.push(...built.notes);
 			for (const themeFile of built.emitted.files) {
 				planFile(planned, conflicts, themeFile.path, themeFile.contents, file);
+			}
+			// Fingerprint the generated schema for sections and blocks (the only
+			// kinds that carry one) so drift against saved merchant data is visible.
+			const schemaBearing = built.emitted.files.find(
+				(themeFile) =>
+					(themeFile.path.startsWith("sections/") ||
+						themeFile.path.startsWith("blocks/")) &&
+					themeFile.path.endsWith(".liquid"),
+			);
+			if (schemaBearing) {
+				const schema = themeSchemaFromIR(built.ir, {
+					name: artifactBaseName(file),
+					contracts: built.contracts,
+				});
+				manifest.sections[schemaBearing.path] = {
+					settings: schema.settings
+						.filter(
+							(setting): setting is typeof setting & { id: string } =>
+								typeof setting.id === "string",
+						)
+						.map((setting) => ({ id: setting.id, type: setting.type })),
+					blocks: (schema.blocks ?? []).map((block) => ({ type: block.type })),
+				};
 			}
 			continue;
 		}
@@ -124,13 +206,132 @@ export async function buildTheme(
 
 		const outputPath = outputPathForSource(sourceRelative);
 		if (outputPath) {
-			copied.push(file);
-			planFile(planned, conflicts, outputPath, contents, file);
+			if (isMerchantDataPath(outputPath)) {
+				seeds.set(outputPath, { contents, from: file });
+			} else if (isLocaleMergePath(outputPath)) {
+				sourceLocales.set(outputPath, { contents, from: file });
+			} else {
+				copied.push(file);
+				planFile(planned, conflicts, outputPath, contents, file);
+			}
 		}
 	}
 
 	const outputRoot = join(projectRoot, outDir);
+
+	// Snapshot merchant-owned data + storefront locales already in the target
+	// before clearing it, so the rebuild carries live theme state forward.
+	let existingData = await readExistingData(outputRoot);
+	const existingLocales = await readExistingLocales(outputRoot);
+
+	// Author-written migrations rewrite that data so saved values survive a
+	// section/setting rename. The same migrations are applied to the prior schema
+	// lock below, so a migrated rename stops registering as drift.
+	const migrationsPath = options.migrationsPath ?? DEFAULT_MIGRATIONS;
+	const migrationsRaw = await readFile(
+		join(projectRoot, migrationsPath),
+		"utf8",
+	).catch(() => undefined);
+	let migrations: Migration[] = [];
+	if (migrationsRaw !== undefined) {
+		const parsed = parseMigrations(migrationsRaw, migrationsPath);
+		issues.push(...parsed.issues);
+		// Refuse to apply a partially-invalid migration set — all or nothing.
+		if (!parsed.issues.some((issue) => issue.severity === "error")) {
+			migrations = parsed.migrations;
+		}
+	}
+
+	// Run-once ledger: skip migrations already applied to THIS target theme, so a
+	// stale rename never re-fires on a later setting that reuses an old name. The
+	// ledger is keyed per target (a store/theme pulls its own history); data
+	// application uses only the unapplied set, while drift silencing below still
+	// applies the full list (idempotent on the schema lock).
+	const ledgerPath = options.migrationsLedgerPath ?? DEFAULT_MIGRATIONS_LEDGER;
+	const targetId = options.targetId ?? outDir;
+	const ledger = await readLedger(join(projectRoot, ledgerPath));
+	const alreadyApplied = new Set(ledger.applied[targetId] ?? []);
+	const unapplied = migrations.filter((m) => !alreadyApplied.has(m.id));
+
+	const migratedData = applyMigrationsToData(existingData, unapplied);
+	existingData = migratedData.data;
+	issues.push(...migratedData.issues);
+	const migrated = migratedData.changed;
+	const applied = unapplied.map((m) => m.id);
+
 	await rm(outputRoot, { recursive: true, force: true });
+
+	const seeded: string[] = [];
+	const preserved: string[] = [];
+	for (const path of new Set([...existingData.keys(), ...seeds.keys()])) {
+		const live = existingData.get(path);
+		if (live !== undefined) {
+			planned.set(path, { contents: live, from: "<target>" });
+			preserved.push(path);
+			if (seeds.has(path)) {
+				notes.push({
+					severity: "info",
+					phase: "emit",
+					code: "THEME_DATA_PRESERVED",
+					message: `${path}: kept the target's data; source is only a seed once the theme exists`,
+				});
+			}
+			continue;
+		}
+		const seed = seeds.get(path);
+		if (seed) {
+			planned.set(path, seed);
+			seeded.push(path);
+		}
+	}
+
+	// 3-way merge storefront locales: developer source, merchant edits pulled into
+	// the target, and the committed base (last build's source) as ancestor. The
+	// base is then rewritten to the current source for next time.
+	const localeBasePath = options.localeBasePath ?? DEFAULT_LOCALE_BASE;
+	const localeBase = await readLocaleBase(join(projectRoot, localeBasePath));
+	const nextLocaleBase: Record<string, unknown> = {};
+	const mergedLocales: string[] = [];
+	for (const path of new Set([
+		...sourceLocales.keys(),
+		...existingLocales.keys(),
+	])) {
+		const source = parseLocale(sourceLocales.get(path)?.contents, path, issues);
+		const target = parseLocale(existingLocales.get(path), path, issues);
+
+		// A locale only the merchant has (added in the admin) is preserved as-is
+		// and not tracked as a base — it is not the developer's to own.
+		if (source === undefined) {
+			if (existingLocales.has(path)) {
+				planned.set(path, {
+					contents: existingLocales.get(path) ?? "",
+					from: "<target>",
+				});
+			}
+			continue;
+		}
+
+		const { value, conflicts: localeConflicts } = mergeLocale(
+			localeBase[path],
+			source,
+			target,
+		);
+		nextLocaleBase[path] = source;
+		if (existingLocales.has(path)) mergedLocales.push(path);
+		for (const key of localeConflicts) {
+			issues.push({
+				severity: "warning",
+				phase: "emit",
+				code: "THEME_LOCALE_CONFLICT",
+				message: `${path}: "${key}" changed in both source and target; kept the target's value`,
+			});
+		}
+		planned.set(path, {
+			contents: `${JSON.stringify(value, null, 2)}\n`,
+			from: sourceLocales.get(path)?.from ?? path,
+		});
+	}
+
 	const written: string[] = [];
 	for (const path of [...planned.keys()].sort()) {
 		const full = join(outputRoot, path);
@@ -139,14 +340,250 @@ export async function buildTheme(
 		written.push(join(outDir, path));
 	}
 
+	// Diff the current schema against the committed lock, warn on breaking drift,
+	// then rewrite the lock as the new baseline. Warnings do not fail the build.
+	const manifestPath = options.manifestPath ?? DEFAULT_MANIFEST;
+	const prior = await readManifest(join(projectRoot, manifestPath));
+	const migratedPrior = prior
+		? applyMigrationsToManifest(prior, migrations)
+		: undefined;
+	const drift = diffManifests(migratedPrior, manifest);
+	for (const entry of drift) {
+		issues.push({
+			severity: "warning",
+			phase: "emit",
+			code: entry.code,
+			message: entry.message,
+		});
+	}
+	await writeFile(
+		join(projectRoot, manifestPath),
+		`${JSON.stringify(sortManifest(manifest), null, 2)}\n`,
+	);
+
+	// Record the migrations applied this build so they never re-run on this
+	// target. Recorded regardless of whether they changed data — the rename is a
+	// one-time schema event. Only written when migrations are defined.
+	if (migrations.length > 0 && applied.length > 0) {
+		ledger.applied[targetId] = [...alreadyApplied, ...applied];
+		await writeFile(
+			join(projectRoot, ledgerPath),
+			`${JSON.stringify(ledger, null, 2)}\n`,
+		);
+	}
+
+	// Advance the locale merge base to the current source for the next build.
+	if (sourceLocales.size > 0) {
+		await writeFile(
+			join(projectRoot, localeBasePath),
+			`${JSON.stringify({ version: 1, files: nextLocaleBase }, null, 2)}\n`,
+		);
+	}
+
 	return {
 		compiled: compiled.sort(),
 		copied: copied.sort(),
+		seeded: seeded.sort(),
+		preserved: preserved.sort(),
 		written,
 		issues,
 		notes,
 		conflicts,
+		drift,
+		manifestPath,
+		migrated: migrated.sort(),
+		applied,
+		mergedLocales: mergedLocales.sort(),
 	};
+}
+
+async function readManifest(path: string): Promise<SchemaManifest | undefined> {
+	const raw = await readFile(path, "utf8").catch(() => undefined);
+	if (raw === undefined) return undefined;
+	try {
+		return JSON.parse(raw) as SchemaManifest;
+	} catch {
+		return undefined;
+	}
+}
+
+// Storefront locale files the merchant can edit in the admin. Schema locales
+// (*.schema.json) are editor labels the developer owns, so they stay code.
+function isLocaleMergePath(path: string): boolean {
+	return (
+		path.startsWith("locales/") &&
+		path.endsWith(".json") &&
+		!path.endsWith(".schema.json")
+	);
+}
+
+async function readExistingLocales(
+	outputRoot: string,
+): Promise<Map<string, string>> {
+	const found = new Map<string, string>();
+	const dir = join(outputRoot, "locales");
+	const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+	for (const dirent of entries) {
+		const rel = `locales/${dirent.name}`;
+		if (dirent.isFile() && isLocaleMergePath(rel)) {
+			found.set(rel, await readFile(join(dir, dirent.name), "utf8"));
+		}
+	}
+	return found;
+}
+
+// The committed merge base maps each locale path to its source tree from the
+// last build. A missing or malformed base yields an empty ancestor set, which
+// the merge treats as a safe 2-way (merchant-preserving) merge.
+async function readLocaleBase(path: string): Promise<Record<string, unknown>> {
+	const raw = await readFile(path, "utf8").catch(() => undefined);
+	if (raw !== undefined) {
+		try {
+			const parsed = JSON.parse(raw) as { files?: Record<string, unknown> };
+			if (parsed.files && typeof parsed.files === "object") return parsed.files;
+		} catch {
+			// fall through to an empty base
+		}
+	}
+	return {};
+}
+
+function parseLocale(
+	raw: string | undefined,
+	path: string,
+	issues: Diagnostic[],
+): unknown {
+	if (raw === undefined) return undefined;
+	try {
+		return JSON.parse(raw);
+	} catch {
+		issues.push({
+			severity: "warning",
+			phase: "emit",
+			code: "THEME_LOCALE_INVALID_JSON",
+			message: `${path}: not valid JSON, left unmerged`,
+		});
+		return undefined;
+	}
+}
+
+type MigrationLedger = { version: 1; applied: Record<string, string[]> };
+
+// A missing or malformed ledger is treated as "nothing applied yet".
+async function readLedger(path: string): Promise<MigrationLedger> {
+	const raw = await readFile(path, "utf8").catch(() => undefined);
+	if (raw !== undefined) {
+		try {
+			const parsed = JSON.parse(raw) as Partial<MigrationLedger>;
+			if (parsed.applied && typeof parsed.applied === "object") {
+				return { version: 1, applied: parsed.applied };
+			}
+		} catch {
+			// fall through to a fresh ledger
+		}
+	}
+	return { version: 1, applied: {} };
+}
+
+// Stable key order so the committed lock produces clean diffs.
+function sortManifest(manifest: SchemaManifest): SchemaManifest {
+	const sections: Record<string, SchemaEntry> = {};
+	for (const key of Object.keys(manifest.sections).sort()) {
+		sections[key] = manifest.sections[key];
+	}
+	return { version: manifest.version, sections };
+}
+
+function sectionType(path: string): string {
+	return basename(path, ".liquid");
+}
+
+// Reports only breaking changes: a rename cannot be told apart from a
+// remove-plus-add without author intent, so it surfaces as a removal here.
+// Additions are non-breaking (Shopify fills defaults) and stay silent.
+function diffManifests(
+	prior: SchemaManifest | undefined,
+	next: SchemaManifest,
+): DriftEntry[] {
+	if (!prior) return [];
+	const drift: DriftEntry[] = [];
+	for (const [path, oldEntry] of Object.entries(prior.sections)) {
+		const type = sectionType(path);
+		const newEntry = next.sections[path];
+		if (!newEntry) {
+			drift.push({
+				code: "THEME_SECTION_REMOVED",
+				message: `section "${type}" removed — templates and settings_data that reference it will break`,
+			});
+			continue;
+		}
+		const newTypeById = new Map(newEntry.settings.map((s) => [s.id, s.type]));
+		for (const setting of oldEntry.settings) {
+			const newType = newTypeById.get(setting.id);
+			if (newType === undefined) {
+				drift.push({
+					code: "THEME_SETTING_REMOVED",
+					message: `setting "${setting.id}" removed from "${type}" — saved merchant values are orphaned`,
+				});
+			} else if (newType !== setting.type) {
+				drift.push({
+					code: "THEME_SETTING_RETYPED",
+					message: `setting "${setting.id}" in "${type}" changed type ${setting.type} → ${newType} — saved value may not migrate`,
+				});
+			}
+		}
+		const newBlockTypes = new Set(newEntry.blocks.map((block) => block.type));
+		for (const block of oldEntry.blocks) {
+			if (!newBlockTypes.has(block.type)) {
+				drift.push({
+					code: "THEME_BLOCK_REMOVED",
+					message: `block type "${block.type}" removed from "${type}"`,
+				});
+			}
+		}
+	}
+	return drift;
+}
+
+// Files the Shopify theme editor writes back on the merchant's behalf: setting
+// values, section instances and their order, block values, and section groups.
+// These belong to the live theme, not the source repo — the compiler never
+// emits them, so preserving them across a rebuild is safe.
+function isMerchantDataPath(path: string): boolean {
+	if (path === "config/settings_data.json") return true;
+	if (path.startsWith("templates/") && path.endsWith(".json")) return true;
+	// Section groups live at the top level of sections/ (e.g. header-group.json);
+	// nested paths under sections/ are not a Shopify concept, so require a flat name.
+	if (
+		path.startsWith("sections/") &&
+		path.endsWith(".json") &&
+		!path.slice("sections/".length).includes("/")
+	) {
+		return true;
+	}
+	return false;
+}
+
+// Reads the merchant-owned data files already present in the output directory.
+// Returns an empty map when the directory does not exist (a first build).
+async function readExistingData(
+	outputRoot: string,
+): Promise<Map<string, string>> {
+	const found = new Map<string, string>();
+	const walk = async (dir: string, base: string): Promise<void> => {
+		const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+		for (const dirent of entries) {
+			const full = join(dir, dirent.name);
+			const rel = base ? `${base}/${dirent.name}` : dirent.name;
+			if (dirent.isDirectory()) {
+				await walk(full, rel);
+			} else if (dirent.isFile() && isMerchantDataPath(rel)) {
+				found.set(rel, await readFile(full, "utf8"));
+			}
+		}
+	};
+	await walk(outputRoot, "");
+	return found;
 }
 
 async function collectSourceFiles(
