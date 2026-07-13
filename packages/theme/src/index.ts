@@ -20,11 +20,16 @@ import {
 	buildNazareTheme,
 	checkComponentScripts,
 	parseNazareLiquid,
+	themeSchemaFromIR,
 } from "@nazare/compiler";
 import type { Diagnostic } from "@nazare/core";
 
 const DEFAULT_SOURCE_ROOT = "nazare";
 const DEFAULT_OUT_DIR = ".nazare-out/theme";
+// Committed alongside the source: a fingerprint of every generated section's
+// schema (setting ids/types, accepted block types). Diffing it across builds
+// surfaces schema drift that would break saved merchant data.
+const DEFAULT_MANIFEST = "nazare.schema-lock.json";
 const THEME_DIRS = new Set([
 	"layout",
 	"templates",
@@ -40,7 +45,12 @@ export type ThemeBuildOptions = {
 	sourceRoot?: string;
 	outDir?: string;
 	strictness?: "loose" | "strict";
+	/** Schema-lock path, relative to projectRoot. Default nazare.schema-lock.json. */
+	manifestPath?: string;
 };
+
+/** A single schema-drift finding between the prior and current schema lock. */
+export type DriftEntry = { code: string; message: string };
 
 export type ThemeBuildResult = {
 	compiled: string[];
@@ -51,9 +61,17 @@ export type ThemeBuildResult = {
 	issues: Diagnostic[];
 	notes: Diagnostic[];
 	conflicts: string[];
+	/** Breaking schema changes vs the committed schema lock. */
+	drift: DriftEntry[];
+	/** Path (relative to projectRoot) the schema lock was written to. */
+	manifestPath: string;
 };
 
 type PlannedFile = { contents: string; from: string };
+
+type SchemaSetting = { id: string; type: string };
+type SchemaEntry = { settings: SchemaSetting[]; blocks: { type: string }[] };
+type SchemaManifest = { version: 1; sections: Record<string, SchemaEntry> };
 
 export async function buildTheme(
 	options: ThemeBuildOptions,
@@ -88,6 +106,7 @@ export async function buildTheme(
 	const notes: Diagnostic[] = [];
 	const compiled: string[] = [];
 	const copied: string[] = [];
+	const manifest: SchemaManifest = { version: 1, sections: {} };
 
 	for (const file of sourceFiles) {
 		const sourceRelative = relativeSourcePath(sourceRoot, file);
@@ -107,6 +126,29 @@ export async function buildTheme(
 			notes.push(...built.notes);
 			for (const themeFile of built.emitted.files) {
 				planFile(planned, conflicts, themeFile.path, themeFile.contents, file);
+			}
+			// Fingerprint the generated schema for sections and blocks (the only
+			// kinds that carry one) so drift against saved merchant data is visible.
+			const schemaBearing = built.emitted.files.find(
+				(themeFile) =>
+					(themeFile.path.startsWith("sections/") ||
+						themeFile.path.startsWith("blocks/")) &&
+					themeFile.path.endsWith(".liquid"),
+			);
+			if (schemaBearing) {
+				const schema = themeSchemaFromIR(built.ir, {
+					name: artifactBaseName(file),
+					contracts: built.contracts,
+				});
+				manifest.sections[schemaBearing.path] = {
+					settings: schema.settings
+						.filter(
+							(setting): setting is typeof setting & { id: string } =>
+								typeof setting.id === "string",
+						)
+						.map((setting) => ({ id: setting.id, type: setting.type })),
+					blocks: (schema.blocks ?? []).map((block) => ({ type: block.type })),
+				};
 			}
 			continue;
 		}
@@ -180,6 +222,24 @@ export async function buildTheme(
 		written.push(join(outDir, path));
 	}
 
+	// Diff the current schema against the committed lock, warn on breaking drift,
+	// then rewrite the lock as the new baseline. Warnings do not fail the build.
+	const manifestPath = options.manifestPath ?? DEFAULT_MANIFEST;
+	const prior = await readManifest(join(projectRoot, manifestPath));
+	const drift = diffManifests(prior, manifest);
+	for (const entry of drift) {
+		issues.push({
+			severity: "warning",
+			phase: "emit",
+			code: entry.code,
+			message: entry.message,
+		});
+	}
+	await writeFile(
+		join(projectRoot, manifestPath),
+		`${JSON.stringify(sortManifest(manifest), null, 2)}\n`,
+	);
+
 	return {
 		compiled: compiled.sort(),
 		copied: copied.sort(),
@@ -189,7 +249,79 @@ export async function buildTheme(
 		issues,
 		notes,
 		conflicts,
+		drift,
+		manifestPath,
 	};
+}
+
+async function readManifest(path: string): Promise<SchemaManifest | undefined> {
+	const raw = await readFile(path, "utf8").catch(() => undefined);
+	if (raw === undefined) return undefined;
+	try {
+		return JSON.parse(raw) as SchemaManifest;
+	} catch {
+		return undefined;
+	}
+}
+
+// Stable key order so the committed lock produces clean diffs.
+function sortManifest(manifest: SchemaManifest): SchemaManifest {
+	const sections: Record<string, SchemaEntry> = {};
+	for (const key of Object.keys(manifest.sections).sort()) {
+		sections[key] = manifest.sections[key];
+	}
+	return { version: manifest.version, sections };
+}
+
+function sectionType(path: string): string {
+	return basename(path, ".liquid");
+}
+
+// Reports only breaking changes: a rename cannot be told apart from a
+// remove-plus-add without author intent, so it surfaces as a removal here.
+// Additions are non-breaking (Shopify fills defaults) and stay silent.
+function diffManifests(
+	prior: SchemaManifest | undefined,
+	next: SchemaManifest,
+): DriftEntry[] {
+	if (!prior) return [];
+	const drift: DriftEntry[] = [];
+	for (const [path, oldEntry] of Object.entries(prior.sections)) {
+		const type = sectionType(path);
+		const newEntry = next.sections[path];
+		if (!newEntry) {
+			drift.push({
+				code: "THEME_SECTION_REMOVED",
+				message: `section "${type}" removed — templates and settings_data that reference it will break`,
+			});
+			continue;
+		}
+		const newTypeById = new Map(newEntry.settings.map((s) => [s.id, s.type]));
+		for (const setting of oldEntry.settings) {
+			const newType = newTypeById.get(setting.id);
+			if (newType === undefined) {
+				drift.push({
+					code: "THEME_SETTING_REMOVED",
+					message: `setting "${setting.id}" removed from "${type}" — saved merchant values are orphaned`,
+				});
+			} else if (newType !== setting.type) {
+				drift.push({
+					code: "THEME_SETTING_RETYPED",
+					message: `setting "${setting.id}" in "${type}" changed type ${setting.type} → ${newType} — saved value may not migrate`,
+				});
+			}
+		}
+		const newBlockTypes = new Set(newEntry.blocks.map((block) => block.type));
+		for (const block of oldEntry.blocks) {
+			if (!newBlockTypes.has(block.type)) {
+				drift.push({
+					code: "THEME_BLOCK_REMOVED",
+					message: `block type "${block.type}" removed from "${type}"`,
+				});
+			}
+		}
+	}
+	return drift;
 }
 
 // Files the Shopify theme editor writes back on the merchant's behalf: setting
