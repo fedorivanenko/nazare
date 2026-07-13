@@ -1,4 +1,4 @@
-// Selects a registry from NAZARE_REGISTRY, shared by `nazare` and `nazare-dev`.
+// Selects a registry from NAZARE_REGISTRY.
 // The tooling bakes in no default: the variable must be set, so the choice of
 // registry is always explicit and never a silent fallback to a blessed host.
 // See REGISTRY.md (decentralized-first).

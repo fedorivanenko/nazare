@@ -71,6 +71,20 @@ test("a declared dependency that matches an import passes", async () => {
 	);
 });
 
+test("dependency scanner sees side-effect, dynamic, and CommonJS imports", async () => {
+	await withComponent(
+		{
+			"nazare.json": manifest({ dependencies: { "@nazare/cn": "0.1.0" } }),
+			"counter.ts":
+				'import "../cn/cn.css";\nawait import("../cn/cn.ts");\nrequire("../cn/cn.cjs");\n',
+		},
+		async (dir) => {
+			const component = await buildRegistryComponent(dir);
+			assert.deepEqual(component.dependencies, { "@nazare/cn": "0.1.0" });
+		},
+	);
+});
+
 test("an import with no declared dependency is refused", async () => {
 	await withComponent(
 		{

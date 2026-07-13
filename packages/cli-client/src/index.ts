@@ -17,6 +17,8 @@ import {
 	resolve,
 	sep,
 } from "node:path";
+import { installComponent, updateAll } from "./install.js";
+import { packComponent, publishComponent } from "./publish.js";
 import {
 	buildNazareTheme,
 	checkComponentScripts,
@@ -25,7 +27,6 @@ import {
 } from "@nazare/compiler";
 import type { Diagnostic } from "@nazare/core";
 import { registryFromEnv } from "@nazare/registry";
-import { installComponent, updateAll } from "./install.js";
 
 const DEFAULT_SOURCE_ROOT = "nazare";
 
@@ -73,6 +74,14 @@ try {
 	}
 	if (command === "update") {
 		await runUpdate(projectRoot, file, cliOptions);
+	}
+
+	// Registry authoring commands target a component folder, not a compile entry.
+	if (command === "pack") {
+		await runPack(file);
+	}
+	if (command === "publish") {
+		await runPublish(file);
 	}
 
 	// Every other command targets exactly one entry file.
@@ -432,6 +441,50 @@ async function runAdd(
 	process.exit(0);
 }
 
+async function runPack(dir: string | undefined): Promise<void> {
+	const { component, path } = await packComponent(
+		dir ?? ".",
+		join(".nazare-out", "pack"),
+	);
+	console.log(
+		JSON.stringify(
+			{
+				packed: { id: component.id, version: component.version },
+				path,
+				files: Object.keys(component.files).sort(),
+			},
+			null,
+			2,
+		),
+	);
+	process.exit(0);
+}
+
+async function runPublish(dir: string | undefined): Promise<void> {
+	const { component, result } = await publishComponent(dir ?? ".", {
+		client: registryFromEnv(),
+		token: process.env.NAZARE_TOKEN ?? "",
+	});
+	if (result.ok) {
+		console.log(
+			JSON.stringify(
+				{
+					published: { id: result.id, version: result.version },
+					files: Object.keys(component.files).sort(),
+				},
+				null,
+				2,
+			),
+		);
+		process.exit(0);
+	}
+	console.error(`publish failed (${result.code}): ${result.message}`);
+	if (result.code === "VERSION_EXISTS") {
+		console.error('Bump "version" in nazare.json and publish again.');
+	}
+	process.exit(1);
+}
+
 async function runUpdate(
 	projectRoot: string,
 	id: string | undefined,
@@ -471,6 +524,8 @@ function printHelp(): void {
   nazare build [source-root|file]   walks nazare/ by default
   nazare add <@scope/name>          copy a component + deps into the source root
   nazare update [@scope/name]       re-fetch latest; all installed if omitted
+  nazare pack [dir]                 write publishable payload to .nazare-out/pack
+  nazare publish [dir]              publish component folder (default .)
   nazare artifact <file>
   nazare dump <file>
 
@@ -480,5 +535,6 @@ Options:
   --source-root <dir>               add/update/build: default nazare/
 
 Env:
-  NAZARE_REGISTRY                   registry base URL, or file:<dir> for a local one`);
+  NAZARE_REGISTRY                   registry base URL, or file:<dir> for a local one
+  NAZARE_TOKEN                      bearer token for publish (file: registries ignore it)`);
 }

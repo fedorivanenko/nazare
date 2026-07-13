@@ -4,7 +4,6 @@
     { "path": "apps/registry-api" },
     { "path": "packages/cli-client" },
     { "path": "packages/compiler" },
-    { "path": "packages/cli-dev" },
     { "path": "packages/core" },
     { "path": "packages/registry" },
   ]

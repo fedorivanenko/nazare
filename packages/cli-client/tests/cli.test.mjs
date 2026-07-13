@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -147,4 +147,30 @@ test("cli: build errors when the source root is missing", async () => {
 		assert.notEqual(built.status, 0);
 		assert.match(built.stderr, /Source path not found/);
 	});
+});
+
+test("cli: pack is available on the main nazare command", async () => {
+	await withProject(
+		{
+			"nazare/button/nazare.json": JSON.stringify({
+				id: "@acme/button",
+				version: "0.1.0",
+				entry: "button.ts",
+				dependencies: {},
+				files: ["button.ts"],
+			}),
+			"nazare/button/button.ts": "export const button = 1;\n",
+		},
+		async (cwd) => {
+			const packed = runCli(cwd, "pack", "nazare/button");
+			assert.equal(packed.status, 0, packed.stderr);
+			const output = JSON.parse(packed.stdout);
+			assert.deepEqual(output.packed, {
+				id: "@acme/button",
+				version: "0.1.0",
+			});
+			const payload = JSON.parse(readFileSync(join(cwd, output.path), "utf8"));
+			assert.equal(payload.id, "@acme/button");
+		},
+	);
 });

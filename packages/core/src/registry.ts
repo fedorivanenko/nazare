@@ -1,5 +1,5 @@
-// The registry wire contract — the vocabulary shared by the install client
-// (nazare), the publish client (nazare-dev), and the registry-api. Types only;
+// The registry wire contract — the vocabulary shared by the CLI and the
+// registry-api. Types only;
 // the HTTP and filesystem implementations live in @nazare/registry. See
 // REGISTRY.md for the full contract.
 

@@ -1,4 +1,4 @@
-// `nazare-dev publish`: turn a component folder into a RegistryComponent and
+// `nazare publish`: turn a component folder into a RegistryComponent and
 // upload it. The honesty guard lives here (not the compiler, not the registry):
 // a component's declared nazare.json dependencies must match the ../<folder>/
 // imports in its source, so the published dependency graph can never drift from
@@ -15,10 +15,11 @@ import { componentFolderName, parseComponentId } from "@nazare/registry";
 
 const MANIFEST = "nazare.json";
 
-// The only way one component references another: `from "../<folder>/..."`,
-// which covers both Liquid ({% import X from "../cn/cn.ts" %}) and TS/JS
-// (import ... from "../cn/format.ts"). Same-folder ("./") imports are not deps.
-const IMPORT_PATTERN = /from\s+["']\.\.\/([A-Za-z0-9._-]+)\//g;
+// The ways one component references another: `from "../<folder>/..."`,
+// side-effect `import "../<folder>/..."`, dynamic `import("../<folder>/...")`,
+// or CommonJS `require("../<folder>/...")`. Same-folder ("./") imports are not deps.
+const IMPORT_PATTERN =
+	/(?:from\s+|import\s*(?:\(\s*)?|require\s*\(\s*)["']\.\.\/([A-Za-z0-9._-]+)\//g;
 
 /**
  * Reads a component folder, verifies its dependency declarations against its
