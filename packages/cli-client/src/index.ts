@@ -352,6 +352,11 @@ async function runThemeBuild(
 			sourceRoot: target ?? DEFAULT_SOURCE_ROOT,
 			outDir,
 			strictness: cliOptions.strictness,
+			// Key the run-once migrations ledger by the pulled store/theme so each
+			// target tracks its own applied history; falls back to the output dir.
+			targetId:
+				[cliOptions.store, cliOptions.theme].filter(Boolean).join("#") ||
+				undefined,
 		});
 		console.log(
 			JSON.stringify({ ...result, components: result.compiled }, null, 2),

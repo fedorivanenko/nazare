@@ -5,18 +5,22 @@
 // to two targets from one definition: the pulled Zone B data (the actual values)
 // and the prior schema lock (so the drift diff no longer flags the change).
 //
-// Ops apply in file order and mutate in place, so a `renameSetting` that follows
-// a `renameSection` must name the section by its NEW type. Renames are
-// idempotent on re-run (the old name is already gone), so migrations are
-// append-only history and are never removed once shipped.
+// Every migration carries a stable `id`. The build records which ids have been
+// applied to each target theme (see the ledger in index.ts) and skips them next
+// time, so a migration runs exactly ONCE per target — a later, unrelated setting
+// that reuses an old name is not clobbered by a stale rename. Ops apply in file
+// order and mutate in place, so a `renameSetting` after a `renameSection` must
+// name the section by its NEW type. Migrations are append-only history.
 
 import type { Diagnostic } from "@nazare/core";
 
-export type Migration =
+type MigrationOp =
 	| { op: "renameSection"; from: string; to: string }
 	| { op: "renameSetting"; section?: string; from: string; to: string }
 	| { op: "renameBlock"; from: string; to: string }
-	| { op: "removeSetting"; section?: string; id: string };
+	| { op: "removeSetting"; section?: string; setting: string };
+
+export type Migration = MigrationOp & { id: string };
 
 type Json = Record<string, unknown>;
 
@@ -59,34 +63,38 @@ export function parseMigrations(
 
 	const migrations: Migration[] = [];
 	const issues: Diagnostic[] = [];
+	const seenIds = new Set<string>();
 	list.forEach((entry, index) => {
 		const at = `migrations[${index}]`;
 		if (!entry || typeof entry !== "object") {
 			issues.push(invalid(file, `${at} is not an object`));
 			return;
 		}
-		const op = (entry as Json).op;
 		const str = (key: string): string | undefined => {
 			const value = (entry as Json)[key];
 			return typeof value === "string" && value.length > 0 ? value : undefined;
 		};
+
+		const id = str("id");
+		if (!id) {
+			issues.push(invalid(file, `${at} needs a non-empty "id"`));
+			return;
+		}
+		if (seenIds.has(id)) {
+			issues.push(invalid(file, `${at} duplicate id ${JSON.stringify(id)}`));
+			return;
+		}
+		seenIds.add(id);
+
+		const op = (entry as Json).op;
 		switch (op) {
-			case "renameSection": {
-				const from = str("from");
-				const to = str("to");
-				if (!from || !to)
-					issues.push(
-						invalid(file, `${at} renameSection needs "from" and "to"`),
-					);
-				else migrations.push({ op, from, to });
-				return;
-			}
+			case "renameSection":
 			case "renameBlock": {
 				const from = str("from");
 				const to = str("to");
 				if (!from || !to)
-					issues.push(invalid(file, `${at} renameBlock needs "from" and "to"`));
-				else migrations.push({ op, from, to });
+					issues.push(invalid(file, `${at} ${op} needs "from" and "to"`));
+				else migrations.push({ id, op, from, to });
 				return;
 			}
 			case "renameSetting": {
@@ -96,13 +104,14 @@ export function parseMigrations(
 					issues.push(
 						invalid(file, `${at} renameSetting needs "from" and "to"`),
 					);
-				else migrations.push({ op, from, to, section: str("section") });
+				else migrations.push({ id, op, from, to, section: str("section") });
 				return;
 			}
 			case "removeSetting": {
-				const id = str("id");
-				if (!id) issues.push(invalid(file, `${at} removeSetting needs "id"`));
-				else migrations.push({ op, id, section: str("section") });
+				const setting = str("setting");
+				if (!setting)
+					issues.push(invalid(file, `${at} removeSetting needs "setting"`));
+				else migrations.push({ id, op, setting, section: str("section") });
 				return;
 			}
 			default:
@@ -124,7 +133,7 @@ const sectionKey = (type: string) => `sections/${type}.liquid`;
 /**
  * Applies migrations to a schema lock so the drift diff compares against the
  * post-rename expectation: a migrated change goes silent, an unmigrated one
- * still warns.
+ * still warns. Idempotent, so the full migration list is always safe to apply.
  */
 export function applyMigrationsToManifest(
 	manifest: SchemaManifest,
@@ -164,7 +173,9 @@ export function applyMigrationsToManifest(
 					? sections[sectionKey(migration.section)]
 					: undefined;
 				if (entry)
-					entry.settings = entry.settings.filter((s) => s.id !== migration.id);
+					entry.settings = entry.settings.filter(
+						(s) => s.id !== migration.setting,
+					);
 				break;
 			}
 			case "renameBlock": {
@@ -215,7 +226,7 @@ function transformInstance(
 					instance.type === migration.section &&
 					instance.settings
 				) {
-					delete instance.settings[migration.id];
+					delete instance.settings[migration.setting];
 				}
 				break;
 			case "renameBlock":
@@ -259,7 +270,7 @@ function transformGlobalSettings(
 				delete settings[migration.from];
 			}
 		} else if (migration.op === "removeSetting" && !migration.section) {
-			delete settings[migration.id];
+			delete settings[migration.setting];
 		}
 	}
 }

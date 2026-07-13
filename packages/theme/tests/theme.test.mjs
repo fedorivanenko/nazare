@@ -312,8 +312,9 @@ test("a migration rewrites saved data on a rename and silences drift", async () 
 				join(projectRoot, "nazare.migrations.json"),
 				JSON.stringify({
 					migrations: [
-						{ op: "renameSection", from: "hero", to: "banner" },
+						{ id: "m1", op: "renameSection", from: "hero", to: "banner" },
 						{
+							id: "m2",
 							op: "renameSetting",
 							section: "banner",
 							from: "heading",
@@ -377,8 +378,8 @@ test("an invalid migrations file errors and is not partially applied", async () 
 			),
 			"nazare.migrations.json": JSON.stringify({
 				migrations: [
-					{ op: "renameSection", from: "hero", to: "banner" },
-					{ op: "renameSetting", from: "heading" },
+					{ id: "m1", op: "renameSection", from: "hero", to: "banner" },
+					{ id: "m2", op: "renameSetting", from: "heading" },
 				],
 			}),
 		},
@@ -416,7 +417,7 @@ test("a global setting rename rewrites settings_data.current", async () => {
 				join(projectRoot, "nazare.migrations.json"),
 				JSON.stringify({
 					migrations: [
-						{ op: "renameSetting", from: "old_accent", to: "accent" },
+						{ id: "m1", op: "renameSetting", from: "old_accent", to: "accent" },
 					],
 				}),
 			);
@@ -426,6 +427,110 @@ test("a global setting rename rewrites settings_data.current", async () => {
 				readOutput(projectRoot, "config/settings_data.json"),
 			);
 			assert.deepEqual(data.current, { accent: "#000" });
+		},
+	);
+});
+
+const globalRename = JSON.stringify({
+	migrations: [{ id: "m1", op: "renameSetting", from: "old", to: "neu" }],
+});
+
+test("the ledger runs a migration once even if the old name reappears", async () => {
+	await withProject(
+		{ "nazare/config/settings_schema.json": "[]" },
+		async (projectRoot) => {
+			writeFileSync(join(projectRoot, "nazare.migrations.json"), globalRename);
+			writeOut(
+				projectRoot,
+				"config/settings_data.json",
+				JSON.stringify({ current: { old: "first" } }),
+			);
+			const first = await buildTheme({ projectRoot });
+			assert.deepEqual(first.applied, ["m1"]);
+			assert.deepEqual(
+				JSON.parse(readOutput(projectRoot, "config/settings_data.json"))
+					.current,
+				{ neu: "first" },
+			);
+
+			// A later, unrelated setting reuses the retired name "old". Without a
+			// run-once ledger the stale migration would rename it to "neu" and
+			// clobber the real value.
+			writeOut(
+				projectRoot,
+				"config/settings_data.json",
+				JSON.stringify({ current: { neu: "first", old: "unrelated" } }),
+			);
+			const second = await buildTheme({ projectRoot });
+			assert.deepEqual(second.applied, []);
+			assert.deepEqual(
+				JSON.parse(readOutput(projectRoot, "config/settings_data.json"))
+					.current,
+				{ neu: "first", old: "unrelated" },
+			);
+		},
+	);
+});
+
+test("the ledger is per target, so a new target re-applies", async () => {
+	await withProject(
+		{ "nazare/config/settings_schema.json": "[]" },
+		async (projectRoot) => {
+			writeFileSync(join(projectRoot, "nazare.migrations.json"), globalRename);
+			const firstOut = ".nazare-out/a";
+			const secondOut = ".nazare-out/b";
+			mkdirSync(join(projectRoot, firstOut, "config"), { recursive: true });
+			writeFileSync(
+				join(projectRoot, firstOut, "config/settings_data.json"),
+				JSON.stringify({ current: { old: "x" } }),
+			);
+			const first = await buildTheme({ projectRoot, outDir: firstOut });
+			assert.deepEqual(first.applied, ["m1"]);
+
+			// A different output target has its own history — the migration runs
+			// again there.
+			mkdirSync(join(projectRoot, secondOut, "config"), { recursive: true });
+			writeFileSync(
+				join(projectRoot, secondOut, "config/settings_data.json"),
+				JSON.stringify({ current: { old: "y" } }),
+			);
+			const second = await buildTheme({ projectRoot, outDir: secondOut });
+			assert.deepEqual(second.applied, ["m1"]);
+			const ledger = JSON.parse(
+				readFileSync(
+					join(projectRoot, "nazare.migrations-applied.json"),
+					"utf8",
+				),
+			);
+			assert.deepEqual(Object.keys(ledger.applied).sort(), [
+				firstOut,
+				secondOut,
+			]);
+		},
+	);
+});
+
+test("a duplicate migration id is rejected", async () => {
+	await withProject(
+		{ "nazare/config/settings_schema.json": "[]" },
+		async (projectRoot) => {
+			writeFileSync(
+				join(projectRoot, "nazare.migrations.json"),
+				JSON.stringify({
+					migrations: [
+						{ id: "dup", op: "renameSetting", from: "a", to: "b" },
+						{ id: "dup", op: "renameSetting", from: "c", to: "d" },
+					],
+				}),
+			);
+			const result = await buildTheme({ projectRoot });
+			assert.ok(
+				result.issues.some(
+					(i) =>
+						i.code === "THEME_MIGRATION_INVALID" &&
+						/duplicate id/.test(i.message),
+				),
+			);
 		},
 	);
 });

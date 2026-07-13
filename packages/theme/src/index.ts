@@ -39,6 +39,9 @@ const DEFAULT_MANIFEST = "nazare.schema-lock.json";
 // Committed alongside the source: an append-only list of rename/remove ops that
 // rewrite saved merchant data so it survives schema renames.
 const DEFAULT_MIGRATIONS = "nazare.migrations.json";
+// Committed alongside the source: which migration ids have been applied to each
+// target theme, so each migration runs exactly once per target.
+const DEFAULT_MIGRATIONS_LEDGER = "nazare.migrations-applied.json";
 const THEME_DIRS = new Set([
 	"layout",
 	"templates",
@@ -58,6 +61,10 @@ export type ThemeBuildOptions = {
 	manifestPath?: string;
 	/** Migrations file path, relative to projectRoot. Default nazare.migrations.json. */
 	migrationsPath?: string;
+	/** Applied-migrations ledger path, relative to projectRoot. Default nazare.migrations-applied.json. */
+	migrationsLedgerPath?: string;
+	/** Identity of the target theme for the migrations ledger. Default is the output dir. */
+	targetId?: string;
 };
 
 /** A single schema-drift finding between the prior and current schema lock. */
@@ -78,6 +85,8 @@ export type ThemeBuildResult = {
 	manifestPath: string;
 	/** Merchant-data files rewritten by migrations. */
 	migrated: string[];
+	/** Migration ids applied this build (empty when all were already applied). */
+	applied: string[];
 };
 
 type PlannedFile = { contents: string; from: string };
@@ -218,10 +227,23 @@ export async function buildTheme(
 			migrations = parsed.migrations;
 		}
 	}
-	const migratedData = applyMigrationsToData(existingData, migrations);
+
+	// Run-once ledger: skip migrations already applied to THIS target theme, so a
+	// stale rename never re-fires on a later setting that reuses an old name. The
+	// ledger is keyed per target (a store/theme pulls its own history); data
+	// application uses only the unapplied set, while drift silencing below still
+	// applies the full list (idempotent on the schema lock).
+	const ledgerPath = options.migrationsLedgerPath ?? DEFAULT_MIGRATIONS_LEDGER;
+	const targetId = options.targetId ?? outDir;
+	const ledger = await readLedger(join(projectRoot, ledgerPath));
+	const alreadyApplied = new Set(ledger.applied[targetId] ?? []);
+	const unapplied = migrations.filter((m) => !alreadyApplied.has(m.id));
+
+	const migratedData = applyMigrationsToData(existingData, unapplied);
 	existingData = migratedData.data;
 	issues.push(...migratedData.issues);
 	const migrated = migratedData.changed;
+	const applied = unapplied.map((m) => m.id);
 
 	await rm(outputRoot, { recursive: true, force: true });
 
@@ -278,6 +300,17 @@ export async function buildTheme(
 		`${JSON.stringify(sortManifest(manifest), null, 2)}\n`,
 	);
 
+	// Record the migrations applied this build so they never re-run on this
+	// target. Recorded regardless of whether they changed data — the rename is a
+	// one-time schema event. Only written when migrations are defined.
+	if (migrations.length > 0 && applied.length > 0) {
+		ledger.applied[targetId] = [...alreadyApplied, ...applied];
+		await writeFile(
+			join(projectRoot, ledgerPath),
+			`${JSON.stringify(ledger, null, 2)}\n`,
+		);
+	}
+
 	return {
 		compiled: compiled.sort(),
 		copied: copied.sort(),
@@ -290,6 +323,7 @@ export async function buildTheme(
 		drift,
 		manifestPath,
 		migrated: migrated.sort(),
+		applied,
 	};
 }
 
@@ -301,6 +335,24 @@ async function readManifest(path: string): Promise<SchemaManifest | undefined> {
 	} catch {
 		return undefined;
 	}
+}
+
+type MigrationLedger = { version: 1; applied: Record<string, string[]> };
+
+// A missing or malformed ledger is treated as "nothing applied yet".
+async function readLedger(path: string): Promise<MigrationLedger> {
+	const raw = await readFile(path, "utf8").catch(() => undefined);
+	if (raw !== undefined) {
+		try {
+			const parsed = JSON.parse(raw) as Partial<MigrationLedger>;
+			if (parsed.applied && typeof parsed.applied === "object") {
+				return { version: 1, applied: parsed.applied };
+			}
+		} catch {
+			// fall through to a fresh ledger
+		}
+	}
+	return { version: 1, applied: {} };
 }
 
 // Stable key order so the committed lock produces clean diffs.
