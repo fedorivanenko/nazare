@@ -25,7 +25,7 @@ The ecosystem offers many excellent tools, but each addresses only part of the p
 Install the CLI first. The installer requires Node.js and `pnpm` (or Corepack, which can activate `pnpm`) and downloads the latest GitHub release artifact:
 
 ```sh
-curl -fsSL https://nazare.engineering/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh | sh
 ```
 
 Create a Nazare source workspace inside an existing Shopify theme or a new project:
