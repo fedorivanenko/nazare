@@ -1,6 +1,7 @@
 #!/usr/bin/env node
+import { join } from "node:path";
 import { registryFromEnv } from "@nazare/registry";
-import { publishComponent } from "./publish.js";
+import { packComponent, publishComponent } from "./publish.js";
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -16,6 +17,26 @@ if (
 }
 
 try {
+	if (command === "pack") {
+		const dir = args[1] ?? ".";
+		const { component, path } = await packComponent(
+			dir,
+			join(".nazare-out", "pack"),
+		);
+		console.log(
+			JSON.stringify(
+				{
+					packed: { id: component.id, version: component.version },
+					path,
+					files: Object.keys(component.files).sort(),
+				},
+				null,
+				2,
+			),
+		);
+		process.exit(0);
+	}
+
 	if (command === "publish") {
 		const dir = args[1] ?? ".";
 		const { component, result } = await publishComponent(dir, {
@@ -52,6 +73,7 @@ try {
 
 function printHelp(): void {
 	console.error(`Usage:
+  nazare-dev pack [dir]      write the publishable payload to .nazare-out/pack
   nazare-dev publish [dir]   publish the component in dir (default .)
 
 Env:

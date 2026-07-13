@@ -3,15 +3,15 @@
 // a component's declared nazare.json dependencies must match the ../<folder>/
 // imports in its source, so the published dependency graph can never drift from
 // what the code actually imports. See REGISTRY.md.
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type {
 	NazareManifest,
 	PublishResult,
 	RegistryClient,
 	RegistryComponent,
 } from "@nazare/core";
-import { componentFolderName } from "@nazare/registry";
+import { componentFolderName, parseComponentId } from "@nazare/registry";
 
 const MANIFEST = "nazare.json";
 
@@ -70,6 +70,25 @@ export async function publishComponent(
 	const component = await buildRegistryComponent(dir);
 	const result = await options.client.publish(component, options.token);
 	return { component, result };
+}
+
+/**
+ * Builds the publishable component (same verification as publish) and writes it
+ * locally instead of uploading — the equivalent of `npm pack`. The output is
+ * registry-shaped (<outputRoot>/<scope>/<name>/<version>.json), so outputRoot
+ * doubles as a file: registry you can add from. Overwrites, so re-packing is
+ * always safe.
+ */
+export async function packComponent(
+	dir: string,
+	outputRoot: string,
+): Promise<{ component: RegistryComponent; path: string }> {
+	const component = await buildRegistryComponent(dir);
+	const { scope, name } = parseComponentId(component.id);
+	const path = join(outputRoot, scope, name, `${component.version}.json`);
+	await mkdir(dirname(path), { recursive: true });
+	await writeFile(path, `${JSON.stringify(component, null, 2)}\n`);
+	return { component, path };
 }
 
 // The honesty guard: declared dependencies and imported folders must be the

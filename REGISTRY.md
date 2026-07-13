@@ -168,6 +168,15 @@ Same transitive + sibling rules as `add`.
 3. Build the `RegistryComponent` (folder → `files` map) and `PUT` it.
 4. `409` → the version is taken; bump `nazare.json.version` and retry.
 
+### `nazare-dev pack [dir]` — publish, minus the upload
+
+Runs the same build and dependency verification, then writes the
+`RegistryComponent` to `.nazare-out/pack/<scope>/<name>/<version>.json` instead
+of uploading — the equivalent of `npm pack`. Needs no `NAZARE_REGISTRY` and no
+token, so it is the way to inspect exactly what would be published. Because the
+output is registry-shaped, `.nazare-out/pack` is itself a `file:` registry you
+can `add` from. Re-packing overwrites.
+
 ## The `RegistryClient` seam (testability)
 
 The client's only contact with the network is one injected interface — the same

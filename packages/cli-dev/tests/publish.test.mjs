@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { FileSystemRegistry } from "@nazare/registry";
-import { buildRegistryComponent, publishComponent } from "../dist/publish.js";
+import {
+	buildRegistryComponent,
+	packComponent,
+	publishComponent,
+} from "../dist/publish.js";
 
 // Writes a component folder: { "nazare.json": {...}, "<path>": "<contents>" }.
 async function withComponent(files, fn) {
@@ -116,6 +120,49 @@ test("an entry not listed in files[] is refused", async () => {
 			);
 		},
 	);
+});
+
+test("pack writes a registry-shaped payload that reads back as the component", async () => {
+	const outputRoot = mkdtempSync(join(tmpdir(), "nazare-pack-"));
+	try {
+		await withComponent(
+			{
+				"nazare.json": manifest(),
+				"counter.ts": "export const counter = 1;\n",
+			},
+			async (dir) => {
+				const { component, path } = await packComponent(dir, outputRoot);
+				assert.equal(path, join(outputRoot, "nazare", "counter", "0.1.0.json"));
+				const onDisk = JSON.parse(readFileSync(path, "utf8"));
+				assert.deepEqual(onDisk, component);
+
+				// Re-packing the same version overwrites, no conflict.
+				await packComponent(dir, outputRoot);
+			},
+		);
+	} finally {
+		await rm(outputRoot, { recursive: true, force: true });
+	}
+});
+
+test("pack runs the same dependency guard as publish", async () => {
+	const outputRoot = mkdtempSync(join(tmpdir(), "nazare-pack-"));
+	try {
+		await withComponent(
+			{
+				"nazare.json": manifest({ dependencies: {} }),
+				"counter.ts": 'import { cn } from "../cn/cn.ts";\n',
+			},
+			async (dir) => {
+				await assert.rejects(
+					packComponent(dir, outputRoot),
+					/imports \.\.\/cn\//,
+				);
+			},
+		);
+	} finally {
+		await rm(outputRoot, { recursive: true, force: true });
+	}
 });
 
 test("publish uploads, then a second publish of the same version conflicts", async () => {
