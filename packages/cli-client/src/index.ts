@@ -13,6 +13,7 @@ import { installComponent, updateAll } from "./install.js";
 import { packComponent, publishComponent } from "./publish.js";
 
 const DEFAULT_SOURCE_ROOT = "nazare";
+const THEME_MANIFEST = "nazare.theme.json";
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -49,6 +50,11 @@ try {
 	// `nazare/` source root — rather than one entry file.
 	if (command === "build") {
 		await runThemeBuild(projectRoot, readProjectFile, file, cliOptions);
+	}
+
+	// Registry config commands update project-level nazare.theme.json.
+	if (command === "registry") {
+		await runRegistry(projectRoot, cliOptions);
 	}
 
 	// `add` / `update` talk to the registry, not a local entry file: they copy
@@ -179,7 +185,15 @@ type CliOptions = {
 	strictness?: "loose" | "strict";
 	version?: string;
 	sourceRoot?: string;
+	outDir?: string;
 	positionals: string[];
+};
+
+type ProjectManifest = {
+	dependencies?: Record<string, string>;
+	installed?: Record<string, string>;
+	registry?: string;
+	registries?: Record<string, string>;
 };
 
 // A value option is either `--name value` (consuming the next arg) or
@@ -220,6 +234,12 @@ function parseCliOptions(args: string[]): CliOptions {
 		if (sourceRoot) {
 			options.sourceRoot = sourceRoot.value;
 			index += sourceRoot.consumed - 1;
+			continue;
+		}
+		const outDir = readValueOption(args, index, "--out-dir");
+		if (outDir) {
+			options.outDir = outDir.value;
+			index += outDir.consumed - 1;
 			continue;
 		}
 		if (arg.startsWith("--")) {
@@ -286,6 +306,7 @@ async function runThemeBuild(
 		const result = await buildTheme({
 			projectRoot,
 			sourceRoot: target ?? DEFAULT_SOURCE_ROOT,
+			outDir: cliOptions.outDir,
 			strictness: cliOptions.strictness,
 		});
 		console.log(
@@ -320,7 +341,7 @@ async function runAdd(
 		cliOptions.version ?? "latest",
 		"add",
 		{
-			client: registryFromEnv(),
+			client: await registryClientForProject(projectRoot),
 			projectRoot,
 			sourceRoot: cliOptions.sourceRoot ?? DEFAULT_SOURCE_ROOT,
 		},
@@ -351,7 +372,7 @@ async function runPack(dir: string | undefined): Promise<void> {
 
 async function runPublish(dir: string | undefined): Promise<void> {
 	const { component, result } = await publishComponent(dir ?? ".", {
-		client: registryFromEnv(),
+		client: await registryClientForProject(process.cwd()),
 		token: process.env.NAZARE_TOKEN ?? "",
 	});
 	if (result.ok) {
@@ -380,7 +401,7 @@ async function runUpdate(
 	cliOptions: CliOptions,
 ): Promise<void> {
 	const options = {
-		client: registryFromEnv(),
+		client: await registryClientForProject(projectRoot),
 		projectRoot,
 		sourceRoot: cliOptions.sourceRoot ?? DEFAULT_SOURCE_ROOT,
 	};
@@ -395,6 +416,115 @@ async function runUpdate(
 	for (const warning of outcome.warnings) console.error(`warning: ${warning}`);
 	console.log(JSON.stringify(outcome, null, 2));
 	process.exit(0);
+}
+
+async function runRegistry(
+	projectRoot: string,
+	cliOptions: CliOptions,
+): Promise<void> {
+	const [subcommand, name, url] = cliOptions.positionals;
+	if (subcommand === "add") {
+		if (!name || !url) {
+			console.error("Usage: nazare registry add <name> <url>");
+			process.exit(1);
+		}
+		assertRegistryName(name);
+		const manifest = await readProjectManifest(projectRoot);
+		const registries = { ...(manifest.registries ?? {}), [name]: url };
+		const next = {
+			...manifest,
+			registries,
+			registry: manifest.registry ?? name,
+		};
+		await writeProjectManifest(projectRoot, next);
+		console.log(
+			JSON.stringify(
+				{ added: { name, url }, current: next.registry, registries },
+				null,
+				2,
+			),
+		);
+		process.exit(0);
+	}
+
+	if (subcommand === "use") {
+		if (!name) {
+			console.error("Usage: nazare registry use <name>");
+			process.exit(1);
+		}
+		const manifest = await readProjectManifest(projectRoot);
+		const registries = manifest.registries ?? {};
+		const selected = registries[name];
+		if (!selected) {
+			console.error(`Unknown registry ${name}`);
+			process.exit(1);
+		}
+		await writeProjectManifest(projectRoot, { ...manifest, registry: name });
+		console.log(JSON.stringify({ current: name, url: selected }, null, 2));
+		process.exit(0);
+	}
+
+	if (subcommand === "list" || !subcommand) {
+		const manifest = await readProjectManifest(projectRoot);
+		console.log(
+			JSON.stringify(
+				{
+					current: process.env.NAZARE_REGISTRY
+						? "<env:NAZARE_REGISTRY>"
+						: (manifest.registry ?? null),
+					registries: manifest.registries ?? {},
+				},
+				null,
+				2,
+			),
+		);
+		process.exit(0);
+	}
+
+	console.error(`Unknown registry command ${subcommand}`);
+	printHelp();
+	process.exit(1);
+}
+
+async function registryClientForProject(projectRoot: string) {
+	if (process.env.NAZARE_REGISTRY) return registryFromEnv();
+	const manifest = await readProjectManifest(projectRoot);
+	const current = manifest.registry;
+	const registries = manifest.registries ?? {};
+	const url = current ? registries[current] : undefined;
+	if (!current || !url) {
+		throw new Error(
+			"No registry configured. Run `nazare registry add <name> <url>` and `nazare registry use <name>`, or set NAZARE_REGISTRY.",
+		);
+	}
+	return registryFromEnv({ NAZARE_REGISTRY: url });
+}
+
+async function readProjectManifest(
+	projectRoot: string,
+): Promise<ProjectManifest> {
+	const raw = await readFile(join(projectRoot, THEME_MANIFEST), "utf8").catch(
+		() => undefined,
+	);
+	if (raw === undefined) return {};
+	return JSON.parse(raw) as ProjectManifest;
+}
+
+async function writeProjectManifest(
+	projectRoot: string,
+	manifest: ProjectManifest,
+): Promise<void> {
+	await writeFile(
+		join(projectRoot, THEME_MANIFEST),
+		`${JSON.stringify(manifest, null, 2)}\n`,
+	);
+}
+
+function assertRegistryName(name: string): void {
+	if (/^[A-Za-z0-9._-]+$/.test(name)) return;
+	throw new Error(
+		`Invalid registry name ${name}; use only letters, numbers, dot, underscore, and dash`,
+	);
 }
 
 function hasErrors(
@@ -413,6 +543,9 @@ function printHelp(): void {
   nazare build [source-root|file]   walks nazare/ by default
   nazare add <@scope/name>          copy a component + deps into the source root
   nazare update [@scope/name]       re-fetch latest; all installed if omitted
+  nazare registry add <name> <url>  save a project registry in nazare.theme.json
+  nazare registry use <name>        select a saved project registry
+  nazare registry list              list saved project registries
   nazare pack [dir]                 write publishable payload to .nazare-out/pack
   nazare publish [dir]              publish component folder (default .)
   nazare artifact <file>
@@ -422,6 +555,7 @@ Options:
   --strictness loose|strict
   --version x.y.z                   add/update: exact version (default latest)
   --source-root <dir>               add/update/build: default nazare/
+  --out-dir <dir>                   build output directory: default .nazare-out/theme
 
 Env:
   NAZARE_REGISTRY                   registry base URL, or file:<dir> for a local one

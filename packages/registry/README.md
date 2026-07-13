@@ -6,7 +6,15 @@ The registry model is intentionally simple: install copies source files into a p
 
 ## Pick a registry
 
-Set `NAZARE_REGISTRY` explicitly. There is no default.
+The CLI can store project registry settings in `nazare.theme.json`:
+
+```sh
+nazare registry add main https://registry.example.com
+nazare registry use main
+nazare registry list
+```
+
+For one command or lower-level API usage, set `NAZARE_REGISTRY` explicitly:
 
 ```sh
 # Local folder registry: no server, no auth
@@ -16,7 +24,7 @@ export NAZARE_REGISTRY=file:.nazare-registry
 export NAZARE_REGISTRY=https://registry.example.com
 ```
 
-`registryFromEnv()` returns:
+`registryFromEnv()` reads `NAZARE_REGISTRY` and returns:
 
 - `FileSystemRegistry` for `file:<dir>`
 - `HttpRegistry` for any other value
@@ -71,7 +79,8 @@ Clean missing components/versions return `undefined` from client methods. Transp
 Example:
 
 ```sh
-export NAZARE_REGISTRY=file:.nazare-registry
+nazare registry add local file:.nazare-registry
+nazare registry use local
 nazare publish ./nazare/button
 nazare add @acme/button
 ```

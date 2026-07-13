@@ -1,259 +1,477 @@
 # Nazare
 
-Liquid-first tooling for Shopify themes.
+Shopify themes become difficult to maintain because the relationships between their parts are mostly implicit. As themes grow, developers spend more time tracing dependencies, checking parameters, duplicating patterns, testing manually, and avoiding unintended breakage.
 
-Nazare is two things in one ecosystem:
+The ecosystem offers many excellent tools, but each addresses only part of the problem:
 
-1. **shadcn/ui for Shopify** — a registry workflow for copying component source into your theme project. You install source, own it, edit it, and build it locally.
-2. **A TS-ish upgrade for Liquid** — `.nz.liquid` adds type-safety, composability, diagnostics, safer imports, and less boilerplate.
+- Dawn provides a strong starting point, but large customizations eventually inherit the same maintenance challenges as any other theme.
 
-Both parts work with normal Liquid files. `.nz.liquid` is optional: use plain `.liquid` when you want, upgrade to `.nz.liquid` when you want stronger checks and better authoring.
+- Theme Check catches many mistakes, but it analyzes existing code rather than making relationships between components explicit.
 
-The theme builder and registry are independent products that share conventions. The registry copies source; it does not compile. The theme builder builds local source; it does not need a registry.
+- Shopify CLI improves local development and deployment, but it doesn't change how themes are structured or how developers reason about them.
 
-## Shape
+- Liquid snippets and sections encourage reuse, yet their interfaces remain implicit, making dependencies difficult to discover and changes difficult to evaluate safely.
 
-```text
-Nazare ecosystem
+- Component libraries and starter themes reduce the effort of starting a project, but once installed they become another codebase that must be understood, modified, and maintained.
 
-  theme builder product
-    local Shopify theme source
-      layout/ templates/ sections/ snippets/ assets/ config/ locales/
-      -> nazare build
-      -> .nazare-out/theme
+- Hydrogen solves many of these challenges by replacing the Shopify theme architecture with a React application and modern frontend tooling. This is a powerful option, but it requires adopting a different storefront architecture, hosting model, and technology stack, making it unsuitable for teams that want to continue building native Shopify themes
 
-    calls compiler for .nz.liquid files
-    copies plain .liquid, .json, and assets
-    no registry involved
+**Introducing Nazare.**
 
-  registry product
-    local Liquid / .nz.liquid source
-      -> nazare pack
-      -> registry JSON
+**Nazare** is shadcn/ui for Shopify with a TypeScript-inspired upgrade for Liquid. It helps developers build native Shopify themes that are easier to understand, compose, and maintain, while remaining fully compatible with Shopify.
 
-    local Liquid / .nz.liquid source
-      -> nazare publish
-      -> file: registry or HTTP registry
+## Quickstart
 
-    registry
-      -> nazare add @scope/name
-      -> local source files copied into nazare/<name>/...
-
-    no compile step involved
-```
-
-Typical source folder:
-
-```text
-nazare/layout/theme.liquid
-nazare/templates/product.json
-nazare/sections/main-product.nz.liquid
-nazare/snippets/price.liquid
-nazare/assets/theme.css
-nazare/config/settings_schema.json
-nazare/locales/en.default.json
-```
-
-Registry choices:
-
-```text
-file:.nazare-registry          local dev/team registry, no server
-https://registry.example.com   self-hosted HTTP registry
-```
-
-## Install the CLI
-
-Curl install from GitHub:
+Install the CLI first:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh | sh
+curl -fsSL https://nazare.engineering/install.sh | sh
 ```
 
-Install another branch/ref:
+Create a Nazare source workspace inside an existing Shopify theme or a new project:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh | NAZARE_REF=my-branch sh
+mkdir -p nazare/components nazare/templates nazare/layout nazare/config nazare/locales
 ```
 
-From this repo during development:
+Choose and save a registry, then add components:
 
 ```sh
+nazare registry add main https://registry.nazare.engineering
+nazare registry use main
+
+nazare add @nazare/button
+nazare add @nazare/hero
+```
+
+The selected registry is stored in project-level `nazare.theme.json`
+
+Build a Shopify-compatible theme output:
+
+```sh
+nazare build --out-dir /theme
+```
+
+Run it with Shopify CLI:
+
+```sh
+shopify theme dev --path /theme
+```
+
+Nazare is designed for incremental adoption: start with existing Shopify Liquid files, add `.nz.liquid` components where stronger contracts help, then build everything into one normal Shopify theme.
+
+Nazare has three main parts:
+
+## 1. Compiler
+
+Write Shopify components with explicit props, imports, and reusable composition and forget about prop drilling.
+
+The compiler introduces the `.nz.liquid` file format — a TypeScript-inspired superset of Liquid. Like TypeScript compiles to JavaScript, `.nz.liquid` compiles to standard Liquid, adding stronger contracts, better diagnostics, and a modern authoring experience without changing the Shopify runtime.
+
+Example input:
+
+```liquid
+{# components/button.nz.liquid #}
+{% props {
+  href: url.required(),
+  label: string.required(),
+  variant: string.enum("primary", "secondary").default("primary"),
+} %}
+
+<a class="button button--{{ props.variant }}" href="{{ props.href }}">
+  {{ props.label }}
+</a>
+```
+
+```css
+/* components/hero.css */
+.root {
+  display: grid;
+  min-height: 70vh;
+  place-items: center;
+}
+
+.content {
+  max-width: 56rem;
+}
+```
+
+```ts
+// components/hero.ts
+export default island(({ root, refs }) => {
+  refs.cta?.addEventListener("click", () => {
+    root.dispatchEvent(new CustomEvent("nazare:hero-cta"));
+  });
+});
+```
+
+```liquid
+{# components/hero.nz.liquid #}
+{% component section %}
+{% import Button from "./button.nz.liquid" %}
+{% import styles from "./hero.css" %}
+{% import hero from "./hero.ts" %}
+
+{% props {
+  heading: string.setting({ label: "Heading", default: "New arrivals" }),
+  body: richtext.setting({ label: "Body" }),
+  cta_url: url.setting({ label: "Button link" }),
+  cta_label: string.setting({ label: "Button label", default: "Shop now" }),
+} %}
+
+<section nz-root island="hero" class="{{ styles.root }}">
+  <div class="{{ styles.content }}">
+    <h1>{{ props.heading }}</h1>
+    {{ props.body }}
+
+    <div ref="cta">
+      {% render Button {
+        href: props.cta_url,
+        label: props.cta_label,
+        variant: "primary",
+      } %}
+    </div>
+  </div>
+</section>
+```
+
+Example output:
+
+```liquid
+{# snippets/button.liquid #}
+<a class="button button--{{ variant | default: "primary" }}" href="{{ href }}">
+  {{ label }}
+</a>
+```
+
+```liquid
+{# sections/hero.liquid #}
+{{ "hero.css" | asset_url | stylesheet_tag }}
+<script src="{{ "nazare-runtime.js" | asset_url }}" defer></script>
+<script src="{{ "hero.js" | asset_url }}" defer></script>
+
+<section data-nz-island="hero" class="hero_root__a1b2c">
+  <div class="hero_content__a1b2c">
+    <h1>{{ section.settings.heading }}</h1>
+    {{ section.settings.body }}
+
+    <div data-nz-ref="cta">
+      {% render "button",
+        href: section.settings.cta_url,
+        label: section.settings.cta_label,
+        variant: "primary"
+      %}
+    </div>
+  </div>
+</section>
+
+{% schema %}
+{
+  "name": "Hero",
+  "settings": [
+    { "type": "text", "id": "heading", "label": "Heading", "default": "New arrivals" },
+    { "type": "richtext", "id": "body", "label": "Body" },
+    { "type": "url", "id": "cta_url", "label": "Button link" },
+    { "type": "text", "id": "cta_label", "label": "Button label", "default": "Shop now" }
+  ],
+  "presets": [{ "name": "Hero" }]
+}
+{% endschema %}
+```
+
+```css
+/* assets/hero.css */
+.hero_root__a1b2c {
+  display: grid;
+  min-height: 70vh;
+  place-items: center;
+}
+
+.hero_content__a1b2c {
+  max-width: 56rem;
+}
+```
+
+```js
+// assets/hero.js
+Nazare.registerIsland("hero", ({ root, refs }) => {
+  refs.cta?.addEventListener("click", () => {
+    root.dispatchEvent(new CustomEvent("nazare:hero-cta"));
+  });
+});
+```
+
+Because `Hero` imports `Button`, `styles`, and `hero`, the compiler knows the exact component, CSS module, and JavaScript island contracts. Missing `href`, unknown props, invalid `variant` values, unknown `styles.*` classes, invalid `ref` reads, and wrong section setting types are reported before Shopify sees the theme.
+
+Nazare can also work with plain Liquid. Existing `.liquid` snippets, sections, blocks, layouts, and templates can stay valid Shopify files while Nazare parses and validates them, checks schema and Liquid structure, reports diagnostics, tracks dependencies, and emits them into the final theme alongside `.nz.liquid` components.
+
+Example diagnostic:
+
+```liquid
+{% render Button {
+  href: props.cta_url,
+  label: props.cta_label,
+  variant: "ghost",
+} %}
+```
+
+`Button` only accepts `"primary"` or `"secondary"`, so Nazare reports the invalid `variant` before the theme is pushed to Shopify.
+
+Useful compiler commands:
+
+```sh
+nazare validate nazare/components/hero.nz.liquid
+nazare schema nazare/components/hero.nz.liquid
+nazare graph nazare/components/hero.nz.liquid
+nazare dump nazare/components/hero.nz.liquid
+```
+
+## 2. Registry
+
+Build from reusable components instead of starting from scratch.
+
+The Registry brings the shadcn/ui model to Shopify. Components are distributed as editable source code that becomes part of your project, giving you complete ownership with no runtime dependencies. The registry is fully open source and can be self-hosted.
+
+Example usage:
+
+```sh
+# save and select a registry for this project
+nazare registry add main https://registry.nazare.engineering
+nazare registry use main
+nazare registry list
+
+# copy component source into your project
+nazare add @acme/button
+nazare add @acme/hero
+```
+
+This writes project registry settings to `nazare.theme.json`:
+
+```json
+{
+  "registry": "main",
+  "registries": {
+    "main": "https://registry.nazare.engineering"
+  },
+  "installed": {
+    "@acme/button": "1.0.0"
+  }
+}
+```
+
+A registry component is source, not a package dependency. Installing a component writes editable files into your workspace, for example:
+
+```txt
+components/button.nz.liquid
+components/button.css
+components/button.ts
+components/hero.nz.liquid
+```
+
+Publish your own component:
+
+```json
+// components/button/nazare.json
+{
+  "id": "@acme/button",
+  "version": "1.0.0",
+  "entry": "button.nz.liquid",
+  "files": ["button.nz.liquid", "button.css", "button.ts"],
+  "dependencies": {}
+}
+```
+
+```sh
+nazare registry add company https://registry.your-website.com
+nazare registry use company
+export NAZARE_TOKEN=your-publish-token
+
+nazare pack ./components/button
+nazare publish ./components/button
+```
+
+Update installed components:
+
+```sh
+nazare update @acme/button
+nazare update
+```
+
+You can also run a registry from a local folder, with no server:
+
+```sh
+nazare registry add local file:.nazare-registry
+nazare registry use local
+
+nazare publish ./components/button
+nazare add @acme/button
+```
+
+Spin up your own HTTP registry:
+
+```sh
+# 1. create Postgres database and export its URL
+export DATABASE_URL=postgres://user:password@localhost:5432/nazare_registry
+
+# 2. install, build, and migrate
 pnpm install
 pnpm -s tsc -b
-pnpm --filter @nazare/cli-client link --global
+psql "$DATABASE_URL" -f apps/registry-api/migrations/001_components.sql
+
+# 3. start registry server
+NAZARE_TOKENS="dev-token" pnpm --filter @nazare/registry-api start
 ```
 
-Verify:
+Then point the CLI at it:
 
 ```sh
-nazare help
+nazare registry add local-http http://localhost:3000
+nazare registry use local-http
+export NAZARE_TOKEN=dev-token
+
+nazare publish ./components/button
+nazare add @acme/button
 ```
 
-Unlink:
+For production, deploy `apps/registry-api` to any Node host or Vercel, set `DATABASE_URL` and `NAZARE_TOKENS`, run the migration, then save the deployed URL with `nazare registry add`.
+
+Registry operational model:
+
+- installs copy source into your repo;
+- project registry settings and installed versions live in `nazare.theme.json`;
+- reads are public for HTTP registries;
+- publishing requires `NAZARE_TOKEN`;
+- `NAZARE_REGISTRY` can override project registry selection for one command;
+- versions are immutable, so changing files requires bumping `nazare.json.version`.
+
+## 3. Build System
+
+Separate your source files from the deployed theme
+
+The Build System separates your development workspace from the final Shopify theme. Think of it as a monorepo-style workspace for Shopify themes: source files can be organized however your team prefers, while the build output is assembled into the standard Shopify theme structure expected by Shopify.
+
+Example source workspace:
+
+```txt
+src/
+  components/
+    button.nz.liquid
+    hero.nz.liquid
+    hero.css
+    hero.ts
+  layout/
+    theme.liquid
+  templates/
+    index.json
+  config/
+    settings_schema.json
+  locales/
+    en.default.json
+```
+
+Build it:
 
 ```sh
-pnpm --filter @nazare/cli-client unlink --global
-```
-
-## Daily workflow
-
-### 1. Build local theme source
-
-Put Shopify theme source under `nazare/`:
-
-```text
-nazare/layout/theme.liquid
-nazare/templates/product.json
-nazare/sections/main-product.nz.liquid
-nazare/snippets/price.liquid
-nazare/assets/theme.css
-```
-
-Build:
-
-```sh
+# walks nazare/ by default
 nazare build
+
+# or choose a different source root
+nazare build storefront
+
+# use loose mode while migrating existing themes
+nazare build --strictness loose
 ```
 
-Output goes to:
+Example output:
 
-```text
-.nazare-out/theme
+```txt
+theme/
+  assets/
+    hero.css
+    hero.js
+    nazare-runtime.js
+  config/
+    settings_schema.json
+  layout/
+    theme.liquid
+  locales/
+    en.default.json
+  sections/
+    hero.liquid
+  snippets/
+    button.liquid
+  templates/
+    index.json
 ```
 
-This is theme-builder workflow. It reads local files only. Plain Shopify files are copied; `.nz.liquid` files are compiled.
+What the build does:
 
-### 2. Use a local registry while developing
+- compiles every `.nz.liquid` component into Shopify `sections/`, `blocks/`, `snippets/`, and `assets/`;
+- copies plain Shopify theme files from `layout/`, `templates/`, `sections/`, `snippets/`, `assets/`, `config/`, and `locales/`;
+- validates plain `.liquid` files and JSON files during the copy step;
+- resolves local imports so CSS, JavaScript islands, and component dependencies land in the final theme;
+- reports conflicts when two source files try to write the same Shopify output path.
 
-A registry can be a folder. No server, no auth.
+Use the generated `.nazare-out/theme` directory with existing Shopify tooling, or choose your own output directory with `--out-dir`:
 
 ```sh
-export NAZARE_REGISTRY=file:.nazare-registry
+shopify theme dev --path .nazare-out/theme
+shopify theme push --path .nazare-out/theme
+
+nazare build --out-dir theme
+shopify theme dev --path theme
 ```
 
-Publish source into it:
-
-```sh
-nazare publish ./nazare/button
-```
-
-Install source into another project:
-
-```sh
-nazare add @scope/button
-```
-
-Local registry layout:
-
-```text
-.nazare-registry/<scope>/<name>/<version>.json
-```
-
-This is registry workflow. It copies source files only.
-
-### 3. Inspect before publishing
-
-```sh
-nazare pack ./nazare/button
-```
-
-Output:
-
-```text
-.nazare-out/pack/<scope>/<name>/<version>.json
-```
-
-That folder is also a valid `file:` registry.
-
-### 4. Publish to an HTTP registry
-
-```sh
-export NAZARE_REGISTRY=https://registry.example.com
-export NAZARE_TOKEN=long-random-token
-nazare publish ./nazare/button
-```
-
-Versions are immutable. To publish new bytes, bump `version` in `nazare.json`.
+Also, Nazare includes JS island architecture, supports any JavaScript framework you want, can check and validate plain Liquid, compile and minimize CSS and JS, and many more.
 
 ## CLI reference
 
-Compiler commands:
-
-```sh
-nazare build                         # build nazare/ into .nazare-out/theme
-nazare validate <file>               # check one file
-nazare artifact <file>               # print compiled artifact JSON
-nazare ast <file>
-nazare ir <file>
-nazare graph <file>
-nazare schema <file>
-nazare dump <file>
+```txt
+nazare build [source-root|file]     build a complete Shopify theme output
+nazare add <@scope/name>            install a registry component and dependencies
+nazare update [@scope/name]         update one component, or all installed components
+nazare registry add <name> <url>    save a project registry in `nazare.theme.json`
+nazare registry use <name>          select a saved project registry
+nazare registry list                list saved registries
+nazare pack [dir]                   create a publishable registry payload
+nazare publish [dir]                publish a component folder
+nazare validate <file>              check one `.nz.liquid` file
+nazare schema <file>                print generated Shopify schema
+nazare graph <file>                 print component dependency graph
+nazare ast <file>                   print parsed AST
+nazare ir <file>                    print compiler IR
+nazare artifact <file>              print full compiler artifact
+nazare dump <file>                  write debug JSON files into `.nazare-out`
 ```
 
-Registry commands:
+Common options and environment variables:
 
-```sh
-nazare add @scope/name               # copy component + deps from registry
-nazare update [@scope/name]          # re-fetch latest source
-nazare pack ./nazare/button          # write registry JSON to .nazare-out/pack
-nazare publish ./nazare/button       # publish source to registry
+```txt
+--strictness loose|strict           default strict; loose helps migration
+--version x.y.z                     add/update exact registry version
+--source-root <dir>                 add/update/build source root, default `nazare/`
+--out-dir <dir>                     build output directory, default `.nazare-out/theme`
+NAZARE_REGISTRY                     one-command registry override, or `file:<dir>`
+NAZARE_TOKEN                        publish token
 ```
 
-## Set up an HTTP registry
+## JavaScript islands
 
-Use the self-hostable server in `apps/registry-api`.
+Nazare does not require React, Vue, Svelte, or any other framework. A component can import a small TypeScript or JavaScript island, and that island mounts only where the component is rendered. If you want a framework, mount it inside the island.
 
-Required env:
-
-```sh
-DATABASE_URL=postgres://...
-NAZARE_TOKENS=long-random-token
+```ts
+export default island(({ root }) => {
+  // mount vanilla JavaScript, React, Vue, Svelte, or anything else here
+});
 ```
 
-Run migration:
+## Repository layout
 
-```sh
-psql "$DATABASE_URL" -f apps/registry-api/migrations/001_components.sql
-```
-
-Run locally:
-
-```sh
-pnpm -s tsc -b
-PORT=3000 pnpm --filter @nazare/registry-api start
-```
-
-Use it:
-
-```sh
-export NAZARE_REGISTRY=http://localhost:3000
-export NAZARE_TOKEN=long-random-token
-nazare publish ./nazare/button
-nazare add @scope/button
-```
-
-Deploy notes:
-
-- Vercel: set project root to `apps/registry-api`, set `DATABASE_URL` + `NAZARE_TOKENS`, run migration once, deploy.
-- Any Node host: build with `pnpm -s tsc -b`, run `node apps/registry-api/dist/index.js` behind HTTPS.
-
-More registry docs:
-
-- [`packages/registry`](./packages/registry/README.md)
-- [`apps/registry-api`](./apps/registry-api/README.md)
-
-## Packages
-
-- `packages/core` — shared types and compiler data model
-- `packages/compiler` — parser, checks, IR, emit for `.nz.liquid`
-- `packages/theme` — Shopify theme builder: copy plain files, compile `.nz.liquid`
-- `packages/cli-client` — `nazare` CLI
-- `packages/registry` — registry clients: HTTP and `file:`
-- `apps/registry-api` — self-hostable HTTP registry server
-
-## Development
-
-```sh
-pnpm install
-pnpm -s test:all
+```txt
+packages/core          shared data model, diagnostics, contracts, schema types
+packages/compiler      `.nz.liquid` parser, checker, emitter, runtime output
+packages/theme         source-root walker and Shopify theme builder
+packages/registry      file and HTTP registry clients
+packages/cli-client    `nazare` CLI
+apps/registry-api      self-hostable HTTP registry server
 ```

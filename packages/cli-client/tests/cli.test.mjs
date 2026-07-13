@@ -9,9 +9,12 @@ import test from "node:test";
 const cli = resolve("packages/cli-client/dist/index.js");
 
 function runCli(cwd, ...args) {
+	const env = { ...process.env };
+	delete env.NAZARE_REGISTRY;
 	return spawnSync(process.execPath, [cli, ...args], {
 		cwd,
 		encoding: "utf8",
+		env,
 	});
 }
 
@@ -125,6 +128,24 @@ test("cli: build with no path walks the default nazare/ source root", async () =
 	);
 });
 
+test("cli: build supports custom output directory", async () => {
+	await withProject(
+		{
+			"nazare/button.nz.liquid": "<button>Button</button>\n",
+		},
+		async (cwd) => {
+			const built = runCli(cwd, "build", "--out-dir", "theme");
+			assert.equal(built.status, 0, built.stderr);
+			const output = JSON.parse(built.stdout);
+			assert.ok(output.written.includes("theme/snippets/button.liquid"));
+			assert.match(
+				readFileSync(join(cwd, "theme/snippets/button.liquid"), "utf8"),
+				/<button>Button<\/button>/,
+			);
+		},
+	);
+});
+
 test("cli: build reports a conflict when two components emit the same path", async () => {
 	await withProject(
 		{
@@ -171,6 +192,58 @@ test("cli: pack is available on the main nazare command", async () => {
 			});
 			const payload = JSON.parse(readFileSync(join(cwd, output.path), "utf8"));
 			assert.equal(payload.id, "@acme/button");
+		},
+	);
+});
+
+test("cli: registry add/use stores project registry and add reads it", async () => {
+	await withProject(
+		{
+			".registry/nazare/button/0.1.0.json": JSON.stringify({
+				id: "@nazare/button",
+				version: "0.1.0",
+				dependencies: {},
+				files: {
+					"nazare.json": JSON.stringify({
+						id: "@nazare/button",
+						version: "0.1.0",
+					}),
+					"button.nz.liquid": "<button>Button</button>\n",
+				},
+			}),
+		},
+		async (cwd) => {
+			const addedRegistry = runCli(
+				cwd,
+				"registry",
+				"add",
+				"local",
+				"file:.registry",
+			);
+			assert.equal(addedRegistry.status, 0, addedRegistry.stderr);
+			assert.equal(JSON.parse(addedRegistry.stdout).current, "local");
+
+			const listed = runCli(cwd, "registry", "list");
+			assert.equal(listed.status, 0, listed.stderr);
+			assert.deepEqual(JSON.parse(listed.stdout), {
+				current: "local",
+				registries: { local: "file:.registry" },
+			});
+
+			const installed = runCli(cwd, "add", "@nazare/button");
+			assert.equal(installed.status, 0, installed.stderr);
+			assert.equal(
+				readFileSync(join(cwd, "nazare/button/button.nz.liquid"), "utf8"),
+				"<button>Button</button>\n",
+			);
+			assert.deepEqual(
+				JSON.parse(readFileSync(join(cwd, "nazare.theme.json"), "utf8")),
+				{
+					registry: "local",
+					registries: { local: "file:.registry" },
+					installed: { "@nazare/button": "0.1.0" },
+				},
+			);
 		},
 	);
 });
