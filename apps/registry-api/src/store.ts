@@ -1,5 +1,5 @@
 // The server's storage seam. The handler depends only on this interface, so
-// the backend stays the deployer's choice (REGISTRY.md). The reference backend
+// the backend stays the deployer's choice. The reference backend
 // is Postgres; the filesystem is deliberately NOT a server backend — a folder
 // has no atomic check-and-write, so the immutability guarantee would race under
 // concurrent publishes. (The client-side `file:` registry is a separate thing:

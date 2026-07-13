@@ -3,8 +3,7 @@
 // component and its transitive dependencies, writes each as a sibling folder
 // under the source root — so relative ../<dep>/ imports survive untouched — and
 // records exact installed versions in nazare.theme.json. All registry access is
-// through the injected client; this module never touches the network. See
-// REGISTRY.md.
+// through the injected client; this module never touches the network.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { RegistryClient, RegistryComponent } from "@nazare/core";

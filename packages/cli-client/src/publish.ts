@@ -2,7 +2,7 @@
 // upload it. The honesty guard lives here (not the compiler, not the registry):
 // a component's declared nazare.json dependencies must match the ../<folder>/
 // imports in its source, so the published dependency graph can never drift from
-// what the code actually imports. See REGISTRY.md.
+// what the code actually imports.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {

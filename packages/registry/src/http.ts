@@ -1,4 +1,4 @@
-// The production registry: HTTP against the three routes in REGISTRY.md. A
+// The production registry: HTTP against the routes in packages/registry/README.md. A
 // clean 404 becomes undefined; any other non-2xx throws so transport failures
 // are never mistaken for absence.
 import type {

@@ -1,7 +1,6 @@
 // The registry wire contract — the vocabulary shared by the CLI and the
 // registry-api. Types only;
-// the HTTP and filesystem implementations live in @nazare/registry. See
-// REGISTRY.md for the full contract.
+// the HTTP and filesystem implementations live in @nazare/registry.
 
 /** A published component: metadata plus every file's contents inline. */
 export type RegistryComponent = {

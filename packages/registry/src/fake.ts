@@ -1,7 +1,7 @@
 // A filesystem-backed registry: one JSON file per published version at
 // <root>/<scope>/<name>/<version>.json. It honors the same contract as the
 // HTTP registry, so add/update/publish are fully testable offline and the
-// registry-api can be developed against the same fixtures. See REGISTRY.md.
+// registry-api can be developed against the same fixtures.
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type {
