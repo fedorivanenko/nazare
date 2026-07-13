@@ -1,5 +1,7 @@
 # Nazare
 
+> **Project status:** Nazare is in heavy active development. APIs, file formats, compiler behavior, registry behavior, and generated output may change. Do not treat it as blindly production-ready yet; test generated themes with Theme Check and Shopify CLI before using them on a live storefront.
+
 Shopify themes become difficult to maintain because the relationships between their parts are mostly implicit. As themes grow, developers spend more time tracing dependencies, checking parameters, duplicating patterns, testing manually, and avoiding unintended breakage.
 
 The ecosystem offers many excellent tools, but each addresses only part of the problem:
