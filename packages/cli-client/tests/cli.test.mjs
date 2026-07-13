@@ -250,14 +250,13 @@ test("cli: registry add/use stores project registry and add reads it", async () 
 				readFileSync(join(cwd, "nazare/button/button.nz.liquid"), "utf8"),
 				"<button>Button</button>\n",
 			);
-			assert.deepEqual(
-				JSON.parse(readFileSync(join(cwd, "nazare.theme.json"), "utf8")),
-				{
-					registry: "local",
-					registries: { local: "file:.registry" },
-					installed: { "@nazare/button": "0.1.0" },
-				},
+			const manifest = JSON.parse(
+				readFileSync(join(cwd, "nazare.theme.json"), "utf8"),
 			);
+			assert.deepEqual(manifest.registry, "local");
+			assert.deepEqual(manifest.registries, { local: "file:.registry" });
+			assert.deepEqual(manifest.installed, { "@nazare/button": "0.1.0" });
+			assert.ok(manifest.installedFiles["@nazare/button"]["button.nz.liquid"]);
 		},
 	);
 });

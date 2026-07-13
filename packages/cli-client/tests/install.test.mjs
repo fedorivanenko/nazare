@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { FileSystemRegistry } from "@nazare/registry";
-import { installComponent, updateAll } from "../dist/install.js";
+import { diffComponent, installComponent, updateAll } from "../dist/install.js";
 
 const component = (id, version, dependencies = {}, files = {}) => ({
 	id,
@@ -125,6 +125,58 @@ test("update overwrites installed components to latest", async () => {
 			assert.equal(
 				themeManifest(projectRoot).installed["@nazare/link"],
 				"0.2.0",
+			);
+		},
+	);
+});
+
+test("update refuses to overwrite local edits unless forced", async () => {
+	await withProject(
+		[component("@nazare/link", "0.1.0"), component("@nazare/link", "0.2.0")],
+		async ({ projectRoot, options }) => {
+			await installComponent("@nazare/link", "0.1.0", "add", options);
+			writeFileSync(join(projectRoot, "nazare/link/marker.txt"), "local edit");
+
+			await assert.rejects(
+				updateAll(options),
+				/local registry component edits/,
+			);
+			assert.equal(marker(projectRoot, "link"), "local edit");
+
+			await updateAll({ ...options, force: true });
+			assert.equal(marker(projectRoot, "link"), "@nazare/link@0.2.0");
+		},
+	);
+});
+
+test("update deletes stale tracked files only when clean", async () => {
+	await withProject(
+		[
+			component("@nazare/card", "0.1.0", {}, { "old.txt": "old" }),
+			component("@nazare/card", "0.2.0"),
+		],
+		async ({ projectRoot, options }) => {
+			await installComponent("@nazare/card", "0.1.0", "add", options);
+			await updateAll(options);
+			assert.equal(existsSync(join(projectRoot, "nazare/card/old.txt")), false);
+		},
+	);
+});
+
+test("diff reports registry changes and local edits", async () => {
+	await withProject(
+		[component("@nazare/link", "0.1.0"), component("@nazare/link", "0.2.0")],
+		async ({ projectRoot, options }) => {
+			await installComponent("@nazare/link", "0.1.0", "add", options);
+			writeFileSync(join(projectRoot, "nazare/link/marker.txt"), "local edit");
+			const diff = await diffComponent("@nazare/link", "latest", options);
+			assert.equal(diff.fromVersion, "0.1.0");
+			assert.equal(diff.toVersion, "0.2.0");
+			assert.ok(diff.localEdits.includes("marker.txt"));
+			assert.ok(
+				diff.entries.some(
+					(entry) => entry.path === "marker.txt" && entry.local === "modified",
+				),
 			);
 		},
 	);

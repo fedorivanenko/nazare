@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
@@ -9,24 +8,13 @@ import {
 	themeSchemaFromIR,
 } from "@nazare/compiler";
 import { registryFromEnv } from "@nazare/registry";
-import { buildTheme } from "@nazare/theme";
-import { installComponent, updateAll } from "./install.js";
+import { runThemeBuild } from "./build-command.js";
+import { diffComponent, installComponent, updateAll } from "./install.js";
+import { type CliOptions, parseCliOptions, printHelp } from "./options.js";
 import { packComponent, publishComponent } from "./publish.js";
 
 const DEFAULT_SOURCE_ROOT = "nazare";
-const DEFAULT_OUT_DIR = ".nazare-out/theme";
 const THEME_MANIFEST = "nazare.theme.json";
-
-// Merchant-owned data the Shopify theme editor writes back. `nazare build
-// --pull` fetches only these into the output dir so buildTheme can carry the
-// live theme's settings, section instances, and block values forward. Code is
-// regenerated from source, so there is no reason to pull it.
-const MERCHANT_DATA_PATTERNS = [
-	"config/settings_data.json",
-	"templates/*.json",
-	"templates/**/*.json",
-	"sections/*.json",
-];
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -62,7 +50,7 @@ try {
 	// below because it may target a directory — or nothing, defaulting to the
 	// `nazare/` source root — rather than one entry file.
 	if (command === "build") {
-		await runThemeBuild(projectRoot, readProjectFile, file, cliOptions);
+		await runThemeBuild(projectRoot, file, cliOptions);
 	}
 
 	// Registry config commands update project-level nazare.theme.json.
@@ -77,6 +65,9 @@ try {
 	}
 	if (command === "update") {
 		await runUpdate(projectRoot, file, cliOptions);
+	}
+	if (command === "diff") {
+		await runDiff(projectRoot, file, cliOptions);
 	}
 
 	// Registry authoring commands target a component folder, not a compile entry.
@@ -194,106 +185,12 @@ try {
 	process.exit(1);
 }
 
-type CliOptions = {
-	strictness?: "loose" | "strict";
-	version?: string;
-	sourceRoot?: string;
-	outDir?: string;
-	pull?: boolean;
-	store?: string;
-	theme?: string;
-	json?: boolean;
-	positionals: string[];
-};
-
 type ProjectManifest = {
 	dependencies?: Record<string, string>;
 	installed?: Record<string, string>;
 	registry?: string;
 	registries?: Record<string, string>;
 };
-
-// A value option is either `--name value` (consuming the next arg) or
-// `--name=value`. Returns the value, and how many args it consumed so the
-// caller can advance past a consumed `value`.
-function readValueOption(
-	args: string[],
-	index: number,
-	name: string,
-): { value: string | undefined; consumed: number } | undefined {
-	const arg = args[index];
-	if (arg === name) return { value: args[index + 1], consumed: 2 };
-	if (arg.startsWith(`${name}=`)) {
-		return { value: arg.slice(name.length + 1), consumed: 1 };
-	}
-	return undefined;
-}
-
-function parseCliOptions(args: string[]): CliOptions {
-	const options: CliOptions = { positionals: [] };
-
-	for (let index = 0; index < args.length; index += 1) {
-		const arg = args[index];
-
-		const strictness = readValueOption(args, index, "--strictness");
-		if (strictness) {
-			options.strictness = parseStrictness(strictness.value);
-			index += strictness.consumed - 1;
-			continue;
-		}
-		const version = readValueOption(args, index, "--version");
-		if (version) {
-			options.version = version.value;
-			index += version.consumed - 1;
-			continue;
-		}
-		const sourceRoot = readValueOption(args, index, "--source-root");
-		if (sourceRoot) {
-			options.sourceRoot = sourceRoot.value;
-			index += sourceRoot.consumed - 1;
-			continue;
-		}
-		const outDir = readValueOption(args, index, "--out-dir");
-		if (outDir) {
-			options.outDir = outDir.value;
-			index += outDir.consumed - 1;
-			continue;
-		}
-		const store = readValueOption(args, index, "--store");
-		if (store) {
-			options.store = store.value;
-			index += store.consumed - 1;
-			continue;
-		}
-		const theme = readValueOption(args, index, "--theme");
-		if (theme) {
-			options.theme = theme.value;
-			index += theme.consumed - 1;
-			continue;
-		}
-		if (arg === "--pull") {
-			options.pull = true;
-			continue;
-		}
-		if (arg === "--json") {
-			options.json = true;
-			continue;
-		}
-		if (arg.startsWith("--")) {
-			throw new Error(`Unknown option ${arg}`);
-		}
-		options.positionals.push(arg);
-	}
-
-	return options;
-}
-
-function parseStrictness(value: string | undefined): "loose" | "strict" {
-	if (value === "loose" || value === "strict") return value;
-	throw new Error(
-		`Invalid --strictness ${value ?? "<missing>"}; expected loose or strict`,
-	);
-}
 
 async function writeDumpFiles(
 	entryPath: string,
@@ -326,138 +223,10 @@ async function writeDumpFiles(
 	return written;
 }
 
-/**
- * Compiles every `.nz.liquid` component under a source root into one theme
- * output. Discovery is by file extension alone — no nazare.json is read — so a
- * folder whose entry is a plain `.ts` (a function, imported but never emitted)
- * is pulled in as a dependency, not built as a standalone artifact. Always
- * terminates via process.exit.
- */
-async function runThemeBuild(
-	projectRoot: string,
-	_readProjectFile: (path: string) => string | undefined,
-	target: string | undefined,
-	cliOptions: CliOptions,
-): Promise<void> {
-	try {
-		const outDir = cliOptions.outDir ?? DEFAULT_OUT_DIR;
-		// Reconcile against a live theme: pull its merchant-owned data into the
-		// output dir first, so buildTheme snapshots and preserves it instead of
-		// resetting it to the source seeds.
-		if (cliOptions.pull) {
-			const outDirAbs = join(projectRoot, outDir);
-			await mkdir(outDirAbs, { recursive: true });
-			pullThemeData(outDirAbs, {
-				store: cliOptions.store,
-				theme: cliOptions.theme,
-			});
-		}
-		const result = await buildTheme({
-			projectRoot,
-			sourceRoot: target ?? DEFAULT_SOURCE_ROOT,
-			outDir,
-			strictness: cliOptions.strictness,
-			// Key the run-once migrations ledger by the pulled store/theme so each
-			// target tracks its own applied history; falls back to the output dir.
-			targetId:
-				[cliOptions.store, cliOptions.theme].filter(Boolean).join("#") ||
-				undefined,
-		});
-		if (cliOptions.json) {
-			console.log(
-				JSON.stringify({ ...result, components: result.compiled }, null, 2),
-			);
-		} else {
-			printBuildSummary(result, outDir);
-		}
-		process.exit(
-			hasErrors(result.issues) || result.conflicts.length > 0 ? 1 : 0,
-		);
-	} catch (error) {
-		console.error(error instanceof Error ? error.message : String(error));
-		process.exit(1);
-	}
-}
-
 function artifactBaseName(entryFile: string): string {
 	let name = basename(entryFile);
 	while (extname(name)) name = basename(name, extname(name));
 	return name;
-}
-
-// Human-readable build summary. Leads with what was produced, then the
-// reconciliation outcomes (what was kept from the live theme, migrated, or
-// merged), then warnings and errors. `--json` prints the raw result instead.
-function printBuildSummary(
-	result: Awaited<ReturnType<typeof buildTheme>>,
-	outDir: string,
-): void {
-	const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
-	const errors = result.issues.filter((i) => i.severity === "error");
-	const warnings = result.issues.filter((i) => i.severity === "warning");
-
-	const lines: string[] = [
-		`Built ${count(result.compiled.length, "component")} → ${count(result.written.length, "file")} in ${outDir}`,
-	];
-
-	const recon: string[] = [];
-	if (result.preserved.length || result.seeded.length)
-		recon.push(
-			`data: ${result.preserved.length} preserved, ${result.seeded.length} seeded`,
-		);
-	if (result.applied.length)
-		recon.push(`migrations applied: ${result.applied.join(", ")}`);
-	if (result.mergedLocales.length)
-		recon.push(`locales: ${count(result.mergedLocales.length, "file")} merged`);
-	if (recon.length) lines.push(`  ${recon.join("  ·  ")}`);
-
-	for (const conflict of result.conflicts)
-		lines.push(`  ✖ conflict: ${conflict}`);
-	for (const warning of warnings) lines.push(`  ⚠ ${warning.message}`);
-	for (const error of errors) lines.push(`  ✖ ${error.message}`);
-
-	if (errors.length || result.conflicts.length)
-		lines.push(
-			`Build failed: ${count(errors.length, "error")}, ${count(result.conflicts.length, "conflict")}`,
-		);
-	else if (warnings.length)
-		lines.push(`Build OK with ${count(warnings.length, "warning")}`);
-	else lines.push("Build OK");
-
-	console.log(lines.join("\n"));
-}
-
-/**
- * Pulls a live theme's merchant-owned data into `outDir` via the Shopify CLI so
- * the following build preserves it. Only data files are fetched (`--only`);
- * generated code is regenerated from source. Throws with an actionable message
- * when the CLI is missing or the pull fails.
- */
-function pullThemeData(
-	outDir: string,
-	options: { store?: string; theme?: string },
-): void {
-	const args = ["theme", "pull", "--path", outDir];
-	if (options.store) args.push("--store", options.store);
-	if (options.theme) args.push("--theme", options.theme);
-	for (const pattern of MERCHANT_DATA_PATTERNS) args.push("--only", pattern);
-
-	console.error(`Pulling live theme data: shopify ${args.join(" ")}`);
-	const result = spawnSync("shopify", args, { stdio: "inherit" });
-	if (result.error) {
-		const code = (result.error as NodeJS.ErrnoException).code;
-		if (code === "ENOENT") {
-			throw new Error(
-				"--pull needs the Shopify CLI. Install it (https://shopify.dev/docs/api/shopify-cli) or drop --pull to build without reconciling.",
-			);
-		}
-		throw result.error;
-	}
-	if (result.status !== 0) {
-		throw new Error(
-			`shopify theme pull failed (exit ${result.status ?? "unknown"}). Check --store/--theme and your Shopify auth.`,
-		);
-	}
 }
 
 async function runAdd(
@@ -537,6 +306,7 @@ async function runUpdate(
 		client: await registryClientForProject(projectRoot),
 		projectRoot,
 		sourceRoot: cliOptions.sourceRoot ?? DEFAULT_SOURCE_ROOT,
+		force: cliOptions.force,
 	};
 	const outcome = id
 		? await installComponent(
@@ -548,6 +318,24 @@ async function runUpdate(
 		: await updateAll(options);
 	for (const warning of outcome.warnings) console.error(`warning: ${warning}`);
 	console.log(JSON.stringify(outcome, null, 2));
+	process.exit(0);
+}
+
+async function runDiff(
+	projectRoot: string,
+	id: string | undefined,
+	cliOptions: CliOptions,
+): Promise<void> {
+	if (!id) {
+		console.error("Usage: nazare diff <@scope/name> [--version x.y.z]");
+		process.exit(1);
+	}
+	const diff = await diffComponent(id, cliOptions.version ?? "latest", {
+		client: await registryClientForProject(projectRoot),
+		projectRoot,
+		sourceRoot: cliOptions.sourceRoot ?? DEFAULT_SOURCE_ROOT,
+	});
+	console.log(JSON.stringify(diff, null, 2));
 	process.exit(0);
 }
 
@@ -664,38 +452,4 @@ function hasErrors(
 	issues: { severity: "error" | "warning" | "info" }[],
 ): boolean {
 	return issues.some((issue) => issue.severity === "error");
-}
-
-function printHelp(): void {
-	console.error(`Usage:
-  nazare ast <file>
-  nazare ir <file>
-  nazare graph <file>
-  nazare validate <file>
-  nazare schema <file>
-  nazare build [source-root|file]   walks nazare/ by default
-                                    --pull reconciles against a live theme first
-  nazare add <@scope/name>          copy a component + deps into the source root
-  nazare update [@scope/name]       re-fetch latest; all installed if omitted
-  nazare registry add <name> <url>  save a project registry in nazare.theme.json
-  nazare registry use <name>        select a saved project registry
-  nazare registry list              list saved project registries
-  nazare pack [dir]                 write publishable payload to .nazare-out/pack
-  nazare publish [dir]              publish component folder (default .)
-  nazare artifact <file>
-  nazare dump <file>
-
-Options:
-  --strictness loose|strict
-  --version x.y.z                   add/update: exact version (default latest)
-  --source-root <dir>               add/update/build: default nazare/
-  --out-dir <dir>                   build output directory: default .nazare-out/theme
-  --pull                            build: fetch live theme data before building
-  --store <domain>                  build --pull: Shopify store to pull from
-  --theme <id|name>                 build --pull: theme to pull from
-  --json                            build: print the raw result as JSON
-
-Env:
-  NAZARE_REGISTRY                   registry base URL, or file:<dir> for a local one
-  NAZARE_TOKEN                      bearer token for publish (file: registries ignore it)`);
 }
