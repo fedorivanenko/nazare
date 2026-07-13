@@ -6,8 +6,13 @@
 	"scripts": {
 		"typecheck": "tsc -b",
 		"test": "tsc -b && node --test packages/compiler/tests/*.test.mjs",
-		"test:cli": "tsc -b && node --test packages/cli-client/tests/*.test.mjs",
 		"test:all": "tsc -b && node --test packages/compiler/tests/*.test.mjs packages/cli-client/tests/*.test.mjs",
+		"test:types": "tsc -b && node --test packages/compiler/tests/type-expression.test.mjs",
+		"test:diagnostics": "tsc -b && node --test packages/compiler/tests/diagnostics.test.mjs",
+		"test:emit": "tsc -b && node --test packages/compiler/tests/emit.test.mjs packages/compiler/tests/root-marker.test.mjs packages/compiler/tests/references.test.mjs packages/compiler/tests/css-modules.test.mjs",
+		"test:scripts": "tsc -b && node --test packages/compiler/tests/check-script.test.mjs packages/compiler/tests/runtime.test.mjs",
+		"test:api": "tsc -b && node --test packages/compiler/tests/api.test.mjs",
+		"test:cli": "tsc -b && node --test packages/cli-client/tests/*.test.mjs",
 		"format": "biome format --write .",
 		"lint": "biome check ."
 	},
