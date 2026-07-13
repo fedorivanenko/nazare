@@ -276,3 +276,156 @@ test("buildTheme stays silent when a setting is added", async () => {
 		},
 	);
 });
+
+const writeOut = (projectRoot, path, contents) => {
+	const full = join(projectRoot, ".nazare-out/theme", path);
+	mkdirSync(dirname(full), { recursive: true });
+	writeFileSync(full, contents);
+};
+
+test("a migration rewrites saved data on a rename and silences drift", async () => {
+	await withProject(
+		{
+			"nazare/sections/hero.nz.liquid": section(
+				'  heading: string.setting({ label: "Heading" }),',
+			),
+		},
+		async (projectRoot) => {
+			// First build establishes the schema lock for section "hero".
+			await buildTheme({ projectRoot });
+			// A merchant has placed the section on a page with a saved value.
+			writeOut(
+				projectRoot,
+				"templates/index.json",
+				JSON.stringify({
+					sections: { main: { type: "hero", settings: { heading: "Hi" } } },
+					order: ["main"],
+				}),
+			);
+			// Developer renames the section to "banner" and its setting to "title".
+			rmSync(join(projectRoot, "nazare/sections/hero.nz.liquid"));
+			writeFileSync(
+				join(projectRoot, "nazare/sections/banner.nz.liquid"),
+				section('  title: string.setting({ label: "Title" }),'),
+			);
+			writeFileSync(
+				join(projectRoot, "nazare.migrations.json"),
+				JSON.stringify({
+					migrations: [
+						{ op: "renameSection", from: "hero", to: "banner" },
+						{
+							op: "renameSetting",
+							section: "banner",
+							from: "heading",
+							to: "title",
+						},
+					],
+				}),
+			);
+			const result = await buildTheme({ projectRoot });
+
+			// Drift is silenced because the migration accounts for the rename.
+			assert.deepEqual(result.drift, []);
+			assert.ok(result.migrated.includes("templates/index.json"));
+			const template = JSON.parse(
+				readOutput(projectRoot, "templates/index.json"),
+			);
+			assert.equal(template.sections.main.type, "banner");
+			assert.deepEqual(template.sections.main.settings, { title: "Hi" });
+		},
+	);
+});
+
+test("without a migration, a rename still drifts and strands data", async () => {
+	await withProject(
+		{
+			"nazare/sections/hero.nz.liquid": section(
+				'  heading: string.setting({ label: "Heading" }),',
+			),
+		},
+		async (projectRoot) => {
+			await buildTheme({ projectRoot });
+			writeOut(
+				projectRoot,
+				"templates/index.json",
+				JSON.stringify({
+					sections: { main: { type: "hero", settings: { heading: "Hi" } } },
+				}),
+			);
+			rmSync(join(projectRoot, "nazare/sections/hero.nz.liquid"));
+			writeFileSync(
+				join(projectRoot, "nazare/sections/banner.nz.liquid"),
+				section('  title: string.setting({ label: "Title" }),'),
+			);
+			const result = await buildTheme({ projectRoot });
+			assert.ok(result.drift.some((d) => d.code === "THEME_SECTION_REMOVED"));
+			assert.deepEqual(result.migrated, []);
+			// Data is untouched — the instance still points at the gone "hero".
+			const template = JSON.parse(
+				readOutput(projectRoot, "templates/index.json"),
+			);
+			assert.equal(template.sections.main.type, "hero");
+		},
+	);
+});
+
+test("an invalid migrations file errors and is not partially applied", async () => {
+	await withProject(
+		{
+			"nazare/sections/hero.nz.liquid": section(
+				'  heading: string.setting({ label: "Heading" }),',
+			),
+			"nazare.migrations.json": JSON.stringify({
+				migrations: [
+					{ op: "renameSection", from: "hero", to: "banner" },
+					{ op: "renameSetting", from: "heading" },
+				],
+			}),
+		},
+		async (projectRoot) => {
+			writeOut(
+				projectRoot,
+				"templates/index.json",
+				JSON.stringify({ sections: { main: { type: "hero" } } }),
+			);
+			const result = await buildTheme({ projectRoot });
+			assert.ok(
+				result.issues.some((i) => i.code === "THEME_MIGRATION_INVALID"),
+			);
+			assert.deepEqual(result.migrated, []);
+			// The valid op did not run either — all or nothing.
+			const template = JSON.parse(
+				readOutput(projectRoot, "templates/index.json"),
+			);
+			assert.equal(template.sections.main.type, "hero");
+		},
+	);
+});
+
+test("a global setting rename rewrites settings_data.current", async () => {
+	await withProject(
+		{ "nazare/config/settings_schema.json": "[]" },
+		async (projectRoot) => {
+			await buildTheme({ projectRoot });
+			writeOut(
+				projectRoot,
+				"config/settings_data.json",
+				JSON.stringify({ current: { old_accent: "#000" } }),
+			);
+			writeFileSync(
+				join(projectRoot, "nazare.migrations.json"),
+				JSON.stringify({
+					migrations: [
+						{ op: "renameSetting", from: "old_accent", to: "accent" },
+					],
+				}),
+			);
+			const result = await buildTheme({ projectRoot });
+			assert.ok(result.migrated.includes("config/settings_data.json"));
+			const data = JSON.parse(
+				readOutput(projectRoot, "config/settings_data.json"),
+			);
+			assert.deepEqual(data.current, { accent: "#000" });
+		},
+	);
+});

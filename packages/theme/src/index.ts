@@ -23,6 +23,12 @@ import {
 	themeSchemaFromIR,
 } from "@nazare/compiler";
 import type { Diagnostic } from "@nazare/core";
+import {
+	applyMigrationsToData,
+	applyMigrationsToManifest,
+	type Migration,
+	parseMigrations,
+} from "./migrations.js";
 
 const DEFAULT_SOURCE_ROOT = "nazare";
 const DEFAULT_OUT_DIR = ".nazare-out/theme";
@@ -30,6 +36,9 @@ const DEFAULT_OUT_DIR = ".nazare-out/theme";
 // schema (setting ids/types, accepted block types). Diffing it across builds
 // surfaces schema drift that would break saved merchant data.
 const DEFAULT_MANIFEST = "nazare.schema-lock.json";
+// Committed alongside the source: an append-only list of rename/remove ops that
+// rewrite saved merchant data so it survives schema renames.
+const DEFAULT_MIGRATIONS = "nazare.migrations.json";
 const THEME_DIRS = new Set([
 	"layout",
 	"templates",
@@ -47,6 +56,8 @@ export type ThemeBuildOptions = {
 	strictness?: "loose" | "strict";
 	/** Schema-lock path, relative to projectRoot. Default nazare.schema-lock.json. */
 	manifestPath?: string;
+	/** Migrations file path, relative to projectRoot. Default nazare.migrations.json. */
+	migrationsPath?: string;
 };
 
 /** A single schema-drift finding between the prior and current schema lock. */
@@ -65,6 +76,8 @@ export type ThemeBuildResult = {
 	drift: DriftEntry[];
 	/** Path (relative to projectRoot) the schema lock was written to. */
 	manifestPath: string;
+	/** Merchant-data files rewritten by migrations. */
+	migrated: string[];
 };
 
 type PlannedFile = { contents: string; from: string };
@@ -186,7 +199,29 @@ export async function buildTheme(
 
 	// Snapshot merchant-owned data already in the target before clearing it, so
 	// the rebuild carries live theme state forward rather than the source seeds.
-	const existingData = await readExistingData(outputRoot);
+	let existingData = await readExistingData(outputRoot);
+
+	// Author-written migrations rewrite that data so saved values survive a
+	// section/setting rename. The same migrations are applied to the prior schema
+	// lock below, so a migrated rename stops registering as drift.
+	const migrationsPath = options.migrationsPath ?? DEFAULT_MIGRATIONS;
+	const migrationsRaw = await readFile(
+		join(projectRoot, migrationsPath),
+		"utf8",
+	).catch(() => undefined);
+	let migrations: Migration[] = [];
+	if (migrationsRaw !== undefined) {
+		const parsed = parseMigrations(migrationsRaw, migrationsPath);
+		issues.push(...parsed.issues);
+		// Refuse to apply a partially-invalid migration set — all or nothing.
+		if (!parsed.issues.some((issue) => issue.severity === "error")) {
+			migrations = parsed.migrations;
+		}
+	}
+	const migratedData = applyMigrationsToData(existingData, migrations);
+	existingData = migratedData.data;
+	issues.push(...migratedData.issues);
+	const migrated = migratedData.changed;
 
 	await rm(outputRoot, { recursive: true, force: true });
 
@@ -226,7 +261,10 @@ export async function buildTheme(
 	// then rewrite the lock as the new baseline. Warnings do not fail the build.
 	const manifestPath = options.manifestPath ?? DEFAULT_MANIFEST;
 	const prior = await readManifest(join(projectRoot, manifestPath));
-	const drift = diffManifests(prior, manifest);
+	const migratedPrior = prior
+		? applyMigrationsToManifest(prior, migrations)
+		: undefined;
+	const drift = diffManifests(migratedPrior, manifest);
 	for (const entry of drift) {
 		issues.push({
 			severity: "warning",
@@ -251,6 +289,7 @@ export async function buildTheme(
 		conflicts,
 		drift,
 		manifestPath,
+		migrated: migrated.sort(),
 	};
 }
 
