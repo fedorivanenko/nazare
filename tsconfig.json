@@ -6,5 +6,6 @@
     { "path": "packages/compiler" },
     { "path": "packages/core" },
     { "path": "packages/registry" },
+    { "path": "packages/theme" },
   ]
 }

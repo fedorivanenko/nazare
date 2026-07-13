@@ -1,32 +1,16 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { basename, extname, join, relative, resolve, sep } from "node:path";
 import {
-	mkdir,
-	readdir,
-	readFile,
-	rm,
-	stat,
-	writeFile,
-} from "node:fs/promises";
-import {
-	basename,
-	dirname,
-	extname,
-	join,
-	relative,
-	resolve,
-	sep,
-} from "node:path";
-import { installComponent, updateAll } from "./install.js";
-import { packComponent, publishComponent } from "./publish.js";
-import {
-	buildNazareTheme,
 	checkComponentScripts,
 	compileNazareArtifact,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
-import type { Diagnostic } from "@nazare/core";
 import { registryFromEnv } from "@nazare/registry";
+import { buildTheme } from "@nazare/theme";
+import { installComponent, updateAll } from "./install.js";
+import { packComponent, publishComponent } from "./publish.js";
 
 const DEFAULT_SOURCE_ROOT = "nazare";
 
@@ -294,121 +278,26 @@ async function writeDumpFiles(
  */
 async function runThemeBuild(
 	projectRoot: string,
-	readProjectFile: (path: string) => string | undefined,
+	_readProjectFile: (path: string) => string | undefined,
 	target: string | undefined,
 	cliOptions: CliOptions,
 ): Promise<void> {
-	const sourceRoot = target ?? DEFAULT_SOURCE_ROOT;
-	let entries: string[];
 	try {
-		entries = await collectComponentEntries(projectRoot, sourceRoot);
+		const result = await buildTheme({
+			projectRoot,
+			sourceRoot: target ?? DEFAULT_SOURCE_ROOT,
+			strictness: cliOptions.strictness,
+		});
+		console.log(
+			JSON.stringify({ ...result, components: result.compiled }, null, 2),
+		);
+		process.exit(
+			hasErrors(result.issues) || result.conflicts.length > 0 ? 1 : 0,
+		);
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exit(1);
 	}
-	if (entries.length === 0) {
-		console.error(`No .nz.liquid components under ${sourceRoot}`);
-		process.exit(1);
-	}
-
-	// Each component emits into a shared theme tree; identical files (the shared
-	// runtime asset) coalesce, and two components emitting different content to
-	// the same path is a naming collision reported as a build conflict.
-	const merged = new Map<string, { contents: string; from: string }>();
-	const conflicts: string[] = [];
-	const issues: Diagnostic[] = [];
-	const notes: Diagnostic[] = [];
-	const components: string[] = [];
-
-	for (const entryPath of entries) {
-		const source = await readFile(join(projectRoot, entryPath), "utf8");
-		const built = buildNazareTheme(source, entryPath, {
-			name: artifactBaseName(entryPath),
-			readFile: readProjectFile,
-			strictness: cliOptions.strictness,
-		});
-		issues.push(
-			...built.issues,
-			...checkComponentScripts(built.ir, { readFile: readProjectFile }),
-		);
-		notes.push(...built.notes);
-		components.push(entryPath);
-
-		for (const themeFile of built.emitted.files) {
-			const existing = merged.get(themeFile.path);
-			if (existing && existing.contents !== themeFile.contents) {
-				conflicts.push(
-					`${themeFile.path}: emitted by both ${existing.from} and ${entryPath}`,
-				);
-				continue;
-			}
-			merged.set(themeFile.path, {
-				contents: themeFile.contents,
-				from: entryPath,
-			});
-		}
-	}
-
-	// The output tree mirrors the source root exactly, so it is rebuilt from
-	// scratch — stale files from removed components do not linger.
-	const outputDir = join(projectRoot, ".nazare-out", "theme");
-	await rm(outputDir, { recursive: true, force: true });
-	const written: string[] = [];
-	for (const path of [...merged.keys()].sort()) {
-		const full = join(outputDir, path);
-		await mkdir(dirname(full), { recursive: true });
-		await writeFile(full, merged.get(path)?.contents ?? "");
-		written.push(join(".nazare-out", "theme", path));
-	}
-
-	console.log(
-		JSON.stringify({ components, written, issues, notes, conflicts }, null, 2),
-	);
-	process.exit(hasErrors(issues) || conflicts.length > 0 ? 1 : 0);
-}
-
-/**
- * Returns the root-relative POSIX paths of every `.nz.liquid` component reached
- * from a source root, sorted for deterministic output. The root may itself be a
- * single component file (build one) or a directory (build the tree under it).
- */
-async function collectComponentEntries(
-	projectRoot: string,
-	sourceRoot: string,
-): Promise<string[]> {
-	const rootAbs = resolve(projectRoot, sourceRoot);
-	const rootStat = await stat(rootAbs).catch(() => undefined);
-	if (!rootStat) throw new Error(`Source path not found: ${sourceRoot}`);
-
-	if (rootStat.isFile()) {
-		if (!rootAbs.endsWith(".nz.liquid")) {
-			throw new Error(`Not a Nazare component: ${sourceRoot}`);
-		}
-		return [toRootRelativePosix(projectRoot, rootAbs)];
-	}
-
-	const found: string[] = [];
-	const walk = async (dir: string): Promise<void> => {
-		for (const dirent of await readdir(dir, { withFileTypes: true })) {
-			const full = join(dir, dirent.name);
-			if (dirent.isDirectory()) {
-				await walk(full);
-			} else if (dirent.name.endsWith(".nz.liquid")) {
-				found.push(full);
-			}
-		}
-	};
-	await walk(rootAbs);
-
-	return found.map((abs) => toRootRelativePosix(projectRoot, abs)).sort();
-}
-
-function toRootRelativePosix(projectRoot: string, abs: string): string {
-	const rel = relative(projectRoot, abs).split(sep).join("/");
-	if (rel.startsWith("..")) {
-		throw new Error(`${abs} is outside the project root ${projectRoot}`);
-	}
-	return rel;
 }
 
 function artifactBaseName(entryFile: string): string {

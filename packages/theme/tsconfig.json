@@ -6,9 +6,5 @@
     "outDir": "dist"
   },
   "include": ["src/**/*.ts"],
-  "references": [
-    { "path": "../compiler" },
-    { "path": "../registry" },
-    { "path": "../theme" }
-  ]
+  "references": [{ "path": "../compiler" }]
 }

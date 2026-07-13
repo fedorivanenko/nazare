@@ -38,6 +38,9 @@ importers:
       '@nazare/registry':
         specifier: workspace:^
         version: link:../registry
+      '@nazare/theme':
+        specifier: workspace:^
+        version: link:../theme
 
   packages/compiler:
     dependencies:
@@ -61,6 +64,15 @@ importers:
 
   packages/registry:
     dependencies:
+      '@nazare/core':
+        specifier: workspace:^
+        version: link:../core
+
+  packages/theme:
+    dependencies:
+      '@nazare/compiler':
+        specifier: workspace:^
+        version: link:../compiler
       '@nazare/core':
         specifier: workspace:^
         version: link:../core
