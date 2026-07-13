@@ -64,7 +64,12 @@ for (const entry of readdirSync(componentsDir, { withFileTypes: true })) {
 	const entryPath = join(componentsDir, entry.name, manifest.entry);
 	const file = relative(repoRoot, entryPath);
 	test(`emit: ${entry.name}`, () => {
-		snapshotEmit(entry.name, readFileSync(entryPath, "utf8"), file, readProject);
+		snapshotEmit(
+			entry.name,
+			readFileSync(entryPath, "utf8"),
+			file,
+			readProject,
+		);
 	});
 }
 

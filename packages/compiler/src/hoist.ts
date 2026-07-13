@@ -13,11 +13,8 @@ import type {
 	Id,
 	PropTypeInfo,
 } from "@nazare/core";
+import { hoistedAliasReused, hoistedSettingCollision } from "./diagnostics.js";
 import { componentSymbolIdForFile } from "./ids.js";
-import {
-	hoistedAliasReused,
-	hoistedSettingCollision,
-} from "./diagnostics.js";
 import { indexArtifactIR } from "./ir-index.js";
 
 export type HoistedSetting = {
@@ -74,8 +71,10 @@ export function resolveHoistedSettings(
 				.map((node) => node.name),
 		);
 
-		const unfilled: Omit<HoistedSetting, "settingId" | "alias" | "renderSiteId">[] =
-			[];
+		const unfilled: Omit<
+			HoistedSetting,
+			"settingId" | "alias" | "renderSiteId"
+		>[] = [];
 		for (const prop of contract.props) {
 			if (!prop.typeInfo.setting || filled.has(prop.name)) continue;
 			unfilled.push({

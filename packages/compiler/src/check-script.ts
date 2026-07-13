@@ -183,7 +183,10 @@ function spanForDiagnostic(
 	const bodyLine = start.line + 1 - preludeLines;
 	if (bodyLine < 1) return bodySpan;
 	const line = bodySpan.start.line + bodyLine - 1;
-	const column = bodyLine === 1 ? bodySpan.start.column + start.character : start.character + 1;
+	const column =
+		bodyLine === 1
+			? bodySpan.start.column + start.character
+			: start.character + 1;
 	return {
 		file: bodySpan.file,
 		start: { line, column },

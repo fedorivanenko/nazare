@@ -31,6 +31,9 @@ type NazareGlobal = {
 };
 
 function nazareRuntime(): void {
+	// Not redundant: this body is extracted via toString() and re-wrapped as a
+	// standalone IIFE in the emitted asset, where strict mode must be declared.
+	// biome-ignore lint/suspicious/noRedundantUseStrict: shipped as standalone script
 	"use strict";
 	const win = window as unknown as { Nazare?: NazareGlobal };
 	if (win.Nazare) return;
@@ -40,7 +43,7 @@ function nazareRuntime(): void {
 	}
 	function refLookup(root: HTMLElement, key: string): HTMLElement | null {
 		if (root.getAttribute("data-nz-ref") === key) return root;
-		return root.querySelector<HTMLElement>('[data-nz-ref="' + key + '"]');
+		return root.querySelector<HTMLElement>(`[data-nz-ref="${key}"]`);
 	}
 	function parseValue(raw: string | undefined, kind: ParseKind): unknown {
 		if (raw === undefined) return undefined;
@@ -53,10 +56,10 @@ function nazareRuntime(): void {
 		descriptor: DataDescriptor,
 	): Record<string, Record<string, unknown>> {
 		const data: Record<string, Record<string, unknown>> = {};
-		Object.keys(descriptor || {}).forEach(function (refName) {
+		Object.keys(descriptor || {}).forEach((refName) => {
 			const element = refLookup(root, refName);
 			const entry: Record<string, unknown> = {};
-			Object.keys(descriptor[refName]).forEach(function (property) {
+			Object.keys(descriptor[refName]).forEach((property) => {
 				const raw = element ? element.dataset[property] : undefined;
 				entry[property] = parseValue(raw, descriptor[refName][property]);
 			});
@@ -74,8 +77,8 @@ function nazareRuntime(): void {
 			targets.push(componentRoot);
 		}
 		componentRoot
-			.querySelectorAll<HTMLElement>('[data-nz-island="' + placement + '"]')
-			.forEach(function (element) {
+			.querySelectorAll<HTMLElement>(`[data-nz-island="${placement}"]`)
+			.forEach((element) => {
 				targets.push(element);
 			});
 		return targets;
@@ -87,9 +90,9 @@ function nazareRuntime(): void {
 		descriptor: DataDescriptor,
 	): void {
 		document
-			.querySelectorAll<HTMLElement>('[data-nz-component="' + name + '"]')
-			.forEach(function (componentRoot) {
-				mountRoots(componentRoot, placement).forEach(function (root) {
+			.querySelectorAll<HTMLElement>(`[data-nz-component="${name}"]`)
+			.forEach((componentRoot) => {
+				mountRoots(componentRoot, placement).forEach((root) => {
 					const host = root as unknown as { nazareMounted?: IslandSetup[] };
 					if (!host.nazareMounted) host.nazareMounted = [];
 					if (host.nazareMounted.indexOf(setup) !== -1) return;
@@ -97,7 +100,7 @@ function nazareRuntime(): void {
 					const refs = new Proxy(
 						{},
 						{
-							get: function (_target, key) {
+							get: (_target, key) => {
 								if (typeof key !== "string") return undefined;
 								return refLookup(root, key);
 							},
@@ -115,7 +118,7 @@ function nazareRuntime(): void {
 	): void {
 		if (typeof setup !== "function") return;
 		if (document.readyState === "loading") {
-			document.addEventListener("DOMContentLoaded", function () {
+			document.addEventListener("DOMContentLoaded", () => {
 				mount(name, placement, setup, descriptor);
 			});
 		} else {

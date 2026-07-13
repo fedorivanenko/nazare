@@ -104,7 +104,10 @@ export function bindArtifactIR(
 		}
 
 		if (node.kind === "element-ref") {
-			const symbolId = refSymbolId(scopes.forComponentId(node.ownerId), node.name);
+			const symbolId = refSymbolId(
+				scopes.forComponentId(node.ownerId),
+				node.name,
+			);
 			const existing = symbols.get(symbolId);
 			if (existing) {
 				existing.declarations.push(node.id);

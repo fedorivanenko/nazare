@@ -5,10 +5,7 @@
 // is by far the slowest thing in the suite.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-	checkComponentScripts,
-	compileNazareArtifact,
-} from "../dist/index.js";
+import { checkComponentScripts, compileNazareArtifact } from "../dist/index.js";
 
 test("check-script: refs are typed from tag names, misuse is an error", () => {
 	// disabled exists on HTMLButtonElement, not HTMLDivElement
@@ -79,8 +76,7 @@ export default island(({ refs }) => {
 	});
 	assert.ok(
 		checkComponentScripts(result.ir, { readFile }).some(
-			(i) =>
-				i.code === "SCRIPT_TYPE_ERROR" && i.message.includes("TS2345"),
+			(i) => i.code === "SCRIPT_TYPE_ERROR" && i.message.includes("TS2345"),
 		),
 		"argument type error crosses the module boundary",
 	);

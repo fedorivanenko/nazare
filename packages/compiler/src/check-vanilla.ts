@@ -7,10 +7,7 @@
 // theme-block settings live in other files.
 import type { Diagnostic } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
-import {
-	schemaInvalidJson,
-	unknownSettingRead,
-} from "./diagnostics.js";
+import { schemaInvalidJson, unknownSettingRead } from "./diagnostics.js";
 
 type AuthoredSchemaJson = {
 	settings?: { id?: string }[];
