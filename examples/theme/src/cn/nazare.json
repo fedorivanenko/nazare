@@ -1,0 +1,11 @@
+{
+  "id": "@nazare/cn",
+  "version": "0.1.0",
+  "kind": "function",
+  "entry": "cn.ts",
+  "exports": ["cn"],
+  "dependencies": {},
+  "files": [
+    "cn.ts"
+  ]
+}

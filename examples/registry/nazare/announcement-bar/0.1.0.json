@@ -1,0 +1,11 @@
+{
+  "id": "@nazare/announcement-bar",
+  "version": "0.1.0",
+  "dependencies": {
+    "@nazare/link": "0.1.0"
+  },
+  "files": {
+    "nazare.json": "{\n  \"id\": \"@nazare/announcement-bar\",\n  \"version\": \"0.1.0\",\n  \"kind\": \"section\",\n  \"entry\": \"announcement-bar.nz.liquid\",\n  \"dependencies\": {\n    \"@nazare/link\": \"0.1.0\"\n  },\n  \"files\": [\n    \"announcement-bar.nz.liquid\"\n  ]\n}\n",
+    "announcement-bar.nz.liquid": "{% component section %}\n\n{% import Link from \"../link/link.nz.liquid\" %}\n\n{% props {\n  text: string.setting({\n    label: \"Text\",\n    default: \"Free shipping on orders over $50\",\n  }),\n  link: url.setting({\n    label: \"Link\",\n  }),\n} %}\n\n<section class=\"nazare-announcement-bar\">\n  {% if props.link != blank %}\n    {% render Link {\n      href: props.link,\n      text: props.text,\n      class: \"nazare-announcement-bar__link\",\n    } %}\n  {% else %}\n    <span class=\"nazare-announcement-bar__text\">\n      {{ props.text }}\n    </span>\n  {% endif %}\n</section>\n"
+  }
+}

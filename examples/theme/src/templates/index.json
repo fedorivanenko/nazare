@@ -1,0 +1,32 @@
+{
+  "sections": {
+    "announcement": {
+      "type": "announcement-bar",
+      "settings": {
+        "text": "Free shipping on orders over $50"
+      }
+    },
+    "counter": {
+      "type": "counter",
+      "settings": {
+        "start": 0,
+        "step": 1,
+        "prefix": "Qty: "
+      }
+    },
+    "notices": {
+      "type": "notice-board",
+      "blocks": {
+        "welcome": {
+          "type": "notice",
+          "settings": {}
+        }
+      },
+      "block_order": ["welcome"],
+      "settings": {
+        "heading": "Store notices"
+      }
+    }
+  },
+  "order": ["announcement", "counter", "notices"]
+}

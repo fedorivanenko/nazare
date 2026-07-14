@@ -1,0 +1,8 @@
+{% component snippet %}
+
+{% props {
+  href: url.required(),
+  label: string.required(),
+} %}
+
+<a class="button" href="{{ props.href }}">{{ props.label }}</a>

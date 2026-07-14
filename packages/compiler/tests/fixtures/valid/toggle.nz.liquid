@@ -1,0 +1,12 @@
+{% component section %}
+
+{% import toggle from "./toggle.ts" %}
+
+{% props {
+  label: string.setting({ label: "Label", default: "Details" }),
+} %}
+
+<section nz-root island="toggle">
+  <button ref="button" type="button">{{ props.label }}</button>
+  <div ref="panel" hidden>Hidden content</div>
+</section>

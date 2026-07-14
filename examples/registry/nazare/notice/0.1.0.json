@@ -1,0 +1,9 @@
+{
+  "id": "@nazare/notice",
+  "version": "0.1.0",
+  "dependencies": {},
+  "files": {
+    "nazare.json": "{\n  \"id\": \"@nazare/notice\",\n  \"version\": \"0.1.0\",\n  \"kind\": \"block\",\n  \"entry\": \"notice.nz.liquid\",\n  \"dependencies\": {},\n  \"files\": [\n    \"notice.nz.liquid\"\n  ]\n}\n",
+    "notice.nz.liquid": "{% component block %}\n\n{% props {\n  message: string.setting({ label: \"Message\", default: \"Heads up!\" }),\n  tone: string.enum(\"info\", \"success\", \"warning\").setting({\n    label: \"Tone\",\n    default: \"info\",\n  }),\n} %}\n\n<div class=\"nazare-notice nazare-notice--{{ props.tone }}\">\n  {{ props.message }}\n</div>\n\n{% stylesheet %}\n.nazare-notice {\n  padding: 0.75rem 1rem;\n  border-radius: 0.5rem;\n}\n.nazare-notice--info { background: rgb(219 234 254); }\n.nazare-notice--success { background: rgb(220 252 231); }\n.nazare-notice--warning { background: rgb(254 249 195); }\n{% endstylesheet %}\n"
+  }
+}

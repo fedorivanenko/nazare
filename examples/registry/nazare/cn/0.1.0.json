@@ -1,0 +1,9 @@
+{
+  "id": "@nazare/cn",
+  "version": "0.1.0",
+  "dependencies": {},
+  "files": {
+    "nazare.json": "{\n  \"id\": \"@nazare/cn\",\n  \"version\": \"0.1.0\",\n  \"kind\": \"function\",\n  \"entry\": \"cn.ts\",\n  \"exports\": [\"cn\"],\n  \"dependencies\": {},\n  \"files\": [\n    \"cn.ts\"\n  ]\n}\n",
+    "cn.ts": "export type ClassDictionary = Record<string, boolean | null | undefined>;\nexport type ClassArray = ClassValue[];\nexport type ClassValue =\n\t| string\n\t| false\n\t| null\n\t| undefined\n\t| ClassDictionary\n\t| ClassArray;\n\nexport function cn(...values: ClassValue[]): string {\n\tconst classes: string[] = [];\n\n\tfor (const value of values) {\n\t\tif (!value) continue;\n\n\t\tif (typeof value === \"string\") {\n\t\t\tclasses.push(value);\n\t\t\tcontinue;\n\t\t}\n\n\t\tif (Array.isArray(value)) {\n\t\t\tconst nested = cn(...value);\n\t\t\tif (nested) classes.push(nested);\n\t\t\tcontinue;\n\t\t}\n\n\t\tfor (const [className, enabled] of Object.entries(value)) {\n\t\t\tif (enabled) classes.push(className);\n\t\t}\n\t}\n\n\treturn classes.join(\" \");\n}\n"
+  }
+}

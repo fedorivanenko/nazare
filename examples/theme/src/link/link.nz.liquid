@@ -1,0 +1,10 @@
+{% props {
+  href: url.required(),
+  text: string.required(),
+  class: string.optional(),
+  new_tab: boolean.setting({ label: "Open in new tab", default: false }),
+} %}
+
+<a href="{{ props.href }}"{% if props.class != blank %} class="{{ props.class }}"{% endif %}{% if props.new_tab %} target="_blank" rel="noopener"{% endif %}>
+  {{ props.text }}
+</a>

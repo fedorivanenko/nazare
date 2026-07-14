@@ -1,0 +1,14 @@
+{% component section %}
+
+{% import Button from "./button.nz.liquid" %}
+
+{% props {
+  heading: string.setting({ label: "Heading", default: "New arrivals" }),
+  cta_url: url.setting({ label: "Button link" }),
+  cta_label: string.setting({ label: "Button label", default: "Shop now" }),
+} %}
+
+<section class="hero">
+  <h1>{{ props.heading }}</h1>
+  {% render Button { href: props.cta_url, label: props.cta_label } %}
+</section>

@@ -1,0 +1,9 @@
+{
+  "id": "@nazare/disclosure",
+  "version": "0.1.0",
+  "dependencies": {},
+  "files": {
+    "nazare.json": "{\n  \"id\": \"@nazare/disclosure\",\n  \"version\": \"0.1.0\",\n  \"kind\": \"section\",\n  \"entry\": \"disclosure.nz.liquid\",\n  \"dependencies\": {},\n  \"files\": [\n    \"disclosure.nz.liquid\"\n  ]\n}\n",
+    "disclosure.nz.liquid": "{% component section %}\n\n{% props {\n  label: string.setting({\n    label: \"Trigger label\",\n    default: \"Details\",\n  }),\n} %}\n\n<div ref=\"root\" class=\"nazare-disclosure\">\n  <button ref=\"trigger\" type=\"button\">{{ props.label }}</button>\n  <div ref=\"panel\" hidden>\n    <slot></slot>\n  </div>\n</div>\n\n{% stylesheet %}\n.nazare-disclosure {\n  display: block;\n}\n.nazare-disclosure--open > [data-nz-ref=\"panel\"] {\n  display: block;\n}\n{% endstylesheet %}\n\n{% script lang=\"ts\" %}\nexport default island(({ refs }) => {\n  refs.trigger.addEventListener(\"click\", () => {\n    refs.panel.hidden = !refs.panel.hidden;\n    refs.root.classList.toggle(\"nazare-disclosure--open\");\n  });\n});\n{% endscript %}\n"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "@nazare/counter",
+  "version": "0.1.0",
+  "dependencies": {
+    "@nazare/cn": "0.1.0"
+  },
+  "files": {
+    "nazare.json": "{\n  \"id\": \"@nazare/counter\",\n  \"version\": \"0.1.0\",\n  \"kind\": \"section\",\n  \"entry\": \"counter.nz.liquid\",\n  \"dependencies\": {\n    \"@nazare/cn\": \"0.1.0\"\n  },\n  \"files\": [\n    \"counter.nz.liquid\",\n    \"counter.ts\",\n    \"format.ts\"\n  ]\n}\n",
+    "counter.nz.liquid": "{% component section %}\n\n{% import counter from \"./counter.ts\" %}\n\n{% props {\n  start: number.setting({ label: \"Start value\", default: 0 }),\n  step: number.min(1).max(10).step(1).setting({ label: \"Step\", default: 1 }),\n  prefix: string.setting({ label: \"Prefix\", default: \"\" }),\n} %}\n\n<div ref=\"root\" class=\"nazare-counter\" data-start=\"{{ props.start }}\" data-prefix=\"{{ props.prefix }}\">\n  <button ref=\"decrement\" type=\"button\" data-step=\"{{ props.step }}\">&minus;</button>\n  <output ref=\"value\">{{ props.start }}</output>\n  <button ref=\"increment\" type=\"button\" data-step=\"{{ props.step }}\">+</button>\n</div>\n\n{% stylesheet %}\n.nazare-counter {\n  display: inline-flex;\n  align-items: center;\n  gap: 0.75rem;\n}\n.nazare-counter output {\n  min-width: 3ch;\n  text-align: center;\n  font-variant-numeric: tabular-nums;\n}\n.nazare-counter button {\n  inline-size: 2rem;\n  block-size: 2rem;\n}\n{% endstylesheet %}\n",
+    "counter.ts": "import { cn } from \"../cn/cn.ts\";\nimport { formatValue } from \"./format.ts\";\n\nexport default island(({ root, refs, data }) => {\n\tlet value = data.root.start;\n\n\tconst render = () => {\n\t\trefs.value.textContent = formatValue(data.root.prefix, value);\n\t\troot.className = cn(\"nazare-counter\", {\n\t\t\t\"nazare-counter--positive\": value > 0,\n\t\t});\n\t};\n\n\trefs.increment.addEventListener(\"click\", () => {\n\t\tvalue += data.increment.step;\n\t\trender();\n\t});\n\trefs.decrement.addEventListener(\"click\", () => {\n\t\tvalue -= data.decrement.step;\n\t\trender();\n\t});\n\n\trender();\n});\n",
+    "format.ts": "export function formatValue(prefix: string, value: number): string {\n\treturn prefix + String(value);\n}\n"
+  }
+}

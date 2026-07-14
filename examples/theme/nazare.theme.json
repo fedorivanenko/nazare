@@ -1,0 +1,46 @@
+{
+  "build": {
+    "outDir": "theme",
+    "sourceRoot": "src"
+  },
+  "registries": {
+    "local": "file:../registry"
+  },
+  "registry": "local",
+  "installed": {
+    "@nazare/announcement-bar": "0.1.0",
+    "@nazare/cn": "0.1.0",
+    "@nazare/counter": "0.1.0",
+    "@nazare/link": "0.1.0",
+    "@nazare/notice": "0.1.0",
+    "@nazare/notice-board": "0.1.0"
+  },
+  "installedFiles": {
+    "@nazare/announcement-bar": {
+      "announcement-bar.nz.liquid": "sha256-763e93acc56869705cb010a9ee567317d393e530a8ad5f077dce22c4dfd7ecad",
+      "nazare.json": "sha256-8333b659e0a5c91dcc44d26b782d03577cabe62bc1ffd7786ca30afcfeff89f1"
+    },
+    "@nazare/cn": {
+      "cn.ts": "sha256-7cba613492165a5955ffaa0218d01257e14b076ed8d7fdb240009f162b0534d0",
+      "nazare.json": "sha256-f0a6c4a569d51205548c823768a69fa207ae652a246b47ef0c5be9bf88c68888"
+    },
+    "@nazare/counter": {
+      "counter.nz.liquid": "sha256-293eb94ea26d886c9d760b1b3a138f82ec61e69fdb67b4b5d0567ff92002b755",
+      "counter.ts": "sha256-83f692955e66e382548c0e420c3ff65b4cbe039be4713e21eba35fe54fe45ef0",
+      "format.ts": "sha256-07d05263045f22145577feef16cd35342ab2c5a3a8ef13852846ba1b74bf964b",
+      "nazare.json": "sha256-8d5aa583e7ba8df4af3ed51fad7ed05e1d0b98a9d634ab2969da14e369c82b63"
+    },
+    "@nazare/link": {
+      "link.nz.liquid": "sha256-613f475eceef26a9f59dcea2ce471565f2cf284086fac355b7ad85b3248e22a7",
+      "nazare.json": "sha256-c9f0fd99cc5a3af92fb0237c13f66e2039d8cb631c3d756986478b345b7d2fa7"
+    },
+    "@nazare/notice": {
+      "nazare.json": "sha256-ab0e645ff943a09a182cc82883be33f930f759dfd727b2818c64dbbbab3280b4",
+      "notice.nz.liquid": "sha256-9629ec1f3d9cc9f662b122dd20c98b22a26175b4c7c2ad631e955e9d52172e81"
+    },
+    "@nazare/notice-board": {
+      "nazare.json": "sha256-1032f15f393200d22d30ca5738f1b706e271ee6c7fcb4f39ad8b5b69c9560bc3",
+      "notice-board.nz.liquid": "sha256-9b021cdcf9a7fa888f278ab419d41449e83da69a0f74e35c6a7a599ef64d1d6d"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "id": "@nazare/link",
+  "version": "0.1.0",
+  "kind": "snippet",
+  "entry": "link.nz.liquid",
+  "dependencies": {},
+  "files": [
+    "link.nz.liquid"
+  ]
+}

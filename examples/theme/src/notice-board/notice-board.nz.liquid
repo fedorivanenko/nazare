@@ -1,0 +1,12 @@
+{% component section %}
+
+{% import Notice from "../notice/notice.nz.liquid" %}
+
+{% props {
+  heading: string.setting({ label: "Heading", default: "Notices" }),
+} %}
+
+<section class="nazare-notice-board">
+  <h2>{{ props.heading }}</h2>
+  {% blocks Notice %}
+</section>
