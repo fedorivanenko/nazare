@@ -1,11 +1,16 @@
+# build artifacts
 node_modules/
 dist/
 .release/
-.nazare-out/
 *.tsbuildinfo
-.claude/settings.local.json
+
+# env
+.env*
+
+# AI
 .claude/
 
+# personal
 notes/
 
 # The example theme's built theme/ output IS committed (part of the showcase;
