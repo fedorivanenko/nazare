@@ -1,0 +1,13 @@
+{
+	"editor.formatOnSave": true,
+
+	// Biome formats + fixes the code it owns (TS/JS/CSS). Markdown, YAML, and
+	// JSON have no formatter configured — left as authored, by design.
+	"[javascript][typescript][css]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	},
+	"editor.codeActionsOnSave": {
+		"source.organizeImports.biome": "explicit",
+		"quickfix.biome": "explicit"
+	}
+}

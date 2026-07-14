@@ -9,6 +9,7 @@
 		"includes": [
 			"packages/**",
 			"apps/**",
+			"registry/**",
 			"!**/dist",
 			"!**/.nazare-out",
 			"!**/*.json"

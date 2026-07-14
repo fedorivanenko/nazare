@@ -1,0 +1,22 @@
+{
+	// Starting point — adjust to taste. Biome owns TS/JS/CSS; Markdown, YAML,
+	// and JSON are left unformatted by design (format-on-save off by default,
+	// on per code language).
+	"format_on_save": "off",
+	"languages": {
+		"TypeScript": {
+			"format_on_save": "on",
+			"formatter": { "language_server": { "name": "biome" } },
+			"code_actions_on_format": { "source.organizeImports.biome": true }
+		},
+		"JavaScript": {
+			"format_on_save": "on",
+			"formatter": { "language_server": { "name": "biome" } },
+			"code_actions_on_format": { "source.organizeImports.biome": true }
+		},
+		"CSS": {
+			"format_on_save": "on",
+			"formatter": { "language_server": { "name": "biome" } }
+		}
+	}
+}

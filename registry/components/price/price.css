@@ -1,13 +1,13 @@
 .price {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.5rem;
+	display: inline-flex;
+	align-items: baseline;
+	gap: 0.5rem;
 }
 
 .price__compare {
-  color: rgb(107 114 128);
+	color: rgb(107 114 128);
 }
 
 .price__current {
-  font-weight: 600;
+	font-weight: 600;
 }

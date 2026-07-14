@@ -1,4 +1,4 @@
-# Nazare
+# 🌊 Nazare
 
 > **Project status:** Nazare is in heavy active development. APIs, file formats, compiler behavior, registry behavior, and generated output may change. Do not treat it as blindly production-ready yet; test generated themes with Theme Check and Shopify CLI before using them on a live storefront.
 
