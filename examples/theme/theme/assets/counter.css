@@ -1,0 +1,16 @@
+
+.nazare-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.nazare-counter output {
+  min-width: 3ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.nazare-counter button {
+  inline-size: 2rem;
+  block-size: 2rem;
+}
+

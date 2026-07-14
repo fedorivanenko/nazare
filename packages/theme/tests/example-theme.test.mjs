@@ -33,13 +33,10 @@ test("example theme builds into a Shopify theme", async () => {
 
 		const out = join(projectRoot, "theme");
 		for (const rel of [
-			"sections/announcement-bar.liquid",
 			"sections/counter.liquid",
-			"sections/notice-board.liquid",
-			"snippets/link.liquid",
-			"blocks/notice.liquid",
-			"assets/nazare-runtime.js",
 			"assets/counter.js",
+			"assets/counter.css",
+			"assets/nazare-runtime.js",
 			"layout/theme.liquid",
 			"templates/index.json",
 			"config/settings_schema.json",

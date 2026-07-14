@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "files": {
+    "assets/counter.css": {
+      "hash": "sha256-c26c12a491d427f4dd62179d1b2ea22c44d50c229e8b557bcae71188e73f3871",
+      "source": "src/components/counter/counter.nz.liquid"
+    },
+    "assets/counter.js": {
+      "hash": "sha256-b03daf6e48a90d7f220fffc9e60066874ce4a5a065a4cee3f34ceb1829b4000b",
+      "source": "src/components/counter/counter.nz.liquid"
+    },
+    "assets/nazare-runtime.js": {
+      "hash": "sha256-1128b381fe104db1daccd7f61d855ad9ffb363288f84ed9181d579155cb229a6",
+      "source": "src/components/counter/counter.nz.liquid"
+    },
+    "config/settings_schema.json": {
+      "hash": "sha256-ada75fb55e5fc352868f948003f246f4d5424a822091c040f73659c5c94a682b",
+      "source": "src/config/settings_schema.json"
+    },
+    "layout/theme.liquid": {
+      "hash": "sha256-7741e2e9a7d4e6c6b9ba8f491a3b6ebfe2df9ee6696c735b81b0e11117261992",
+      "source": "src/layout/theme.liquid"
+    },
+    "sections/counter.liquid": {
+      "hash": "sha256-d6f0f6437d53642a681ff047ef8747f5a1a01b8568441568be7e585c15206bb1",
+      "source": "src/components/counter/counter.nz.liquid"
+    }
+  }
+}

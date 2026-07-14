@@ -1,0 +1,32 @@
+{% component section %}
+
+{% import counter from "./counter.ts" %}
+
+{% props {
+  start: number.setting({ label: "Start value", default: 0 }),
+  step: number.min(1).max(10).step(1).setting({ label: "Step", default: 1 }),
+  prefix: string.setting({ label: "Prefix", default: "" }),
+} %}
+
+<div ref="root" class="nazare-counter" data-start="{{ props.start }}" data-prefix="{{ props.prefix }}">
+  <button ref="decrement" type="button" data-step="{{ props.step }}">&minus;</button>
+  <output ref="value">{{ props.start }}</output>
+  <button ref="increment" type="button" data-step="{{ props.step }}">+</button>
+</div>
+
+{% stylesheet %}
+.nazare-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.nazare-counter output {
+  min-width: 3ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.nazare-counter button {
+  inline-size: 2rem;
+  block-size: 2rem;
+}
+{% endstylesheet %}

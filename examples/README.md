@@ -1,14 +1,52 @@
 # Examples
 
-Working artifacts that exercise Nazare end to end and double as reference.
+A self-contained walk through the whole Nazare loop — **author → publish →
+install → build** — plus the compiler fixtures.
 
-## `theme/` — a real Nazare theme workspace
+```
+sources/  ──publish──▶  registry/  ──nazare add──▶  theme/  ──nazare build──▶  theme/theme
+```
 
-A complete source workspace that compiles to a standard Shopify theme. Source
-lives under `src/` (components installed from the example registry below, plus
-its own `layout/`, `templates/`, `config/`, and `locales/`); build paths are set
-explicitly in `nazare.theme.json` (`build.sourceRoot` = `src`, `build.outDir` =
-`theme`).
+## `sources/` — publishable component source
+
+The component source you publish into a registry. Each folder is one publishable
+unit with a `nazare.json` and its files:
+
+- `counter/` — a section with settings, a JS island (`counter.ts` + `format.ts`),
+  and a scoped stylesheet.
+- `cn/` — a tiny function `counter` depends on.
+
+## `registry/` — a `file:` registry
+
+`sources/` published into the on-disk registry format
+(`<scope>/<name>/<version>.json`). It's what `theme/` installs from, and a
+runnable demo of a serverless registry:
+
+```sh
+nazare registry add local file:examples/registry
+nazare registry use local
+nazare add @nazare/counter        # pulls its @nazare/cn dependency too
+```
+
+Regenerate it from the sources:
+
+```sh
+for name in cn counter; do
+  NAZARE_REGISTRY=file:examples/registry nazare publish examples/sources/$name
+done
+```
+
+## `theme/` — a minimal Nazare theme workspace
+
+A small but complete workspace showcasing one component (`@nazare/counter`),
+installed under `src/components/` alongside its own `src/layout/`,
+`src/templates/`, `src/config/`, and `src/locales/`. Build paths are explicit in
+`nazare.theme.json` (`build.sourceRoot` = `src`, `build.outDir` = `theme`).
+
+Both the **source** (`src/`) and the **built theme** (`theme/`) are committed, so
+you can read input and generated Shopify output side by side without building.
+Rebuild in place — it reconciles cleanly against the committed output (the
+ownership manifest travels with it):
 
 ```sh
 cd examples/theme
@@ -16,31 +54,9 @@ nazare build            # → theme/ (a full Shopify theme)
 shopify theme dev --path theme
 ```
 
-Build output (`theme/`) and reconciliation baselines
-(`nazare.schema-lock.json`, `nazare.locales-base.json`) are gitignored — the repo
-keeps only source. The end-to-end build is covered by
-`packages/theme/tests/example-theme.test.mjs`, which builds a temp copy so the
-committed workspace stays clean.
-
-## `registry/` — a `file:` example registry
-
-The curated catalog (`registry/components/`) published into the on-disk registry
-format (`<scope>/<name>/<version>.json`). It's what `theme/` installs from, and a
-runnable demo of a serverless registry:
-
-```sh
-nazare registry add local file:examples/registry
-nazare registry use local
-nazare add @nazare/announcement-bar
-```
-
-Regenerate it by re-publishing the catalog:
-
-```sh
-for name in cn link notice price disclosure counter notice-board announcement-bar; do
-  NAZARE_REGISTRY=file:examples/registry nazare publish registry/components/$name
-done
-```
+Only the per-build reconciliation baselines (`nazare.schema-lock.json`,
+`nazare.locales-base.json`) are gitignored. The end-to-end build is also covered
+by `packages/theme/tests/example-theme.test.mjs`, which builds a temp copy.
 
 ## Compiler fixtures
 

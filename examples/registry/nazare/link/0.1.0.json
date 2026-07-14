@@ -1,9 +1,0 @@
-{
-  "id": "@nazare/link",
-  "version": "0.1.0",
-  "dependencies": {},
-  "files": {
-    "nazare.json": "{\n  \"id\": \"@nazare/link\",\n  \"version\": \"0.1.0\",\n  \"kind\": \"snippet\",\n  \"entry\": \"link.nz.liquid\",\n  \"dependencies\": {},\n  \"files\": [\n    \"link.nz.liquid\"\n  ]\n}\n",
-    "link.nz.liquid": "{% props {\n  href: url.required(),\n  text: string.required(),\n  class: string.optional(),\n  new_tab: boolean.setting({ label: \"Open in new tab\", default: false }),\n} %}\n\n<a href=\"{{ props.href }}\"{% if props.class != blank %} class=\"{{ props.class }}\"{% endif %}{% if props.new_tab %} target=\"_blank\" rel=\"noopener\"{% endif %}>\n  {{ props.text }}\n</a>\n"
-  }
-}
