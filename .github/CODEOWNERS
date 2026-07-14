@@ -1,0 +1,7 @@
+# Default owner for everything in the repo.
+# See https://docs.github.com/en/repositories/managing-your-repos-settings-and-features/customizing-your-repository/about-code-owners
+* @fedorivanenko
+
+# TODO: add per-area owners as the project grows, e.g.
+# /packages/compiler/   @fedorivanenko
+# /apps/registry-api/    @fedorivanenko

@@ -1,0 +1,49 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For security issues, do **not** file here — see
+        [SECURITY.md](../blob/main/SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps, source, or a link to a repo that reproduces it.
+      placeholder: |
+        1. Given this `.nz.liquid` …
+        2. Run `nazare build …`
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Nazare version
+      description: Release, commit SHA, or "main".
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, pnpm version.
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostics / output
+      description: Relevant compiler diagnostics, build output, or stack traces.
+      render: shell
+    validations:
+      required: false
