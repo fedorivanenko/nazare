@@ -26,6 +26,6 @@ body:
     id: context
     attributes:
       label: Additional context
-      description: Related design notes in `docs/`, prior art (e.g. shadcn), etc.
+      description: Prior art (e.g. shadcn), links, or other context.
     validations:
       required: false

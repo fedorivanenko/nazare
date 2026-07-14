@@ -37,8 +37,6 @@ These keep the codebase auditable; please match them:
 - **No committed `dist/`.** Build artifacts are produced in CI / at release time.
 - **Registry concerns stay out of the compiler.** Resolution and catalog policy live in the CLI / registry layer.
 
-See `docs/` for design notes and the roadmap.
-
 ## Pull requests
 
 1. Branch from `main`.

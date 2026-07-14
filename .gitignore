@@ -6,6 +6,4 @@ dist/
 .claude/settings.local.json
 .claude/
 
-docs/audit/
-docs/plan/
-docs/plans/
+notes/
