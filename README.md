@@ -538,3 +538,8 @@ packages/registry      file and HTTP registry clients
 packages/cli-client    `nazare` CLI
 apps/registry-api      self-hostable HTTP registry server
 ```
+
+## License
+
+[MIT](LICENSE) — every part of Nazare. Registry components are distributed as
+source you own and edit, with no runtime dependency on Nazare.

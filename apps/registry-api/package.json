@@ -1,6 +1,7 @@
 {
   "name": "@nazare/registry-api",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
