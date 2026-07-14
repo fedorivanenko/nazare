@@ -1,11 +1,26 @@
 import { spawnSync } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { buildTheme } from "@nazare/theme";
 import type { CliOptions } from "./options.js";
 
-const DEFAULT_SOURCE_ROOT = "nazare";
-const DEFAULT_OUT_DIR = ".nazare-out/theme";
+const THEME_MANIFEST = "nazare.theme.json";
+
+/** The build paths are project config, read from nazare.theme.json `build`. */
+type ThemeBuildConfig = { outDir?: string; sourceRoot?: string };
+
+async function readBuildConfig(projectRoot: string): Promise<ThemeBuildConfig> {
+	const raw = await readFile(join(projectRoot, THEME_MANIFEST), "utf8").catch(
+		() => undefined,
+	);
+	if (raw === undefined) return {};
+	try {
+		const parsed = JSON.parse(raw) as { build?: ThemeBuildConfig };
+		return parsed.build ?? {};
+	} catch {
+		return {};
+	}
+}
 
 // Merchant-owned data the Shopify theme editor writes back. `nazare build
 // --pull` fetches only these into the output dir so buildTheme can carry the
@@ -31,7 +46,22 @@ export async function runThemeBuild(
 	cliOptions: CliOptions,
 ): Promise<void> {
 	try {
-		const outDir = cliOptions.outDir ?? DEFAULT_OUT_DIR;
+		// Both paths are explicit: an explicit CLI flag/positional wins, else the
+		// nazare.theme.json `build` config. There is no hardcoded default — an
+		// unset path is an error, not a silent `.nazare-out/theme`.
+		const config = await readBuildConfig(projectRoot);
+		const sourceRoot = target ?? cliOptions.sourceRoot ?? config.sourceRoot;
+		const outDir = cliOptions.outDir ?? config.outDir;
+		if (!sourceRoot) {
+			throw new Error(
+				'No source root. Pass it as `nazare build <source-root>` or --source-root, or set "build": { "sourceRoot": "…" } in nazare.theme.json.',
+			);
+		}
+		if (!outDir) {
+			throw new Error(
+				'No output directory. Pass --out-dir, or set "build": { "outDir": "…" } in nazare.theme.json.',
+			);
+		}
 		// Reconcile against a live theme: pull its merchant-owned data into the
 		// output dir first, so buildTheme snapshots and preserves it instead of
 		// resetting it to the source seeds.
@@ -45,7 +75,7 @@ export async function runThemeBuild(
 		}
 		const result = await buildTheme({
 			projectRoot,
-			sourceRoot: target ?? DEFAULT_SOURCE_ROOT,
+			sourceRoot,
 			outDir,
 			strictness: cliOptions.strictness,
 			// Key the run-once migrations ledger by the pulled store/theme so each

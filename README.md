@@ -30,10 +30,11 @@ Install the CLI first. The installer requires Node.js and `pnpm` (or Corepack, w
 curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh | sh
 ```
 
-Create a Nazare source workspace inside an existing Shopify theme or a new project:
+Scaffold a project. `nazare init` prompts for the source and output directories
+(defaults `src` and `theme`) and writes them into `nazare.theme.json`:
 
 ```sh
-mkdir -p nazare/components nazare/templates nazare/layout nazare/config nazare/locales
+nazare init
 ```
 
 Choose and save a registry, then add components:
@@ -46,12 +47,19 @@ nazare add @nazare/button
 nazare add @nazare/hero
 ```
 
-The selected registry is stored in project-level `nazare.theme.json`
+The selected registry is stored in project-level `nazare.theme.json`, which also
+holds the explicit build paths:
+
+```json
+{
+  "build": { "sourceRoot": "nazare", "outDir": "/theme" }
+}
+```
 
 Build a Shopify-compatible theme output:
 
 ```sh
-nazare build --out-dir /theme
+nazare build
 ```
 
 Run it with Shopify CLI:
@@ -371,14 +379,23 @@ src/
     en.default.json
 ```
 
+Build paths are explicit — set them once in `nazare.theme.json` (there is no
+hardcoded default output or source directory):
+
+```json
+{
+  "build": { "sourceRoot": "nazare", "outDir": ".nazare-out/theme" }
+}
+```
+
 Build it:
 
 ```sh
-# walks nazare/ by default
+# reads build.sourceRoot / build.outDir from nazare.theme.json
 nazare build
 
-# or choose a different source root
-nazare build storefront
+# or pass them explicitly (a flag/arg overrides the config)
+nazare build storefront --out-dir theme
 
 # use loose mode while migrating existing themes
 nazare build --strictness loose
@@ -474,6 +491,7 @@ Also, Nazare includes JS island architecture, supports any JavaScript framework 
 ## CLI reference
 
 ```txt
+nazare init                         scaffold build config in nazare.theme.json
 nazare build [source-root|file]     build a complete Shopify theme output
 nazare build --pull                 reconcile against a live theme before building
 nazare add <@scope/name>            install a registry component and dependencies
@@ -497,8 +515,8 @@ Common options and environment variables:
 ```txt
 --strictness loose|strict           default strict; loose helps migration
 --version x.y.z                     add/update exact registry version
---source-root <dir>                 add/update/build source root, default `nazare/`
---out-dir <dir>                     build output directory, default `.nazare-out/theme`
+--source-root <dir>                 add/update/build source root (else `nazare.theme.json` build.sourceRoot)
+--out-dir <dir>                     build output directory (else `nazare.theme.json` build.outDir)
 --pull                              build: fetch live theme data before building
 --store <domain>                    build --pull: Shopify store to pull from
 --theme <id|name>                   build --pull: theme to pull from

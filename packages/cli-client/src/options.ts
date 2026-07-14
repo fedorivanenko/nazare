@@ -104,7 +104,8 @@ export function printHelp(): void {
   nazare graph <file>
   nazare validate <file>
   nazare schema <file>
-  nazare build [source-root|file]   walks nazare/ by default
+  nazare init                       scaffold build config in nazare.theme.json (prompts for src/out dirs)
+  nazare build [source-root|file]   source root from arg or nazare.theme.json build.sourceRoot
                                     --pull reconciles against a live theme first
   nazare add <@scope/name>          copy a component + deps into the source root
   nazare update [@scope/name]       re-fetch latest; all installed if omitted
@@ -121,8 +122,8 @@ Options:
   --strictness loose|strict
   --version x.y.z                   add/update/diff: exact version (default latest)
   --force                           update: overwrite local component edits
-  --source-root <dir>               add/update/build: default nazare/
-  --out-dir <dir>                   build output directory: default .nazare-out/theme
+  --source-root <dir>               add/update/build source root (else nazare.theme.json build.sourceRoot)
+  --out-dir <dir>                   build output directory (else nazare.theme.json build.outDir)
   --pull                            build: fetch live theme data before building
   --store <domain>                  build --pull: Shopify store to pull from
   --theme <id|name>                 build --pull: theme to pull from

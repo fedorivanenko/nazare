@@ -30,6 +30,16 @@ async function withProject(files, fn) {
 const readOutput = (projectRoot, path) =>
 	readFileSync(join(projectRoot, ".nazare-out/theme", path), "utf8");
 
+// buildTheme requires explicit sourceRoot + outDir (no defaults); these tests
+// use the conventional pair. Per-call opts override (e.g. a custom outDir).
+const build = (projectRoot, opts = {}) =>
+	buildTheme({
+		projectRoot,
+		sourceRoot: "nazare",
+		outDir: ".nazare-out/theme",
+		...opts,
+	});
+
 test("buildTheme copies Shopify theme folders", async () => {
 	await withProject(
 		{
@@ -42,7 +52,7 @@ test("buildTheme copies Shopify theme folders", async () => {
 			"nazare/locales/en.default.json": "{}",
 		},
 		async (projectRoot) => {
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.deepEqual(result.issues, []);
 			assert.equal(
 				readOutput(projectRoot, "layout/theme.liquid"),
@@ -63,7 +73,7 @@ test("buildTheme compiles .nz.liquid and does not copy the source file", async (
 				"{% component section %}<section>Hero</section>\n",
 		},
 		async (projectRoot) => {
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.deepEqual(result.compiled, ["nazare/sections/hero.nz.liquid"]);
 			assert.equal(
 				readOutput(projectRoot, "sections/hero.liquid").includes("Hero"),
@@ -83,7 +93,7 @@ test("buildTheme reports invalid JSON", async () => {
 	await withProject(
 		{ "nazare/templates/product.json": "{ nope" },
 		async (projectRoot) => {
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.equal(result.issues[0].code, "THEME_INVALID_JSON");
 		},
 	);
@@ -97,15 +107,15 @@ test("buildTheme refuses dangerous output directories before deleting", async ()
 		},
 		async (projectRoot) => {
 			await assert.rejects(
-				buildTheme({ projectRoot, outDir: "." }),
+				build(projectRoot, { outDir: "." }),
 				/Refusing to use project root as output directory/,
 			);
 			await assert.rejects(
-				buildTheme({ projectRoot, outDir: "nazare" }),
+				build(projectRoot, { outDir: "nazare" }),
 				/Refusing to use source directory as output directory/,
 			);
 			await assert.rejects(
-				buildTheme({ projectRoot, outDir: "../theme" }),
+				build(projectRoot, { outDir: "../theme" }),
 				/Refusing to delete output directory outside project root/,
 			);
 			assert.equal(
@@ -128,7 +138,7 @@ test("buildTheme seeds merchant data on a first build", async () => {
 			"nazare/templates/index.json": '{"sections":{}}',
 		},
 		async (projectRoot) => {
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.deepEqual(result.preserved, []);
 			assert.ok(result.seeded.includes("config/settings_data.json"));
 			assert.equal(
@@ -146,7 +156,7 @@ test("buildTheme refuses to overwrite unowned generated output files", async () 
 			".nazare-out/theme/sections/hero.liquid": "<section>Manual</section>\n",
 		},
 		async (projectRoot) => {
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.deepEqual(result.written, []);
 			assert.ok(
 				result.conflicts.some((conflict) =>
@@ -165,12 +175,12 @@ test("buildTheme refuses to overwrite modified Nazare-owned output files", async
 	await withProject(
 		{ "nazare/sections/hero.liquid": "<section>Source</section>\n" },
 		async (projectRoot) => {
-			await buildTheme({ projectRoot });
+			await build(projectRoot);
 			writeFileSync(
 				join(projectRoot, ".nazare-out/theme/sections/hero.liquid"),
 				"<section>Manual edit</section>\n",
 			);
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.deepEqual(result.written, []);
 			assert.ok(
 				result.conflicts.some((conflict) =>
@@ -192,9 +202,9 @@ test("buildTheme deletes stale Nazare-owned output files", async () => {
 			"nazare/snippets/price.liquid": "<span>Price</span>\n",
 		},
 		async (projectRoot) => {
-			await buildTheme({ projectRoot });
+			await build(projectRoot);
 			rmSync(join(projectRoot, "nazare/snippets/price.liquid"));
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.equal(
 				existsSync(
 					join(projectRoot, ".nazare-out/theme/snippets/price.liquid"),
@@ -217,14 +227,14 @@ test("buildTheme preserves target settings_data over the source seed on rebuild"
 				"{% component section %}<section>Hero</section>\n",
 		},
 		async (projectRoot) => {
-			await buildTheme({ projectRoot });
+			await build(projectRoot);
 			// Simulate a merchant editing the setting in the Shopify admin, which
 			// writes back into the built theme's settings_data.json.
 			writeFileSync(
 				join(projectRoot, ".nazare-out/theme/config/settings_data.json"),
 				'{"current":{"colors_accent":"#ff0000"}}',
 			);
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.ok(result.preserved.includes("config/settings_data.json"));
 			assert.ok(
 				result.notes.some((note) => note.code === "THEME_DATA_PRESERVED"),
@@ -245,13 +255,13 @@ test("buildTheme keeps a merchant-added template that the source never had", asy
 	await withProject(
 		{ "nazare/templates/index.json": '{"sections":{}}' },
 		async (projectRoot) => {
-			await buildTheme({ projectRoot });
+			await build(projectRoot);
 			// A merchant creates a new template variant in the admin.
 			writeFileSync(
 				join(projectRoot, ".nazare-out/theme/templates/page.contact.json"),
 				'{"sections":{"main":{"type":"contact"}}}',
 			);
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.ok(result.preserved.includes("templates/page.contact.json"));
 			assert.equal(
 				readOutput(projectRoot, "templates/page.contact.json"),
@@ -265,12 +275,12 @@ test("buildTheme preserves section-group JSON but regenerates section code", asy
 	await withProject(
 		{ "nazare/sections/header-group.json": '{"type":"header","sections":{}}' },
 		async (projectRoot) => {
-			await buildTheme({ projectRoot });
+			await build(projectRoot);
 			writeFileSync(
 				join(projectRoot, ".nazare-out/theme/sections/header-group.json"),
 				'{"type":"header","sections":{"logo":{"type":"logo"}}}',
 			);
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.ok(result.preserved.includes("sections/header-group.json"));
 			assert.equal(
 				readOutput(projectRoot, "sections/header-group.json"),
@@ -291,7 +301,7 @@ test("buildTheme writes a schema lock with no drift on first build", async () =>
 			),
 		},
 		async (projectRoot) => {
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.deepEqual(result.drift, []);
 			const lock = JSON.parse(
 				readFileSync(join(projectRoot, result.manifestPath), "utf8"),
@@ -315,14 +325,14 @@ test("buildTheme warns when a setting is removed or a section is deleted", async
 				'{% component section %}\n{% props {\n  title: string.setting({ label: "Title" }),\n} %}\n<section>{{ props.title }}</section>\n',
 		},
 		async (projectRoot) => {
-			await buildTheme({ projectRoot });
+			await build(projectRoot);
 			// Drop the `sub` setting from hero, and delete promo entirely.
 			writeFileSync(
 				join(projectRoot, "nazare/sections/hero.nz.liquid"),
 				section('  heading: string.setting({ label: "Heading" }),'),
 			);
 			rmSync(join(projectRoot, "nazare/sections/promo.nz.liquid"));
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			const codes = result.drift.map((d) => d.code);
 			assert.ok(codes.includes("THEME_SETTING_REMOVED"));
 			assert.ok(codes.includes("THEME_SECTION_REMOVED"));
@@ -345,12 +355,12 @@ test("buildTheme warns when a setting changes type", async () => {
 			),
 		},
 		async (projectRoot) => {
-			await buildTheme({ projectRoot });
+			await build(projectRoot);
 			writeFileSync(
 				join(projectRoot, "nazare/sections/hero.nz.liquid"),
 				section('  heading: boolean.setting({ label: "Heading" }),'),
 			);
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.ok(result.drift.some((d) => d.code === "THEME_SETTING_RETYPED"));
 		},
 	);
@@ -364,14 +374,14 @@ test("buildTheme stays silent when a setting is added", async () => {
 			),
 		},
 		async (projectRoot) => {
-			await buildTheme({ projectRoot });
+			await build(projectRoot);
 			writeFileSync(
 				join(projectRoot, "nazare/sections/hero.nz.liquid"),
 				section(
 					'  heading: string.setting({ label: "Heading" }),\n  sub: string.setting({ label: "Sub" }),',
 				),
 			);
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.deepEqual(result.drift, []);
 		},
 	);
@@ -392,7 +402,7 @@ test("a migration rewrites saved data on a rename and silences drift", async () 
 		},
 		async (projectRoot) => {
 			// First build establishes the schema lock for section "hero".
-			await buildTheme({ projectRoot });
+			await build(projectRoot);
 			// A merchant has placed the section on a page with a saved value.
 			writeOut(
 				projectRoot,
@@ -423,7 +433,7 @@ test("a migration rewrites saved data on a rename and silences drift", async () 
 					],
 				}),
 			);
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 
 			// Drift is silenced because the migration accounts for the rename.
 			assert.deepEqual(result.drift, []);
@@ -445,7 +455,7 @@ test("without a migration, a rename still drifts and strands data", async () => 
 			),
 		},
 		async (projectRoot) => {
-			await buildTheme({ projectRoot });
+			await build(projectRoot);
 			writeOut(
 				projectRoot,
 				"templates/index.json",
@@ -458,7 +468,7 @@ test("without a migration, a rename still drifts and strands data", async () => 
 				join(projectRoot, "nazare/sections/banner.nz.liquid"),
 				section('  title: string.setting({ label: "Title" }),'),
 			);
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.ok(result.drift.some((d) => d.code === "THEME_SECTION_REMOVED"));
 			assert.deepEqual(result.migrated, []);
 			// Data is untouched — the instance still points at the gone "hero".
@@ -489,7 +499,7 @@ test("an invalid migrations file errors and is not partially applied", async () 
 				"templates/index.json",
 				JSON.stringify({ sections: { main: { type: "hero" } } }),
 			);
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.ok(
 				result.issues.some((i) => i.code === "THEME_MIGRATION_INVALID"),
 			);
@@ -507,7 +517,7 @@ test("a global setting rename rewrites settings_data.current", async () => {
 	await withProject(
 		{ "nazare/config/settings_schema.json": "[]" },
 		async (projectRoot) => {
-			await buildTheme({ projectRoot });
+			await build(projectRoot);
 			writeOut(
 				projectRoot,
 				"config/settings_data.json",
@@ -521,7 +531,7 @@ test("a global setting rename rewrites settings_data.current", async () => {
 					],
 				}),
 			);
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.ok(result.migrated.includes("config/settings_data.json"));
 			const data = JSON.parse(
 				readOutput(projectRoot, "config/settings_data.json"),
@@ -545,7 +555,7 @@ test("the ledger runs a migration once even if the old name reappears", async ()
 				"config/settings_data.json",
 				JSON.stringify({ current: { old: "first" } }),
 			);
-			const first = await buildTheme({ projectRoot });
+			const first = await build(projectRoot);
 			assert.deepEqual(first.applied, ["m1"]);
 			assert.deepEqual(
 				JSON.parse(readOutput(projectRoot, "config/settings_data.json"))
@@ -561,7 +571,7 @@ test("the ledger runs a migration once even if the old name reappears", async ()
 				"config/settings_data.json",
 				JSON.stringify({ current: { neu: "first", old: "unrelated" } }),
 			);
-			const second = await buildTheme({ projectRoot });
+			const second = await build(projectRoot);
 			assert.deepEqual(second.applied, []);
 			assert.deepEqual(
 				JSON.parse(readOutput(projectRoot, "config/settings_data.json"))
@@ -584,7 +594,7 @@ test("the ledger is per target, so a new target re-applies", async () => {
 				join(projectRoot, firstOut, "config/settings_data.json"),
 				JSON.stringify({ current: { old: "x" } }),
 			);
-			const first = await buildTheme({ projectRoot, outDir: firstOut });
+			const first = await build(projectRoot, { outDir: firstOut });
 			assert.deepEqual(first.applied, ["m1"]);
 
 			// A different output target has its own history — the migration runs
@@ -594,7 +604,7 @@ test("the ledger is per target, so a new target re-applies", async () => {
 				join(projectRoot, secondOut, "config/settings_data.json"),
 				JSON.stringify({ current: { old: "y" } }),
 			);
-			const second = await buildTheme({ projectRoot, outDir: secondOut });
+			const second = await build(projectRoot, { outDir: secondOut });
 			assert.deepEqual(second.applied, ["m1"]);
 			const ledger = JSON.parse(
 				readFileSync(
@@ -623,7 +633,7 @@ test("a duplicate migration id is rejected", async () => {
 					],
 				}),
 			);
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.ok(
 				result.issues.some(
 					(i) =>
@@ -647,11 +657,11 @@ test("a locale preserves a merchant edit the developer did not touch", async () 
 	await withProject(
 		localeSource({ general: { greeting: "Hi" }, cta: "Shop" }),
 		async (projectRoot) => {
-			const first = await buildTheme({ projectRoot });
+			const first = await build(projectRoot);
 			assert.deepEqual(first.mergedLocales, []); // nothing live yet
 			// Merchant edits one nested string in the admin.
 			editLocale(projectRoot, { general: { greeting: "Hey" }, cta: "Shop" });
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.ok(result.mergedLocales.includes("locales/en.default.json"));
 			assert.deepEqual(readLocale(projectRoot), {
 				general: { greeting: "Hey" },
@@ -663,26 +673,26 @@ test("a locale preserves a merchant edit the developer did not touch", async () 
 
 test("a locale propagates a developer update the merchant did not touch", async () => {
 	await withProject(localeSource({ greeting: "Hi" }), async (projectRoot) => {
-		await buildTheme({ projectRoot });
+		await build(projectRoot);
 		editLocale(projectRoot, { greeting: "Hi" }); // merchant left it alone
 		writeFileSync(
 			join(projectRoot, "nazare/locales/en.default.json"),
 			JSON.stringify({ greeting: "Hello" }), // developer updates the string
 		);
-		await buildTheme({ projectRoot });
+		await build(projectRoot);
 		assert.deepEqual(readLocale(projectRoot), { greeting: "Hello" });
 	});
 });
 
 test("a locale adds new developer keys while keeping merchant edits", async () => {
 	await withProject(localeSource({ greeting: "Hi" }), async (projectRoot) => {
-		await buildTheme({ projectRoot });
+		await build(projectRoot);
 		editLocale(projectRoot, { greeting: "Hey" }); // merchant edit
 		writeFileSync(
 			join(projectRoot, "nazare/locales/en.default.json"),
 			JSON.stringify({ greeting: "Hi", farewell: "Bye" }), // dev adds a key
 		);
-		await buildTheme({ projectRoot });
+		await build(projectRoot);
 		assert.deepEqual(readLocale(projectRoot), {
 			greeting: "Hey",
 			farewell: "Bye",
@@ -692,13 +702,13 @@ test("a locale adds new developer keys while keeping merchant edits", async () =
 
 test("a locale key changed on both sides keeps the merchant value and warns", async () => {
 	await withProject(localeSource({ greeting: "Hi" }), async (projectRoot) => {
-		await buildTheme({ projectRoot });
+		await build(projectRoot);
 		editLocale(projectRoot, { greeting: "Hey" }); // merchant
 		writeFileSync(
 			join(projectRoot, "nazare/locales/en.default.json"),
 			JSON.stringify({ greeting: "Hello" }), // developer
 		);
-		const result = await buildTheme({ projectRoot });
+		const result = await build(projectRoot);
 		assert.ok(result.issues.some((i) => i.code === "THEME_LOCALE_CONFLICT"));
 		assert.deepEqual(readLocale(projectRoot), { greeting: "Hey" });
 	});
@@ -708,13 +718,13 @@ test("schema locales are developer-owned and copied, not merged", async () => {
 	await withProject(
 		{ "nazare/locales/en.default.schema.json": '{"label":"Heading"}' },
 		async (projectRoot) => {
-			await buildTheme({ projectRoot });
+			await build(projectRoot);
 			writeOut(
 				projectRoot,
 				"locales/en.default.schema.json",
 				'{"label":"Tampered"}',
 			);
-			const result = await buildTheme({ projectRoot });
+			const result = await build(projectRoot);
 			assert.deepEqual(result.mergedLocales, []);
 			assert.ok(
 				result.conflicts.some((conflict) =>
@@ -731,9 +741,9 @@ test("schema locales are developer-owned and copied, not merged", async () => {
 
 test("a locale the merchant added with no source is preserved", async () => {
 	await withProject(localeSource({ greeting: "Hi" }), async (projectRoot) => {
-		await buildTheme({ projectRoot });
+		await build(projectRoot);
 		writeOut(projectRoot, "locales/fr.json", '{"greeting":"Bonjour"}');
-		const result = await buildTheme({ projectRoot });
+		const result = await build(projectRoot);
 		// fr has no source, so it is preserved rather than merged.
 		assert.ok(!result.mergedLocales.includes("locales/fr.json"));
 		assert.equal(

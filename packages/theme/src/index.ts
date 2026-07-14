@@ -47,8 +47,6 @@ import {
 	sortSchemaManifest,
 } from "./schema-lock.js";
 
-const DEFAULT_SOURCE_ROOT = "nazare";
-const DEFAULT_OUT_DIR = ".nazare-out/theme";
 // Committed alongside the source: a fingerprint of every generated section's
 // schema (setting ids/types, accepted block types). Diffing it across builds
 // surfaces schema drift that would break saved merchant data.
@@ -74,8 +72,10 @@ const THEME_DIRS = new Set([
 
 export type ThemeBuildOptions = {
 	projectRoot: string;
-	sourceRoot?: string;
-	outDir?: string;
+	/** Source root, relative to projectRoot. Required — no default. */
+	sourceRoot: string;
+	/** Build output directory, relative to projectRoot. Required — no default. */
+	outDir: string;
 	strictness?: "loose" | "strict";
 	/** Schema-lock path, relative to projectRoot. Default nazare.schema-lock.json. */
 	manifestPath?: string;
@@ -119,8 +119,8 @@ export async function buildTheme(
 	options: ThemeBuildOptions,
 ): Promise<ThemeBuildResult> {
 	const projectRoot = options.projectRoot;
-	const sourceRoot = options.sourceRoot ?? DEFAULT_SOURCE_ROOT;
-	const outDir = options.outDir ?? DEFAULT_OUT_DIR;
+	const sourceRoot = options.sourceRoot;
+	const outDir = options.outDir;
 	const rootAbs = resolve(projectRoot, sourceRoot);
 	const rootStat = await stat(rootAbs).catch(() => undefined);
 	if (!rootStat) throw new Error(`Source path not found: ${sourceRoot}`);

@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
+import { createInterface } from "node:readline/promises";
 import {
 	checkComponentScripts,
 	compileNazareArtifact,
@@ -13,7 +14,6 @@ import { diffComponent, installComponent, updateAll } from "./install.js";
 import { type CliOptions, parseCliOptions, printHelp } from "./options.js";
 import { packComponent, publishComponent } from "./publish.js";
 
-const DEFAULT_SOURCE_ROOT = "nazare";
 const THEME_MANIFEST = "nazare.theme.json";
 
 const args = process.argv.slice(2);
@@ -47,10 +47,15 @@ try {
 
 	// `build` is theme-wide: it walks a source root and compiles every
 	// component into one theme output. It runs before the single-file setup
-	// below because it may target a directory — or nothing, defaulting to the
-	// `nazare/` source root — rather than one entry file.
+	// below because it targets a directory (from the arg or nazare.theme.json
+	// build.sourceRoot) rather than one entry file.
 	if (command === "build") {
 		await runThemeBuild(projectRoot, file, cliOptions);
+	}
+
+	// `init` scaffolds the project's explicit build config so add/build work.
+	if (command === "init") {
+		await runInit(projectRoot, cliOptions);
 	}
 
 	// Registry config commands update project-level nazare.theme.json.
@@ -190,7 +195,91 @@ type ProjectManifest = {
 	installed?: Record<string, string>;
 	registry?: string;
 	registries?: Record<string, string>;
+	/** Explicit build paths. No hardcoded defaults; unset is an error. */
+	build?: { outDir?: string; sourceRoot?: string };
 };
+
+/**
+ * The source root a project installs into: an explicit --source-root flag wins,
+ * else nazare.theme.json `build.sourceRoot`. There is no default — an unset
+ * source root is an error, so where components land is always explicit.
+ */
+async function resolveSourceRoot(
+	projectRoot: string,
+	cliOptions: CliOptions,
+): Promise<string> {
+	if (cliOptions.sourceRoot) return cliOptions.sourceRoot;
+	const manifest = await readProjectManifest(projectRoot);
+	const sourceRoot = manifest.build?.sourceRoot;
+	if (!sourceRoot) {
+		throw new Error(
+			'No source root. Pass --source-root, or set "build": { "sourceRoot": "…" } in nazare.theme.json.',
+		);
+	}
+	return sourceRoot;
+}
+
+/**
+ * Asks for a value with a shown default. A flag skips the question; a
+ * non-interactive stdin (CI, pipes) takes the default silently, so `init` never
+ * blocks a script. The answer is written to nazare.theme.json — explicit, not a
+ * resolution default.
+ */
+async function ask(
+	label: string,
+	fallback: string,
+	flagValue: string | undefined,
+): Promise<string> {
+	if (flagValue) return flagValue;
+	if (!process.stdin.isTTY) return fallback;
+	const rl = createInterface({ input: process.stdin, output: process.stdout });
+	try {
+		const answer = (await rl.question(`${label} (${fallback}): `)).trim();
+		return answer || fallback;
+	} finally {
+		rl.close();
+	}
+}
+
+/**
+ * Scaffolds the project's explicit build config into nazare.theme.json (merging
+ * with any existing registry config) and creates the source directory, so the
+ * next `nazare add` / `nazare build` has somewhere to read from and write to.
+ */
+async function runInit(
+	projectRoot: string,
+	cliOptions: CliOptions,
+): Promise<void> {
+	const existing = await readProjectManifest(projectRoot);
+	if (existing.build && !cliOptions.force) {
+		console.error(
+			"nazare.theme.json already has a build config. Re-run with --force to overwrite.",
+		);
+		process.exit(1);
+	}
+
+	const sourceRoot = await ask(
+		"Source directory",
+		"src",
+		cliOptions.sourceRoot,
+	);
+	const outDir = await ask("Output directory", "theme", cliOptions.outDir);
+
+	await writeProjectManifest(projectRoot, {
+		...existing,
+		build: { sourceRoot, outDir },
+	});
+	await mkdir(join(projectRoot, sourceRoot), { recursive: true });
+
+	console.log(
+		JSON.stringify(
+			{ initialized: THEME_MANIFEST, build: { sourceRoot, outDir } },
+			null,
+			2,
+		),
+	);
+	process.exit(0);
+}
 
 async function writeDumpFiles(
 	entryPath: string,
@@ -245,7 +334,7 @@ async function runAdd(
 		{
 			client: await registryClientForProject(projectRoot),
 			projectRoot,
-			sourceRoot: cliOptions.sourceRoot ?? DEFAULT_SOURCE_ROOT,
+			sourceRoot: await resolveSourceRoot(projectRoot, cliOptions),
 		},
 	);
 	for (const warning of outcome.warnings) console.error(`warning: ${warning}`);
@@ -305,7 +394,7 @@ async function runUpdate(
 	const options = {
 		client: await registryClientForProject(projectRoot),
 		projectRoot,
-		sourceRoot: cliOptions.sourceRoot ?? DEFAULT_SOURCE_ROOT,
+		sourceRoot: await resolveSourceRoot(projectRoot, cliOptions),
 		force: cliOptions.force,
 	};
 	const outcome = id
@@ -333,7 +422,7 @@ async function runDiff(
 	const diff = await diffComponent(id, cliOptions.version ?? "latest", {
 		client: await registryClientForProject(projectRoot),
 		projectRoot,
-		sourceRoot: cliOptions.sourceRoot ?? DEFAULT_SOURCE_ROOT,
+		sourceRoot: await resolveSourceRoot(projectRoot, cliOptions),
 	});
 	console.log(JSON.stringify(diff, null, 2));
 	process.exit(0);
