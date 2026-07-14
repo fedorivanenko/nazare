@@ -10,7 +10,7 @@
 			"**",
 			"!**/dist",
 			"!**/.nazare-out",
-			"!examples",
+			"!registry",
 			"!**/*.json",
 			"!**/pnpm-lock.yaml"
 		]
