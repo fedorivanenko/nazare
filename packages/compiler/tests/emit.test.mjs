@@ -46,7 +46,7 @@ function snapshotEmit(name, source, file, readFile) {
 	assert.equal(actual, expected);
 }
 
-// Every example component: the emitted theme files, end to end.
+// Every curated registry component: the emitted theme files, end to end.
 const readProject = (path) => {
 	try {
 		return readFileSync(join(repoRoot, path), "utf8");
@@ -54,7 +54,7 @@ const readProject = (path) => {
 		return undefined;
 	}
 };
-const componentsDir = join(repoRoot, "examples", "components");
+const componentsDir = join(repoRoot, "registry", "components");
 for (const entry of readdirSync(componentsDir, { withFileTypes: true })) {
 	if (!entry.isDirectory()) continue;
 	const manifest = JSON.parse(
