@@ -15,7 +15,7 @@ import { pathToFileURL } from "node:url";
 
 const cli = resolve("packages/cli-client/dist/index.js");
 
-const RUN_FULL_CLI_E2E = process.env.NAZARE_FULL_CLI_E2E === "1";
+const RUN_FULL_CLI_TESTS = process.env.NAZARE_FULL_CLI_TESTS === "1";
 
 function test(name, optionsOrFn, maybeFn) {
 	const options = typeof optionsOrFn === "function" ? {} : optionsOrFn;
@@ -24,7 +24,7 @@ function test(name, optionsOrFn, maybeFn) {
 		name,
 		{
 			concurrency: true,
-			skip: !RUN_FULL_CLI_E2E && !options.smoke,
+			skip: !RUN_FULL_CLI_TESTS && !options.smoke,
 		},
 		fn,
 	);
