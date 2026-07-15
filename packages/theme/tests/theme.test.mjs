@@ -264,14 +264,46 @@ test("buildTheme reports malformed extension issues as errors", async () => {
 							emit: () => ({ files: [], issues: [{ message: "oops" }] }),
 						},
 					},
+					{
+						extension: {
+							name: "bad-severity",
+							emit: () => ({
+								files: [],
+								issues: [{ severity: "fatal", code: "X", message: "oops" }],
+							}),
+						},
+					},
 				],
 			});
-			assert.ok(
-				result.issues.some(
+			assert.equal(
+				result.issues.filter(
 					(issue) =>
 						issue.code === "THEME_EXTENSION_ERROR" &&
 						issue.message.includes("severity, code, and message"),
-				),
+				).length,
+				2,
+			);
+		},
+	);
+});
+
+test("buildTheme reports malformed extension registrations as errors", async () => {
+	await withProject(
+		{
+			"nazare/sections/hero.nz.liquid":
+				"{% component section %}<section>Hero</section>\n",
+		},
+		async (projectRoot) => {
+			const result = await build(projectRoot, {
+				extensions: [
+					{ extension: { emit: () => ({ files: [], issues: [] }) } },
+					{ extension: { name: "bad-emit", emit: "nope" } },
+				],
+			});
+			assert.equal(
+				result.issues.filter((issue) => issue.code === "THEME_EXTENSION_ERROR")
+					.length,
+				2,
 			);
 		},
 	);

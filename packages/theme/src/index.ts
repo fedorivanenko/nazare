@@ -720,11 +720,19 @@ async function runExtensions(
 		files: EmittedFile[];
 		issues: Diagnostic[];
 	}> = [];
-	for (const { extension, options } of extensions) {
-		if (!extension.emit) continue;
+	for (const registration of extensions) {
+		const extensionName = extensionNameFromRegistration(registration);
 		try {
+			validateExtensionRegistration(registration);
+			const { extension, options } = registration;
+			if (!extension.emit) continue;
 			const emitted = await extension.emit({ ...context, options });
-			if (!Array.isArray(emitted.files) || !Array.isArray(emitted.issues)) {
+			if (
+				!emitted ||
+				typeof emitted !== "object" ||
+				!Array.isArray(emitted.files) ||
+				!Array.isArray(emitted.issues)
+			) {
 				throw new Error("emit must return { files, issues } arrays");
 			}
 			// Validate each entry's shape here, inside the try, so a malformed one
@@ -733,6 +741,7 @@ async function runExtensions(
 			for (const file of emitted.files) {
 				if (
 					!file ||
+					typeof file !== "object" ||
 					typeof file.path !== "string" ||
 					typeof file.contents !== "string"
 				) {
@@ -744,9 +753,11 @@ async function runExtensions(
 			for (const issue of emitted.issues) {
 				if (
 					!issue ||
-					typeof issue.severity !== "string" ||
+					typeof issue !== "object" ||
+					!isDiagnosticSeverity(issue.severity) ||
 					typeof issue.code !== "string" ||
-					typeof issue.message !== "string"
+					typeof issue.message !== "string" ||
+					(issue.phase !== undefined && !isDiagnosticPhase(issue.phase))
 				) {
 					throw new Error(
 						"emit issues must each be a diagnostic with severity, code, and message",
@@ -763,20 +774,86 @@ async function runExtensions(
 			});
 		} catch (error) {
 			results.push({
-				name: extension.name,
+				name: extensionName,
 				files: [],
 				issues: [
 					{
 						severity: "error",
 						phase: "emit",
 						code: "THEME_EXTENSION_ERROR",
-						message: `Extension ${extension.name} failed: ${error instanceof Error ? error.message : String(error)}`,
+						message: `Extension ${extensionName} failed: ${error instanceof Error ? error.message : String(error)}`,
 					},
 				],
 			});
 		}
 	}
 	return results;
+}
+
+function extensionNameFromRegistration(registration: unknown): string {
+	if (
+		registration &&
+		typeof registration === "object" &&
+		"extension" in registration
+	) {
+		const extension = registration.extension;
+		if (
+			extension &&
+			typeof extension === "object" &&
+			"name" in extension &&
+			typeof extension.name === "string" &&
+			extension.name.length > 0
+		) {
+			return extension.name;
+		}
+	}
+	return "<invalid>";
+}
+
+function validateExtensionRegistration(
+	registration: unknown,
+): asserts registration is NazareExtensionRegistration {
+	if (
+		!registration ||
+		typeof registration !== "object" ||
+		!("extension" in registration)
+	) {
+		throw new Error("extension registration must include an extension object");
+	}
+	const extension = registration.extension;
+	if (!extension || typeof extension !== "object") {
+		throw new Error("extension registration must include an extension object");
+	}
+	if (
+		!("name" in extension) ||
+		typeof extension.name !== "string" ||
+		extension.name.length === 0
+	) {
+		throw new Error("extension needs a non-empty name");
+	}
+	if (
+		"emit" in extension &&
+		extension.emit !== undefined &&
+		typeof extension.emit !== "function"
+	) {
+		throw new Error("extension emit must be a function");
+	}
+}
+
+function isDiagnosticSeverity(value: unknown): value is Diagnostic["severity"] {
+	return value === "error" || value === "warning" || value === "info";
+}
+
+function isDiagnosticPhase(
+	value: unknown,
+): value is NonNullable<Diagnostic["phase"]> {
+	return (
+		value === "parse" ||
+		value === "resolve" ||
+		value === "check" ||
+		value === "validate" ||
+		value === "emit"
+	);
 }
 
 // A relative theme path an extension may not write: traversal/absolute/unsafe,
