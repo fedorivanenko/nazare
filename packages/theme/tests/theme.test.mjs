@@ -247,6 +247,36 @@ test("buildTheme reports malformed extension files as errors, not crashes", asyn
 	);
 });
 
+test("buildTheme reports malformed extension issues as errors", async () => {
+	await withProject(
+		{
+			"nazare/sections/hero.nz.liquid":
+				"{% component section %}<section>Hero</section>\n",
+		},
+		async (projectRoot) => {
+			const result = await build(projectRoot, {
+				extensions: [
+					{
+						extension: {
+							name: "bad-issue",
+							// Issue missing severity/code — must not slip through as a
+							// bogus diagnostic; it becomes a THEME_EXTENSION_ERROR.
+							emit: () => ({ files: [], issues: [{ message: "oops" }] }),
+						},
+					},
+				],
+			});
+			assert.ok(
+				result.issues.some(
+					(issue) =>
+						issue.code === "THEME_EXTENSION_ERROR" &&
+						issue.message.includes("severity, code, and message"),
+				),
+			);
+		},
+	);
+});
+
 test("buildTheme reports extension runtime failures as errors", async () => {
 	await withProject(
 		{

@@ -727,9 +727,9 @@ async function runExtensions(
 			if (!Array.isArray(emitted.files) || !Array.isArray(emitted.issues)) {
 				throw new Error("emit must return { files, issues } arrays");
 			}
-			// Validate each file's shape here, inside the try, so a malformed entry
-			// becomes a THEME_EXTENSION_ERROR instead of crashing the build when a
-			// downstream path check dereferences a missing `path`/`contents`.
+			// Validate each entry's shape here, inside the try, so a malformed one
+			// becomes a THEME_EXTENSION_ERROR instead of crashing a downstream path
+			// check or slipping a bogus diagnostic into the build result.
 			for (const file of emitted.files) {
 				if (
 					!file ||
@@ -738,6 +738,18 @@ async function runExtensions(
 				) {
 					throw new Error(
 						"emit files must each be { path: string, contents: string }",
+					);
+				}
+			}
+			for (const issue of emitted.issues) {
+				if (
+					!issue ||
+					typeof issue.severity !== "string" ||
+					typeof issue.code !== "string" ||
+					typeof issue.message !== "string"
+				) {
+					throw new Error(
+						"emit issues must each be a diagnostic with severity, code, and message",
 					);
 				}
 			}
