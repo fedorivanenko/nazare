@@ -28,7 +28,18 @@ import {
 import { bindArtifactIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
 
+// Fact types re-exported for extension authors (a single @nazare/compiler
+// entrypoint). These are the shapes on NazareComponent and mergeArtifactIR.
 export type {
+	ArtifactContract,
+	ArtifactGraph,
+	ArtifactIR,
+	ArtifactResolution,
+	ArtifactSymbol,
+	ArtifactSyntaxNode,
+} from "@nazare/core";
+export type {
+	AuthoredSchema,
 	NazareAst,
 	NazareImportNode,
 	NazareNode,
@@ -64,12 +75,14 @@ export {
 	emitTheme,
 } from "./emit.js";
 export type {
+	NazareComponent,
 	NazareExtension,
 	NazareExtensionContext,
 	NazareExtensionRegistration,
 } from "./extensions.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
+export { mergeArtifactIR } from "./merge.js";
 export { parseNazareLiquid } from "./parser.js";
 export {
 	checkDependencies,

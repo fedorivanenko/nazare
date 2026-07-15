@@ -154,6 +154,9 @@ async function loadExtensions(
 		}
 		assertAllowedExtensionModule(projectRoot, modulePath);
 		const moduleUrl = pathToFileURL(resolve(projectRoot, modulePath)).href;
+		// Fine for a one-shot build. Node caches modules by URL, so a future
+		// watch/dev mode that reloads an edited extension will need a cache-busting
+		// URL (e.g. a `?v=<mtime>` query) to pick up changes.
 		const imported = (await import(moduleUrl)) as { default?: unknown };
 		const extension = imported.default;
 		if (!extension || typeof extension !== "object") {

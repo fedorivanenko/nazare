@@ -17,7 +17,8 @@ import {
 	sep,
 } from "node:path";
 import type {
-	CompileResult,
+	EmittedFile,
+	NazareComponent,
 	NazareExtensionRegistration,
 } from "@nazare/compiler";
 import {
@@ -157,7 +158,7 @@ export async function buildTheme(
 	const issues: Diagnostic[] = [];
 	const notes: Diagnostic[] = [];
 	const compiled: string[] = [];
-	const compiledComponents: CompileResult[] = [];
+	const components: NazareComponent[] = [];
 	const copied: string[] = [];
 	const manifest: SchemaManifest = { version: 1, sections: {} };
 
@@ -172,7 +173,14 @@ export async function buildTheme(
 				readFile: readProjectFile,
 				strictness: options.strictness,
 			});
-			compiledComponents.push(built);
+			components.push({
+				file,
+				source: contents,
+				schema: built.ast.schema,
+				ir: built.ir,
+				contract: built.contract,
+				canEmit: built.canEmit,
+			});
 			issues.push(
 				...built.issues,
 				...checkComponentScripts(built.ir, { readFile: readProjectFile }),
@@ -242,7 +250,7 @@ export async function buildTheme(
 		projectRoot,
 		sourceRoot,
 		outDir,
-		components: compiledComponents,
+		components,
 	})) {
 		issues.push(...extensionResult.issues);
 		for (const file of extensionResult.files) {
@@ -701,14 +709,14 @@ async function runExtensions(
 		projectRoot: string;
 		sourceRoot: string;
 		outDir: string;
-		components: CompileResult[];
+		components: NazareComponent[];
 	},
 ): Promise<
-	Array<{ name: string; files: PlannedFileOutput[]; issues: Diagnostic[] }>
+	Array<{ name: string; files: EmittedFile[]; issues: Diagnostic[] }>
 > {
 	const results: Array<{
 		name: string;
-		files: PlannedFileOutput[];
+		files: EmittedFile[];
 		issues: Diagnostic[];
 	}> = [];
 	for (const { extension, options } of extensions) {
@@ -717,6 +725,20 @@ async function runExtensions(
 			const emitted = await extension.emit({ ...context, options });
 			if (!Array.isArray(emitted.files) || !Array.isArray(emitted.issues)) {
 				throw new Error("emit must return { files, issues } arrays");
+			}
+			// Validate each file's shape here, inside the try, so a malformed entry
+			// becomes a THEME_EXTENSION_ERROR instead of crashing the build when a
+			// downstream path check dereferences a missing `path`/`contents`.
+			for (const file of emitted.files) {
+				if (
+					!file ||
+					typeof file.path !== "string" ||
+					typeof file.contents !== "string"
+				) {
+					throw new Error(
+						"emit files must each be { path: string, contents: string }",
+					);
+				}
 			}
 			results.push({
 				name: extension.name,
@@ -744,38 +766,36 @@ async function runExtensions(
 	return results;
 }
 
-type PlannedFileOutput = { path: string; contents: string };
-
-function validateExtensionOutputPath(
-	path: string,
-	extensionName: string,
-): Diagnostic | undefined {
+// A relative theme path an extension may not write: traversal/absolute/unsafe,
+// or a reserved path the build owns (ownership manifest, merchant data,
+// mergeable locales). Single source of truth for both checks so they can't drift.
+function isUnsafeThemeOutputPath(path: string): boolean {
 	if (
 		path.trim().length === 0 ||
 		path.startsWith("/") ||
 		path.includes("\\") ||
 		path.split("/").some((segment) => segment === ".." || segment === "")
 	) {
-		return {
-			severity: "error",
-			phase: "emit",
-			code: "THEME_EXTENSION_OUTPUT_PATH",
-			message: `Extension ${extensionName} emitted unsafe output path "${path}"`,
-		};
+		return true;
 	}
-	if (
+	return (
 		path === OUTPUT_OWNERSHIP_MANIFEST ||
 		isMerchantDataPath(path) ||
 		isLocaleMergePath(path)
-	) {
-		return {
-			severity: "error",
-			phase: "emit",
-			code: "THEME_EXTENSION_OUTPUT_PATH",
-			message: `Extension ${extensionName} emitted unsafe output path "${path}"`,
-		};
-	}
-	return undefined;
+	);
+}
+
+function validateExtensionOutputPath(
+	path: string,
+	extensionName: string,
+): Diagnostic | undefined {
+	if (!isUnsafeThemeOutputPath(path)) return undefined;
+	return {
+		severity: "error",
+		phase: "emit",
+		code: "THEME_EXTENSION_OUTPUT_PATH",
+		message: `Extension ${extensionName} emitted unsafe output path "${path}"`,
+	};
 }
 
 function planFile(

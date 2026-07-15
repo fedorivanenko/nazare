@@ -403,8 +403,10 @@ listed in the same JSON config:
 }
 ```
 
-An extension default-exports `{ name, emit }`; `emit` runs once per theme build
-and returns additional Shopify theme files:
+An extension default-exports `{ name, emit }`; `emit` runs once per theme build,
+after every component compiles, and returns additional Shopify theme files. Each
+entry in `components` is a serializable view of one compiled component —
+`{ file, source, schema?, ir, contract, canEmit }` — facts only, no parser AST:
 
 ```js
 export default {
@@ -414,7 +416,7 @@ export default {
       files: [
         {
           path: "assets/nazare-components.json",
-          contents: JSON.stringify({ options, components: components.map((component) => component.ast.file) })
+          contents: JSON.stringify({ options, components: components.map((component) => component.file) })
         }
       ],
       issues: []
@@ -422,6 +424,38 @@ export default {
   }
 };
 ```
+
+For a whole-repo view — dependency graphs, dead-component checks, a site map —
+merge the per-component IRs into one graph. Cross-file edges (a component's
+imports and render targets) connect only after the merge:
+
+```js
+import { artifactGraphFromIR, mergeArtifactIR } from "@nazare/compiler";
+
+export default {
+  name: "component-graph",
+  emit({ components }) {
+    const graph = artifactGraphFromIR(mergeArtifactIR(components.map((c) => c.ir)));
+    const imports = graph.edges.filter((edge) => edge.kind === "imports");
+    return {
+      files: [
+        {
+          path: "assets/nazare-graph.json",
+          contents: JSON.stringify({
+            nodes: graph.nodes.length,
+            imports: imports.map((edge) => ({ from: edge.from, to: edge.to }))
+          })
+        }
+      ],
+      issues: []
+    };
+  }
+};
+```
+
+The merged graph is derived facts, not judgments: a component with errors still
+contributes, an import whose target never compiled stays a dangling node, and
+cycles are allowed.
 
 Build it:
 
