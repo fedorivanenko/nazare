@@ -14,8 +14,10 @@ export type NazareComponent = {
 	schema?: AuthoredSchema;
 	/** Full component IR — facts only. Flat arrays; serializes cleanly. */
 	ir: ArtifactIR;
-	/** This component's typed prop/setting interface. */
+	/** This component's own typed prop/setting interface. */
 	contract: ArtifactContract;
+	/** The contracts of the components this one imports (for hoisting/schema derivation). */
+	importedContracts: ArtifactContract[];
 	/** False when the component produced error-severity compile diagnostics. */
 	canEmit: boolean;
 };

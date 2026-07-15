@@ -406,7 +406,7 @@ listed in the same JSON config:
 An extension default-exports `{ name, emit }`; `emit` runs once per theme build,
 after every component compiles, and returns additional Shopify theme files. Each
 entry in `components` is a serializable view of one compiled component —
-`{ file, source, schema?, ir, contract, canEmit }` — facts only, no parser AST:
+`{ file, source, schema?, ir, contract, importedContracts, canEmit }` — facts only, no parser AST:
 
 ```js
 export default {
