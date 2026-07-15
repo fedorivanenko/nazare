@@ -31,8 +31,16 @@ export function mergeArtifactIR(irs: ArtifactIR[]): ArtifactIR {
 
 	for (const ir of irs) {
 		for (const node of ir.syntax) {
-			// Syntax ids are file-scoped and unique across the repo; first wins.
-			if (!syntax.has(node.id)) syntax.set(node.id, node);
+			const existing = syntax.get(node.id);
+			if (!existing) {
+				syntax.set(node.id, node);
+				continue;
+			}
+			if (!sameSyntaxNode(existing, node)) {
+				throw new Error(
+					`Conflicting syntax node id while merging IR: ${node.id}`,
+				);
+			}
 		}
 		for (const symbol of ir.symbols) {
 			const existing = symbols.get(symbol.id);
@@ -49,6 +57,10 @@ export function mergeArtifactIR(irs: ArtifactIR[]): ArtifactIR {
 		symbols: [...symbols.values()],
 		resolutions: [...resolutions.values()],
 	};
+}
+
+function sameSyntaxNode(a: ArtifactSyntaxNode, b: ArtifactSyntaxNode): boolean {
+	return JSON.stringify(a) === JSON.stringify(b);
 }
 
 // A resolution's identity is its kind plus its referenced ids. Explicit per
