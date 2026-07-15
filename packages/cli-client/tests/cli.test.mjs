@@ -246,13 +246,13 @@ test("cli: build loads extension modules from nazare.extensions", async () => {
 				build: { sourceRoot: "nazare", outDir: "theme" },
 				extensions: [
 					{
-						module: "./nazare.extensions/manifest.js",
+						module: "./nazare.extensions/manifest.mjs",
 						options: { label: "components" },
 					},
 				],
 			}),
 			"nazare/button.nz.liquid": "<button>Button</button>\n",
-			"nazare.extensions/manifest.js": `export default {
+			"nazare.extensions/manifest.mjs": `export default {
   name: "manifest",
   emit({ components, options }) {
     return {
@@ -315,7 +315,7 @@ test("cli: build rejects invalid extension module extensions", async () => {
 		async (cwd) => {
 			const built = runCli(cwd, "build", "--json");
 			assert.notEqual(built.status, 0);
-			assert.match(built.stderr, /Extension modules must be .js or .mjs/);
+			assert.match(built.stderr, /Extension modules must be .mjs/);
 		},
 	);
 });

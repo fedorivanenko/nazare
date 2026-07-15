@@ -396,7 +396,7 @@ listed in the same JSON config:
   "build": { "sourceRoot": "nazare", "outDir": ".nazare-out/theme" },
   "extensions": [
     {
-      "module": "./nazare.extensions/manifest.js",
+      "module": "./nazare.extensions/manifest.mjs",
       "options": { "format": "json" }
     }
   ]
@@ -404,8 +404,10 @@ listed in the same JSON config:
 ```
 
 An extension default-exports `{ name, emit }`; `emit` runs once per theme build,
-after every component compiles, and returns additional Shopify theme files. Each
-entry in `components` is a serializable view of one compiled component —
+after every component compiles, and returns additional Shopify theme files.
+Extensions are trusted local code: they run in Node with the same permissions as
+the build process, so only enable extensions from code you trust. Each entry in
+`components` is a serializable view of one compiled component —
 `{ file, source, schema?, ir, contract, importedContracts, canEmit }` — facts only, no parser AST:
 
 ```js

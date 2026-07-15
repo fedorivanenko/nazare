@@ -188,10 +188,8 @@ function assertAllowedExtensionModule(
 			`Extension modules must live under ${extensionPrefix}: ${modulePath}`,
 		);
 	}
-	if (extname(modulePath) !== ".js" && extname(modulePath) !== ".mjs") {
-		throw new Error(
-			`Extension modules must be .js or .mjs files: ${modulePath}`,
-		);
+	if (extname(modulePath) !== ".mjs") {
+		throw new Error(`Extension modules must be .mjs files: ${modulePath}`);
 	}
 	const resolved = resolve(projectRoot, modulePath);
 	const allowedRoot = resolve(projectRoot, EXTENSIONS_DIR);
