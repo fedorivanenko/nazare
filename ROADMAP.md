@@ -15,6 +15,7 @@
 
 - **Phase 2 — CSS/JS output**
   - Consolidate component CSS into Shopify `{% stylesheet %}` blocks.
+  - Add optional built-in Tailwind mode as a global asset build step.
   - Add opt-in post-emit minification with `cssnano` and `terser`.
 
 - **Phase 3 — Shared analysis host**
