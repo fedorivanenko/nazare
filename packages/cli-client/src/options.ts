@@ -1,3 +1,5 @@
+import type { Output } from "./output.js";
+
 export type CliOptions = {
 	strictness?: "loose" | "strict";
 	version?: string;
@@ -97,8 +99,8 @@ function parseStrictness(value: string | undefined): "loose" | "strict" {
 	);
 }
 
-export function printHelp(): void {
-	console.error(`Usage:
+export function printHelp(output: Output = console): void {
+	output.error(`Usage:
   nazare ast <file>
   nazare ir <file>
   nazare graph <file>

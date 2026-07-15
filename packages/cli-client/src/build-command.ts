@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import type { NazareExtensionRegistration } from "@nazare/compiler";
 import { buildTheme } from "@nazare/theme";
 import type { CliOptions } from "./options.js";
+import type { Output } from "./output.js";
 
 const THEME_MANIFEST = "nazare.theme.json";
 const EXTENSIONS_DIR = "nazare.extensions";
@@ -75,13 +76,14 @@ const MERCHANT_DATA_PATTERNS = [
  * output. Discovery is by file extension alone — no nazare.json is read — so a
  * folder whose entry is a plain `.ts` (a function, imported but never emitted)
  * is pulled in as a dependency, not built as a standalone artifact. Always
- * terminates via process.exit.
+ * returns a process-style exit code.
  */
 export async function runThemeBuild(
 	projectRoot: string,
 	target: string | undefined,
 	cliOptions: CliOptions,
-): Promise<void> {
+	output: Output = console,
+): Promise<number> {
 	try {
 		// Both paths are explicit: an explicit CLI flag/positional wins, else the
 		// nazare.theme.json `build` config. There is no hardcoded default — an
@@ -106,10 +108,14 @@ export async function runThemeBuild(
 		if (cliOptions.pull) {
 			const outDirAbs = join(projectRoot, outDir);
 			await mkdir(outDirAbs, { recursive: true });
-			pullThemeData(outDirAbs, {
-				store: cliOptions.store,
-				theme: cliOptions.theme,
-			});
+			pullThemeData(
+				outDirAbs,
+				{
+					store: cliOptions.store,
+					theme: cliOptions.theme,
+				},
+				output,
+			);
 		}
 		const result = await buildTheme({
 			projectRoot,
@@ -124,18 +130,16 @@ export async function runThemeBuild(
 				undefined,
 		});
 		if (cliOptions.json) {
-			console.log(
+			output.log(
 				JSON.stringify({ ...result, components: result.compiled }, null, 2),
 			);
 		} else {
-			printBuildSummary(result, outDir);
+			printBuildSummary(result, outDir, output);
 		}
-		process.exit(
-			hasErrors(result.issues) || result.conflicts.length > 0 ? 1 : 0,
-		);
+		return hasErrors(result.issues) || result.conflicts.length > 0 ? 1 : 0;
 	} catch (error) {
-		console.error(error instanceof Error ? error.message : String(error));
-		process.exit(1);
+		output.error(error instanceof Error ? error.message : String(error));
+		return 1;
 	}
 }
 
@@ -211,6 +215,7 @@ function assertAllowedExtensionModule(
 function printBuildSummary(
 	result: Awaited<ReturnType<typeof buildTheme>>,
 	outDir: string,
+	output: Output,
 ): void {
 	const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 	const errors = result.issues.filter((i) => i.severity === "error");
@@ -244,7 +249,7 @@ function printBuildSummary(
 		lines.push(`Build OK with ${count(warnings.length, "warning")}`);
 	else lines.push("Build OK");
 
-	console.log(lines.join("\n"));
+	output.log(lines.join("\n"));
 }
 
 /**
@@ -256,13 +261,14 @@ function printBuildSummary(
 function pullThemeData(
 	outDir: string,
 	options: { store?: string; theme?: string },
+	output: Output,
 ): void {
 	const args = ["theme", "pull", "--path", outDir];
 	if (options.store) args.push("--store", options.store);
 	if (options.theme) args.push("--theme", options.theme);
 	for (const pattern of MERCHANT_DATA_PATTERNS) args.push("--only", pattern);
 
-	console.error(`Pulling live theme data: shopify ${args.join(" ")}`);
+	output.error(`Pulling live theme data: shopify ${args.join(" ")}`);
 	const result = spawnSync("shopify", args, { stdio: "inherit" });
 	if (result.error) {
 		const code = (result.error as NodeJS.ErrnoException).code;

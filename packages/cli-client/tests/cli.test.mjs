@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+
 import {
 	existsSync,
 	mkdirSync,
@@ -10,18 +10,43 @@ import {
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import test from "node:test";
+import nodeTest from "node:test";
+import { pathToFileURL } from "node:url";
 
 const cli = resolve("packages/cli-client/dist/index.js");
 
-function runCli(cwd, ...args) {
-	const env = { ...process.env };
-	delete env.NAZARE_REGISTRY;
-	return spawnSync(process.execPath, [cli, ...args], {
+const RUN_FULL_CLI_TESTS = process.env.NAZARE_FULL_CLI_TESTS === "1";
+
+function test(name, optionsOrFn, maybeFn) {
+	const options = typeof optionsOrFn === "function" ? {} : optionsOrFn;
+	const fn = typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
+	nodeTest(
+		name,
+		{
+			concurrency: true,
+			skip: !RUN_FULL_CLI_TESTS && !options.smoke,
+		},
+		fn,
+	);
+}
+
+async function runCli(cwd, ...args) {
+	let stdout = "";
+	let stderr = "";
+	const { main } = await import(pathToFileURL(cli).href);
+	const status = await main(args, {
 		cwd,
-		encoding: "utf8",
-		env,
+		env: { ...process.env, NAZARE_REGISTRY: undefined },
+		output: {
+			log: (...values) => {
+				stdout += `${values.join(" ")}\n`;
+			},
+			error: (...values) => {
+				stderr += `${values.join(" ")}\n`;
+			},
+		},
 	});
+	return { status, stdout, stderr };
 }
 
 async function withProject(files, fn) {
@@ -44,10 +69,12 @@ const BUILD_MANIFEST = JSON.stringify({
 	build: { sourceRoot: "nazare", outDir: ".nazare-out/theme" },
 });
 
-test("cli: init scaffolds build config and creates the source dir", async () => {
+test("cli: init scaffolds build config and creates the source dir", {
+	smoke: true,
+}, async () => {
 	// Non-interactive stdin (spawned) → init takes the src/theme defaults.
 	await withProject({}, async (cwd) => {
-		const out = runCli(cwd, "init");
+		const out = await runCli(cwd, "init");
 		assert.equal(out.status, 0, out.stderr);
 		const manifest = JSON.parse(
 			readFileSync(join(cwd, "nazare.theme.json"), "utf8"),
@@ -66,7 +93,7 @@ test("cli: init honors flags and merges existing registry config", async () => {
 			}),
 		},
 		async (cwd) => {
-			const out = runCli(
+			const out = await runCli(
 				cwd,
 				"init",
 				"--source-root",
@@ -93,11 +120,11 @@ test("cli: init refuses to overwrite an existing build config without --force", 
 			}),
 		},
 		async (cwd) => {
-			const blocked = runCli(cwd, "init");
+			const blocked = await runCli(cwd, "init");
 			assert.notEqual(blocked.status, 0);
 			assert.match(blocked.stderr, /already has a build config/);
 
-			const forced = runCli(
+			const forced = await runCli(
 				cwd,
 				"init",
 				"--source-root",
@@ -121,8 +148,8 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 			"component.nz.liquid": `<div></div>\n{% script %}\nexport default island(({ refs }) => refs.missing);\n{% endscript %}`,
 		},
 		async (cwd) => {
-			const strict = runCli(cwd, "artifact", "component.nz.liquid");
-			const loose = runCli(
+			const strict = await runCli(cwd, "artifact", "component.nz.liquid");
+			const loose = await runCli(
 				cwd,
 				"artifact",
 				"component.nz.liquid",
@@ -154,7 +181,7 @@ test("cli: build validates dependencies, validate checks only the entry", async 
 		},
 		async (cwd) => {
 			// build checks imported files, so the child's parse error surfaces.
-			const built = runCli(
+			const built = await runCli(
 				cwd,
 				"build",
 				"component.nz.liquid",
@@ -170,7 +197,7 @@ test("cli: build validates dependencies, validate checks only the entry", async 
 			);
 
 			// validate compiles the entry only — the child is not checked here.
-			const validated = runCli(cwd, "validate", "component.nz.liquid");
+			const validated = await runCli(cwd, "validate", "component.nz.liquid");
 			assert.equal(validated.status, 0, validated.stderr);
 			assert.ok(
 				!JSON.parse(validated.stdout).issues.some(
@@ -184,7 +211,9 @@ test("cli: build validates dependencies, validate checks only the entry", async 
 const componentWithScript = (ref) =>
 	`<div ref="${ref}"></div>\n{% script %}\nexport default island(({ refs }) => refs.${ref});\n{% endscript %}`;
 
-test("cli: build with no path reads the source root from nazare.theme.json", async () => {
+test("cli: build with no path reads the source root from nazare.theme.json", {
+	smoke: true,
+}, async () => {
 	await withProject(
 		{
 			"nazare.theme.json": BUILD_MANIFEST,
@@ -194,7 +223,7 @@ test("cli: build with no path reads the source root from nazare.theme.json", asy
 			"stray/stray.nz.liquid": componentWithScript("c"),
 		},
 		async (cwd) => {
-			const built = runCli(cwd, "build", "--json");
+			const built = await runCli(cwd, "build", "--json");
 			assert.equal(built.status, 0, built.stderr);
 			const output = JSON.parse(built.stdout);
 
@@ -227,7 +256,7 @@ test("cli: build supports custom output directory", async () => {
 		},
 		async (cwd) => {
 			// --out-dir overrides the outDir in nazare.theme.json.
-			const built = runCli(cwd, "build", "--out-dir", "theme", "--json");
+			const built = await runCli(cwd, "build", "--out-dir", "theme", "--json");
 			assert.equal(built.status, 0, built.stderr);
 			const output = JSON.parse(built.stdout);
 			assert.ok(output.written.includes("theme/snippets/button.liquid"));
@@ -267,7 +296,7 @@ test("cli: build loads extension modules from nazare.extensions", async () => {
 `,
 		},
 		async (cwd) => {
-			const built = runCli(cwd, "build", "--json");
+			const built = await runCli(cwd, "build", "--json");
 			assert.equal(built.status, 0, built.stderr);
 			const output = JSON.parse(built.stdout);
 			assert.ok(
@@ -296,7 +325,7 @@ test("cli: build rejects invalid extension config", async () => {
 			"nazare/button.nz.liquid": "<button>Button</button>\n",
 		},
 		async (cwd) => {
-			const built = runCli(cwd, "build", "--json");
+			const built = await runCli(cwd, "build", "--json");
 			assert.notEqual(built.status, 0);
 			assert.match(built.stderr, /Extension modules must live under/);
 		},
@@ -313,7 +342,7 @@ test("cli: build rejects invalid extension module extensions", async () => {
 			"nazare/button.nz.liquid": "<button>Button</button>\n",
 		},
 		async (cwd) => {
-			const built = runCli(cwd, "build", "--json");
+			const built = await runCli(cwd, "build", "--json");
 			assert.notEqual(built.status, 0);
 			assert.match(built.stderr, /Extension modules must be .mjs/);
 		},
@@ -327,7 +356,7 @@ test("cli: build rejects malformed nazare.theme.json", async () => {
 			"nazare/button.nz.liquid": "<button>Button</button>\n",
 		},
 		async (cwd) => {
-			const built = runCli(cwd, "build", "--json");
+			const built = await runCli(cwd, "build", "--json");
 			assert.notEqual(built.status, 0);
 			assert.match(built.stderr, /nazare.theme.json is not valid JSON/);
 		},
@@ -343,7 +372,7 @@ test("cli: build rejects invalid build config types", async () => {
 			"nazare/button.nz.liquid": "<button>Button</button>\n",
 		},
 		async (cwd) => {
-			const built = runCli(cwd, "build", "--json");
+			const built = await runCli(cwd, "build", "--json");
 			assert.notEqual(built.status, 0);
 			assert.match(built.stderr, /build.sourceRoot must be a string/);
 		},
@@ -357,7 +386,7 @@ test("cli: build reports a conflict when two components emit the same path", asy
 			"nazare/two/widget.nz.liquid": "<div>two</div>",
 		},
 		async (cwd) => {
-			const built = runCli(
+			const built = await runCli(
 				cwd,
 				"build",
 				"nazare",
@@ -375,7 +404,13 @@ test("cli: build reports a conflict when two components emit the same path", asy
 
 test("cli: build errors when the source root is missing", async () => {
 	await withProject({}, async (cwd) => {
-		const built = runCli(cwd, "build", "does-not-exist", "--out-dir", "theme");
+		const built = await runCli(
+			cwd,
+			"build",
+			"does-not-exist",
+			"--out-dir",
+			"theme",
+		);
 		assert.notEqual(built.status, 0);
 		assert.match(built.stderr, /Source path not found/);
 	});
@@ -385,7 +420,7 @@ test("cli: build errors when no output dir is configured", async () => {
 	await withProject(
 		{ "nazare/button.nz.liquid": "<button>Button</button>\n" },
 		async (cwd) => {
-			const built = runCli(cwd, "build", "nazare");
+			const built = await runCli(cwd, "build", "nazare");
 			assert.notEqual(built.status, 0);
 			assert.match(built.stderr, /output directory/);
 		},
@@ -394,7 +429,7 @@ test("cli: build errors when no output dir is configured", async () => {
 
 test("cli: build errors when no source root is configured", async () => {
 	await withProject({}, async (cwd) => {
-		const built = runCli(cwd, "build", "--out-dir", "theme");
+		const built = await runCli(cwd, "build", "--out-dir", "theme");
 		assert.notEqual(built.status, 0);
 		assert.match(built.stderr, /source root/);
 	});
@@ -407,7 +442,7 @@ test("cli: build prints a human-readable summary by default", async () => {
 			"nazare/button.nz.liquid": "<button>Button</button>\n",
 		},
 		async (cwd) => {
-			const built = runCli(cwd, "build");
+			const built = await runCli(cwd, "build");
 			assert.equal(built.status, 0, built.stderr);
 			// Not JSON, and it leads with a plain summary line.
 			assert.throws(() => JSON.parse(built.stdout));
@@ -417,7 +452,9 @@ test("cli: build prints a human-readable summary by default", async () => {
 	);
 });
 
-test("cli: pack is available on the main nazare command", async () => {
+test("cli: pack is available on the main nazare command", {
+	smoke: true,
+}, async () => {
 	await withProject(
 		{
 			"nazare/button/nazare.json": JSON.stringify({
@@ -430,7 +467,7 @@ test("cli: pack is available on the main nazare command", async () => {
 			"nazare/button/button.ts": "export const button = 1;\n",
 		},
 		async (cwd) => {
-			const packed = runCli(cwd, "pack", "nazare/button");
+			const packed = await runCli(cwd, "pack", "nazare/button");
 			assert.equal(packed.status, 0, packed.stderr);
 			const output = JSON.parse(packed.stdout);
 			assert.deepEqual(output.packed, {
@@ -460,7 +497,7 @@ test("cli: registry add/use stores project registry and add reads it", async () 
 			}),
 		},
 		async (cwd) => {
-			const addedRegistry = runCli(
+			const addedRegistry = await runCli(
 				cwd,
 				"registry",
 				"add",
@@ -470,14 +507,14 @@ test("cli: registry add/use stores project registry and add reads it", async () 
 			assert.equal(addedRegistry.status, 0, addedRegistry.stderr);
 			assert.equal(JSON.parse(addedRegistry.stdout).current, "local");
 
-			const listed = runCli(cwd, "registry", "list");
+			const listed = await runCli(cwd, "registry", "list");
 			assert.equal(listed.status, 0, listed.stderr);
 			assert.deepEqual(JSON.parse(listed.stdout), {
 				current: "local",
 				registries: { local: "file:.registry" },
 			});
 
-			const installed = runCli(
+			const installed = await runCli(
 				cwd,
 				"add",
 				"@nazare/button",

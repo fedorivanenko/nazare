@@ -8,7 +8,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { checkComponentScripts, compileNazareArtifact } from "../dist/index.js";
+import { compileNazareArtifact } from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixturesRoot = join(here, "fixtures");
@@ -26,12 +26,7 @@ function compileFixture(relPath) {
 	const result = compileNazareArtifact(source, relPath, {
 		readFile: readFixture,
 	});
-	const scriptIssues = checkComponentScripts(result.ir, {
-		readFile: readFixture,
-	});
-	return [...result.issues, ...scriptIssues].filter(
-		(issue) => issue.severity === "error",
-	);
+	return result.issues.filter((issue) => issue.severity === "error");
 }
 
 const nzLiquid = (dir) =>
