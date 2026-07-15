@@ -13,14 +13,11 @@ import { registryFromEnv } from "@nazare/registry";
 import { runThemeBuild } from "./build-command.js";
 import { diffComponent, installComponent, updateAll } from "./install.js";
 import { type CliOptions, parseCliOptions, printHelp } from "./options.js";
+import type { Output } from "./output.js";
 import { packComponent, publishComponent } from "./publish.js";
 
 const THEME_MANIFEST = "nazare.theme.json";
 
-type Output = {
-	log: (...values: unknown[]) => void;
-	error: (...values: unknown[]) => void;
-};
 type MainOptions = { cwd?: string; env?: NodeJS.ProcessEnv; output?: Output };
 
 export async function main(
@@ -37,7 +34,7 @@ export async function main(
 		command === "--help" ||
 		command === "-h"
 	) {
-		printHelp();
+		printHelp(output);
 		return 0;
 	}
 
@@ -67,45 +64,45 @@ export async function main(
 
 		// `init` scaffolds the project's explicit build config so add/build work.
 		if (command === "init") {
-			await runInit(projectRoot, cliOptions, output);
+			return await runInit(projectRoot, cliOptions, output);
 		}
 
 		// Registry config commands update project-level nazare.theme.json.
 		if (command === "registry") {
-			await runRegistry(projectRoot, cliOptions, output, env);
+			return await runRegistry(projectRoot, cliOptions, output, env);
 		}
 
 		// `add` / `update` talk to the registry, not a local entry file: they copy
 		// component source (and its dependency closure) into the source root.
 		if (command === "add") {
-			await runAdd(projectRoot, file, cliOptions, output, env);
+			return await runAdd(projectRoot, file, cliOptions, output, env);
 		}
 		if (command === "update") {
-			await runUpdate(projectRoot, file, cliOptions, output, env);
+			return await runUpdate(projectRoot, file, cliOptions, output, env);
 		}
 		if (command === "diff") {
-			await runDiff(projectRoot, file, cliOptions, output, env);
+			return await runDiff(projectRoot, file, cliOptions, output, env);
 		}
 
 		// Registry authoring commands target a component folder, not a compile entry.
 		if (command === "pack") {
-			await runPack(file, output, projectRoot);
+			return await runPack(file, output, projectRoot);
 		}
 		if (command === "publish") {
-			await runPublish(file, output, env, projectRoot);
+			return await runPublish(file, output, env, projectRoot);
 		}
 
 		// Every other command targets exactly one entry file.
 		if (!file) {
 			output.error(`Missing file path for command ${command}`);
-			printHelp();
-			exit(1);
+			printHelp(output);
+			return 1;
 		}
 		const resolvedFile = resolve(projectRoot, file);
 		const entryPath = relative(projectRoot, resolvedFile).split(sep).join("/");
 		if (entryPath.startsWith("..")) {
 			output.error(`${file} is outside the project root ${projectRoot}`);
-			exit(1);
+			return 1;
 		}
 
 		// The file declares its own kind ({% component section %}); the CLI no
@@ -129,7 +126,7 @@ export async function main(
 					2,
 				),
 			);
-			exit(hasErrors(result.issues) ? 1 : 0);
+			return hasErrors(result.issues) ? 1 : 0;
 		}
 
 		if (command === "ir") {
@@ -141,7 +138,7 @@ export async function main(
 					2,
 				),
 			);
-			exit(hasErrors(result.issues) ? 1 : 0);
+			return hasErrors(result.issues) ? 1 : 0;
 		}
 
 		if (command === "graph") {
@@ -153,7 +150,7 @@ export async function main(
 					2,
 				),
 			);
-			exit(hasErrors(result.issues) ? 1 : 0);
+			return hasErrors(result.issues) ? 1 : 0;
 		}
 
 		if (command === "validate") {
@@ -163,13 +160,13 @@ export async function main(
 				...checkComponentScripts(result.ir, { readFile: readProjectFile }),
 			];
 			output.log(JSON.stringify({ issues, notes: result.notes }, null, 2));
-			exit(hasErrors(issues) ? 1 : 0);
+			return hasErrors(issues) ? 1 : 0;
 		}
 
 		if (command === "artifact") {
 			const result = compile();
 			output.log(JSON.stringify(result, null, 2));
-			exit(hasErrors(result.issues) ? 1 : 0);
+			return hasErrors(result.issues) ? 1 : 0;
 		}
 
 		if (command === "schema") {
@@ -185,40 +182,26 @@ export async function main(
 					2,
 				),
 			);
-			exit(hasErrors(result.issues) ? 1 : 0);
+			return hasErrors(result.issues) ? 1 : 0;
 		}
 
 		if (command === "dump") {
 			const result = compile();
 			const written = await writeDumpFiles(entryPath, result);
 			output.log(JSON.stringify({ written, issues: result.issues }, null, 2));
-			exit(hasErrors(result.issues) ? 1 : 0);
+			return hasErrors(result.issues) ? 1 : 0;
 		}
 
 		output.error(`Unknown command ${command}`);
-		printHelp();
-		exit(1);
+		printHelp(output);
+		return 1;
 	} catch (error) {
-		if (error instanceof ExitCode) return error.status;
 		output.error(error instanceof Error ? error.message : String(error));
 		return 1;
 	}
 }
 
-class ExitCode extends Error {
-	constructor(readonly status: number) {
-		super(`Exit ${status}`);
-	}
-}
-
-function exit(status: number): never {
-	throw new ExitCode(status);
-}
-
-if (
-	!process.env.NAZARE_TEST_IN_PROCESS &&
-	fileURLToPath(import.meta.url) === resolve(process.argv[1] ?? "")
-) {
+if (fileURLToPath(import.meta.url) === resolve(process.argv[1] ?? "")) {
 	process.exit(await main());
 }
 
@@ -282,13 +265,13 @@ async function runInit(
 	projectRoot: string,
 	cliOptions: CliOptions,
 	output: Output,
-): Promise<void> {
+): Promise<number> {
 	const existing = await readProjectManifest(projectRoot);
 	if (existing.build && !cliOptions.force) {
 		output.error(
 			"nazare.theme.json already has a build config. Re-run with --force to overwrite.",
 		);
-		exit(1);
+		return 1;
 	}
 
 	const sourceRoot = await ask(
@@ -311,7 +294,7 @@ async function runInit(
 			2,
 		),
 	);
-	exit(0);
+	return 0;
 }
 
 async function writeDumpFiles(
@@ -357,10 +340,10 @@ async function runAdd(
 	cliOptions: CliOptions,
 	output: Output,
 	env: NodeJS.ProcessEnv,
-): Promise<void> {
+): Promise<number> {
 	if (!id) {
 		output.error("Usage: nazare add <@scope/name> [--version x.y.z]");
-		exit(1);
+		return 1;
 	}
 	const outcome = await installComponent(
 		id,
@@ -374,14 +357,14 @@ async function runAdd(
 	);
 	for (const warning of outcome.warnings) output.error(`warning: ${warning}`);
 	output.log(JSON.stringify(outcome, null, 2));
-	exit(0);
+	return 0;
 }
 
 async function runPack(
 	dir: string | undefined,
 	output: Output,
 	projectRoot: string,
-): Promise<void> {
+): Promise<number> {
 	const { component, path } = await packComponent(
 		resolve(projectRoot, dir ?? "."),
 		join(projectRoot, ".nazare-out", "pack"),
@@ -397,7 +380,7 @@ async function runPack(
 			2,
 		),
 	);
-	exit(0);
+	return 0;
 }
 
 async function runPublish(
@@ -405,7 +388,7 @@ async function runPublish(
 	output: Output,
 	env: NodeJS.ProcessEnv,
 	projectRoot: string,
-): Promise<void> {
+): Promise<number> {
 	const { component, result } = await publishComponent(
 		resolve(projectRoot, dir ?? "."),
 		{
@@ -424,13 +407,13 @@ async function runPublish(
 				2,
 			),
 		);
-		exit(0);
+		return 0;
 	}
 	output.error(`publish failed (${result.code}): ${result.message}`);
 	if (result.code === "VERSION_EXISTS") {
 		output.error('Bump "version" in nazare.json and publish again.');
 	}
-	exit(1);
+	return 1;
 }
 
 async function runUpdate(
@@ -439,7 +422,7 @@ async function runUpdate(
 	cliOptions: CliOptions,
 	output: Output,
 	env: NodeJS.ProcessEnv,
-): Promise<void> {
+): Promise<number> {
 	const options = {
 		client: await registryClientForProject(projectRoot, env),
 		projectRoot,
@@ -456,7 +439,7 @@ async function runUpdate(
 		: await updateAll(options);
 	for (const warning of outcome.warnings) output.error(`warning: ${warning}`);
 	output.log(JSON.stringify(outcome, null, 2));
-	exit(0);
+	return 0;
 }
 
 async function runDiff(
@@ -465,10 +448,10 @@ async function runDiff(
 	cliOptions: CliOptions,
 	output: Output,
 	env: NodeJS.ProcessEnv,
-): Promise<void> {
+): Promise<number> {
 	if (!id) {
 		output.error("Usage: nazare diff <@scope/name> [--version x.y.z]");
-		exit(1);
+		return 1;
 	}
 	const diff = await diffComponent(id, cliOptions.version ?? "latest", {
 		client: await registryClientForProject(projectRoot, env),
@@ -476,7 +459,7 @@ async function runDiff(
 		sourceRoot: await resolveSourceRoot(projectRoot, cliOptions),
 	});
 	output.log(JSON.stringify(diff, null, 2));
-	exit(0);
+	return 0;
 }
 
 async function runRegistry(
@@ -484,12 +467,12 @@ async function runRegistry(
 	cliOptions: CliOptions,
 	output: Output,
 	env: NodeJS.ProcessEnv,
-): Promise<void> {
+): Promise<number> {
 	const [subcommand, name, url] = cliOptions.positionals;
 	if (subcommand === "add") {
 		if (!name || !url) {
 			output.error("Usage: nazare registry add <name> <url>");
-			exit(1);
+			return 1;
 		}
 		assertRegistryName(name);
 		const manifest = await readProjectManifest(projectRoot);
@@ -507,24 +490,24 @@ async function runRegistry(
 				2,
 			),
 		);
-		exit(0);
+		return 0;
 	}
 
 	if (subcommand === "use") {
 		if (!name) {
 			output.error("Usage: nazare registry use <name>");
-			exit(1);
+			return 1;
 		}
 		const manifest = await readProjectManifest(projectRoot);
 		const registries = manifest.registries ?? {};
 		const selected = registries[name];
 		if (!selected) {
 			output.error(`Unknown registry ${name}`);
-			exit(1);
+			return 1;
 		}
 		await writeProjectManifest(projectRoot, { ...manifest, registry: name });
 		output.log(JSON.stringify({ current: name, url: selected }, null, 2));
-		exit(0);
+		return 0;
 	}
 
 	if (subcommand === "list" || !subcommand) {
@@ -541,12 +524,12 @@ async function runRegistry(
 				2,
 			),
 		);
-		exit(0);
+		return 0;
 	}
 
 	output.error(`Unknown registry command ${subcommand}`);
-	printHelp();
-	exit(1);
+	printHelp(output);
+	return 1;
 }
 
 async function registryClientForProject(
@@ -554,12 +537,10 @@ async function registryClientForProject(
 	env: NodeJS.ProcessEnv,
 ) {
 	if (env.NAZARE_REGISTRY) {
-		const registryUrl =
-			env.NAZARE_REGISTRY.startsWith("file:") &&
-			!env.NAZARE_REGISTRY.startsWith("file:/")
-				? `file:${join(projectRoot, env.NAZARE_REGISTRY.slice("file:".length))}`
-				: env.NAZARE_REGISTRY;
-		return registryFromEnv({ ...env, NAZARE_REGISTRY: registryUrl });
+		return registryFromEnv({
+			...env,
+			NAZARE_REGISTRY: resolveRegistryUrl(env.NAZARE_REGISTRY, projectRoot),
+		});
 	}
 	const manifest = await readProjectManifest(projectRoot);
 	const current = manifest.registry;
@@ -570,11 +551,14 @@ async function registryClientForProject(
 			"No registry configured. Run `nazare registry add <name> <url>` and `nazare registry use <name>`, or set NAZARE_REGISTRY.",
 		);
 	}
-	const registryUrl =
-		url.startsWith("file:") && !url.startsWith("file:/")
-			? `file:${join(projectRoot, url.slice("file:".length))}`
-			: url;
-	return registryFromEnv({ NAZARE_REGISTRY: registryUrl });
+	return registryFromEnv({
+		NAZARE_REGISTRY: resolveRegistryUrl(url, projectRoot),
+	});
+}
+
+function resolveRegistryUrl(url: string, projectRoot: string): string {
+	if (!url.startsWith("file:") || url.startsWith("file:/")) return url;
+	return `file:${join(projectRoot, url.slice("file:".length))}`;
 }
 
 async function readProjectManifest(

@@ -5,11 +5,7 @@ import { pathToFileURL } from "node:url";
 import type { NazareExtensionRegistration } from "@nazare/compiler";
 import { buildTheme } from "@nazare/theme";
 import type { CliOptions } from "./options.js";
-
-type Output = {
-	log: (...values: unknown[]) => void;
-	error: (...values: unknown[]) => void;
-};
+import type { Output } from "./output.js";
 
 const THEME_MANIFEST = "nazare.theme.json";
 const EXTENSIONS_DIR = "nazare.extensions";
