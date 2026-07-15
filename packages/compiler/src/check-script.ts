@@ -15,8 +15,6 @@ export type CheckComponentScriptsOptions = {
 	readFile?: (path: string) => string | undefined;
 };
 
-const sourceFileCache = new Map<string, ts.SourceFile>();
-
 export function checkComponentScripts(
 	ir: ArtifactIR,
 	options: CheckComponentScriptsOptions = {},
@@ -30,6 +28,7 @@ export function checkComponentScripts(
 		ir.syntax.find((node) => node.kind === "file")?.path ?? "";
 
 	const channel = dataChannelFromIR(ir);
+	const sourceFileCache = new Map<string, ts.SourceFile>();
 
 	for (const script of scripts) {
 		if (script.kind !== "script") continue;
@@ -44,6 +43,7 @@ export function checkComponentScripts(
 			virtualSource,
 			scriptDir,
 			options.readFile,
+			sourceFileCache,
 		)) {
 			if (isRedundantUnknownRef(diagnostic)) continue;
 			issues.push(
@@ -103,6 +103,7 @@ function typescriptDiagnostics(
 	virtualSource: string,
 	scriptDir: string,
 	readFile: ((path: string) => string | undefined) | undefined,
+	sourceFileCache: Map<string, ts.SourceFile>,
 ): readonly ts.Diagnostic[] {
 	// Rooted at "/" — TS's program-level module resolution silently skips
 	// resolution for rootless containing files, so the project is mirrored
@@ -142,10 +143,11 @@ function typescriptDiagnostics(
 		if (contents !== undefined) {
 			return ts.createSourceFile(fileName, contents, languageVersion, true);
 		}
-		const cached = sourceFileCache.get(fileName);
+		const cacheKey = `${fileName}\0${languageVersion}`;
+		const cached = sourceFileCache.get(cacheKey);
 		if (cached) return cached;
 		const sourceFile = defaultGetSourceFile(fileName, languageVersion, ...rest);
-		if (sourceFile) sourceFileCache.set(fileName, sourceFile);
+		if (sourceFile) sourceFileCache.set(cacheKey, sourceFile);
 		return sourceFile;
 	};
 	host.fileExists = (fileName) =>
