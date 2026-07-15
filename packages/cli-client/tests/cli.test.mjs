@@ -16,18 +16,15 @@ import { pathToFileURL } from "node:url";
 const cli = resolve("packages/cli-client/dist/index.js");
 
 const RUN_FULL_CLI_E2E = process.env.NAZARE_FULL_CLI_E2E === "1";
-const SMOKE_CLI_TESTS = new Set([
-	"cli: init scaffolds build config and creates the source dir",
-	"cli: build with no path reads the source root from nazare.theme.json",
-	"cli: pack is available on the main nazare command",
-]);
 
-function test(name, fn) {
+function test(name, optionsOrFn, maybeFn) {
+	const options = typeof optionsOrFn === "function" ? {} : optionsOrFn;
+	const fn = typeof optionsOrFn === "function" ? optionsOrFn : maybeFn;
 	nodeTest(
 		name,
 		{
 			concurrency: true,
-			skip: !RUN_FULL_CLI_E2E && !SMOKE_CLI_TESTS.has(name),
+			skip: !RUN_FULL_CLI_E2E && !options.smoke,
 		},
 		fn,
 	);
@@ -36,12 +33,7 @@ function test(name, fn) {
 async function runCli(cwd, ...args) {
 	let stdout = "";
 	let stderr = "";
-	const previousInProcess = process.env.NAZARE_TEST_IN_PROCESS;
-	process.env.NAZARE_TEST_IN_PROCESS = "1";
 	const { main } = await import(pathToFileURL(cli).href);
-	if (previousInProcess === undefined)
-		delete process.env.NAZARE_TEST_IN_PROCESS;
-	else process.env.NAZARE_TEST_IN_PROCESS = previousInProcess;
 	const status = await main(args, {
 		cwd,
 		env: { ...process.env, NAZARE_REGISTRY: undefined },
@@ -77,7 +69,9 @@ const BUILD_MANIFEST = JSON.stringify({
 	build: { sourceRoot: "nazare", outDir: ".nazare-out/theme" },
 });
 
-test("cli: init scaffolds build config and creates the source dir", async () => {
+test("cli: init scaffolds build config and creates the source dir", {
+	smoke: true,
+}, async () => {
 	// Non-interactive stdin (spawned) → init takes the src/theme defaults.
 	await withProject({}, async (cwd) => {
 		const out = await runCli(cwd, "init");
@@ -217,7 +211,9 @@ test("cli: build validates dependencies, validate checks only the entry", async 
 const componentWithScript = (ref) =>
 	`<div ref="${ref}"></div>\n{% script %}\nexport default island(({ refs }) => refs.${ref});\n{% endscript %}`;
 
-test("cli: build with no path reads the source root from nazare.theme.json", async () => {
+test("cli: build with no path reads the source root from nazare.theme.json", {
+	smoke: true,
+}, async () => {
 	await withProject(
 		{
 			"nazare.theme.json": BUILD_MANIFEST,
@@ -456,7 +452,9 @@ test("cli: build prints a human-readable summary by default", async () => {
 	);
 });
 
-test("cli: pack is available on the main nazare command", async () => {
+test("cli: pack is available on the main nazare command", {
+	smoke: true,
+}, async () => {
 	await withProject(
 		{
 			"nazare/button/nazare.json": JSON.stringify({
