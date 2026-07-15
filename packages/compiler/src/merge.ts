@@ -1,7 +1,7 @@
 // Whole-repo view: merges per-component IRs into one repo-wide IR. Purely
-// derived and lossless-by-id. Because ids are content-addressed (an import in
+// derived and lossless-by-id. Because ids are path-addressed (an import in
 // one file and the component it targets in another are built from the same
-// file path), the two share a symbol id and their cross-file edges connect
+// project-relative file path), the two share a symbol id and their cross-file edges connect
 // once merged. This adds no judgments — it only unions facts. Extensions build
 // a repo graph with `artifactGraphFromIR(mergeArtifactIR(components...))`.
 //
