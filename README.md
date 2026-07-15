@@ -388,6 +388,41 @@ hardcoded default output or source directory):
 }
 ```
 
+Optional secondary-output extensions live under `nazare.extensions/` and are
+listed in the same JSON config:
+
+```json
+{
+  "build": { "sourceRoot": "nazare", "outDir": ".nazare-out/theme" },
+  "extensions": [
+    {
+      "module": "./nazare.extensions/manifest.js",
+      "options": { "format": "json" }
+    }
+  ]
+}
+```
+
+An extension default-exports `{ name, emit }`; `emit` runs once per theme build
+and returns additional Shopify theme files:
+
+```js
+export default {
+  name: "manifest",
+  emit({ components, options }) {
+    return {
+      files: [
+        {
+          path: "assets/nazare-components.json",
+          contents: JSON.stringify({ options, components: components.map((component) => component.ast.file) })
+        }
+      ],
+      issues: []
+    };
+  }
+};
+```
+
 Build it:
 
 ```sh

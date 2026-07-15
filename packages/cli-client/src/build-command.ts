@@ -1,24 +1,61 @@
 import { spawnSync } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { extname, join, relative, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
+import type { NazareExtensionRegistration } from "@nazare/compiler";
 import { buildTheme } from "@nazare/theme";
 import type { CliOptions } from "./options.js";
 
 const THEME_MANIFEST = "nazare.theme.json";
+const EXTENSIONS_DIR = "nazare.extensions";
 
-/** The build paths are project config, read from nazare.theme.json `build`. */
+/** Project config, read from nazare.theme.json. */
 type ThemeBuildConfig = { outDir?: string; sourceRoot?: string };
+type ThemeExtensionConfig = string | { module?: string; options?: unknown };
+type ThemeProjectConfig = {
+	build?: ThemeBuildConfig;
+	extensions?: ThemeExtensionConfig[];
+};
 
-async function readBuildConfig(projectRoot: string): Promise<ThemeBuildConfig> {
+async function readProjectConfig(
+	projectRoot: string,
+): Promise<ThemeProjectConfig> {
 	const raw = await readFile(join(projectRoot, THEME_MANIFEST), "utf8").catch(
 		() => undefined,
 	);
 	if (raw === undefined) return {};
 	try {
-		const parsed = JSON.parse(raw) as { build?: ThemeBuildConfig };
-		return parsed.build ?? {};
-	} catch {
-		return {};
+		const parsed = JSON.parse(raw) as ThemeProjectConfig;
+		validateProjectConfig(parsed);
+		return parsed;
+	} catch (error) {
+		if (error instanceof SyntaxError) {
+			throw new Error(`nazare.theme.json is not valid JSON: ${error.message}`);
+		}
+		throw error;
+	}
+}
+
+function validateProjectConfig(config: ThemeProjectConfig): void {
+	if (config.build !== undefined) {
+		if (!config.build || typeof config.build !== "object") {
+			throw new Error("nazare.theme.json build must be an object");
+		}
+		if (
+			config.build.sourceRoot !== undefined &&
+			typeof config.build.sourceRoot !== "string"
+		) {
+			throw new Error("nazare.theme.json build.sourceRoot must be a string");
+		}
+		if (
+			config.build.outDir !== undefined &&
+			typeof config.build.outDir !== "string"
+		) {
+			throw new Error("nazare.theme.json build.outDir must be a string");
+		}
+	}
+	if (config.extensions !== undefined && !Array.isArray(config.extensions)) {
+		throw new Error("nazare.theme.json extensions must be an array");
 	}
 }
 
@@ -49,9 +86,10 @@ export async function runThemeBuild(
 		// Both paths are explicit: an explicit CLI flag/positional wins, else the
 		// nazare.theme.json `build` config. There is no hardcoded default — an
 		// unset path is an error, not a silent `.nazare-out/theme`.
-		const config = await readBuildConfig(projectRoot);
-		const sourceRoot = target ?? cliOptions.sourceRoot ?? config.sourceRoot;
-		const outDir = cliOptions.outDir ?? config.outDir;
+		const config = await readProjectConfig(projectRoot);
+		const sourceRoot =
+			target ?? cliOptions.sourceRoot ?? config.build?.sourceRoot;
+		const outDir = cliOptions.outDir ?? config.build?.outDir;
 		if (!sourceRoot) {
 			throw new Error(
 				'No source root. Pass it as `nazare build <source-root>` or --source-root, or set "build": { "sourceRoot": "…" } in nazare.theme.json.',
@@ -78,6 +116,7 @@ export async function runThemeBuild(
 			sourceRoot,
 			outDir,
 			strictness: cliOptions.strictness,
+			extensions: await loadExtensions(projectRoot, config.extensions ?? []),
 			// Key the run-once migrations ledger by the pulled store/theme so each
 			// target tracks its own applied history; falls back to the output dir.
 			targetId:
@@ -97,6 +136,71 @@ export async function runThemeBuild(
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exit(1);
+	}
+}
+
+async function loadExtensions(
+	projectRoot: string,
+	configs: ThemeExtensionConfig[],
+): Promise<NazareExtensionRegistration[]> {
+	const loaded: NazareExtensionRegistration[] = [];
+	for (const config of configs) {
+		if (typeof config !== "string" && (!config || typeof config !== "object")) {
+			throw new Error("Extension config must be a module path or object");
+		}
+		const modulePath = typeof config === "string" ? config : config.module;
+		if (!modulePath || typeof modulePath !== "string") {
+			throw new Error("Extension config needs a module path");
+		}
+		assertAllowedExtensionModule(projectRoot, modulePath);
+		const moduleUrl = pathToFileURL(resolve(projectRoot, modulePath)).href;
+		const imported = (await import(moduleUrl)) as { default?: unknown };
+		const extension = imported.default;
+		if (!extension || typeof extension !== "object") {
+			throw new Error(`${modulePath} must default-export a Nazare extension`);
+		}
+		const name = (extension as { name?: unknown }).name;
+		if (typeof name !== "string" || name.length === 0) {
+			throw new Error(`${modulePath} extension needs a non-empty name`);
+		}
+		const emit = (extension as { emit?: unknown }).emit;
+		if (emit !== undefined && typeof emit !== "function") {
+			throw new Error(`${modulePath} extension emit must be a function`);
+		}
+		loaded.push({
+			extension: extension as NazareExtensionRegistration["extension"],
+			options: typeof config === "string" ? undefined : config.options,
+		});
+	}
+	return loaded;
+}
+
+function assertAllowedExtensionModule(
+	projectRoot: string,
+	modulePath: string,
+): void {
+	const extensionPrefix = `./${EXTENSIONS_DIR}/`;
+	if (!modulePath.startsWith(extensionPrefix)) {
+		throw new Error(
+			`Extension modules must live under ${extensionPrefix}: ${modulePath}`,
+		);
+	}
+	if (extname(modulePath) !== ".js" && extname(modulePath) !== ".mjs") {
+		throw new Error(
+			`Extension modules must be .js or .mjs files: ${modulePath}`,
+		);
+	}
+	const resolved = resolve(projectRoot, modulePath);
+	const allowedRoot = resolve(projectRoot, EXTENSIONS_DIR);
+	const relativePath = relative(allowedRoot, resolved);
+	if (
+		relativePath === "" ||
+		relativePath.startsWith("..") ||
+		relativePath.startsWith(sep)
+	) {
+		throw new Error(
+			`Extension modules must stay under ./${EXTENSIONS_DIR}/: ${modulePath}`,
+		);
 	}
 }
 

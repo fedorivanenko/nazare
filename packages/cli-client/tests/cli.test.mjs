@@ -239,6 +239,117 @@ test("cli: build supports custom output directory", async () => {
 	);
 });
 
+test("cli: build loads extension modules from nazare.extensions", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: "nazare", outDir: "theme" },
+				extensions: [
+					{
+						module: "./nazare.extensions/manifest.js",
+						options: { label: "components" },
+					},
+				],
+			}),
+			"nazare/button.nz.liquid": "<button>Button</button>\n",
+			"nazare.extensions/manifest.js": `export default {
+  name: "manifest",
+  emit({ components, options }) {
+    return {
+      files: [{
+        path: "assets/extension-manifest.json",
+        contents: JSON.stringify({ label: options.label, files: components.map((component) => component.ast.file) })
+      }],
+      issues: []
+    };
+  }
+};
+`,
+		},
+		async (cwd) => {
+			const built = runCli(cwd, "build", "--json");
+			assert.equal(built.status, 0, built.stderr);
+			const output = JSON.parse(built.stdout);
+			assert.ok(
+				output.written.includes("theme/assets/extension-manifest.json"),
+			);
+			assert.deepEqual(
+				JSON.parse(
+					readFileSync(
+						join(cwd, "theme/assets/extension-manifest.json"),
+						"utf8",
+					),
+				),
+				{ label: "components", files: ["nazare/button.nz.liquid"] },
+			);
+		},
+	);
+});
+
+test("cli: build rejects invalid extension config", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: "nazare", outDir: "theme" },
+				extensions: ["./other/manifest.js"],
+			}),
+			"nazare/button.nz.liquid": "<button>Button</button>\n",
+		},
+		async (cwd) => {
+			const built = runCli(cwd, "build", "--json");
+			assert.notEqual(built.status, 0);
+			assert.match(built.stderr, /Extension modules must live under/);
+		},
+	);
+});
+
+test("cli: build rejects invalid extension module extensions", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: "nazare", outDir: "theme" },
+				extensions: ["./nazare.extensions/manifest.ts"],
+			}),
+			"nazare/button.nz.liquid": "<button>Button</button>\n",
+		},
+		async (cwd) => {
+			const built = runCli(cwd, "build", "--json");
+			assert.notEqual(built.status, 0);
+			assert.match(built.stderr, /Extension modules must be .js or .mjs/);
+		},
+	);
+});
+
+test("cli: build rejects malformed nazare.theme.json", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": "{ nope",
+			"nazare/button.nz.liquid": "<button>Button</button>\n",
+		},
+		async (cwd) => {
+			const built = runCli(cwd, "build", "--json");
+			assert.notEqual(built.status, 0);
+			assert.match(built.stderr, /nazare.theme.json is not valid JSON/);
+		},
+	);
+});
+
+test("cli: build rejects invalid build config types", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: 123, outDir: "theme" },
+			}),
+			"nazare/button.nz.liquid": "<button>Button</button>\n",
+		},
+		async (cwd) => {
+			const built = runCli(cwd, "build", "--json");
+			assert.notEqual(built.status, 0);
+			assert.match(built.stderr, /build.sourceRoot must be a string/);
+		},
+	);
+});
+
 test("cli: build reports a conflict when two components emit the same path", async () => {
 	await withProject(
 		{

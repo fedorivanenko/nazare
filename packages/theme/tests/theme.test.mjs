@@ -89,6 +89,115 @@ test("buildTheme compiles .nz.liquid and does not copy the source file", async (
 	);
 });
 
+test("buildTheme runs extension secondary outputs", async () => {
+	await withProject(
+		{
+			"nazare/sections/hero.nz.liquid":
+				"{% component section %}<section>Hero</section>\n",
+		},
+		async (projectRoot) => {
+			const result = await build(projectRoot, {
+				extensions: [
+					{
+						extension: {
+							name: "manifest",
+							emit: ({ components }) => ({
+								files: [
+									{
+										path: "assets/nazare-components.json",
+										contents: JSON.stringify(
+											components.map((component) => component.ast.file),
+										),
+									},
+								],
+								issues: [],
+							}),
+						},
+					},
+				],
+			});
+			assert.equal(result.conflicts.length, 0);
+			assert.ok(
+				result.written.includes(
+					".nazare-out/theme/assets/nazare-components.json",
+				),
+			);
+			assert.deepEqual(
+				JSON.parse(readOutput(projectRoot, "assets/nazare-components.json")),
+				["nazare/sections/hero.nz.liquid"],
+			);
+		},
+	);
+});
+
+test("buildTheme rejects unsafe extension output paths", async () => {
+	await withProject(
+		{
+			"nazare/sections/hero.nz.liquid":
+				"{% component section %}<section>Hero</section>\n",
+		},
+		async (projectRoot) => {
+			const result = await build(projectRoot, {
+				extensions: [
+					{
+						extension: {
+							name: "escape",
+							emit: () => ({
+								files: [
+									{ path: "../escape.txt", contents: "no" },
+									{ path: "config/settings_data.json", contents: "{}" },
+								],
+								issues: [],
+							}),
+						},
+					},
+				],
+			});
+			assert.equal(
+				result.issues.filter(
+					(issue) => issue.code === "THEME_EXTENSION_OUTPUT_PATH",
+				).length,
+				2,
+			);
+			assert.equal(
+				existsSync(join(projectRoot, ".nazare-out/escape.txt")),
+				false,
+			);
+		},
+	);
+});
+
+test("buildTheme reports extension runtime failures as errors", async () => {
+	await withProject(
+		{
+			"nazare/sections/hero.nz.liquid":
+				"{% component section %}<section>Hero</section>\n",
+		},
+		async (projectRoot) => {
+			const result = await build(projectRoot, {
+				extensions: [
+					{
+						extension: {
+							name: "boom",
+							emit: () => {
+								throw new Error("kaboom");
+							},
+						},
+					},
+				],
+			});
+			assert.ok(
+				result.issues.some(
+					(issue) =>
+						issue.severity === "error" &&
+						issue.code === "THEME_EXTENSION_ERROR" &&
+						issue.message.includes("kaboom"),
+				),
+			);
+		},
+	);
+});
+
 test("buildTheme reports invalid JSON", async () => {
 	await withProject(
 		{ "nazare/templates/product.json": "{ nope" },

@@ -16,6 +16,10 @@ import {
 	resolve,
 	sep,
 } from "node:path";
+import type {
+	CompileResult,
+	NazareExtensionRegistration,
+} from "@nazare/compiler";
 import {
 	buildNazareTheme,
 	checkComponentScripts,
@@ -87,6 +91,8 @@ export type ThemeBuildOptions = {
 	targetId?: string;
 	/** Locale merge base path, relative to projectRoot. Default nazare.locales-base.json. */
 	localeBasePath?: string;
+	/** Project extension modules loaded by the CLI or caller. */
+	extensions?: NazareExtensionRegistration[];
 };
 
 /** A single schema-drift finding between the prior and current schema lock. */
@@ -118,9 +124,10 @@ type PlannedFile = { contents: string; from: string };
 export async function buildTheme(
 	options: ThemeBuildOptions,
 ): Promise<ThemeBuildResult> {
-	const projectRoot = options.projectRoot;
-	const sourceRoot = options.sourceRoot;
-	const outDir = options.outDir;
+	const projectRoot = requireStringOption(options.projectRoot, "projectRoot");
+	const sourceRoot = requireStringOption(options.sourceRoot, "sourceRoot");
+	const outDir = requireStringOption(options.outDir, "outDir");
+	assertSafeOutDir(projectRoot, sourceRoot, outDir);
 	const rootAbs = resolve(projectRoot, sourceRoot);
 	const rootStat = await stat(rootAbs).catch(() => undefined);
 	if (!rootStat) throw new Error(`Source path not found: ${sourceRoot}`);
@@ -150,6 +157,7 @@ export async function buildTheme(
 	const issues: Diagnostic[] = [];
 	const notes: Diagnostic[] = [];
 	const compiled: string[] = [];
+	const compiledComponents: CompileResult[] = [];
 	const copied: string[] = [];
 	const manifest: SchemaManifest = { version: 1, sections: {} };
 
@@ -164,6 +172,7 @@ export async function buildTheme(
 				readFile: readProjectFile,
 				strictness: options.strictness,
 			});
+			compiledComponents.push(built);
 			issues.push(
 				...built.issues,
 				...checkComponentScripts(built.ir, { readFile: readProjectFile }),
@@ -229,7 +238,32 @@ export async function buildTheme(
 		}
 	}
 
-	assertSafeOutDir(projectRoot, sourceRoot, outDir);
+	for (const extensionResult of await runExtensions(options.extensions ?? [], {
+		projectRoot,
+		sourceRoot,
+		outDir,
+		components: compiledComponents,
+	})) {
+		issues.push(...extensionResult.issues);
+		for (const file of extensionResult.files) {
+			const pathIssue = validateExtensionOutputPath(
+				file.path,
+				extensionResult.name,
+			);
+			if (pathIssue) {
+				issues.push(pathIssue);
+				continue;
+			}
+			planFile(
+				planned,
+				conflicts,
+				file.path,
+				file.contents,
+				`extension:${extensionResult.name}`,
+			);
+		}
+	}
+
 	const outputRoot = resolve(projectRoot, outDir);
 	const ownershipManifest = await readOutputOwnershipManifest(outputRoot);
 	const existingOutputFiles = await readOutputFileHashes(outputRoot);
@@ -587,6 +621,13 @@ async function collectSourceFiles(
 	return found.sort();
 }
 
+function requireStringOption(value: unknown, name: string): string {
+	if (typeof value !== "string" || value.length === 0) {
+		throw new Error(`${name} must be a non-empty string`);
+	}
+	return value;
+}
+
 function assertSafeOutDir(
 	projectRoot: string,
 	sourceRoot: string,
@@ -652,6 +693,89 @@ function isPlainLiquidThemeFile(sourceRelative: string): boolean {
 function relativeSourcePath(sourceRoot: string, file: string): string {
 	const prefix = `${sourceRoot.replace(/\/$/, "")}/`;
 	return file.startsWith(prefix) ? file.slice(prefix.length) : basename(file);
+}
+
+async function runExtensions(
+	extensions: NazareExtensionRegistration[],
+	context: {
+		projectRoot: string;
+		sourceRoot: string;
+		outDir: string;
+		components: CompileResult[];
+	},
+): Promise<
+	Array<{ name: string; files: PlannedFileOutput[]; issues: Diagnostic[] }>
+> {
+	const results: Array<{
+		name: string;
+		files: PlannedFileOutput[];
+		issues: Diagnostic[];
+	}> = [];
+	for (const { extension, options } of extensions) {
+		if (!extension.emit) continue;
+		try {
+			const emitted = await extension.emit({ ...context, options });
+			if (!Array.isArray(emitted.files) || !Array.isArray(emitted.issues)) {
+				throw new Error("emit must return { files, issues } arrays");
+			}
+			results.push({
+				name: extension.name,
+				files: emitted.files,
+				issues: emitted.issues.map((issue) => ({
+					...issue,
+					phase: issue.phase ?? "emit",
+				})),
+			});
+		} catch (error) {
+			results.push({
+				name: extension.name,
+				files: [],
+				issues: [
+					{
+						severity: "error",
+						phase: "emit",
+						code: "THEME_EXTENSION_ERROR",
+						message: `Extension ${extension.name} failed: ${error instanceof Error ? error.message : String(error)}`,
+					},
+				],
+			});
+		}
+	}
+	return results;
+}
+
+type PlannedFileOutput = { path: string; contents: string };
+
+function validateExtensionOutputPath(
+	path: string,
+	extensionName: string,
+): Diagnostic | undefined {
+	if (
+		path.trim().length === 0 ||
+		path.startsWith("/") ||
+		path.includes("\\") ||
+		path.split("/").some((segment) => segment === ".." || segment === "")
+	) {
+		return {
+			severity: "error",
+			phase: "emit",
+			code: "THEME_EXTENSION_OUTPUT_PATH",
+			message: `Extension ${extensionName} emitted unsafe output path "${path}"`,
+		};
+	}
+	if (
+		path === OUTPUT_OWNERSHIP_MANIFEST ||
+		isMerchantDataPath(path) ||
+		isLocaleMergePath(path)
+	) {
+		return {
+			severity: "error",
+			phase: "emit",
+			code: "THEME_EXTENSION_OUTPUT_PATH",
+			message: `Extension ${extensionName} emitted unsafe output path "${path}"`,
+		};
+	}
+	return undefined;
 }
 
 function planFile(
