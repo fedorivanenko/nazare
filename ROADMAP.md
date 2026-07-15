@@ -11,11 +11,17 @@
   - Add island load strategies: `load`, `idle`, `visible`, `interaction`.
   - Emit preload hints based on strategy.
   - Support re-hydration with island registry, `MutationObserver`, `shopify:section:*` events, teardown disposers, and `data-nz-src` code-on-demand.
+  - Support `data-nazare-use`-style module mounting for migration parity.
+  - Support gradual global-JS-to-island migration: third-party globals, custom elements, and explicit `init()` / `destroy()` adapters.
   - Optionally inline tiny runtime in `theme.liquid` `<head>`.
 
 - **Phase 2 — CSS/JS output**
   - Consolidate component CSS into Shopify `{% stylesheet %}` blocks.
   - Add optional built-in Tailwind mode as a global asset build step.
+  - Make Tailwind mode scan Liquid, generated sources, arbitrary variants, and `@source inline()` escapes safely.
+  - Add SCSS/global asset compatibility for legacy themes: `main`/`preload` entrypoints, stable preload ordering, and CSS minification without Gulp.
+  - Add JS code splitting, deterministic chunk maps, and modulepreload snippet/tag generation.
+  - Add public asset copy plus manifest-based generated asset cleanup/ownership.
   - Add opt-in post-emit minification with `cssnano` and `terser`.
 
 - **Phase 3 — Shared analysis host**
@@ -26,6 +32,8 @@
 
 - **Phase 4 — Dev server**
   - Add `nazare dev`: watcher, incremental rebuild, dev-mode baseline handling, and `shopify theme dev` feed.
+  - Support coexistence mode: mix `.nz.liquid` components with existing `.liquid`, SCSS, global JS, and current theme layouts.
+  - Add output diff reports so migrations can review generated Liquid/schema/layout changes.
   - Run Theme Check on emitted output in `dev` and `build --check`.
 
 - **Phase 5 — LSP**
@@ -38,6 +46,7 @@
   - Add `nazare pull-schema` snapshots.
   - Scan metafields/global settings and report store-schema diagnostics.
   - Add live dev-theme render checks with golden HTML for CI/pre-release.
+  - Add visual-regression hooks for migrated high-risk templates: product, cart, collection, account.
 
 ## Parallel product tracks
 
@@ -58,6 +67,14 @@
   - **O5** Build registry browser after R1.
   - **O6** Add issue/PR templates, Discussions, showcase, starter theme.
 
+- **Track M — Migration parity for real Shopify repos**
+  - **M0** Document staged adoption playbooks from `notes/alkamind-migration-audit.md` and `notes/climatic-health-migration-audit.md`.
+  - **M1** Ship low-blast-radius coexistence: keep existing Liquid/SCSS/global JS while adding `.nz.liquid` components.
+  - **M2** Provide contracts-first migration tooling for implicit snippet locals and static `{% render %}` calls.
+  - **M3** Preserve legacy asset patterns: Tailwind v4 app builds, SCSS entrypoints, committed/global JS replacement path, public assets, preload order.
+  - **M4** Support island migration adapters for selector-driven JS, custom elements, third-party globals, cart/product flows, and teardown.
+  - **M5** Add migration safety reports: output diffs, schema drift, Theme Check, render/visual regression gates.
+
 ## Dependency notes
 
 - Phase 4 and Phase 5 require Phase 3.
@@ -68,3 +85,4 @@
 - Playground shares the pure compiler + `ReadFile` seam with LSP.
 - Registry browser needs R1.
 - Curated AJAX components exercise Phase 1 hydration.
+- Track M pulls from both real-theme audits and should shape Phase 1, Phase 2, Phase 4, and Phase 6 acceptance criteria.
