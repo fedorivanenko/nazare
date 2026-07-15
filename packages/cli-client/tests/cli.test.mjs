@@ -258,7 +258,7 @@ test("cli: build loads extension modules from nazare.extensions", async () => {
     return {
       files: [{
         path: "assets/extension-manifest.json",
-        contents: JSON.stringify({ label: options.label, files: components.map((component) => component.ast.file) })
+        contents: JSON.stringify({ label: options.label, files: components.map((component) => component.file) })
       }],
       issues: []
     };

@@ -11,6 +11,7 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
+import { artifactGraphFromIR, mergeArtifactIR } from "@nazare/compiler";
 import { buildTheme } from "../dist/index.js";
 
 async function withProject(files, fn) {
@@ -106,7 +107,7 @@ test("buildTheme runs extension secondary outputs", async () => {
 									{
 										path: "assets/nazare-components.json",
 										contents: JSON.stringify(
-											components.map((component) => component.ast.file),
+											components.map((component) => component.file),
 										),
 									},
 								],
@@ -125,6 +126,55 @@ test("buildTheme runs extension secondary outputs", async () => {
 			assert.deepEqual(
 				JSON.parse(readOutput(projectRoot, "assets/nazare-components.json")),
 				["nazare/sections/hero.nz.liquid"],
+			);
+		},
+	);
+});
+
+test("extension builds a whole-repo graph from component IRs", async () => {
+	await withProject(
+		{
+			"nazare/button.nz.liquid":
+				"{% props { label: string.required() } %}<button>{{ props.label }}</button>",
+			"nazare/hero.nz.liquid":
+				'{% component section %}{% import Button from "./button.nz.liquid" %}\n<section>{% render Button { label: "Go" } %}</section>',
+		},
+		async (projectRoot) => {
+			const result = await build(projectRoot, {
+				extensions: [
+					{
+						extension: {
+							name: "repo-graph",
+							// The day-0 whole-repo view: merge per-component IRs, then
+							// project to a graph. The hero's import of the button is a
+							// cross-file edge that only connects after the merge.
+							emit: ({ components }) => {
+								const graph = artifactGraphFromIR(
+									mergeArtifactIR(components.map((component) => component.ir)),
+								);
+								return {
+									files: [
+										{
+											path: "assets/repo-graph.json",
+											contents: JSON.stringify({
+												components: components.length,
+												imports: graph.edges.filter(
+													(edge) => edge.kind === "imports",
+												).length,
+											}),
+										},
+									],
+									issues: [],
+								};
+							},
+						},
+					},
+				],
+			});
+			assert.equal(result.conflicts.length, 0);
+			assert.deepEqual(
+				JSON.parse(readOutput(projectRoot, "assets/repo-graph.json")),
+				{ components: 2, imports: 1 },
 			);
 		},
 	);
@@ -162,6 +212,36 @@ test("buildTheme rejects unsafe extension output paths", async () => {
 			assert.equal(
 				existsSync(join(projectRoot, ".nazare-out/escape.txt")),
 				false,
+			);
+		},
+	);
+});
+
+test("buildTheme reports malformed extension files as errors, not crashes", async () => {
+	await withProject(
+		{
+			"nazare/sections/hero.nz.liquid":
+				"{% component section %}<section>Hero</section>\n",
+		},
+		async (projectRoot) => {
+			const result = await build(projectRoot, {
+				extensions: [
+					{
+						extension: {
+							name: "malformed",
+							// Missing path/contents — must not crash the build.
+							emit: () => ({ files: [{}], issues: [] }),
+						},
+					},
+				],
+			});
+			assert.ok(
+				result.issues.some(
+					(issue) =>
+						issue.severity === "error" &&
+						issue.code === "THEME_EXTENSION_ERROR" &&
+						issue.message.includes("{ path: string, contents: string }"),
+				),
 			);
 		},
 	);
