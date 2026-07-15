@@ -63,6 +63,11 @@ export {
 	emitScriptFiles,
 	emitTheme,
 } from "./emit.js";
+export type {
+	NazareExtension,
+	NazareExtensionContext,
+	NazareExtensionRegistration,
+} from "./extensions.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
 export { parseNazareLiquid } from "./parser.js";
