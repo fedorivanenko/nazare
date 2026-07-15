@@ -15,6 +15,8 @@ export type CheckComponentScriptsOptions = {
 	readFile?: (path: string) => string | undefined;
 };
 
+const sourceFileCache = new Map<string, ts.SourceFile>();
+
 export function checkComponentScripts(
 	ir: ArtifactIR,
 	options: CheckComponentScriptsOptions = {},
@@ -140,7 +142,11 @@ function typescriptDiagnostics(
 		if (contents !== undefined) {
 			return ts.createSourceFile(fileName, contents, languageVersion, true);
 		}
-		return defaultGetSourceFile(fileName, languageVersion, ...rest);
+		const cached = sourceFileCache.get(fileName);
+		if (cached) return cached;
+		const sourceFile = defaultGetSourceFile(fileName, languageVersion, ...rest);
+		if (sourceFile) sourceFileCache.set(fileName, sourceFile);
+		return sourceFile;
 	};
 	host.fileExists = (fileName) =>
 		virtualContents(fileName) !== undefined || ts.sys.fileExists(fileName);
