@@ -110,3 +110,13 @@ test("mergeArtifactIR dedupes identical resolutions", () => {
 	assert.equal(twice.symbols.length, once.symbols.length);
 	assert.equal(twice.syntax.length, once.syntax.length);
 });
+
+test("mergeArtifactIR rejects conflicting syntax ids", () => {
+	const first = compileNazareArtifact("<p>One</p>", "same.nz.liquid");
+	const conflicting = structuredClone(first.ir);
+	conflicting.syntax[0].path = "other.nz.liquid";
+	assert.throws(
+		() => mergeArtifactIR([first.ir, conflicting]),
+		/Conflicting syntax node id while merging IR: syntax:file:same\.nz\.liquid/,
+	);
+});
