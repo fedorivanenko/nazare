@@ -179,6 +179,7 @@ export async function buildTheme(
 				schema: built.ast.schema,
 				ir: built.ir,
 				contract: built.contract,
+				importedContracts: built.contracts,
 				canEmit: built.canEmit,
 			});
 			issues.push(
