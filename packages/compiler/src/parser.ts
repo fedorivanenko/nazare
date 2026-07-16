@@ -53,10 +53,8 @@ import { parseTypeExpression } from "./type-expression.js";
 
 const importPattern = /^([A-Za-z_$][\w$]*)\s+from\s+["']([^"']+)["']$/;
 const renderPattern = /^([A-Za-z_$][\w$]*)\s*\{([\s\S]*)\}$/;
-const scriptBlockPattern =
-	/{%-?\s*script\b([^%]*?)-?%}([\s\S]*?){%-?\s*endscript\s*-?%}/g;
-const styleBlockPattern =
-	/{%-?\s*stylesheet\b([^%]*?)-?%}([\s\S]*?){%-?\s*endstylesheet\s*-?%}/g;
+const scriptOpenTagPattern = /{%-?\s*script\b([^%]*?)-?%}/g;
+const styleOpenTagPattern = /{%-?\s*stylesheet\b([^%]*?)-?%}/g;
 const refIdentifierPattern = /^[A-Za-z_$][\w$]*$/;
 
 type SourceRange = { start: number; end: number };
@@ -246,6 +244,194 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 	};
 }
 
+type RawBlockLanguage = "script" | "style";
+
+type RawBlockMatch = {
+	blockStart: number;
+	bodyStart: number;
+	markup: string;
+	body: string;
+	block: string;
+};
+
+// Raw blocks contain TS/CSS, so the closing Liquid tag must be found with a
+// lexical scan that ignores tag-looking text inside strings and comments.
+function extractRawBlocks(
+	source: string,
+	openTagPattern: RegExp,
+	closeTagName: "endscript" | "endstylesheet",
+	language: RawBlockLanguage,
+): RawBlockMatch[] {
+	const blocks: RawBlockMatch[] = [];
+	openTagPattern.lastIndex = 0;
+
+	let match = openTagPattern.exec(source);
+	while (match) {
+		const openTag = match[0];
+		const markup = match[1];
+		const blockStart = match.index;
+		const bodyStart = blockStart + openTag.length;
+		const closingTag = findRawBlockClosingTag(
+			source,
+			bodyStart,
+			closeTagName,
+			language,
+		);
+		if (!closingTag) {
+			match = openTagPattern.exec(source);
+			continue;
+		}
+
+		blocks.push({
+			blockStart,
+			bodyStart,
+			markup,
+			body: source.slice(bodyStart, closingTag.start),
+			block: source.slice(blockStart, closingTag.end),
+		});
+		openTagPattern.lastIndex = closingTag.end;
+		match = openTagPattern.exec(source);
+	}
+
+	return blocks;
+}
+
+function findRawBlockClosingTag(
+	source: string,
+	start: number,
+	closeTagName: "endscript" | "endstylesheet",
+	language: RawBlockLanguage,
+): SourceRange | undefined {
+	let state:
+		| "code"
+		| "single"
+		| "double"
+		| "template"
+		| "line"
+		| "block"
+		| "regex" = "code";
+	let previousToken: string | undefined;
+	let escaped = false;
+
+	for (let index = start; index < source.length; index++) {
+		const char = source[index];
+		const next = source[index + 1];
+
+		if (state === "code") {
+			const closingTag = matchLiquidClosingTagAt(source, index, closeTagName);
+			if (closingTag) return { start: index, end: closingTag };
+
+			if (char === "'") {
+				state = "single";
+				continue;
+			}
+			if (char === '"') {
+				state = "double";
+				continue;
+			}
+			if (language === "script" && char === "`") {
+				state = "template";
+				continue;
+			}
+			if (char === "/" && next === "*") {
+				state = "block";
+				index++;
+				continue;
+			}
+			if (language === "script" && char === "/" && next === "/") {
+				state = "line";
+				index++;
+				continue;
+			}
+			if (
+				language === "script" &&
+				char === "/" &&
+				mayStartRegexLiteral(previousToken)
+			) {
+				state = "regex";
+				continue;
+			}
+			if (language === "script") {
+				const identifier = readIdentifierAt(source, index);
+				if (identifier) {
+					previousToken = identifier;
+					index += identifier.length - 1;
+					continue;
+				}
+				if (!/\s/.test(char)) previousToken = char;
+			}
+			continue;
+		}
+
+		if (state === "line") {
+			if (char === "\n" || char === "\r") state = "code";
+			continue;
+		}
+
+		if (state === "block") {
+			if (char === "*" && next === "/") {
+				state = "code";
+				index++;
+			}
+			continue;
+		}
+
+		if (
+			state === "single" ||
+			state === "double" ||
+			state === "template" ||
+			state === "regex"
+		) {
+			if (escaped) {
+				escaped = false;
+				continue;
+			}
+			if (char === "\\") {
+				escaped = true;
+				continue;
+			}
+			if (
+				(state === "single" && char === "'") ||
+				(state === "double" && char === '"') ||
+				(state === "template" && char === "`") ||
+				(state === "regex" && char === "/")
+			) {
+				const closedState = state;
+				state = "code";
+				previousToken = closedState === "regex" ? "/" : "literal";
+			}
+		}
+	}
+
+	return undefined;
+}
+
+function matchLiquidClosingTagAt(
+	source: string,
+	index: number,
+	closeTagName: "endscript" | "endstylesheet",
+): number | undefined {
+	const match = source
+		.slice(index)
+		.match(new RegExp(`^\\{%-?\\s*${closeTagName}\\s*-?%}`));
+	return match ? index + match[0].length : undefined;
+}
+
+function readIdentifierAt(source: string, index: number): string | undefined {
+	const match = source.slice(index).match(/^[A-Za-z_$][\w$]*/);
+	return match?.[0];
+}
+
+function mayStartRegexLiteral(previousToken: string | undefined): boolean {
+	return (
+		previousToken === undefined ||
+		"([{=,:;!&|?+-*~^<>".includes(previousToken) ||
+		/^(return|throw|case|delete|void|typeof|instanceof|in|of|yield|await)$/.test(
+			previousToken,
+		)
+	);
+}
+
 function extractScriptBlocks(
 	source: string,
 	file: string,
@@ -253,10 +439,13 @@ function extractScriptBlocks(
 	const scripts: NazareScriptNode[] = [];
 	let blankedSource = source;
 
-	for (const match of source.matchAll(scriptBlockPattern)) {
-		const [block, markup, body] = match;
-		const blockStart = match.index;
-		const bodyStart = blockStart + block.indexOf(body, markup.length);
+	for (const match of extractRawBlocks(
+		source,
+		scriptOpenTagPattern,
+		"endscript",
+		"script",
+	)) {
+		const { block, markup, body, blockStart, bodyStart } = match;
 		const scan = scanScript(body);
 
 		scripts.push({
@@ -467,10 +656,13 @@ function extractStyleBlocks(
 	const styles: NazareStyleNode[] = [];
 	let blankedSource = scanSource;
 
-	for (const match of scanSource.matchAll(styleBlockPattern)) {
-		const [block, markup, body] = match;
-		const blockStart = match.index;
-		const bodyStart = blockStart + block.indexOf(body, markup.length);
+	for (const match of extractRawBlocks(
+		scanSource,
+		styleOpenTagPattern,
+		"endstylesheet",
+		"style",
+	)) {
+		const { block, markup, body, blockStart, bodyStart } = match;
 		const span = spanFromOffsets(originalSource, file, {
 			start: blockStart,
 			end: blockStart + block.length,
