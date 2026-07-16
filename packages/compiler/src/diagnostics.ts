@@ -111,6 +111,19 @@ export function importCycle(
 	};
 }
 
+export function parseUnclosedRawBlock(
+	blockName: "script" | "stylesheet",
+	closingTagName: "endscript" | "endstylesheet",
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_UNCLOSED_RAW_BLOCK",
+		message: `Unclosed {% ${blockName} %} block; add {% ${closingTagName} %} before the end of the file`,
+		span,
+	};
+}
+
 export function parseInvalidBlocksSlot(
 	markup: string,
 	span: SourceSpan,
@@ -206,6 +219,18 @@ export function parseDuplicateRenderArgument(
 		severity: "error",
 		code: "NAZARE_PARSE_DUPLICATE_RENDER_ARGUMENT",
 		message: `Render argument ${propName} is supplied more than once; each prop can be passed at most once per render site`,
+		span,
+	};
+}
+
+export function parseMalformedRenderArgument(
+	entry: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_RENDER_ARGUMENT",
+		message: `Malformed render argument "${entry}"; expected "name: expression"`,
 		span,
 	};
 }

@@ -44,6 +44,8 @@ import {
 	parseInvalidStylesheetBinding,
 	parseInvalidTypeExpression,
 	parseMalformedPropDeclaration,
+	parseMalformedRenderArgument,
+	parseUnclosedRawBlock,
 } from "./diagnostics.js";
 import { isRelativeSpecifier, resolveImportPath } from "./paths.js";
 import { type LiquidRegion, scanRegionReferences } from "./references.js";
@@ -79,7 +81,7 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 	// Script and stylesheet bodies are TS/CSS, which the HTML parser would
 	// misread (comparisons look like open tags). Extract them first, then
 	// blank each block — newlines kept — so every other span stays valid.
-	const scriptExtraction = extractScriptBlocks(source, file);
+	const scriptExtraction = extractScriptBlocks(source, file, diagnostics);
 	nodes.push(...scriptExtraction.scripts);
 	const styleExtraction = extractStyleBlocks(
 		scriptExtraction.blankedSource,
@@ -246,6 +248,33 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 
 type RawBlockLanguage = "script" | "style";
 
+type RawBlockLanguageRules = {
+	name: RawBlockLanguage;
+	supportsTemplateLiterals: boolean;
+	supportsLineComments: boolean;
+	supportsRegexLiterals: boolean;
+	tracksPreviousTokenForRegex: boolean;
+};
+
+// Raw block lexer only models syntax that can hide a Liquid closing tag.
+// Script bodies need JavaScript template literals, line comments, and regex
+// literals. Stylesheet bodies need CSS strings and block comments only.
+const scriptRawBlockRules: RawBlockLanguageRules = {
+	name: "script",
+	supportsTemplateLiterals: true,
+	supportsLineComments: true,
+	supportsRegexLiterals: true,
+	tracksPreviousTokenForRegex: true,
+};
+
+const styleRawBlockRules: RawBlockLanguageRules = {
+	name: "style",
+	supportsTemplateLiterals: false,
+	supportsLineComments: false,
+	supportsRegexLiterals: false,
+	tracksPreviousTokenForRegex: false,
+};
+
 type RawBlockMatch = {
 	blockStart: number;
 	bodyStart: number;
@@ -254,14 +283,24 @@ type RawBlockMatch = {
 	block: string;
 };
 
+type UnclosedRawBlock = {
+	blockStart: number;
+	bodyStart: number;
+};
+
+type RawBlockScan = {
+	blocks: RawBlockMatch[];
+	unclosed?: UnclosedRawBlock;
+};
+
 // Raw blocks contain TS/CSS, so the closing Liquid tag must be found with a
 // lexical scan that ignores tag-looking text inside strings and comments.
 function extractRawBlocks(
 	source: string,
 	openTagPattern: RegExp,
 	closeTagName: "endscript" | "endstylesheet",
-	language: RawBlockLanguage,
-): RawBlockMatch[] {
+	rules: RawBlockLanguageRules,
+): RawBlockScan {
 	const blocks: RawBlockMatch[] = [];
 	openTagPattern.lastIndex = 0;
 
@@ -275,11 +314,10 @@ function extractRawBlocks(
 			source,
 			bodyStart,
 			closeTagName,
-			language,
+			rules,
 		);
 		if (!closingTag) {
-			match = openTagPattern.exec(source);
-			continue;
+			return { blocks, unclosed: { blockStart, bodyStart } };
 		}
 
 		blocks.push({
@@ -293,14 +331,14 @@ function extractRawBlocks(
 		match = openTagPattern.exec(source);
 	}
 
-	return blocks;
+	return { blocks };
 }
 
 function findRawBlockClosingTag(
 	source: string,
 	start: number,
 	closeTagName: "endscript" | "endstylesheet",
-	language: RawBlockLanguage,
+	rules: RawBlockLanguageRules,
 ): SourceRange | undefined {
 	let state:
 		| "code"
@@ -329,7 +367,7 @@ function findRawBlockClosingTag(
 				state = "double";
 				continue;
 			}
-			if (language === "script" && char === "`") {
+			if (rules.supportsTemplateLiterals && char === "`") {
 				state = "template";
 				continue;
 			}
@@ -338,20 +376,20 @@ function findRawBlockClosingTag(
 				index++;
 				continue;
 			}
-			if (language === "script" && char === "/" && next === "/") {
+			if (rules.supportsLineComments && char === "/" && next === "/") {
 				state = "line";
 				index++;
 				continue;
 			}
 			if (
-				language === "script" &&
+				rules.supportsRegexLiterals &&
 				char === "/" &&
 				mayStartRegexLiteral(previousToken)
 			) {
 				state = "regex";
 				continue;
 			}
-			if (language === "script") {
+			if (rules.tracksPreviousTokenForRegex) {
 				const identifier = readIdentifierAt(source, index);
 				if (identifier) {
 					previousToken = identifier;
@@ -422,29 +460,81 @@ function readIdentifierAt(source: string, index: number): string | undefined {
 	return match?.[0];
 }
 
+const regexPrefixOperators = "([{=,:;!&|?+-*~^<>";
+const regexPrefixKeywords =
+	/^(return|throw|case|delete|void|typeof|instanceof|in|of|yield|await)$/;
+
 function mayStartRegexLiteral(previousToken: string | undefined): boolean {
 	return (
 		previousToken === undefined ||
-		"([{=,:;!&|?+-*~^<>".includes(previousToken) ||
-		/^(return|throw|case|delete|void|typeof|instanceof|in|of|yield|await)$/.test(
-			previousToken,
-		)
+		regexPrefixOperators.includes(previousToken) ||
+		regexPrefixKeywords.test(previousToken)
+	);
+}
+
+function blankPreservingNewlines(
+	source: string,
+	start: number,
+	end: number,
+): string {
+	return (
+		source.slice(0, start) +
+		source.slice(start, end).replace(/[^\n]/g, " ") +
+		source.slice(end)
+	);
+}
+
+function reportUnclosedRawBlock(
+	diagnostics: NazareAst["diagnostics"],
+	source: string,
+	file: string,
+	blockName: "script" | "stylesheet",
+	closingTagName: "endscript" | "endstylesheet",
+	block: UnclosedRawBlock,
+): void {
+	diagnostics.push(
+		parseUnclosedRawBlock(
+			blockName,
+			closingTagName,
+			spanFromOffsets(source, file, {
+				start: block.blockStart,
+				end: block.bodyStart,
+			}),
+		),
 	);
 }
 
 function extractScriptBlocks(
 	source: string,
 	file: string,
+	diagnostics: NazareAst["diagnostics"],
 ): { scripts: NazareScriptNode[]; blankedSource: string } {
 	const scripts: NazareScriptNode[] = [];
 	let blankedSource = source;
-
-	for (const match of extractRawBlocks(
+	const rawBlockScan = extractRawBlocks(
 		source,
 		scriptOpenTagPattern,
 		"endscript",
-		"script",
-	)) {
+		scriptRawBlockRules,
+	);
+
+	if (rawBlockScan.unclosed) {
+		reportUnclosedRawBlock(
+			diagnostics,
+			source,
+			file,
+			"script",
+			"endscript",
+			rawBlockScan.unclosed,
+		);
+		blankedSource = blankPreservingNewlines(
+			blankedSource,
+			rawBlockScan.unclosed.blockStart,
+			source.length,
+		);
+	}
+
+	for (const match of rawBlockScan.blocks) {
 		const { block, markup, body, blockStart, bodyStart } = match;
 		const scan = scanScript(body);
 
@@ -477,10 +567,11 @@ function extractScriptBlocks(
 			}),
 		});
 
-		blankedSource =
-			blankedSource.slice(0, blockStart) +
-			block.replace(/[^\n]/g, " ") +
-			blankedSource.slice(blockStart + block.length);
+		blankedSource = blankPreservingNewlines(
+			blankedSource,
+			blockStart,
+			blockStart + block.length,
+		);
 	}
 
 	return { scripts, blankedSource };
@@ -655,13 +746,30 @@ function extractStyleBlocks(
 ): { styles: NazareStyleNode[]; blankedSource: string } {
 	const styles: NazareStyleNode[] = [];
 	let blankedSource = scanSource;
-
-	for (const match of extractRawBlocks(
+	const rawBlockScan = extractRawBlocks(
 		scanSource,
 		styleOpenTagPattern,
 		"endstylesheet",
-		"style",
-	)) {
+		styleRawBlockRules,
+	);
+
+	if (rawBlockScan.unclosed) {
+		reportUnclosedRawBlock(
+			diagnostics,
+			originalSource,
+			file,
+			"stylesheet",
+			"endstylesheet",
+			rawBlockScan.unclosed,
+		);
+		blankedSource = blankPreservingNewlines(
+			blankedSource,
+			rawBlockScan.unclosed.blockStart,
+			scanSource.length,
+		);
+	}
+
+	for (const match of rawBlockScan.blocks) {
 		const { block, markup, body, blockStart, bodyStart } = match;
 		const span = spanFromOffsets(originalSource, file, {
 			start: blockStart,
@@ -694,10 +802,11 @@ function extractStyleBlocks(
 			}),
 		});
 
-		blankedSource =
-			blankedSource.slice(0, blockStart) +
-			block.replace(/[^\n]/g, " ") +
-			blankedSource.slice(blockStart + block.length);
+		blankedSource = blankPreservingNewlines(
+			blankedSource,
+			blockStart,
+			blockStart + block.length,
+		);
 	}
 
 	return { styles, blankedSource };
@@ -1060,25 +1169,31 @@ function parsePassedProps(
 	const seen = new Set<string>();
 
 	for (const entry of splitTopLevelWithOffsets(body)) {
+		const entryStart = bodyStart + entry.start;
+		const span = spanFromOffsets(source, file, {
+			start: entryStart,
+			end: bodyStart + entry.end,
+		});
 		const separator = entry.text.indexOf(":");
-		if (separator === -1) continue;
+		if (separator === -1) {
+			diagnostics.push(parseMalformedRenderArgument(entry.text.trim(), span));
+			continue;
+		}
 
 		const rawName = entry.text.slice(0, separator);
 		const rawExpression = entry.text.slice(separator + 1);
 		const name = rawName.trim();
 		const expression = rawExpression.trim();
-		if (!isIdentifier(name) || !expression) continue;
+		if (!isIdentifier(name) || !expression) {
+			diagnostics.push(parseMalformedRenderArgument(entry.text.trim(), span));
+			continue;
+		}
 
-		const entryStart = bodyStart + entry.start;
 		const nameStart = entryStart + rawName.search(/\S/);
 		const expressionLeadingWhitespace = rawExpression.search(/\S/);
 		const expressionStart =
 			entryStart + separator + 1 + Math.max(expressionLeadingWhitespace, 0);
 
-		const span = spanFromOffsets(source, file, {
-			start: entryStart,
-			end: bodyStart + entry.end,
-		});
 		if (seen.has(name)) {
 			diagnostics.push(parseDuplicateRenderArgument(name, span));
 		} else {

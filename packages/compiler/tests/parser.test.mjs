@@ -39,3 +39,26 @@ test("parser: stylesheet raw block ignores endstylesheet inside strings and comm
 	assert.equal(styles[0].source.includes("/* {% endstylesheet %} */"), true);
 	assert.equal(ast.diagnostics.length, 0);
 });
+
+test("parser: unclosed script raw block reports a diagnostic", () => {
+	const source = [`{% script %}`, `const x = "{% endscript %}";`].join("\n");
+	const ast = parseNazareLiquid(source, "component.nz.liquid");
+	const scripts = ast.nodes.filter((node) => node.type === "NazareScript");
+
+	assert.equal(scripts.length, 0);
+	assert.equal(ast.diagnostics.length, 1);
+	assert.equal(ast.diagnostics[0].code, "NAZARE_PARSE_UNCLOSED_RAW_BLOCK");
+	assert.match(ast.diagnostics[0].message, /\{% endscript %\}/);
+});
+
+test("parser: unclosed stylesheet raw block reports a diagnostic", () => {
+	const source = `{% stylesheet styles %}
+.a::after { content: "{% endstylesheet %}"; }`;
+	const ast = parseNazareLiquid(source, "component.nz.liquid");
+	const styles = ast.nodes.filter((node) => node.type === "NazareStyle");
+
+	assert.equal(styles.length, 0);
+	assert.equal(ast.diagnostics.length, 1);
+	assert.equal(ast.diagnostics[0].code, "NAZARE_PARSE_UNCLOSED_RAW_BLOCK");
+	assert.match(ast.diagnostics[0].message, /\{% endstylesheet %\}/);
+});
