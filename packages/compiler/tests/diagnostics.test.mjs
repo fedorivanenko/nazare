@@ -55,6 +55,12 @@ const cases = [
 		expect: "NAZARE_PARSE_DUPLICATE_RENDER_ARGUMENT",
 	},
 	{
+		name: "malformed render argument is an error",
+		files: { "link.nz.liquid": LINK },
+		src: `{% import Link from "./link.nz.liquid" %}\n{% render Link { href: "https://x.dev", text } %}`,
+		expect: "NAZARE_PARSE_RENDER_ARGUMENT",
+	},
+	{
 		name: "type mismatch: number into text prop",
 		files: { "link.nz.liquid": LINK },
 		src: `{% import Link from "./link.nz.liquid" %}\n{% render Link { href: "https://x.dev", text: 42 } %}`,
