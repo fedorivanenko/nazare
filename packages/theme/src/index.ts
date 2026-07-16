@@ -172,6 +172,7 @@ export async function buildTheme(
 				name: artifactBaseName(file),
 				readFile: readProjectFile,
 				strictness: options.strictness,
+				emitOnError: false,
 			});
 			components.push({
 				file,
@@ -247,6 +248,17 @@ export async function buildTheme(
 		}
 	}
 
+	if (hasErrors(issues)) {
+		return emptyThemeBuildResult({
+			compiled,
+			copied,
+			issues,
+			notes,
+			conflicts,
+			manifestPath: options.manifestPath,
+		});
+	}
+
 	for (const extensionResult of await runExtensions(options.extensions ?? [], {
 		projectRoot,
 		sourceRoot,
@@ -271,6 +283,17 @@ export async function buildTheme(
 				`extension:${extensionResult.name}`,
 			);
 		}
+	}
+
+	if (hasErrors(issues)) {
+		return emptyThemeBuildResult({
+			compiled,
+			copied,
+			issues,
+			notes,
+			conflicts,
+			manifestPath: options.manifestPath,
+		});
 	}
 
 	const outputRoot = resolve(projectRoot, outDir);
@@ -873,6 +896,35 @@ function isUnsafeThemeOutputPath(path: string): boolean {
 		isMerchantDataPath(path) ||
 		isLocaleMergePath(path)
 	);
+}
+
+function emptyThemeBuildResult(input: {
+	compiled: string[];
+	copied: string[];
+	issues: Diagnostic[];
+	notes: Diagnostic[];
+	conflicts: string[];
+	manifestPath: string | undefined;
+}): ThemeBuildResult {
+	return {
+		compiled: input.compiled.sort(),
+		copied: input.copied.sort(),
+		seeded: [],
+		preserved: [],
+		written: [],
+		issues: input.issues,
+		notes: input.notes,
+		conflicts: input.conflicts,
+		drift: [],
+		manifestPath: input.manifestPath ?? DEFAULT_MANIFEST,
+		migrated: [],
+		applied: [],
+		mergedLocales: [],
+	};
+}
+
+function hasErrors(issues: Diagnostic[]): boolean {
+	return issues.some((issue) => issue.severity === "error");
 }
 
 function validateExtensionOutputPath(
