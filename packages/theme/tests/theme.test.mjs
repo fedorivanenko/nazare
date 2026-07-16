@@ -90,6 +90,56 @@ test("buildTheme compiles .nz.liquid and does not copy the source file", async (
 	);
 });
 
+test("buildTheme writes nothing when compile errors exist", async () => {
+	await withProject(
+		{
+			"nazare/layout/theme.liquid": "{{ content_for_layout }}\n",
+			"nazare/sections/hero.nz.liquid": `{% component section %}
+{% import Missing from "./missing.nz.liquid" %}
+{% render Missing {} %}
+<section>Broken</section>`,
+			"nazare/sections/notice.nz.liquid":
+				"{% component section %}<section>Valid</section>\n",
+		},
+		async (projectRoot) => {
+			let extensionRan = false;
+			const result = await build(projectRoot, {
+				extensions: [
+					{
+						extension: {
+							name: "should-not-run",
+							emit: () => {
+								extensionRan = true;
+								return { files: [], issues: [] };
+							},
+						},
+					},
+				],
+			});
+
+			assert.equal(extensionRan, false);
+			assert.ok(
+				result.issues.some((issue) => issue.code === "IMPORT_NOT_FOUND"),
+			);
+			assert.deepEqual(result.written, []);
+			assert.equal(
+				existsSync(join(projectRoot, ".nazare-out/theme/layout/theme.liquid")),
+				false,
+			);
+			assert.equal(
+				existsSync(join(projectRoot, ".nazare-out/theme/sections/hero.liquid")),
+				false,
+			);
+			assert.equal(
+				existsSync(
+					join(projectRoot, ".nazare-out/theme/sections/notice.liquid"),
+				),
+				false,
+			);
+		},
+	);
+});
+
 test("buildTheme runs extension secondary outputs", async () => {
 	await withProject(
 		{
@@ -541,8 +591,8 @@ test("buildTheme preserves section-group JSON but regenerates section code", asy
 	);
 });
 
-const section = (props) =>
-	`{% component section %}\n{% props {\n${props}\n} %}\n<section>{{ props.heading }}</section>\n`;
+const section = (props, read = "heading") =>
+	`{% component section %}\n{% props {\n${props}\n} %}\n<section>{{ props.${read} }}</section>\n`;
 
 test("buildTheme writes a schema lock with no drift on first build", async () => {
 	await withProject(
@@ -667,7 +717,7 @@ test("a migration rewrites saved data on a rename and silences drift", async () 
 			rmSync(join(projectRoot, "nazare/sections/hero.nz.liquid"));
 			writeFileSync(
 				join(projectRoot, "nazare/sections/banner.nz.liquid"),
-				section('  title: string.setting({ label: "Title" }),'),
+				section('  title: string.setting({ label: "Title" }),', "title"),
 			);
 			writeFileSync(
 				join(projectRoot, "nazare.migrations.json"),
@@ -717,7 +767,7 @@ test("without a migration, a rename still drifts and strands data", async () => 
 			rmSync(join(projectRoot, "nazare/sections/hero.nz.liquid"));
 			writeFileSync(
 				join(projectRoot, "nazare/sections/banner.nz.liquid"),
-				section('  title: string.setting({ label: "Title" }),'),
+				section('  title: string.setting({ label: "Title" }),', "title"),
 			);
 			const result = await build(projectRoot);
 			assert.ok(result.drift.some((d) => d.code === "THEME_SECTION_REMOVED"));
