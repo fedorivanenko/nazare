@@ -403,8 +403,9 @@ listed in the same JSON config:
 }
 ```
 
-An extension default-exports `{ name, emit }`; `emit` runs once per theme build,
-after every component compiles, and returns additional Shopify theme files.
+An extension default-exports `{ name, emit }`; `emit` runs once per successful
+theme build, after every component compiles without errors, and returns
+additional Shopify theme files.
 Extensions are trusted local code: they run in Node with the same permissions as
 the build process, so only enable extensions from code you trust. Each entry in
 `components` is a serializable view of one compiled component —
@@ -455,9 +456,9 @@ export default {
 };
 ```
 
-The merged graph is derived facts, not judgments: a component with errors still
-contributes, an import whose target never compiled stays a dangling node, and
-cycles are allowed.
+The merged graph is derived facts, not judgments: an import whose target never
+compiled stays a dangling node, and cycles are allowed. If any component has an
+error, the theme build aborts before extensions run.
 
 Build it:
 
@@ -497,6 +498,7 @@ theme/
 What the build does:
 
 - compiles every `.nz.liquid` component into Shopify `sections/`, `blocks/`, `snippets/`, and `assets/`;
+- aborts atomically on errors before writing output, running extensions, cleaning stale files, or updating schema/locale/migration metadata;
 - carries plain Shopify code files from `layout/`, `templates/*.liquid`, `sections/`, `snippets/`, and `assets/` straight through;
 - reconciles merchant-owned state — settings, section and block instances, and translations — instead of overwriting it (see [Reconciliation](#reconciliation) below);
 - validates plain `.liquid` files and JSON files;
