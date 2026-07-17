@@ -33,7 +33,11 @@ async function call(handler, method, path, { token, body } = {}) {
 		}),
 	);
 	const text = await response.text();
-	return { status: response.status, body: text ? JSON.parse(text) : undefined };
+	return {
+		status: response.status,
+		body: text ? JSON.parse(text) : undefined,
+		cacheControl: response.headers.get("cache-control"),
+	};
 }
 
 test("GET metadata for an unknown component is 404", async () => {
@@ -85,6 +89,48 @@ test("publish, then fetch metadata / exact / latest", async () => {
 	);
 	assert.equal(latest.status, 200);
 	assert.equal(latest.body.version, "0.1.0");
+});
+
+test("GET responses set CDN cache policy by route mutability", async () => {
+	const handler = handlerWith();
+	await call(handler, "PUT", "/components/nazare/counter/0.1.0", {
+		token: TOKEN,
+		body: component(),
+	});
+
+	const meta = await call(handler, "GET", "/components/nazare/counter");
+	assert.equal(
+		meta.cacheControl,
+		"public, max-age=0, s-maxage=60, stale-while-revalidate=86400",
+	);
+
+	const latest = await call(
+		handler,
+		"GET",
+		"/components/nazare/counter/latest",
+	);
+	assert.equal(
+		latest.cacheControl,
+		"public, max-age=0, s-maxage=60, stale-while-revalidate=86400",
+	);
+
+	const exact = await call(handler, "GET", "/components/nazare/counter/0.1.0");
+	assert.equal(
+		exact.cacheControl,
+		"public, max-age=0, s-maxage=31536000, immutable",
+	);
+});
+
+test("non-cacheable responses opt out of storage", async () => {
+	const handler = handlerWith();
+	const put = await call(handler, "PUT", "/components/nazare/counter/0.1.0", {
+		token: TOKEN,
+		body: component(),
+	});
+	assert.equal(put.cacheControl, "no-store");
+
+	const missing = await call(handler, "GET", "/components/nazare/nope");
+	assert.equal(missing.cacheControl, "no-store");
 });
 
 test("republishing the same version is 409", async () => {
