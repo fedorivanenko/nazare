@@ -212,6 +212,58 @@ test("dependency checking surfaces nested import graph failures", async () => {
 	);
 });
 
+test("dependency checking reports import cycles per requester", async () => {
+	const { checkDependencies, parseNazareLiquid: parse } = await import(
+		"../dist/index.js"
+	);
+	const source = `{% import A from "./a.nz.liquid" %}\n{% import B from "./b.nz.liquid" %}`;
+	const files = {
+		"a.nz.liquid": `{% import B from "./b.nz.liquid" %}`,
+		"b.nz.liquid": `{% import A from "./a.nz.liquid" %}`,
+	};
+	const readFile = (path) => files[path];
+
+	const issues = checkDependencies(
+		parse(source, "component.nz.liquid"),
+		readFile,
+	);
+
+	assert.equal(
+		issues.filter((issue) => issue.code === "IMPORT_CYCLE").length,
+		2,
+	);
+});
+
+test("dependency checking reuses parsed transitive imports", async () => {
+	const { checkDependencies, parseNazareLiquid: parse } = await import(
+		"../dist/index.js"
+	);
+	const source = `{% import A from "./a.nz.liquid" %}\n{% import B from "./b.nz.liquid" %}`;
+	const files = {
+		"a.nz.liquid": `{% import C from "./c.nz.liquid" %}\n{% render C {} %}`,
+		"b.nz.liquid": `{% import C from "./c.nz.liquid" %}\n{% render C {} %}`,
+		"c.nz.liquid": `<span>C</span>`,
+	};
+	const reads = new Map();
+	const readFile = (path) => {
+		reads.set(path, (reads.get(path) ?? 0) + 1);
+		return files[path];
+	};
+
+	const issues = checkDependencies(
+		parse(source, "component.nz.liquid"),
+		readFile,
+	);
+
+	assert.deepEqual(
+		issues.filter((issue) => issue.severity === "error"),
+		[],
+	);
+	assert.equal(reads.get("a.nz.liquid"), 1);
+	assert.equal(reads.get("b.nz.liquid"), 1);
+	assert.equal(reads.get("c.nz.liquid"), 1);
+});
+
 test("resolveAssetImports returns a resolved AST without mutating parse output", () => {
 	const source = `{% import behavior from "./behavior.ts" %}\n<div></div>`;
 	const ast = parseNazareLiquid(source, "component.nz.liquid");
