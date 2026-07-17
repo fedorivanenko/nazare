@@ -8,6 +8,7 @@ import { test } from "node:test";
 import { compileNazareArtifact, emitTheme } from "../dist/index.js";
 
 const LINK = `{% props { href: url.required(), text: string.required() } %}`;
+const SPECIAL_LITERALS = `{% props { href: url.required(), color: color.required(), handle: handle.required(), text: string.required() } %}`;
 const SETTING_LINK = `{% props {
   href: url.setting({ label: "Link" }),
   label: string.setting({ label: "Label", default: "Shop now" }),
@@ -67,11 +68,34 @@ const cases = [
 		expect: "CONSTRAINT_PROP_TYPE_MISMATCH",
 	},
 	{
-		name: "type mismatch: bare string is not a url",
+		name: "special props accept valid string literals",
+		files: { "special.nz.liquid": SPECIAL_LITERALS },
+		src: `{% import Special from "./special.nz.liquid" %}\n{% render Special { href: "https://x.dev", color: "oklch(60% 0.2 30)", handle: "product-handle", text: "Go" } %}`,
+		clean: true,
+	},
+	{
+		name: "special props validate string literal values",
+		files: { "special.nz.liquid": SPECIAL_LITERALS },
+		src: `{% import Special from "./special.nz.liquid" %}\n{% render Special { href: "", color: "notacolor", handle: "Bad Handle", text: "Go" } %}`,
+		check: (r) => {
+			assert.equal(
+				codes(r).filter((code) => code === "CONSTRAINT_PROP_VALUE_INVALID")
+					.length,
+				3,
+			);
+		},
+	},
+	{
+		name: "type mismatch: string prop is not a url",
 		files: { "link.nz.liquid": LINK },
-		src: `{% import Link from "./link.nz.liquid" %}\n{% render Link { href: "not-a-url-typed", text: "Go" } %}`,
-		// a string literal that is not a url still mismatches url
+		src: `{% import Link from "./link.nz.liquid" %}\n{% props { s: string.required() } %}\n{% render Link { href: props.s, text: "Go" } %}`,
 		check: (r) => assert.ok(codes(r).includes("CONSTRAINT_PROP_TYPE_MISMATCH")),
+	},
+	{
+		name: "money props reject string literals",
+		files: { "price.nz.liquid": `{% props { amount: Money.required() } %}` },
+		src: `{% import Price from "./price.nz.liquid" %}\n{% render Price { amount: "$12.00" } %}`,
+		expect: "CONSTRAINT_PROP_TYPE_MISMATCH",
 	},
 	{
 		name: "union prop accepts a member",

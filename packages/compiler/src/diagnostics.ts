@@ -635,6 +635,22 @@ export function propValueOutOfRange(
 	};
 }
 
+export function propValueInvalid(
+	argumentName: string,
+	value: string,
+	reason: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_PROP_VALUE_INVALID",
+		message: `Prop ${argumentName} value ${JSON.stringify(value)} is invalid: ${reason}`,
+		nodeId,
+		span,
+	};
+}
+
 export function scriptReservedContextShadowed(
 	name: string,
 	nodeId: Id,

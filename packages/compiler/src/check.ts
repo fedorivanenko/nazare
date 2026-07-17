@@ -25,6 +25,7 @@ import {
 	duplicateRef,
 	multipleBlocksSlots,
 	propTypeMismatch,
+	propValueInvalid,
 	propValueOutOfRange,
 	renderTargetNotSnippet,
 	requiredPropMissing,
@@ -617,17 +618,28 @@ function checkRenderSiteAgainstContract(
 			continue;
 		}
 
-		if (expressionType?.kind === "number-literal") {
-			const violation = rangeViolation(
-				expressionType.value,
-				contractProp.typeInfo.valueType,
-			);
-			if (violation) {
+		const literalViolation = literalValueViolation(
+			expressionType,
+			contractProp.typeInfo.valueType,
+		);
+		if (literalViolation) {
+			if (expressionType?.kind === "number-literal") {
 				issues.push(
 					propValueOutOfRange(
 						argument.name,
 						expressionType.value,
-						violation,
+						literalViolation,
+						argument.id,
+						argument.span,
+					),
+				);
+			}
+			if (expressionType?.kind === "string-literal") {
+				issues.push(
+					propValueInvalid(
+						argument.name,
+						expressionType.value,
+						literalViolation,
 						argument.id,
 						argument.span,
 					),
@@ -655,6 +667,58 @@ function inferExpressionType(
  * type. Returns the reason the value is rejected, or undefined when the
  * value is accepted by at least one (possibly unconstrained) number member.
  */
+function literalValueViolation(
+	literal: SemanticType | undefined,
+	target: SemanticType,
+): string | undefined {
+	if (!literal) return undefined;
+	if (target.kind === "union") {
+		let firstViolation: string | undefined;
+		for (const member of target.members) {
+			if (!isAssignable(literal, member)) continue;
+			const violation = literalValueViolation(literal, member);
+			if (violation === undefined) return undefined;
+			firstViolation ??= violation;
+		}
+		return firstViolation;
+	}
+	if (literal.kind === "number-literal") {
+		return rangeViolation(literal.value, target);
+	}
+	if (literal.kind !== "string-literal") return undefined;
+	if (target.kind === "url") return validateUrlLiteral(literal.value);
+	if (target.kind === "color") return validateColorLiteral(literal.value);
+	if (target.kind === "handle") return validateHandleLiteral(literal.value);
+	return undefined;
+}
+
+function validateUrlLiteral(value: string): string | undefined {
+	return value.trim() === "" ? "expected a non-empty URL or path" : undefined;
+}
+
+function validateColorLiteral(value: string): string | undefined {
+	const trimmed = value.trim();
+	if (/^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(trimmed)) {
+		return undefined;
+	}
+	if (
+		/^(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\([^)]*\)$/.test(
+			trimmed,
+		)
+	) {
+		return undefined;
+	}
+	if (/^var\(--[A-Za-z0-9_-]+\)$/.test(trimmed)) return undefined;
+	if (cssColorKeywords.has(trimmed.toLowerCase())) return undefined;
+	return "expected a CSS color literal";
+}
+
+function validateHandleLiteral(value: string): string | undefined {
+	return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
+		? undefined
+		: "expected a Shopify handle slug like product-handle";
+}
+
 function rangeViolation(
 	value: number,
 	target: SemanticType,
@@ -712,6 +776,8 @@ function isAssignable(
 		return from.value === to.value;
 	}
 	if (from.kind === "string-literal" && to.kind === "string") return true;
+	if (from.kind === "string-literal" && acceptsValidatedStringLiteral(to))
+		return true;
 	if (from.kind === "number-literal" && to.kind === "number") return true;
 	if (from.kind === "literal") return true;
 	if (from.kind === "array" && to.kind === "array") {
@@ -725,6 +791,163 @@ function isAssignable(
 	}
 	return from.kind === to.kind;
 }
+
+function acceptsValidatedStringLiteral(type: SemanticType): boolean {
+	return type.kind === "url" || type.kind === "color" || type.kind === "handle";
+}
+
+const cssColorKeywords = new Set([
+	"aliceblue",
+	"antiquewhite",
+	"aqua",
+	"aquamarine",
+	"azure",
+	"beige",
+	"bisque",
+	"black",
+	"blanchedalmond",
+	"blue",
+	"blueviolet",
+	"brown",
+	"burlywood",
+	"cadetblue",
+	"chartreuse",
+	"chocolate",
+	"coral",
+	"cornflowerblue",
+	"cornsilk",
+	"crimson",
+	"cyan",
+	"darkblue",
+	"darkcyan",
+	"darkgoldenrod",
+	"darkgray",
+	"darkgreen",
+	"darkgrey",
+	"darkkhaki",
+	"darkmagenta",
+	"darkolivegreen",
+	"darkorange",
+	"darkorchid",
+	"darkred",
+	"darksalmon",
+	"darkseagreen",
+	"darkslateblue",
+	"darkslategray",
+	"darkslategrey",
+	"darkturquoise",
+	"darkviolet",
+	"deeppink",
+	"deepskyblue",
+	"dimgray",
+	"dimgrey",
+	"dodgerblue",
+	"firebrick",
+	"floralwhite",
+	"forestgreen",
+	"fuchsia",
+	"gainsboro",
+	"ghostwhite",
+	"gold",
+	"goldenrod",
+	"gray",
+	"green",
+	"greenyellow",
+	"grey",
+	"honeydew",
+	"hotpink",
+	"indianred",
+	"indigo",
+	"ivory",
+	"khaki",
+	"lavender",
+	"lavenderblush",
+	"lawngreen",
+	"lemonchiffon",
+	"lightblue",
+	"lightcoral",
+	"lightcyan",
+	"lightgoldenrodyellow",
+	"lightgray",
+	"lightgreen",
+	"lightgrey",
+	"lightpink",
+	"lightsalmon",
+	"lightseagreen",
+	"lightskyblue",
+	"lightslategray",
+	"lightslategrey",
+	"lightsteelblue",
+	"lightyellow",
+	"lime",
+	"limegreen",
+	"linen",
+	"magenta",
+	"maroon",
+	"mediumaquamarine",
+	"mediumblue",
+	"mediumorchid",
+	"mediumpurple",
+	"mediumseagreen",
+	"mediumslateblue",
+	"mediumspringgreen",
+	"mediumturquoise",
+	"mediumvioletred",
+	"midnightblue",
+	"mintcream",
+	"mistyrose",
+	"moccasin",
+	"navajowhite",
+	"navy",
+	"oldlace",
+	"olive",
+	"olivedrab",
+	"orange",
+	"orangered",
+	"orchid",
+	"palegoldenrod",
+	"palegreen",
+	"paleturquoise",
+	"palevioletred",
+	"papayawhip",
+	"peachpuff",
+	"peru",
+	"pink",
+	"plum",
+	"powderblue",
+	"purple",
+	"rebeccapurple",
+	"red",
+	"rosybrown",
+	"royalblue",
+	"saddlebrown",
+	"salmon",
+	"sandybrown",
+	"seagreen",
+	"seashell",
+	"sienna",
+	"silver",
+	"skyblue",
+	"slateblue",
+	"slategray",
+	"slategrey",
+	"snow",
+	"springgreen",
+	"steelblue",
+	"tan",
+	"teal",
+	"thistle",
+	"tomato",
+	"transparent",
+	"turquoise",
+	"violet",
+	"wheat",
+	"white",
+	"whitesmoke",
+	"yellow",
+	"yellowgreen",
+	"currentcolor",
+]);
 
 function isObjectAssignable(
 	from: Extract<SemanticType, { kind: "object" }>,
