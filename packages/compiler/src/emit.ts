@@ -22,6 +22,7 @@ import {
 	emitAmbiguousRoot,
 	emitImplicitRootElement,
 	emitMultipleRootMarkers,
+	emitOverlappingEdits,
 	emitScriptWithoutDefaultExport,
 	emitScriptWithoutRoot,
 } from "./diagnostics.js";
@@ -62,6 +63,15 @@ type SourceEdit = {
 	end: number;
 	replacement: string;
 };
+
+class OverlappingEmitEditsError extends Error {
+	constructor(previous: SourceEdit, current: SourceEdit) {
+		super(
+			`Overlapping emit edits: ${previous.start}-${previous.end} overlaps ${current.start}-${current.end}`,
+		);
+		this.name = "OverlappingEmitEditsError";
+	}
+}
 
 export function checkEmitPreconditions(
 	source: string,
@@ -106,15 +116,19 @@ export function emitTheme(
 	compiled: CompiledComponent,
 	options: EmitThemeOptions,
 ): EmitResult {
-	const parts = [
-		{
-			files: [],
-			issues: checkEmitPreconditions(source, compiled, { name: options.name }),
-		},
-		emitLiquidFile(source, compiled, options),
-		emitCssFiles(compiled, options),
-		emitScriptFiles(compiled, options),
-	];
+	const preconditions = {
+		files: [],
+		issues: checkEmitPreconditions(source, compiled, { name: options.name }),
+	};
+	const liquid = emitLiquidFile(source, compiled, options);
+	const parts = hasErrorDiagnostics(liquid.issues)
+		? [preconditions, liquid]
+		: [
+				preconditions,
+				liquid,
+				emitCssFiles(compiled, options),
+				emitScriptFiles(compiled, options),
+			];
 
 	return {
 		files: parts.flatMap((part) => part.files),
@@ -123,6 +137,10 @@ export function emitTheme(
 			"emit",
 		),
 	};
+}
+
+function hasErrorDiagnostics(issues: Diagnostic[]): boolean {
+	return issues.some((issue) => issue.severity === "error");
 }
 
 export function emitLiquidFile(
@@ -135,18 +153,28 @@ export function emitLiquidFile(
 	const kind = componentKindFromIR(compiled.ir);
 	const directory =
 		kind === "section" ? "sections" : kind === "block" ? "blocks" : "snippets";
-	return {
-		files: [
-			{
-				path: `${directory}/${options.name}.liquid`,
-				contents: emitLiquid(source, compiled, options, kind, {
-					hasScript: scripts.length > 0,
-					hasStyle: styles.length > 0,
-				}),
-			},
-		],
-		issues: [],
-	};
+	try {
+		return {
+			files: [
+				{
+					path: `${directory}/${options.name}.liquid`,
+					contents: emitLiquid(source, compiled, options, kind, {
+						hasScript: scripts.length > 0,
+						hasStyle: styles.length > 0,
+					}),
+				},
+			],
+			issues: [],
+		};
+	} catch (error) {
+		if (error instanceof OverlappingEmitEditsError) {
+			return {
+				files: [],
+				issues: [emitOverlappingEdits(options.name, error.message)],
+			};
+		}
+		throw error;
+	}
 }
 
 export function emitCssFiles(
@@ -683,9 +711,7 @@ function assertNonOverlappingEdits(edits: SourceEdit[]): void {
 		const previous = ordered[index - 1];
 		const current = ordered[index];
 		if (current.start >= previous.end) continue;
-		throw new Error(
-			`Overlapping emit edits: ${previous.start}-${previous.end} overlaps ${current.start}-${current.end}`,
-		);
+		throw new OverlappingEmitEditsError(previous, current);
 	}
 }
 

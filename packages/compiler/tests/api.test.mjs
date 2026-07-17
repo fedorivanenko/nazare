@@ -10,6 +10,7 @@ import {
 	emitCssFiles,
 	emitLiquidFile,
 	emitScriptFiles,
+	emitTheme,
 	parseNazareLiquid,
 	resolveAssetImports,
 } from "../dist/index.js";
@@ -28,6 +29,28 @@ export default island(() => {});
 	assert.equal(emitLiquidFile(source, compiled, options).files.length, 1);
 	assert.equal(emitCssFiles(compiled, options).files.length, 1);
 	assert.equal(emitScriptFiles(compiled, options).files.length, 2);
+});
+
+test("emitLiquidFile reports overlapping emit edits as a diagnostic", () => {
+	const source = `<div ref="root"></div>`;
+	const compiled = compileNazareArtifact(source, "component.nz.liquid");
+	const ref = compiled.ir.syntax.find((node) => node.kind === "element-ref");
+	assert.ok(ref);
+	compiled.ir.syntax.push({
+		...ref,
+		id: `${ref.id}:duplicate`,
+	});
+
+	const emitted = emitLiquidFile(source, compiled, { name: "component" });
+	const theme = emitTheme(source, compiled, { name: "component" });
+
+	assert.deepEqual(emitted.files, []);
+	assert.equal(emitted.issues.length, 1);
+	assert.equal(emitted.issues[0].code, "EMIT_OVERLAPPING_EDITS");
+	assert.deepEqual(theme.files, []);
+	assert.ok(
+		theme.issues.some((issue) => issue.code === "EMIT_OVERLAPPING_EDITS"),
+	);
 });
 
 test("buildNazareTheme aggregates emit diagnostics", () => {

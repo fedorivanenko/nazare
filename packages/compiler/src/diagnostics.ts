@@ -774,6 +774,17 @@ export function emitScriptWithoutDefaultExport(
 	};
 }
 
+export function emitOverlappingEdits(
+	componentName: string,
+	detail: string,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "EMIT_OVERLAPPING_EDITS",
+		message: `${componentName}: internal emit edit collision; no Liquid output was generated. ${detail}`,
+	};
+}
+
 export function renderTargetResolutionCount(
 	renderSiteId: Id,
 	found: number,
