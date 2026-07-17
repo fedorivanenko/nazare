@@ -31,6 +31,10 @@ export type HandlerOptions = {
 };
 
 const DEFAULT_MAX_BODY_BYTES = 5 * 1024 * 1024;
+const IMMUTABLE_CACHE = "public, max-age=0, s-maxage=31536000, immutable";
+const REVALIDATED_CACHE =
+	"public, max-age=0, s-maxage=60, stale-while-revalidate=86400";
+const NO_STORE_CACHE = "no-store";
 
 export function createHandler(options: HandlerOptions): Handler {
 	const { store, tokens } = options;
@@ -72,7 +76,7 @@ async function getMetadata(
 	if (!metadata) {
 		return errorResponse(404, "COMPONENT_NOT_FOUND", `Unknown component ${id}`);
 	}
-	return json(200, metadata);
+	return json(200, metadata, REVALIDATED_CACHE);
 }
 
 async function getComponent(
@@ -81,7 +85,8 @@ async function getComponent(
 	version: string,
 ): Promise<Response> {
 	let resolved = version;
-	if (version === "latest") {
+	const isLatestAlias = version === "latest";
+	if (isLatestAlias) {
 		const metadata = await store.getMetadata(id);
 		if (!metadata) {
 			return errorResponse(
@@ -103,7 +108,11 @@ async function getComponent(
 			`No version ${resolved} of ${id}`,
 		);
 	}
-	return json(200, component);
+	return json(
+		200,
+		component,
+		isLatestAlias ? REVALIDATED_CACHE : IMMUTABLE_CACHE,
+	);
 }
 
 async function putComponent(
@@ -252,10 +261,17 @@ async function readBodyCapped(
 
 // --- responses -------------------------------------------------------------
 
-function json(status: number, body: unknown): Response {
+function json(
+	status: number,
+	body: unknown,
+	cacheControl = NO_STORE_CACHE,
+): Response {
 	return new Response(JSON.stringify(body), {
 		status,
-		headers: { "content-type": "application/json" },
+		headers: {
+			"content-type": "application/json",
+			"cache-control": cacheControl,
+		},
 	});
 }
 
