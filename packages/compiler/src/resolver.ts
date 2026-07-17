@@ -31,6 +31,100 @@ export type AssetImportResolution = {
 	issues: Diagnostic[];
 };
 
+type DependencyContext = {
+	loadAst: (path: string) => NazareAst | undefined;
+	resolveComponentContracts: (ast: NazareAst) => ComponentContractResolution;
+};
+
+type ContractDerivation = {
+	contract: ArtifactContract | undefined;
+	/** False when this derivation saw an import cycle in its active stack. */
+	cacheable: boolean;
+};
+
+function createDependencyContext(
+	readFile: ReadFile | undefined,
+): DependencyContext {
+	const astCache = new Map<string, NazareAst | undefined>();
+	const contractCache = new Map<string, ArtifactContract | undefined>();
+
+	const loadAst = (path: string): NazareAst | undefined => {
+		if (astCache.has(path)) return astCache.get(path);
+		const contents = readFile?.(path);
+		const ast =
+			contents === undefined ? undefined : parseNazareLiquid(contents, path);
+		astCache.set(path, ast);
+		return ast;
+	};
+
+	const deriveContract = (
+		path: string,
+		loading: Set<string>,
+		issues: Diagnostic[],
+	): ContractDerivation => {
+		if (contractCache.has(path)) {
+			return { contract: contractCache.get(path), cacheable: true };
+		}
+		const importedAst = loadAst(path);
+		if (!importedAst) {
+			contractCache.set(path, undefined);
+			return { contract: undefined, cacheable: true };
+		}
+
+		loading.add(path);
+		let cacheable = true;
+		const dependencyContracts: ArtifactContract[] = [];
+		for (const node of importedAst.nodes) {
+			if (node.type !== "NazareImport") continue;
+			if (loading.has(node.path)) {
+				issues.push(importCycle(node.path, node.span));
+				cacheable = false;
+				continue;
+			}
+			const dependency = deriveContract(node.path, loading, issues);
+			if (!dependency.cacheable) cacheable = false;
+			if (dependency.contract) {
+				dependencyContracts.push(dependency.contract);
+			} else {
+				issues.push(importNotFound(node.path, node.span));
+			}
+		}
+		loading.delete(path);
+
+		const importedIr = bindArtifactIR(syntaxFromAst(importedAst), {
+			contracts: dependencyContracts,
+		});
+		const contract = contractFromIR(importedIr, path, dependencyContracts);
+		if (cacheable) contractCache.set(path, contract);
+		return { contract, cacheable };
+	};
+
+	const resolveContractsForAst = (
+		ast: NazareAst,
+	): ComponentContractResolution => {
+		const issues: Diagnostic[] = [];
+		const contracts: ArtifactContract[] = [];
+		const seen = new Set<string>();
+		for (const node of ast.nodes) {
+			if (node.type !== "NazareImport" || seen.has(node.path)) continue;
+			seen.add(node.path);
+			if (node.path === ast.file) {
+				issues.push(importCycle(node.path, node.span));
+				continue;
+			}
+			const dependency = deriveContract(node.path, new Set([ast.file]), issues);
+			if (!dependency.contract) {
+				issues.push(importNotFound(node.path, node.span));
+				continue;
+			}
+			contracts.push(dependency.contract);
+		}
+		return { contracts, issues };
+	};
+
+	return { loadAst, resolveComponentContracts: resolveContractsForAst };
+}
+
 /**
  * Derives contracts for imported component files by parsing/binding them
  * recursively. This pass does one thing: contracts. It reports only import
@@ -42,64 +136,7 @@ export function resolveComponentContracts(
 	ast: NazareAst,
 	readFile: ReadFile | undefined,
 ): ComponentContractResolution {
-	const issues: Diagnostic[] = [];
-	const cache = new Map<string, ArtifactContract | undefined>();
-
-	const derive = (
-		path: string,
-		loading: Set<string>,
-	): ArtifactContract | undefined => {
-		if (cache.has(path)) return cache.get(path);
-		const contents = readFile?.(path);
-		if (contents === undefined) {
-			cache.set(path, undefined);
-			return undefined;
-		}
-
-		const importedAst = parseNazareLiquid(contents, path);
-		loading.add(path);
-		const dependencyContracts: ArtifactContract[] = [];
-		for (const node of importedAst.nodes) {
-			if (node.type !== "NazareImport") continue;
-			if (loading.has(node.path)) {
-				issues.push(importCycle(node.path, node.span));
-				continue;
-			}
-			const dependency = derive(node.path, loading);
-			if (dependency) {
-				dependencyContracts.push(dependency);
-			} else {
-				issues.push(importNotFound(node.path, node.span));
-			}
-		}
-		loading.delete(path);
-
-		const importedIr = bindArtifactIR(syntaxFromAst(importedAst), {
-			contracts: dependencyContracts,
-		});
-		const contract = contractFromIR(importedIr, path, dependencyContracts);
-		cache.set(path, contract);
-		return contract;
-	};
-
-	const contracts: ArtifactContract[] = [];
-	const seen = new Set<string>();
-	for (const node of ast.nodes) {
-		if (node.type !== "NazareImport" || seen.has(node.path)) continue;
-		seen.add(node.path);
-		if (node.path === ast.file) {
-			issues.push(importCycle(node.path, node.span));
-			continue;
-		}
-		const contract = derive(node.path, new Set([ast.file]));
-		if (!contract) {
-			issues.push(importNotFound(node.path, node.span));
-			continue;
-		}
-		contracts.push(contract);
-	}
-
-	return { contracts, issues };
+	return createDependencyContext(readFile).resolveComponentContracts(ast);
 }
 
 /**
@@ -115,18 +152,16 @@ export function checkDependencies(
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const checked = new Set<string>();
+	const dependencies = createDependencyContext(readFile);
 
 	const visit = (path: string): void => {
 		if (checked.has(path)) return;
 		checked.add(path);
-		const contents = readFile?.(path);
-		if (contents === undefined) return;
+		const importedAst = dependencies.loadAst(path);
+		if (!importedAst) return;
 
-		const importedAst = parseNazareLiquid(contents, path);
-		const { contracts, issues: contractIssues } = resolveComponentContracts(
-			importedAst,
-			readFile,
-		);
+		const { contracts, issues: contractIssues } =
+			dependencies.resolveComponentContracts(importedAst);
 		const projected = projectArtifact(importedAst, {
 			contracts,
 			mode: options.mode,
