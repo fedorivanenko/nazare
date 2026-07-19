@@ -279,7 +279,7 @@ type BuildNazareThemeOptions = CompileNazareArtifactOptions & {
 };
 ```
 
-- `strict` mode is the default package-author mode.
+- `strict` mode is the default package-author mode. It surfaces unchecked type gaps such as unknown render-argument expressions and unknown data-binding parse kinds as warnings.
 - `loose` mode keeps only migration/build essentials.
 - `readFile` receives normalized project-relative paths.
 

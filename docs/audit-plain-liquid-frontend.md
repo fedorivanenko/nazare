@@ -213,7 +213,7 @@ Role: lower AST to flat syntax records and literal expression type inference.
 Findings:
 
 - Flat explicit shape.
-- `inferExpressionType()` intentionally only handles simple literals. Unknowns are allowed and later type checks treat unknown as assignable. This is broader compiler permissiveness. If strict mode should mean no unchecked types, add diagnostics for unknown expression types at typed render sites.
+- `inferExpressionType()` intentionally only handles simple literals. Unknowns remain assignable for migration tolerance, but strict mode now emits `CONSTRAINT_UNCHECKED_PROP_ARGUMENT_TYPE` when a typed render argument cannot be checked statically.
 
 #### `packages/compiler/src/symbols.ts`
 
@@ -257,7 +257,7 @@ Role: user-facing semantic checks.
 Findings:
 
 - `CompilerMode` default is `strict`. Good, documented.
-- `isAssignable()` returns true if either side is `unknown`. This can hide type gaps from `inferExpressionType()`. Not a plain Liquid blocker, but relevant to “no implicit behavior” across compiler.
+- `isAssignable()` returns true if either side is `unknown` for migration tolerance. Strict mode now surfaces typed render-site gaps with a warning instead of silently accepting them.
 
 #### `packages/compiler/src/check-vanilla.ts`
 
@@ -333,7 +333,7 @@ Role: emitted browser runtime.
 
 Findings:
 
-- `ParseKind` treats anything except known `number` / `boolean` as pass-through string. Acceptable if generated kinds are controlled; if new data types are added, add generated kind validation.
+- `ParseKind` is now a closed union (`"string" | "number" | "boolean"`) and runtime parsing uses an exhaustive switch. Generated descriptor kinds are validated through the same closed union.
 
 #### `packages/compiler/src/script-modules.ts`
 
@@ -366,7 +366,7 @@ Role: infer script data channel payload descriptors from refs/data bindings.
 
 Findings:
 
-- Non-prop/unknown-typed binding reads as string by design comment. If strict no-magic is applied globally, consider diagnostic for unknown data binding type.
+- Non-prop/unknown-typed binding still reads as string for runtime compatibility, but strict mode now emits `CONSTRAINT_UNCHECKED_DATA_BINDING_TYPE` so the fallback is visible.
 
 #### `packages/compiler/src/hoist.ts`
 
@@ -402,10 +402,9 @@ Findings:
 
 ## Priority follow-ups
 
-1. In strict mode, consider diagnostics for unknown expression types at typed render sites and unknown data binding parse kinds.
-2. Consider generated kind validation for runtime parse kinds if new data types are added.
+1. Consider whether unchecked-type warnings should become errors in a future hard-strict mode.
 
 
 ## Summary
 
-Plain Liquid frontend matches the requested shape: explicit frontend, explicit options, strict parse by default, explicit failure states, no regex semantic settings facts, unsupported dependency markup as errors, and pass-through emit gated by `canEmit` unless explicitly overridden. Worktree is green for compiler checks (`biome`, compiler typecheck, plain tests, full compiler tests). Remaining items are broader compiler design follow-ups, not blockers for the plain Liquid frontend.
+Plain Liquid frontend matches the requested shape: explicit frontend, explicit options, strict parse by default, explicit failure states, no regex semantic settings facts, unsupported dependency markup as errors, and pass-through emit gated by `canEmit` unless explicitly overridden. Worktree is green for compiler checks (`biome`, compiler typecheck, plain tests, full compiler tests). Remaining item is a broader compiler policy decision: whether unchecked-type warnings should become errors in a future hard-strict mode.

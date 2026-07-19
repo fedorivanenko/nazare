@@ -68,6 +68,21 @@ const cases = [
 		expect: "CONSTRAINT_PROP_TYPE_MISMATCH",
 	},
 	{
+		name: "unchecked render argument type warns in strict mode",
+		files: { "link.nz.liquid": LINK },
+		src: `{% import Link from "./link.nz.liquid" %}\n{% render Link { href: "https://x.dev", text: dynamicTitle } %}`,
+		check: (r) => {
+			assert.ok(codes(r).includes("CONSTRAINT_UNCHECKED_PROP_ARGUMENT_TYPE"));
+			const loose = compileNazareArtifact(r.source, "component.nz.liquid", {
+				readFile: (path) => ({ "link.nz.liquid": LINK })[path],
+				strictness: "loose",
+			});
+			assert.ok(
+				!codes(loose).includes("CONSTRAINT_UNCHECKED_PROP_ARGUMENT_TYPE"),
+			);
+		},
+	},
+	{
 		name: "special props accept valid string literals",
 		files: { "special.nz.liquid": SPECIAL_LITERALS },
 		src: `{% import Special from "./special.nz.liquid" %}\n{% render Special { href: "https://x.dev", color: "oklch(60% 0.2 30)", handle: "product-handle", text: "Go" } %}`,
@@ -243,6 +258,11 @@ const cases = [
 		name: "data binding an undeclared prop",
 		src: `<div ref="root" data-step="{{ props.ghost }}"></div>\n{% script %}\nexport default island(({ data }) => console.log(data.root.step));\n{% endscript %}`,
 		expect: "CONSTRAINT_UNKNOWN_PROPS_REFERENCE",
+	},
+	{
+		name: "unchecked data binding type warns",
+		src: `<div ref="root" data-step="{{ dynamicStep }}"></div>\n{% script %}\nexport default island(({ data }) => console.log(data.root.step));\n{% endscript %}`,
+		expect: "CONSTRAINT_UNCHECKED_DATA_BINDING_TYPE",
 	},
 	{
 		name: "kebab-case data attributes are clean",
