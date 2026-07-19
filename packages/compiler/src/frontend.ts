@@ -15,6 +15,8 @@ export type CompileInput = {
 	readFile?: ReadFile;
 	/** strict is package-author behavior; loose keeps migration checks minimal. */
 	strictness?: CompilerMode;
+	/** Frontend-owned options, validated by the selected frontend. */
+	frontendOptions?: Record<string, unknown>;
 };
 
 export type FrontendSupport = {
@@ -36,6 +38,8 @@ type FrontendResultBase = {
 	sourceForEmit: string;
 	frontendSupport: FrontendSupport;
 	contractProvenance: ContractProvenance;
+	/** Frontend-owned metadata for typed compatibility wrappers and tooling. */
+	metadata?: unknown;
 };
 
 export type NazareAstFrontendResult = FrontendResultBase & {

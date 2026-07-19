@@ -22,6 +22,10 @@ import type {
 	FrontendSupport,
 } from "./frontend.js";
 import { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
+import {
+	type PlainLiquidFrontendMetadata,
+	plainLiquidFrontend,
+} from "./frontends/plain-liquid.js";
 import { artifactGraphFromIR } from "./graph.js";
 import {
 	markDiagnostics,
@@ -29,6 +33,12 @@ import {
 	projectArtifact,
 	projectIR,
 } from "./pipeline.js";
+import type {
+	BuildPlainLiquidOptions,
+	BuildPlainLiquidResult,
+	CompilePlainLiquidResult,
+	PlainLiquidAst,
+} from "./plain-liquid.js";
 import { checkDependencies } from "./resolver.js";
 import { bindArtifactIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
@@ -93,10 +103,26 @@ export type {
 	FrontendSupport,
 } from "./frontend.js";
 export { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
+export {
+	PLAIN_LIQUID_SUPPORT,
+	type PlainLiquidFrontendMetadata,
+	plainLiquidFrontend,
+} from "./frontends/plain-liquid.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
 export { mergeArtifactIR } from "./merge.js";
 export { parseNazareLiquid } from "./parser.js";
+export {
+	type BuildPlainLiquidOptions,
+	type BuildPlainLiquidResult,
+	type CompilePlainLiquidResult,
+	type PlainLiquidAst,
+	type PlainLiquidDependency,
+	type PlainLiquidDependencyKind,
+	type PlainLiquidOptions,
+	type PlainLiquidParseMode,
+	parsePlainLiquid,
+} from "./plain-liquid.js";
 export {
 	checkDependencies,
 	type ReadFile,
@@ -159,6 +185,8 @@ export type CompileArtifactSuccess = {
 	contractProvenance: ContractProvenance;
 	/** Source text the current emitter should operate on. */
 	sourceForEmit: string;
+	/** Frontend-owned metadata for typed wrappers and tooling. */
+	frontendMetadata?: unknown;
 };
 
 export type CompileArtifactFailure = {
@@ -278,6 +306,84 @@ export function buildNazareTheme(
 	};
 }
 
+export function compilePlainLiquid(
+	source: string,
+	file: string,
+	options: Pick<BuildPlainLiquidOptions, "parseMode"> = {},
+): CompilePlainLiquidResult {
+	const compiled = compileArtifact({
+		source,
+		file,
+		frontend: plainLiquidFrontend,
+		frontendOptions: options,
+	});
+	if (!compiled.ok) {
+		throw new Error(
+			compiled.issues[0]?.message ?? "Plain Liquid compile failed",
+		);
+	}
+	const metadata = plainLiquidMetadata(compiled.frontendMetadata);
+	return {
+		ast: metadata.ast,
+		issues: compiled.issues,
+		dependencies: metadata.dependencies,
+		canEmit: compiled.canEmit,
+	};
+}
+
+export function buildPlainLiquid(
+	source: string,
+	file: string,
+	options: BuildPlainLiquidOptions = {},
+): BuildPlainLiquidResult {
+	const compiled = compilePlainLiquid(source, file, options);
+	const emittedOnError = !compiled.canEmit && (options.emitOnError ?? false);
+	const shouldEmit = compiled.canEmit || emittedOnError;
+	return {
+		...compiled,
+		emitted: {
+			files: shouldEmit ? [{ path: file, contents: source }] : [],
+			issues: [],
+		},
+		issues: compiled.issues,
+		emittedOnError,
+	};
+}
+
+function plainLiquidMetadata(metadata: unknown): PlainLiquidFrontendMetadata {
+	if (isPlainLiquidFrontendMetadata(metadata)) return metadata;
+	throw new Error("Plain Liquid frontend did not return valid metadata");
+}
+
+function isPlainLiquidFrontendMetadata(
+	metadata: unknown,
+): metadata is PlainLiquidFrontendMetadata {
+	const candidate = metadata as PlainLiquidFrontendMetadata | undefined;
+	return (
+		!!candidate &&
+		isPlainLiquidAst(candidate.ast) &&
+		candidate.dependencies === candidate.ast.dependencies &&
+		typeof candidate.factsCollected === "boolean" &&
+		candidate.factsCollected === candidate.ast.factsCollected &&
+		(candidate.parseMode === "strict" || candidate.parseMode === "tolerant") &&
+		candidate.parseMode === candidate.ast.parseMode
+	);
+}
+
+function isPlainLiquidAst(value: unknown): value is PlainLiquidAst {
+	const ast = value as PlainLiquidAst | undefined;
+	return (
+		!!ast &&
+		Array.isArray(ast.nodes) &&
+		ast.nodes.length === 0 &&
+		Array.isArray(ast.dependencies) &&
+		Array.isArray(ast.diagnostics) &&
+		Array.isArray(ast.settingsReads) &&
+		typeof ast.factsCollected === "boolean" &&
+		(ast.parseMode === "strict" || ast.parseMode === "tolerant")
+	);
+}
+
 function compileSuccess(
 	frontend: string,
 	frontendResult: FrontendResult,
@@ -298,6 +404,7 @@ function compileSuccess(
 		frontendSupport: frontendResult.frontendSupport,
 		contractProvenance: frontendResult.contractProvenance,
 		sourceForEmit: frontendResult.sourceForEmit,
+		frontendMetadata: frontendResult.metadata,
 	};
 }
 
@@ -310,6 +417,9 @@ function selectFrontend(
 	}
 	if (nazareLiquidFrontend.accepts(options.file, options.source)) {
 		return nazareLiquidFrontend;
+	}
+	if (plainLiquidFrontend.accepts(options.file, options.source)) {
+		return plainLiquidFrontend;
 	}
 	return undefined;
 }

@@ -120,6 +120,13 @@ export function emitTheme(
 		files: [],
 		issues: checkEmitPreconditions(source, compiled, { name: options.name }),
 	};
+	if (hasErrorDiagnostics(preconditions.issues)) {
+		return {
+			files: [],
+			issues: markDiagnostics(preconditions.issues, "emit"),
+		};
+	}
+
 	const liquid = emitLiquidFile(source, compiled, options);
 	const parts = hasErrorDiagnostics(liquid.issues)
 		? [preconditions, liquid]
