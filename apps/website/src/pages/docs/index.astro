@@ -1,3 +1,24 @@
+---
+// biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
+import CodeBlock from "../../components/CodeBlock.astro";
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const nazareExample = [
+	"---",
+	"props:",
+	"  title: string",
+	"  price?: number",
+	"---",
+	"",
+	'<section class="product-card">',
+	"  <h2>{{ title }}</h2>",
+	"  {% if price %}",
+	"    <p>{{ price | money }}</p>",
+	"  {% endif %}",
+	"</section>",
+].join("\n");
+---
+
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
@@ -40,6 +61,7 @@
 					<li>Registry</li>
 					<li>CLI</li>
 				</ul>
+				<CodeBlock code={nazareExample} language="nz.liquid" title="product-card.nz.liquid" />
 			</section>
 		</main>
 	</body>
