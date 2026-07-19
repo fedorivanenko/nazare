@@ -129,16 +129,28 @@ test("buildNazareTheme aggregates emit diagnostics", () => {
 	);
 });
 
-test("buildNazareTheme can skip emit when compile errors exist", () => {
+test("buildNazareTheme skips emit on compile errors by default", () => {
 	const source = `{% import Missing from "./missing.nz.liquid" %}\n{% render Missing {} %}`;
 	const built = buildNazareTheme(source, "component.nz.liquid", {
 		name: "component",
-		emitOnError: false,
 	});
 
 	assert.equal(built.canEmit, false);
 	assert.equal(built.emittedOnError, false);
 	assert.deepEqual(built.emitted.files, []);
+	assert.ok(built.issues.some((issue) => issue.phase === "resolve"));
+});
+
+test("buildNazareTheme emits on compile errors only when explicitly requested", () => {
+	const source = `{% import Missing from "./missing.nz.liquid" %}\n{% render Missing {} %}`;
+	const built = buildNazareTheme(source, "component.nz.liquid", {
+		name: "component",
+		emitOnError: true,
+	});
+
+	assert.equal(built.canEmit, false);
+	assert.equal(built.emittedOnError, true);
+	assert.ok(built.emitted.files.length > 0);
 	assert.ok(built.issues.some((issue) => issue.phase === "resolve"));
 });
 
