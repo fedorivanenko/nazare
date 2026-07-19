@@ -13,6 +13,11 @@ export type ResolvedDataBinding = {
 	optional: boolean;
 };
 
+export type DataBindingResolution = ResolvedDataBinding & {
+	/** True when the semantic type maps to exactly one runtime parse kind. */
+	checked: boolean;
+};
+
 export type DataChannel = Map<string, Map<string, ResolvedDataBinding>>;
 
 export function dataChannelFromIR(ir: ArtifactIR): DataChannel {
@@ -28,7 +33,12 @@ export function dataChannelFromIR(ir: ArtifactIR): DataChannel {
 		if (node.kind !== "element-ref") continue;
 		for (const binding of node.dataBindings ?? []) {
 			const type = propTypes.get(binding.expression.trim());
-			const resolved = resolveBinding(binding.property, type);
+			const resolution = resolveDataBinding(binding.property, type);
+			const resolved: ResolvedDataBinding = {
+				property: resolution.property,
+				kind: resolution.kind,
+				optional: resolution.optional,
+			};
 			let refEntry = channel.get(node.name);
 			if (!refEntry) {
 				refEntry = new Map();
@@ -41,26 +51,70 @@ export function dataChannelFromIR(ir: ArtifactIR): DataChannel {
 	return channel;
 }
 
-function resolveBinding(
+export function resolveDataBinding(
 	property: string,
 	type: SemanticType | undefined,
-): ResolvedDataBinding {
-	// Attributes are strings; a non-prop or unknown-typed binding reads as one.
-	if (!type) return { property, kind: "string", optional: false };
+): DataBindingResolution {
+	if (!type) {
+		return { property, kind: "string", optional: false, checked: false };
+	}
 
-	const optional =
-		type.kind === "union" &&
-		type.members.some((member) => member.kind === "nil");
-	const inner =
-		type.kind === "union"
-			? (type.members.find((member) => member.kind !== "nil") ?? type)
-			: type;
+	if (type.kind === "union") {
+		const valueMembers = type.members.filter((member) => member.kind !== "nil");
+		const optional = valueMembers.length !== type.members.length;
+		const kinds = valueMembers.map(parseKindForType);
+		const [firstKind] = kinds;
+		const checked =
+			firstKind !== undefined &&
+			isDataBindingKind(firstKind) &&
+			kinds.every((kind) => kind === firstKind);
+		return {
+			property,
+			kind: checked ? firstKind : "string",
+			optional,
+			checked,
+		};
+	}
 
-	return { property, kind: kindFor(inner), optional };
+	const kind = parseKindForType(type);
+	return {
+		property,
+		kind: isDataBindingKind(kind) ? kind : "string",
+		optional: false,
+		checked: isDataBindingKind(kind),
+	};
 }
 
-function kindFor(type: SemanticType): DataBindingKind {
+function parseKindForType(
+	type: SemanticType,
+): DataBindingKind | "unknown" | "unsupported" {
 	if (type.kind === "number" || type.kind === "number-literal") return "number";
 	if (type.kind === "boolean") return "boolean";
-	return "string";
+	if (
+		type.kind === "string" ||
+		type.kind === "string-literal" ||
+		type.kind === "url" ||
+		type.kind === "color" ||
+		type.kind === "richtext" ||
+		type.kind === "handle" ||
+		type.kind === "money"
+	) {
+		return "string";
+	}
+	if (type.kind === "literal") return parseKindForLiteralValue(type.value);
+	if (type.kind === "unknown") return "unknown";
+	return "unsupported";
+}
+
+function parseKindForLiteralValue(
+	value: unknown,
+): DataBindingKind | "unsupported" {
+	if (typeof value === "string") return "string";
+	if (typeof value === "number") return "number";
+	if (typeof value === "boolean") return "boolean";
+	return "unsupported";
+}
+
+function isDataBindingKind(kind: string | undefined): kind is DataBindingKind {
+	return kind === "string" || kind === "number" || kind === "boolean";
 }

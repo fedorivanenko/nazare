@@ -16,7 +16,7 @@ import type {
 	SourceSpan,
 } from "@nazare/core";
 import { cssClassTokens } from "./css-modules.js";
-import { dataChannelFromIR } from "./data-channel.js";
+import { dataChannelFromIR, resolveDataBinding } from "./data-channel.js";
 import {
 	blocksSlotNotABlock,
 	blocksSlotOutsideSection,
@@ -413,7 +413,11 @@ function checkDataChannel(
 	for (const node of index.nodesOfKind("element-ref")) {
 		for (const binding of node.dataBindings ?? []) {
 			const bindingType = propTypesByExpression.get(binding.expression.trim());
-			if (!bindingType || typeHasUnknown(bindingType)) {
+			const bindingResolution = resolveDataBinding(
+				binding.property,
+				bindingType,
+			);
+			if (!bindingResolution.checked) {
 				issues.push(
 					uncheckedDataBindingType(
 						node.name,

@@ -265,6 +265,11 @@ const cases = [
 		expect: "CONSTRAINT_UNCHECKED_DATA_BINDING_TYPE",
 	},
 	{
+		name: "mixed data binding type warns",
+		src: `{% props { value: number.or(string).required() } %}\n<div ref="root" data-value="{{ props.value }}"></div>\n{% script %}\nexport default island(({ data }) => console.log(data.root.value));\n{% endscript %}`,
+		expect: "CONSTRAINT_UNCHECKED_DATA_BINDING_TYPE",
+	},
+	{
 		name: "kebab-case data attributes are clean",
 		src: `{% props { max_count: number.default(9) } %}\n<div ref="root" data-max-count="{{ props.max_count }}"></div>\n{% script %}\nexport default island(({ data }) => console.log(data.root.maxCount));\n{% endscript %}`,
 		check: (r) => assert.ok(!codes(r).some((c) => c.includes("DATA"))),

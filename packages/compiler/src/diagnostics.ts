@@ -520,7 +520,7 @@ export function uncheckedDataBindingType(
 	return {
 		severity: "warning",
 		code: "CONSTRAINT_UNCHECKED_DATA_BINDING_TYPE",
-		message: `data binding "${property}" on ref "${refName}" uses expression "${expression}" whose runtime type is unknown; it will be exposed to scripts as a string`,
+		message: `data binding "${property}" on ref "${refName}" uses expression "${expression}" whose type cannot be mapped unambiguously to string, number, or boolean; it will be exposed to scripts as a string`,
 		nodeId,
 		span,
 	};
