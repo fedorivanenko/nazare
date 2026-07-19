@@ -86,7 +86,6 @@ Flow:
 
 Findings:
 
-- `buildNazareTheme()` still defaults `emitOnError` to `true`. This is documented for tooling previews, but for “no hidden defaults” it remains a risky default for production callers. Safer build shape would default `false` and require preview tooling to opt in.
 - Plain metadata guard is explicit enough for current known frontend. Generic `frontendMetadata` remains `unknown` by design; typed wrappers must guard.
 
 #### `packages/compiler/src/frontend.ts`
@@ -403,9 +402,8 @@ Findings:
 
 ## Priority follow-ups
 
-1. Consider changing `buildNazareTheme()` default `emitOnError` from `true` to `false`, or split preview/build APIs.
-2. In strict mode, consider diagnostics for unknown expression types at typed render sites and unknown data binding parse kinds.
-3. Consider generated kind validation for runtime parse kinds if new data types are added.
+1. In strict mode, consider diagnostics for unknown expression types at typed render sites and unknown data binding parse kinds.
+2. Consider generated kind validation for runtime parse kinds if new data types are added.
 
 
 ## Summary

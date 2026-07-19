@@ -139,7 +139,7 @@ Adds:
 - emitted Liquid/CSS/JS/runtime files;
 - `emittedOnError`, showing whether emit ran despite errors.
 
-By default `emitOnError` is `true`, useful for tooling previews. Set `emitOnError: false` for build pipelines that should skip output when errors exist.
+By default `emitOnError` is `false`, so build pipelines skip output when errors exist. Tooling previews that need best-effort output must pass `emitOnError: true` explicitly.
 
 ## Minimal compile
 
@@ -196,7 +196,6 @@ import { buildNazareTheme } from "@nazare/compiler";
 const built = buildNazareTheme(source, "components/heading.nz.liquid", {
 	name: "heading",
 	readFile: (path) => files[path],
-	emitOnError: false,
 });
 
 for (const file of built.emitted.files) {

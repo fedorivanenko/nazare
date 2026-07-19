@@ -208,7 +208,7 @@ export type CompileResult = CompileArtifactSuccess & {
 
 export type BuildNazareThemeOptions = CompileNazareArtifactOptions &
 	EmitThemeOptions & {
-		/** Defaults to true for tooling previews; set false to skip emit when compile/dependency errors exist. */
+		/** Defaults to false; set true only for preview tooling that needs best-effort output despite compile/dependency errors. */
 		emitOnError?: boolean;
 	};
 
@@ -292,16 +292,18 @@ export function buildNazareTheme(
 		mode: options.strictness,
 	});
 	const preEmitIssues = [...compiled.issues, ...dependencyIssues];
-	const shouldEmit = (options.emitOnError ?? true) || !hasErrors(preEmitIssues);
+	const buildHasErrors = hasErrors(preEmitIssues);
+	const emitOnError = options.emitOnError === true;
+	const shouldEmit = !buildHasErrors || emitOnError;
 	const emitted = shouldEmit
 		? emitTheme(compiled.sourceForEmit, compiled, options)
 		: { files: [], issues: [] };
 	const issues = [...preEmitIssues, ...markDiagnostics(emitted.issues, "emit")];
 	return {
 		...compiled,
-		canEmit: !hasErrors(preEmitIssues),
+		canEmit: !buildHasErrors,
 		emitted,
-		emittedOnError: shouldEmit && hasErrors(preEmitIssues),
+		emittedOnError: shouldEmit && buildHasErrors,
 		issues,
 	};
 }
