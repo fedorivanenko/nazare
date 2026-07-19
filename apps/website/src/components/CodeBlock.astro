@@ -14,6 +14,50 @@ const html = await highlightCode(code.trim(), language);
 ---
 
 <figure class="code-block">
-	{title ? <figcaption class="code-block__title">{title}</figcaption> : null}
+	<div class="code-block__bar">
+		<div class="code-block__label">
+			<span class="code-block__prompt" aria-hidden="true">›_</span>
+			{title ? <figcaption class="code-block__title">{title}</figcaption> : null}
+		</div>
+		<button class="code-block__copy" type="button" data-copy-code={code.trim()} aria-label="Copy code">
+			<span class="code-block__copy-text">Copy</span>
+			<span class="code-block__copy-icon" aria-hidden="true"></span>
+		</button>
+	</div>
 	<Fragment set:html={html} />
 </figure>
+
+<script>
+	async function copyText(text: string) {
+		if (navigator.clipboard?.writeText) {
+			await navigator.clipboard.writeText(text);
+			return;
+		}
+
+		const textarea = document.createElement("textarea");
+		textarea.value = text;
+		textarea.setAttribute("readonly", "");
+		textarea.style.position = "fixed";
+		textarea.style.opacity = "0";
+		document.body.append(textarea);
+		textarea.select();
+		document.execCommand("copy");
+		textarea.remove();
+	}
+
+	for (const button of document.querySelectorAll<HTMLButtonElement>(
+		"[data-copy-code]",
+	)) {
+		button.addEventListener("click", async () => {
+			const code = button.dataset.copyCode;
+			const label = button.querySelector(".code-block__copy-text");
+			if (!code || !label) return;
+
+			await copyText(code);
+			label.textContent = "Copied";
+			window.setTimeout(() => {
+				label.textContent = "Copy";
+			}, 1200);
+		});
+	}
+</script>

@@ -5,7 +5,11 @@ import CodeBlock from "../components/CodeBlock.astro";
 import Footer from "../components/Footer.astro";
 
 // biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
-const installCommand = "curl -fsSL https://nazare.engineering/install | sh";
+const installCommand = [
+	"curl -fsSLO https://nazare.engineering/install",
+	"less install",
+	"sh install",
+].join("\n");
 
 // biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
 const typesExample = [
@@ -161,6 +165,8 @@ const stackExample = `Nazare
 		<header class="site-header">
 			<a href="/" aria-label="Nazare home">Nazare</a>
 			<nav aria-label="Primary navigation">
+				<a href="/language">Language</a>
+				<a href="/docs">Docs</a>
 				<a href="https://github.com/fedorivanenko/nazare">GitHub</a>
 			</nav>
 		</header>
@@ -294,7 +300,7 @@ const stackExample = `Nazare
 				<h2 class="heading">Build native Shopify themes that stay easy to evolve</h2>
 				<p>Start with the tool you need today. Adopt more of the stack when it becomes useful.</p>
 				<p>
-					<a href="/docs">Get started</a> · <a href="https://github.com/fedorivanenko/nazare">View on GitHub</a>
+					<a href="/language">Read language spec</a> · <a href="/docs">Get started</a> · <a href="https://github.com/fedorivanenko/nazare">View on GitHub</a>
 				</p>
 				<blockquote>
 					<p>One engineer can do a lot more today than a year ago.</p>
