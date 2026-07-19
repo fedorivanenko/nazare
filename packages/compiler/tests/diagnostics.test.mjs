@@ -68,6 +68,24 @@ const cases = [
 		expect: "CONSTRAINT_PROP_TYPE_MISMATCH",
 	},
 	{
+		name: "unchecked render argument type errors in strict mode",
+		files: { "link.nz.liquid": LINK },
+		src: `{% import Link from "./link.nz.liquid" %}\n{% render Link { href: "https://x.dev", text: dynamicTitle } %}`,
+		check: (r) => {
+			const unchecked = r.issues.find(
+				(issue) => issue.code === "CONSTRAINT_UNCHECKED_PROP_ARGUMENT_TYPE",
+			);
+			assert.equal(unchecked?.severity, "error");
+			const loose = compileNazareArtifact(r.source, "component.nz.liquid", {
+				readFile: (path) => ({ "link.nz.liquid": LINK })[path],
+				strictness: "loose",
+			});
+			assert.ok(
+				!codes(loose).includes("CONSTRAINT_UNCHECKED_PROP_ARGUMENT_TYPE"),
+			);
+		},
+	},
+	{
 		name: "special props accept valid string literals",
 		files: { "special.nz.liquid": SPECIAL_LITERALS },
 		src: `{% import Special from "./special.nz.liquid" %}\n{% render Special { href: "https://x.dev", color: "oklch(60% 0.2 30)", handle: "product-handle", text: "Go" } %}`,
@@ -243,6 +261,21 @@ const cases = [
 		name: "data binding an undeclared prop",
 		src: `<div ref="root" data-step="{{ props.ghost }}"></div>\n{% script %}\nexport default island(({ data }) => console.log(data.root.step));\n{% endscript %}`,
 		expect: "CONSTRAINT_UNKNOWN_PROPS_REFERENCE",
+	},
+	{
+		name: "unchecked data binding type errors",
+		src: `<div ref="root" data-step="{{ dynamicStep }}"></div>\n{% script %}\nexport default island(({ data }) => console.log(data.root.step));\n{% endscript %}`,
+		check: (r) => {
+			const unchecked = r.issues.find(
+				(issue) => issue.code === "CONSTRAINT_UNCHECKED_DATA_BINDING_TYPE",
+			);
+			assert.equal(unchecked?.severity, "error");
+		},
+	},
+	{
+		name: "mixed data binding type errors",
+		src: `{% props { value: number.or(string).required() } %}\n<div ref="root" data-value="{{ props.value }}"></div>\n{% script %}\nexport default island(({ data }) => console.log(data.root.value));\n{% endscript %}`,
+		expect: "CONSTRAINT_UNCHECKED_DATA_BINDING_TYPE",
 	},
 	{
 		name: "kebab-case data attributes are clean",

@@ -4,7 +4,7 @@
 // self-contained (no imports, no closure captures) so the body stands alone,
 // and its behavior is covered by the vm tests in tests/runtime.test.mjs.
 
-type ParseKind = string; // "number" | "boolean" | anything else = pass-through
+type ParseKind = "string" | "number" | "boolean";
 type DataDescriptor = Record<string, Record<string, ParseKind>>;
 
 type IslandContext = {
@@ -47,9 +47,11 @@ function nazareRuntime(): void {
 	}
 	function parseValue(raw: string | undefined, kind: ParseKind): unknown {
 		if (raw === undefined) return undefined;
+		if (kind === "string") return raw;
 		if (kind === "number") return Number(raw);
 		if (kind === "boolean") return raw === "true";
-		return raw;
+		const exhaustive: never = kind;
+		return exhaustive;
 	}
 	function buildData(
 		root: HTMLElement,

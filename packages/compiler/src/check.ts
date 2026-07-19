@@ -16,7 +16,7 @@ import type {
 	SourceSpan,
 } from "@nazare/core";
 import { cssClassTokens } from "./css-modules.js";
-import { dataChannelFromIR } from "./data-channel.js";
+import { dataChannelFromIR, resolveDataBinding } from "./data-channel.js";
 import {
 	blocksSlotNotABlock,
 	blocksSlotOutsideSection,
@@ -32,6 +32,8 @@ import {
 	scriptModuleSyntaxUnsupported,
 	scriptReservedContextShadowed,
 	sectionPropWithoutSetting,
+	uncheckedDataBindingType,
+	uncheckedPropArgumentType,
 	unknownDataAccess,
 	unknownIsland,
 	unknownPropArgument,
@@ -61,7 +63,11 @@ export type CheckRule = {
 	name: string;
 	/** Modes this rule runs in. */
 	modes: readonly CompilerMode[];
-	run: (ir: ArtifactIR, contracts: ArtifactContract[]) => Diagnostic[];
+	run: (
+		ir: ArtifactIR,
+		contracts: ArtifactContract[],
+		mode: CompilerMode,
+	) => Diagnostic[];
 };
 
 /**
@@ -74,7 +80,10 @@ export const CHECK_RULES: readonly CheckRule[] = [
 	{
 		name: "contract-constraints",
 		modes: ["loose", "strict"],
-		run: (ir, contracts) => checkContractConstraints(ir, contracts),
+		run: (ir, contracts, mode) =>
+			checkContractConstraints(ir, contracts, {
+				reportUncheckedExpressionTypes: mode === "strict",
+			}),
 	},
 	{
 		name: "script-constraints",
@@ -100,13 +109,18 @@ export function checkArtifactIR(
 ): Diagnostic[] {
 	const mode = options.mode ?? "strict";
 	return CHECK_RULES.filter((rule) => rule.modes.includes(mode)).flatMap(
-		(rule) => rule.run(ir, contracts),
+		(rule) => rule.run(ir, contracts, mode),
 	);
 }
+
+export type CheckContractConstraintsOptions = {
+	reportUncheckedExpressionTypes: boolean;
+};
 
 export function checkContractConstraints(
 	ir: ArtifactIR,
 	contracts: ArtifactContract[] = [],
+	options: CheckContractConstraintsOptions,
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const index = indexArtifactIR(ir);
@@ -145,6 +159,7 @@ export function checkContractConstraints(
 				node,
 				contract,
 				settingTypesByName,
+				options,
 			),
 		);
 	}
@@ -383,6 +398,7 @@ function checkDataChannel(
 	const channel = dataChannelFromIR(ir);
 	const readProperties = new Set<string>();
 	const scripts = index.nodesOfKind("script");
+	const propTypesByExpression = propTypesByExpressionFromIR(ir);
 
 	for (const script of scripts) {
 		for (const access of script.dataAccesses ?? []) {
@@ -396,6 +412,22 @@ function checkDataChannel(
 
 	for (const node of index.nodesOfKind("element-ref")) {
 		for (const binding of node.dataBindings ?? []) {
+			const bindingType = propTypesByExpression.get(binding.expression.trim());
+			const bindingResolution = resolveDataBinding(
+				binding.property,
+				bindingType,
+			);
+			if (!bindingResolution.checked) {
+				issues.push(
+					uncheckedDataBindingType(
+						node.name,
+						binding.property,
+						binding.expression,
+						node.id,
+						binding.span,
+					),
+				);
+			}
 			if (
 				scripts.length > 0 &&
 				!readProperties.has(`${node.name}.${binding.property}`)
@@ -554,6 +586,7 @@ function checkRenderSiteAgainstContract(
 	renderSite: RenderSiteSyntaxNode,
 	contract: ArtifactContract,
 	settingTypesByName: Map<string, SemanticType | undefined>,
+	options: CheckContractConstraintsOptions,
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const arguments_ = renderSite.argumentIds
@@ -605,6 +638,21 @@ function checkRenderSiteAgainstContract(
 				? (expressionNode as ExpressionSyntaxNode)
 				: undefined;
 		const expressionType = inferExpressionType(expression, settingTypesByName);
+		if (
+			options.reportUncheckedExpressionTypes &&
+			typeHasUnknown(expressionType) &&
+			!typeHasUnknown(contractProp.typeInfo.valueType)
+		) {
+			issues.push(
+				uncheckedPropArgumentType(
+					argument.name,
+					contractProp.typeInfo.valueType.kind,
+					argument.id,
+					argument.span,
+				),
+			);
+		}
+
 		if (!isAssignable(expressionType, contractProp.typeInfo.valueType)) {
 			issues.push(
 				propTypeMismatch(
@@ -649,6 +697,30 @@ function checkRenderSiteAgainstContract(
 	}
 
 	return issues;
+}
+
+function propTypesByExpressionFromIR(
+	ir: ArtifactIR,
+): Map<string, SemanticType> {
+	const propTypes = new Map<string, SemanticType>();
+	for (const node of ir.syntax) {
+		if (node.kind === "prop-declaration") {
+			propTypes.set(`props.${node.name}`, node.typeInfo.valueType);
+		}
+	}
+	return propTypes;
+}
+
+function typeHasUnknown(type: SemanticType | undefined): boolean {
+	if (!type) return true;
+	if (type.kind === "unknown") return true;
+	if (type.kind === "union") return type.members.some(typeHasUnknown);
+	if (type.kind === "array") return typeHasUnknown(type.element);
+	if (type.kind === "function") return typeHasUnknown(type.returns);
+	if (type.kind === "object" && type.fields) {
+		return Object.values(type.fields).some(typeHasUnknown);
+	}
+	return false;
 }
 
 function inferExpressionType(

@@ -17,7 +17,7 @@ import { NodeTypes } from "@shopify/liquid-html-parser";
 import type { NazareAst } from "./ast.js";
 import { bundleScript } from "./bundle.js";
 import { rewriteCssClasses, scopedClassName } from "./css-modules.js";
-import { dataChannelFromIR } from "./data-channel.js";
+import { type DataBindingKind, dataChannelFromIR } from "./data-channel.js";
 import {
 	emitAmbiguousRoot,
 	emitImplicitRootElement,
@@ -560,22 +560,30 @@ function attributeName(attribute: {
 /** Descriptor telling the runtime how to parse each ref's data-* strings. */
 function dataDescriptor(
 	ir: ArtifactIR,
-): Record<string, Record<string, string>> {
-	const descriptor: Record<string, Record<string, string>> = {};
+): Record<string, Record<string, DataBindingKind>> {
+	const descriptor: Record<string, Record<string, DataBindingKind>> = {};
 	for (const [refName, bindings] of dataChannelFromIR(ir)) {
 		descriptor[refName] = {};
 		for (const binding of bindings.values()) {
-			descriptor[refName][binding.property] = binding.kind;
+			descriptor[refName][binding.property] = dataDescriptorKind(binding.kind);
 		}
 	}
 	return descriptor;
+}
+
+function dataDescriptorKind(kind: DataBindingKind): DataBindingKind {
+	if (kind === "string" || kind === "number" || kind === "boolean") {
+		return kind;
+	}
+	const exhaustive: never = kind;
+	return exhaustive;
 }
 
 function emitComponentScript(
 	scripts: Extract<ArtifactIR["syntax"][number], { kind: "script" }>[],
 	componentFile: string,
 	options: EmitThemeOptions,
-	descriptor: Record<string, Record<string, string>>,
+	descriptor: Record<string, Record<string, DataBindingKind>>,
 	placedBehaviors: Set<string>,
 ): { contents: string; issues: Diagnostic[] } {
 	const issues: Diagnostic[] = [];

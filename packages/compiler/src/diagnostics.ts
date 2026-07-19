@@ -510,6 +510,22 @@ export function unknownDataAccess(
 	};
 }
 
+export function uncheckedDataBindingType(
+	refName: string,
+	property: string,
+	expression: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_UNCHECKED_DATA_BINDING_TYPE",
+		message: `data binding "${property}" on ref "${refName}" uses expression "${expression}" whose type cannot be mapped unambiguously to string, number, or boolean; it will be exposed to scripts as a string`,
+		nodeId,
+		span,
+	};
+}
+
 export function unusedDataBinding(
 	refName: string,
 	property: string,
@@ -614,6 +630,21 @@ export function propTypeMismatch(
 		severity: "error",
 		code: "CONSTRAINT_PROP_TYPE_MISMATCH",
 		message: `Prop ${argumentName} expects ${expectedKind} but received ${receivedKind}`,
+		nodeId,
+		span,
+	};
+}
+
+export function uncheckedPropArgumentType(
+	argumentName: string,
+	expectedKind: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_UNCHECKED_PROP_ARGUMENT_TYPE",
+		message: `Prop ${argumentName} expects ${expectedKind}, but the argument expression type is unknown and could not be checked statically`,
 		nodeId,
 		span,
 	};
