@@ -19,10 +19,16 @@ Use this package to:
 ## Architecture
 
 ```txt
-authored .liquid source
+source
   │
   ▼
-parseNazareLiquid
+compiler frontend
+  - explicit source-language adapter
+  - built-in nazareLiquidFrontend for .nz.liquid
+  - future frontends can translate other inputs into compiler facts
+  │
+  ▼
+parseNazareLiquid (.nz.liquid frontend)
   - tolerant LiquidHTML parse
   - extracts Nazare nodes
   - records source spans
@@ -66,13 +72,31 @@ emitTheme
   - Shopify schema generation
 ```
 
-`compileNazareArtifact()` runs the compile pipeline for one file. `buildNazareTheme()` runs compile, checks dependencies, then emits theme files.
+`compileArtifact()` runs the generic frontend-based compile pipeline. `compileNazareArtifact()` is the compatibility wrapper for `.nz.liquid`. `buildNazareTheme()` runs Nazare compile, checks dependencies, then emits theme files.
 
 ## Main entry points
 
+### `compileArtifact(options)`
+
+Compiles one artifact through a selected `CompilerFrontend`. It does **not** emit files.
+
+Selection order:
+
+1. explicit `frontend` option;
+2. caller-provided `frontends` whose `accepts(file, source)` returns true;
+3. built-in `nazareLiquidFrontend` for `.nz.liquid` files;
+4. unsupported-input diagnostic.
+
+Returns frontend-agnostic compiler data plus:
+
+- `frontend` — selected frontend name;
+- `capabilities` — explicit/inferred contract flags;
+- `sourceForEmit` — source the emitter should use;
+- optional `ast` — present for the built-in Nazare Liquid frontend.
+
 ### `compileNazareArtifact(source, file, options?)`
 
-Compiles one artifact and returns structured compiler data. It does **not** emit files.
+Compiles one `.nz.liquid` artifact through `nazareLiquidFrontend` and returns structured compiler data. It does **not** emit files.
 
 Returns:
 
@@ -101,10 +125,15 @@ By default `emitOnError` is `true`, useful for tooling previews. Set `emitOnErro
 ## Minimal compile
 
 ```ts
-import { compileNazareArtifact } from "@nazare/compiler";
+import { compileArtifact, compileNazareArtifact } from "@nazare/compiler";
 
 const source = `{% props { title: string.required() } %}
 <h2>{{ props.title }}</h2>`;
+
+const generic = compileArtifact({
+	source,
+	file: "components/heading.nz.liquid",
+});
 
 const result = compileNazareArtifact(source, "components/heading.nz.liquid");
 

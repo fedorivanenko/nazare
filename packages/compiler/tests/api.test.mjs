@@ -6,14 +6,53 @@ import {
 	checkContractConstraints,
 	checkScriptConstraints,
 	checkStyleConstraints,
+	compileArtifact,
 	compileNazareArtifact,
 	emitCssFiles,
 	emitLiquidFile,
 	emitScriptFiles,
 	emitTheme,
+	nazareLiquidFrontend,
 	parseNazareLiquid,
 	resolveAssetImports,
 } from "../dist/index.js";
+
+test("generic compileArtifact selects the Nazare Liquid frontend", () => {
+	const source = `{% props title: string %}<h1>{{ props.title }}</h1>`;
+	const compiled = compileArtifact({
+		source,
+		file: "component.nz.liquid",
+	});
+
+	assert.equal(compiled.frontend, "nazare-liquid");
+	assert.equal(compiled.canEmit, true);
+	assert.equal(compiled.contract.path, "component.nz.liquid");
+	assert.equal(compiled.capabilities.explicitContract, true);
+	assert.ok(compiled.ast);
+});
+
+test("compileArtifact reports unsupported input when no frontend matches", () => {
+	const compiled = compileArtifact({
+		source: "plain",
+		file: "component.txt",
+	});
+
+	assert.equal(compiled.frontend, "unsupported");
+	assert.equal(compiled.canEmit, false);
+	assert.equal(compiled.issues[0].code, "UNSUPPORTED_COMPILER_INPUT");
+});
+
+test("compileArtifact honors an explicit frontend", () => {
+	const source = `<div></div>`;
+	const compiled = compileArtifact({
+		source,
+		file: "component.liquid",
+		frontend: nazareLiquidFrontend,
+	});
+
+	assert.equal(compiled.frontend, "nazare-liquid");
+	assert.ok(compiled.ast);
+});
 
 test("emit sub-pass APIs are exported", () => {
 	const source = `<div></div>

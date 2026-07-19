@@ -2,52 +2,119 @@
 
 ## Goal
 
-Make compiler inputs modular so Nazare can support multiple source languages while keeping one shared semantic pipeline for graphing, checks, validation, and emission.
+Make compiler inputs modular without weakening the current `.nz.liquid` authoring path.
 
-The immediate driver is a Liquid Storybook-like development workflow:
-
-- `.nz.liquid` components continue using the strict existing compiler path.
-- Raw Shopify `.liquid` snippets/sections can be parsed best-effort for preview, migration, and control generation.
-- Future source languages can be added as explicit frontends if they can map into the Nazare artifact model.
-
-## Current architecture
-
-The compiler currently has one hardcoded input path:
-
-```text
-compileNazareArtifact()
-→ parseNazareLiquid()
-→ syntaxFromAst()
-→ bindArtifactIR()
-→ check/validate
-→ emitTheme()
-```
-
-This is simple and strict, but it makes `.nz.liquid` the only first-class compiler input.
-
-## Target architecture
-
-Introduce a frontend layer before the shared compiler pipeline:
+The compiler should become a shared semantic pipeline with pluggable source frontends:
 
 ```text
 source language
-→ compiler frontend
-→ ArtifactIR + contracts + diagnostics
-→ shared checks/validation/graph
-→ shared emit
+→ frontend
+→ Nazare semantic model
+→ shared graph/check/validate/emit pipeline
 ```
 
-A frontend is a translator from a source language into Nazare semantic facts. It should not be arbitrary compile magic; it must express:
+Immediate use case: a Storybook-like Liquid workshop.
 
-- component kind
-- props/settings/blocks contract
-- template/render body
-- imports/dependencies
-- assets
-- emitted Shopify artifact target
-- diagnostics/notes with confidence where inference is weak
+- `.nz.liquid` remains strict and authoritative.
+- raw Shopify `.liquid` becomes best-effort and migration-friendly.
+- future inputs can be added only if they translate into the Nazare artifact model.
 
-## Public types sketch
+## Architectural principles
+
+1. **Frontend translation is explicit.** No source language enters the shared pipeline accidentally.
+2. **The shared pipeline consumes facts, not parser details.** Frontends produce the same semantic model.
+3. **Strictness is preserved.** Heuristic raw Liquid inference must not relax `.nz.liquid` checks.
+4. **Best-effort inputs are marked.** Raw Liquid contracts carry confidence and warnings.
+5. **Emit is downstream of semantics.** Emitter should depend on `ArtifactIR` and contracts, not a particular parser AST.
+6. **Registry and Browse stay outside compilation.** Browse reads metadata/code; preview/workshop compiles.
+
+## Current architecture
+
+Current public entry points are tightly coupled to Nazare Liquid parsing:
+
+```text
+compileNazareArtifact(source, file)
+→ parseNazareLiquid(source, file)
+→ resolveComponentContracts(ast)
+→ resolveAssetImports(ast)
+→ syntaxFromAst(ast)
+→ bindArtifactIR(syntax)
+→ check/validate/project
+→ CompileResult
+
+buildNazareTheme(source, file)
+→ compileNazareArtifact(source, file)
+→ checkDependencies(ast)
+→ emitTheme(source, compiled)
+```
+
+This makes `.nz.liquid` the only first-class input and lets later stages rely on parser-specific data.
+
+## Target architecture
+
+```text
+CompileRequest
+→ FrontendRegistry.select()
+→ CompilerFrontend.compile()
+→ FrontendResult
+→ normalize/project shared result
+→ graph/check/validate
+→ emit
+```
+
+Layer ownership:
+
+```text
+packages/compiler
+  public compile API
+  frontend selection
+  shared semantic pipeline
+  built-in .nz.liquid frontend
+  emit API
+
+packages/liquid-contract
+  raw Shopify Liquid parsing
+  inferred contract model
+  no dependency on compiler internals if possible
+
+packages/frontend-liquid (or compiler/src/frontends/raw-liquid.ts initially)
+  raw .liquid frontend
+  maps RawLiquidContract + Liquid AST to Nazare semantic model
+
+packages/dev-server
+  workshop/story runtime
+  frontend selection by file extension
+  watch/hot reload
+  Liquid render sandbox
+
+apps/website
+  Browse/docs/marketing UI
+  no compile dependency unless preview is intentionally added
+```
+
+## Shared semantic boundary
+
+The key design choice: frontends must output compiler facts, not arbitrary rendered code.
+
+Preferred long-term boundary:
+
+```ts
+export type FrontendResult = {
+  ir: ArtifactIR;
+  contract: ArtifactContract;
+  contracts: ArtifactContract[];
+  capabilities: FrontendCapabilities;
+  sourceForEmit?: string;
+  issues: Diagnostic[];
+  notes: Diagnostic[];
+};
+```
+
+`ArtifactIR` is the shared semantic model. `NazareAst` remains implementation detail of the `.nz.liquid` frontend.
+
+Short-term bridge for raw Liquid may output virtual `.nz.liquid`, then delegate to the Nazare frontend. That is an implementation shortcut, not the final architecture.
+
+## Public API shape
 
 ```ts
 export type CompileInput = {
@@ -57,21 +124,9 @@ export type CompileInput = {
   strictness?: CompilerMode;
 };
 
-export type FrontendCapabilities = {
-  explicitProps: boolean;
-  explicitSchema: boolean;
-  imports: boolean;
-  behavior: boolean;
-};
-
-export type FrontendResult = {
-  ir: ArtifactIR;
-  contract: ArtifactContract;
-  contracts: ArtifactContract[];
-  capabilities: FrontendCapabilities;
-  issues: Diagnostic[];
-  notes: Diagnostic[];
-  sourceForEmit?: string;
+export type CompileArtifactOptions = CompileInput & {
+  frontend?: CompilerFrontend;
+  frontends?: CompilerFrontend[];
 };
 
 export type CompilerFrontend = {
@@ -79,95 +134,119 @@ export type CompilerFrontend = {
   accepts(file: string, source: string): boolean;
   compile(input: CompileInput): FrontendResult;
 };
-```
 
-Generic API:
+export type FrontendCapabilities = {
+  explicitContract: boolean;
+  explicitProps: boolean;
+  explicitSchema: boolean;
+  explicitImports: boolean;
+  explicitBehavior: boolean;
+  inferredContract: boolean;
+};
 
-```ts
-export function compileArtifact(
-  input: CompileInput & { frontends?: CompilerFrontend[] },
-): CompileResult;
+export function compileArtifact(options: CompileArtifactOptions): CompileResult;
 ```
 
 Selection order:
 
-1. explicit frontend, if provided
-2. first `accepts()` match
-3. diagnostic: unsupported input type
+1. `options.frontend`, if provided
+2. first match from `options.frontends`
+3. built-in `nazareLiquidFrontend`
+4. unsupported-input diagnostic
 
-Compatibility API remains:
+Compatibility wrappers remain stable:
 
 ```ts
 compileNazareArtifact(source, file, options)
 buildNazareTheme(source, file, options)
 ```
 
-These become wrappers around the Nazare frontend.
+These call `compileArtifact({ frontend: nazareLiquidFrontend, ... })`.
 
-## First frontend: existing Nazare Liquid
+## Result model
 
-Wrap the current path as a frontend:
+`CompileResult` should become frontend-agnostic:
 
-```text
-.nz.liquid
-→ nazareLiquidFrontend
-→ existing parse/resolve/syntax/bind/project path
+```ts
+export type CompileResult = {
+  frontend: string;
+  syntax?: ArtifactSyntaxNode[];
+  ir: ArtifactIR;
+  graph: ArtifactGraph;
+  issues: Diagnostic[];
+  notes: Diagnostic[];
+  canEmit: boolean;
+  contract: ArtifactContract;
+  contracts: ArtifactContract[];
+  capabilities: FrontendCapabilities;
+  sourceForEmit?: string;
+};
 ```
 
-This should be a mechanical refactor with no semantic changes.
+`ast` can remain on `compileNazareArtifact()` return for compatibility, but generic `compileArtifact()` should not require a `NazareAst`.
 
-## Raw Liquid support
+## Built-in `.nz.liquid` frontend
+
+Current path becomes `nazareLiquidFrontend`:
+
+```text
+.nz.liquid source
+→ parseNazareLiquid()
+→ resolveComponentContracts()
+→ resolveAssetImports()
+→ syntaxFromAst()
+→ bindArtifactIR()
+→ projectArtifact()
+→ FrontendResult
+```
+
+Behavior must remain unchanged in first refactor.
+
+Compatibility requirement:
+
+- Existing tests should pass unchanged.
+- Existing diagnostics should remain same where possible.
+- Existing `compileNazareArtifact()` shape should remain source-compatible.
+
+## Raw Liquid frontend
 
 Raw Shopify Liquid should be explicit and best-effort.
 
-Recommended module split:
+### Raw contract inference package
 
-```text
-packages/liquid-contract       raw Liquid parser + inferred contract
-packages/compiler              shared compiler pipeline + Nazare frontend
-packages/frontend-liquid       raw .liquid frontend (can start internal)
-packages/dev-server            story/workshop runtime
-```
-
-Initial implementation can keep the raw Liquid frontend inside `packages/compiler/src/frontends/raw-liquid.ts` until the boundary stabilizes.
-
-### Contract inference
-
-Raw Liquid parser extracts an assistive contract from Shopify Liquid/HTML AST:
-
-- variable reads: `{{ product.title }}`, `{{ section.settings.heading }}`
-- snippet renders: `{% render 'price', product: product %}`
-- settings and blocks from `{% schema %}`
-- asset references
-- translation keys
-- Shopify globals
-- dynamic/ambiguous access warnings
-
-Example shape:
+`packages/liquid-contract` parses raw Liquid and extracts a contract:
 
 ```ts
 export type RawLiquidContract = {
   kind: "snippet" | "section" | "template" | "unknown";
-  inputs: Array<{
-    name: string;
-    source: "local" | "section.settings" | "block.settings" | "global";
-    type: "string" | "number" | "boolean" | "object" | "array" | "unknown";
-    required: boolean | "unknown";
-  }>;
-  renders: Array<{ name: string; args: Record<string, string>; dynamic: boolean }>;
-  settings: Array<{ name: string; type: string; label?: string }>;
+  inputs: RawLiquidInput[];
+  renders: RawLiquidRender[];
+  settings: RawLiquidSetting[];
+  blocks: RawLiquidBlock[];
   assets: string[];
   translations: string[];
   globals: string[];
-  warnings: string[];
+  warnings: Diagnostic[];
 };
+
+export function inferLiquidContract(source: string, file: string): RawLiquidContract;
 ```
 
-Use a real Shopify-aware Liquid parser rather than regex. Candidate: `@shopify/liquid-html-parser`.
+Extractable facts:
 
-### Phase 1 raw Liquid frontend
+- variable reads: `{{ product.title }}`, `{{ label }}`
+- section settings: `section.settings.heading`
+- block settings: `block.settings.image`
+- schema settings/blocks from `{% schema %}`
+- snippet renders: `{% render 'price', product: product %}`
+- assets: `{{ 'x.css' | asset_url }}`
+- translation keys: `{{ 'products.card.title' | t }}`
+- Shopify globals: `product`, `cart`, `collection`, `routes`, `settings`
+- dynamic/ambiguous reads as warnings
 
-Use an adapter that builds a virtual `.nz.liquid` source, then delegates to the Nazare frontend:
+Use a Shopify-aware Liquid parser, not regex. Candidate: `@shopify/liquid-html-parser`.
+
+### Raw frontend phase 1: virtual Nazare bridge
 
 ```text
 raw .liquid
@@ -176,15 +255,13 @@ raw .liquid
 → nazareLiquidFrontend.compile()
 ```
 
-This proves the Storybook workflow quickly while preserving the existing compiler core.
-
-Example:
+Example input:
 
 ```liquid
 <button>{{ label }}</button>
 ```
 
-becomes virtual Nazare source:
+Virtual `.nz.liquid`:
 
 ```liquid
 {% props label: string %}
@@ -192,92 +269,191 @@ becomes virtual Nazare source:
 <button>{{ props.label }}</button>
 ```
 
-The adapter should use an AST transform for identifier rewriting; regex is too fragile.
+Constraints:
 
-### Phase 2 raw Liquid frontend
+- identifier rewrite must be AST-based
+- dynamic access becomes warning and likely `unknown`
+- Shopify globals must not be rewritten into props
+- section/schema constructs should map to section/block contract where possible
 
-Once the model is stable, emit `ArtifactIR` directly:
+### Raw frontend phase 2: direct IR
 
 ```text
-raw .liquid AST
+raw Liquid AST
+→ RawLiquidContract
 → ArtifactIR
-→ shared checks/graph/emit
+→ shared graph/check/emit
 ```
 
-This removes the virtual-source bridge and makes raw Liquid a true first-class frontend.
+This removes virtual source and makes raw Liquid a real frontend.
 
-## Check gating
+## Checks and validation architecture
 
-Not all frontends provide the same confidence level. Checks should be gated by capabilities and compiler mode:
-
-- strict package-authoring checks stay enabled for `.nz.liquid`
-- inferred raw Liquid contracts use migration/preview checks
-- ambiguous raw Liquid produces warnings/notes, not false hard errors
-
-This prevents best-effort inference from weakening the strict Nazare authoring path.
-
-## Emit boundary
-
-Long-term, emit should consume shared compiler facts rather than Nazare parser-specific AST details:
+Checks need capability-aware gates.
 
 ```text
-ArtifactIR + contracts + sourceForEmit
-→ emitTheme()
+FrontendCapabilities + CompilerMode
+→ enabled check set
 ```
 
-If emitter needs parser-specific information, that information should move into `ArtifactIR` or a typed frontend output field.
+Modes:
 
-## Workshop pipeline
+- `strict`: package-authoring, current `.nz.liquid` behavior
+- `loose`: migration/preview, fewer hard errors
+- optional future `inferred`: best-effort raw Liquid checks
 
-A Storybook-like dev tool should sit above the compiler:
+Rules:
+
+- explicit `.nz.liquid` contract errors stay errors
+- inferred raw Liquid ambiguity becomes warning/note
+- checks requiring explicit props/schema skip when capability is absent
+- emit preconditions must be minimal and artifact-based
+
+## Emit architecture
+
+Current `emitTheme(source, compiled, options)` should evolve toward:
+
+```ts
+emitTheme({
+  ir,
+  contract,
+  contracts,
+  sourceForEmit,
+  options,
+});
+```
+
+Emitter should not inspect `NazareAst` unless behind a frontend-specific adapter.
+
+If emitter needs data currently only present on `NazareAst`, move that data into one of:
+
+- `ArtifactIR`
+- `ArtifactContract`
+- explicit `FrontendResult` field
+
+## Dependency resolution architecture
+
+Current dependency resolution reads imported `.nz.liquid` files and derives contracts.
+
+Target:
 
 ```text
-story file
+frontend resolves own imports
+or
+shared resolver delegates each imported file to frontend registry
+```
+
+Preferred long-term:
+
+```ts
+export type ResolveDependency = (file: string) => Promise<FrontendResult | undefined>;
+```
+
+For first pass, keep existing resolver for `.nz.liquid`; raw Liquid frontend can start with no imported contract resolution or delegate only known `.nz.liquid` imports.
+
+## Story/workshop architecture
+
+The Storybook-like tool should sit above compiler:
+
+```text
+*.stories.json/ts
 + component source
 → choose frontend by extension
 → compileArtifact()
 → emitTheme()
-→ Liquid renderer with mock Shopify context
+→ render emitted Liquid with mock Shopify context
 → iframe preview
 ```
 
-The workshop owns:
+Workshop owns:
 
-- story files
+- stories
 - controls
 - mock data
-- hot reload
-- preview iframe
+- watch/hot reload
+- browser UI
+- iframe isolation
+- render sandbox
 
 Compiler owns:
 
-- parsing/frontend translation
+- frontend translation
 - semantic facts
 - diagnostics
-- emission
+- theme emission
 
 ## Registry and Browse boundary
 
-Registry Browse is separate from compiler frontends.
+Browse remains registry/UI architecture:
 
-- Browse reads registry metadata and code payloads.
-- Browse does not compile components unless adding preview functionality.
-- Story/workshop preview uses compiler and dev-server runtime.
+```text
+registry API
+→ component metadata/summaries
+→ Astro pages/cards
+```
 
-## Migration plan
+Browse should not require compiler. If Browse later gets live previews, that preview path should call workshop/preview services, not registry storage code.
 
-1. Add `CompilerFrontend`, `CompileInput`, `FrontendResult`, and capability types.
-2. Wrap current `.nz.liquid` path as `nazareLiquidFrontend`.
-3. Add `compileArtifact()` generic API.
-4. Keep `compileNazareArtifact()` and `buildNazareTheme()` as compatibility wrappers.
-5. Add `packages/liquid-contract` for raw Shopify Liquid contract inference.
-6. Add raw Liquid frontend using virtual `.nz.liquid` delegation.
-7. Add workshop/dev-server flow that selects frontend by file extension.
-8. Move raw Liquid frontend from virtual source to direct `ArtifactIR` when stable.
+## Implementation phases
+
+### Phase 0: design guardrails
+
+- Document this architecture.
+- Identify current compiler functions that leak `NazareAst` into checks/emit.
+- Mark public compatibility APIs that must not break.
+
+### Phase 1: extract frontend seam
+
+- Add `CompilerFrontend`, `CompileInput`, `FrontendResult`, `FrontendCapabilities` types.
+- Move current hardcoded path into `nazareLiquidFrontend`.
+- Add `compileArtifact()` generic entry point.
+- Implement `compileNazareArtifact()` as wrapper.
+- Keep test expectations unchanged.
+
+### Phase 2: make pipeline frontend-agnostic
+
+- Make generic `CompileResult` not require `ast`.
+- Gate checks by capabilities.
+- Audit `emitTheme()` for parser-specific assumptions.
+- Move required emit facts into `ArtifactIR`/contracts.
+
+### Phase 3: raw Liquid contract package
+
+- Add parser-backed `inferLiquidContract()`.
+- Add tests for variables, renders, schema, assets, translations, dynamic access.
+- Emit warnings for ambiguous contracts.
+
+### Phase 4: raw Liquid frontend bridge
+
+- Add `rawLiquidFrontend` using virtual `.nz.liquid` delegation.
+- AST-rewrite local variable reads to props.
+- Preserve Shopify globals.
+- Run in `loose` mode by default.
+
+### Phase 5: workshop integration
+
+- Add dev-server/workshop selection by extension.
+- Add story file format.
+- Compile, emit, render in iframe.
+- Surface diagnostics and inferred controls.
+
+### Phase 6: direct raw Liquid IR
+
+- Replace virtual `.nz.liquid` bridge with direct `ArtifactIR` emission when stable.
+- Keep bridge as fallback if useful for migration diagnostics.
+
+## Risks
+
+- **IR too Nazare-specific.** Mitigation: move parser-specific assumptions out of IR gradually.
+- **Raw Liquid inference overpromises.** Mitigation: warnings + capability flags + loose mode.
+- **Emit depends on `NazareAst`.** Mitigation: audit and move required facts into shared model.
+- **Frontend selection ambiguity.** Mitigation: explicit frontend override and deterministic order.
+- **Breaking public API.** Mitigation: keep wrappers and existing tests green through Phase 1.
 
 ## Non-goals for first pass
 
-- Do not change registry payload format.
-- Do not make Browse depend on compiler.
-- Do not weaken strict `.nz.liquid` checks.
-- Do not require raw Liquid inference to be authoritative.
+- No registry payload changes.
+- No Browse/compiler coupling.
+- No raw Liquid authoritative publishing contract.
+- No support for every language upfront.
+- No compiler UI responsibilities.
