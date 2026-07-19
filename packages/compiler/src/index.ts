@@ -2,9 +2,8 @@
  * Public API of the Nazare compiler.
  *
  * Explicit flow:
- * parse → resolve component contracts → resolve asset imports → syntax → bind
- * → graph → check → validate. Emit is separate; buildNazareTheme runs compile
- * plus emit and aggregates all issues.
+ * frontend → semantic facts → graph/check/validate. Emit is separate;
+ * buildNazareTheme runs compile plus emit and aggregates all issues.
  */
 import type {
 	ArtifactContract,
@@ -14,17 +13,23 @@ import type {
 	Diagnostic,
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
-import type { CompilerMode } from "./check.js";
 import { type EmitResult, type EmitThemeOptions, emitTheme } from "./emit.js";
+import type {
+	CompileInput,
+	CompilerFrontend,
+	ContractProvenance,
+	FrontendResult,
+	FrontendSupport,
+} from "./frontend.js";
+import { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
 import { artifactGraphFromIR } from "./graph.js";
-import { parseNazareLiquid } from "./parser.js";
-import { markDiagnostics, projectArtifact } from "./pipeline.js";
 import {
-	checkDependencies,
-	type ReadFile,
-	resolveAssetImports,
-	resolveComponentContracts,
-} from "./resolver.js";
+	markDiagnostics,
+	type ProjectedArtifact,
+	projectArtifact,
+	projectIR,
+} from "./pipeline.js";
+import { checkDependencies } from "./resolver.js";
 import { bindArtifactIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
 
@@ -80,6 +85,14 @@ export type {
 	NazareExtensionContext,
 	NazareExtensionRegistration,
 } from "./extensions.js";
+export type {
+	CompileInput,
+	CompilerFrontend,
+	ContractProvenance,
+	FrontendResult,
+	FrontendSupport,
+} from "./frontend.js";
+export { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
 export { mergeArtifactIR } from "./merge.js";
@@ -102,19 +115,27 @@ export {
 export { syntaxFromAst } from "./syntax.js";
 export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 
-export type CompileNazareArtifactOptions = {
-	/** Without a reader, every import diagnoses as unreadable. */
-	readFile?: ReadFile;
-	/** strict is current package-author behavior; loose keeps migration checks minimal. */
-	strictness?: CompilerMode;
+export type CompileNazareArtifactOptions = Pick<
+	CompileInput,
+	"readFile" | "strictness"
+>;
+
+export type CompileArtifactOptions = CompileInput & {
+	/** Explicit frontend wins over registry selection. */
+	frontend?: CompilerFrontend;
+	/** Extra frontends checked before built-ins. */
+	frontends?: CompilerFrontend[];
 };
 
-export type CompileResult = {
-	/** Nazare nodes plus the full LiquidHTML AST (unsupported syntax preserved). */
-	ast: NazareAst;
-	/** Flat syntax nodes, symbols, and resolutions — facts only, no judgments. */
+export type CompileArtifactSuccess = {
+	ok: true;
+	/** Frontend that translated source into compiler facts. */
+	frontend: string;
+	/** Frontend-owned AST, present for the built-in Nazare Liquid frontend. */
+	ast?: NazareAst;
+	/** Syntax facts produced by shared projection. */
 	syntax: ArtifactSyntaxNode[];
-	/** Flat syntax nodes, symbols, and resolutions — facts only, no judgments. */
+	/** Bound symbols and resolutions produced by shared projection. */
 	ir: ArtifactIR;
 	/** IR projected into nodes and typed edges for queries and visualization. */
 	graph: ArtifactGraph;
@@ -132,6 +153,29 @@ export type CompileResult = {
 	contract: ArtifactContract;
 	/** Contracts of the imported component files (needed for hoisting at emit time). */
 	contracts: ArtifactContract[];
+	/** Source syntax features supported by selected frontend. */
+	frontendSupport: FrontendSupport;
+	/** Provenance of this artifact contract. */
+	contractProvenance: ContractProvenance;
+	/** Source text the current emitter should operate on. */
+	sourceForEmit: string;
+};
+
+export type CompileArtifactFailure = {
+	ok: false;
+	frontend?: string;
+	issues: Diagnostic[];
+	notes: Diagnostic[];
+	canEmit: false;
+};
+
+export type CompileArtifactResult =
+	| CompileArtifactSuccess
+	| CompileArtifactFailure;
+
+export type CompileResult = CompileArtifactSuccess & {
+	/** Nazare nodes plus the full LiquidHTML AST (unsupported syntax preserved). */
+	ast: NazareAst;
 };
 
 export type BuildNazareThemeOptions = CompileNazareArtifactOptions &
@@ -154,38 +198,55 @@ export function artifactGraphFromAst(ast: NazareAst): ArtifactGraph {
 	return artifactGraphFromIR(bindArtifactIR(syntaxFromAst(ast)));
 }
 
-/** Compiles one artifact, deriving imported components' contracts via readFile. */
+export function compileArtifact(
+	options: CompileArtifactOptions,
+): CompileArtifactResult {
+	const frontend = selectFrontend(options);
+	if (!frontend) return unsupportedInput(options);
+
+	const frontendResult = frontend.compile(options);
+	switch (frontendResult.kind) {
+		case "nazare-ast": {
+			const projected = projectArtifact(frontendResult.ast, {
+				contracts: frontendResult.contracts,
+				mode: options.strictness,
+				resolveIssues: frontendResult.resolveIssues,
+			});
+			return compileSuccess(frontend.name, frontendResult, projected);
+		}
+		case "direct-ir": {
+			const projected = projectIR(frontendResult.syntax, frontendResult.ir, {
+				contracts: frontendResult.contracts,
+				mode: options.strictness,
+				contractPath: frontendResult.contractPath,
+				issues: frontendResult.issues,
+			});
+			return compileSuccess(frontend.name, frontendResult, projected);
+		}
+	}
+}
+
+/** Compiles one Nazare Liquid artifact, deriving imported components' contracts via readFile. */
 export function compileNazareArtifact(
 	source: string,
 	file: string,
 	options: CompileNazareArtifactOptions = {},
 ): CompileResult {
-	const parsedAst = parseNazareLiquid(source, file);
-	const contractResolution = resolveComponentContracts(
-		parsedAst,
-		options.readFile,
-	);
-	const assetResolution = resolveAssetImports(parsedAst, options.readFile);
-	const ast = assetResolution.ast;
-	const contracts = contractResolution.contracts;
-
-	const projected = projectArtifact(ast, {
-		contracts,
-		mode: options.strictness,
-		resolveIssues: contractResolution.issues,
+	const compiled = compileArtifact({
+		source,
+		file,
+		...options,
+		frontend: nazareLiquidFrontend,
 	});
-
-	return {
-		ast,
-		syntax: projected.syntax,
-		ir: projected.ir,
-		graph: projected.graph,
-		issues: projected.issues,
-		notes: markDiagnostics(ast.notes, "parse"),
-		canEmit: !hasErrors(projected.issues),
-		contract: projected.contract,
-		contracts,
-	};
+	if (!compiled.ok) {
+		throw new Error(
+			compiled.issues[0]?.message ?? "Nazare Liquid compile failed",
+		);
+	}
+	if (!compiled.ast) {
+		throw new Error("Nazare Liquid frontend did not return an AST");
+	}
+	return { ...compiled, ast: compiled.ast };
 }
 
 /**
@@ -205,7 +266,7 @@ export function buildNazareTheme(
 	const preEmitIssues = [...compiled.issues, ...dependencyIssues];
 	const shouldEmit = (options.emitOnError ?? true) || !hasErrors(preEmitIssues);
 	const emitted = shouldEmit
-		? emitTheme(source, compiled, options)
+		? emitTheme(compiled.sourceForEmit, compiled, options)
 		: { files: [], issues: [] };
 	const issues = [...preEmitIssues, ...markDiagnostics(emitted.issues, "emit")];
 	return {
@@ -214,6 +275,61 @@ export function buildNazareTheme(
 		emitted,
 		emittedOnError: shouldEmit && hasErrors(preEmitIssues),
 		issues,
+	};
+}
+
+function compileSuccess(
+	frontend: string,
+	frontendResult: FrontendResult,
+	projected: ProjectedArtifact,
+): CompileArtifactSuccess {
+	return {
+		ok: true,
+		frontend,
+		ast: frontendResult.kind === "nazare-ast" ? frontendResult.ast : undefined,
+		syntax: projected.syntax,
+		ir: projected.ir,
+		graph: projected.graph,
+		issues: projected.issues,
+		notes: frontendResult.notes,
+		canEmit: !hasErrors(projected.issues),
+		contract: projected.contract,
+		contracts: frontendResult.contracts,
+		frontendSupport: frontendResult.frontendSupport,
+		contractProvenance: frontendResult.contractProvenance,
+		sourceForEmit: frontendResult.sourceForEmit,
+	};
+}
+
+function selectFrontend(
+	options: CompileArtifactOptions,
+): CompilerFrontend | undefined {
+	if (options.frontend) return options.frontend;
+	for (const frontend of options.frontends ?? []) {
+		if (frontend.accepts(options.file, options.source)) return frontend;
+	}
+	if (nazareLiquidFrontend.accepts(options.file, options.source)) {
+		return nazareLiquidFrontend;
+	}
+	return undefined;
+}
+
+function unsupportedInput(
+	options: CompileArtifactOptions,
+): CompileArtifactFailure {
+	return {
+		ok: false,
+		frontend: undefined,
+		issues: [
+			{
+				severity: "error",
+				code: "UNSUPPORTED_COMPILER_INPUT",
+				message: `No compiler frontend accepts ${options.file}`,
+				phase: "parse",
+			},
+		],
+		notes: [],
+		canEmit: false,
 	};
 }
 

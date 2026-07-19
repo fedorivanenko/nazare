@@ -215,6 +215,8 @@ Because `Hero` imports `Button`, `styles`, and `hero`, the compiler knows the ex
 
 Nazare can also work with plain Liquid. Existing `.liquid` snippets, sections, blocks, layouts, and templates can stay valid Shopify files while Nazare parses and validates them, checks schema and Liquid structure, reports diagnostics, tracks dependencies, and emits them into the final theme alongside `.nz.liquid` components.
 
+Internally, the compiler uses an explicit frontend boundary. The built-in frontend accepts `.nz.liquid` and lowers it into shared compiler facts; future frontends can target the same syntax/IR model without bypassing shared graph, check, validate, and contract projection. Unsupported inputs return diagnostics rather than fabricated contracts.
+
 Example diagnostic:
 
 ```liquid
@@ -623,7 +625,7 @@ Nazare reconciles merchant-editable state and checks cross-component contracts, 
 
 ```txt
 packages/core          shared data model, diagnostics, contracts, schema types
-packages/compiler      `.nz.liquid` parser, checker, emitter, runtime output
+packages/compiler      frontend-based compile pipeline, `.nz.liquid` parser, checker, emitter, runtime output
 packages/theme         source-root walker and Shopify theme builder
 packages/registry      file and HTTP registry clients
 packages/cli-client    `nazare` CLI

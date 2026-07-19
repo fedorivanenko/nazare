@@ -19,44 +19,42 @@ Use this package to:
 ## Architecture
 
 ```txt
-authored .liquid source
+source
   │
   ▼
-parseNazareLiquid
-  - tolerant LiquidHTML parse
-  - extracts Nazare nodes
-  - records source spans
-  - records unsupported Liquid/HTML notes
+compiler frontend selection
+  - explicit frontend option
+  - caller frontends in order
+  - built-in nazareLiquidFrontend for .nz.liquid
+  - unsupported inputs return diagnostics, not fabricated contracts
   │
   ▼
-resolveComponentContracts / resolveAssetImports
-  - only place that reads project files through readFile(path)
-  - component imports become contracts
-  - script/css imports become script/style nodes
+selected frontend
+  ├─ nazare-ast result
+  │    parseNazareLiquid
+  │      - tolerant LiquidHTML parse
+  │      - extracts Nazare nodes
+  │      - records source spans and unsupported Liquid/HTML notes
+  │    resolveComponentContracts / resolveAssetImports
+  │      - only place that reads project files through readFile(path)
+  │      - component imports become contracts
+  │      - script/css imports become script/style nodes
+  │    syntaxFromAst
+  │      - converts parse nodes into flat syntax records
+  │      - preserves occurrence identity and spans
+  │    bindArtifactIR
+  │      - creates symbols and resolutions
+  │      - records facts only; no diagnostics
+  │
+  └─ direct-ir result
+       - frontend provides syntax + IR facts directly
   │
   ▼
-syntaxFromAst
-  - converts parse nodes into flat syntax records
-  - preserves occurrence identity and spans
-  │
-  ▼
-bindArtifactIR
-  - creates symbols and resolutions
-  - records facts only; no diagnostics
-  │
-  ▼
-artifactGraphFromIR
-  - projects IR into graph nodes/edges for inspection
-  │
-  ▼
-checkArtifactIR / checkVanillaSchema
-  - user-facing constraints
-  - contract checks, refs, islands, props, styles, scripts
-  │
-  ▼
-validateArtifactIR / validateArtifactGraph
-  - compiler invariants
-  - catches malformed compiler output
+shared projection in compileArtifact
+  - artifactGraphFromIR
+  - checkArtifactIR / checkVanillaSchema where applicable
+  - validateArtifactIR / validateArtifactGraph
+  - contractFromIR
   │
   ▼
 emitTheme
@@ -66,13 +64,37 @@ emitTheme
   - Shopify schema generation
 ```
 
-`compileNazareArtifact()` runs the compile pipeline for one file. `buildNazareTheme()` runs compile, checks dependencies, then emits theme files.
+`compileArtifact()` runs the generic frontend-based compile pipeline. It selects a frontend, projects frontend output through shared compiler passes, and returns either `ok: true` with compiler facts or `ok: false` with diagnostics only. `compileNazareArtifact()` is the compatibility wrapper for `.nz.liquid`. `buildNazareTheme()` runs Nazare compile, checks dependencies, then emits theme files.
 
 ## Main entry points
 
+### `compileArtifact(options)`
+
+Compiles one artifact through a selected `CompilerFrontend`. It does **not** emit files.
+
+Selection order:
+
+1. explicit `frontend` option;
+2. caller-provided `frontends` whose `accepts(file, source)` returns true;
+3. built-in `nazareLiquidFrontend` for `.nz.liquid` files;
+4. unsupported-input diagnostic.
+
+Returns a discriminated result:
+
+- success: `ok: true` plus frontend-agnostic compiler data;
+- failure: `ok: false` plus diagnostics, with no fabricated semantic model.
+
+Success adds:
+
+- `frontend` — selected frontend name;
+- `frontendSupport` — source syntax features the frontend supports;
+- `contractProvenance` — `explicit`, `inferred`, `mixed`, or `none`;
+- `sourceForEmit` — source the emitter should use;
+- optional `ast` — present for the built-in Nazare Liquid frontend.
+
 ### `compileNazareArtifact(source, file, options?)`
 
-Compiles one artifact and returns structured compiler data. It does **not** emit files.
+Compiles one `.nz.liquid` artifact through `nazareLiquidFrontend` and returns structured compiler data. It does **not** emit files.
 
 Returns:
 
@@ -101,19 +123,27 @@ By default `emitOnError` is `true`, useful for tooling previews. Set `emitOnErro
 ## Minimal compile
 
 ```ts
-import { compileNazareArtifact } from "@nazare/compiler";
+import { compileArtifact, compileNazareArtifact } from "@nazare/compiler";
 
 const source = `{% props { title: string.required() } %}
 <h2>{{ props.title }}</h2>`;
 
-const result = compileNazareArtifact(source, "components/heading.nz.liquid");
+const generic = compileArtifact({
+	source,
+	file: "components/heading.nz.liquid",
+});
 
-if (!result.canEmit) {
-	console.error(result.issues);
+if (!generic.ok) {
+	console.error(generic.issues);
+	process.exit(1);
 }
 
-console.log(result.contract);
-console.log(result.ir.syntax.length);
+console.log(generic.frontend);
+console.log(generic.contract);
+console.log(generic.ir.syntax.length);
+
+const result = compileNazareArtifact(source, "components/heading.nz.liquid");
+console.log(result.ast.file);
 ```
 
 ## Compile with imports
@@ -162,6 +192,30 @@ Emitted file paths use Shopify directories:
 - `assets/<name>.css` when styles exist;
 - `assets/<name>.js` and `assets/nazare-runtime.js` when scripts exist.
 
+## Frontends
+
+A frontend is an explicit source-language adapter:
+
+```ts
+type CompilerFrontend = {
+	name: string;
+	accepts(file: string, source: string): boolean;
+	compile(input: CompileInput): FrontendResult;
+};
+```
+
+`FrontendResult` is discriminated:
+
+- `kind: "nazare-ast"` returns a `NazareAst`, dependency contracts, and resolve diagnostics. `compileArtifact()` performs syntax, IR, graph, check, validate, and contract projection.
+- `kind: "direct-ir"` returns syntax and IR directly. `compileArtifact()` still owns graph, shared IR checks, validation, and contract projection.
+
+Frontend metadata is separated from artifact facts:
+
+- `frontendSupport` describes syntax/features the selected frontend supports.
+- `contractProvenance` describes this artifact's contract source: `explicit`, `inferred`, `mixed`, or `none`.
+
+Unsupported input returns `{ ok: false, issues, notes, canEmit: false }`. It does not invent a contract, IR, or graph.
+
 ## Diagnostics
 
 Diagnostics use `Diagnostic` from `@nazare/core`.
@@ -182,10 +236,22 @@ Fields:
 ## Options
 
 ```ts
-type CompileNazareArtifactOptions = {
+type CompileInput = {
+	source: string;
+	file: string;
 	readFile?: (path: string) => string | undefined;
 	strictness?: "strict" | "loose";
 };
+
+type CompileArtifactOptions = CompileInput & {
+	frontend?: CompilerFrontend;
+	frontends?: CompilerFrontend[];
+};
+
+type CompileNazareArtifactOptions = Pick<
+	CompileInput,
+	"readFile" | "strictness"
+>;
 
 type BuildNazareThemeOptions = CompileNazareArtifactOptions & {
 	name: string;
@@ -199,6 +265,9 @@ type BuildNazareThemeOptions = CompileNazareArtifactOptions & {
 
 ## Design invariants
 
+- Frontend selection is explicit and deterministic.
+- Unsupported inputs return diagnostics without fabricated semantic facts.
+- Frontends adapt source languages; shared projection owns graph, checks, validation, and contract derivation.
 - Parse locates source facts.
 - Resolver owns project file access.
 - Syntax is flat and serializable.
