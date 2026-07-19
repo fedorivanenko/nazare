@@ -114,13 +114,13 @@ export function checkArtifactIR(
 }
 
 export type CheckContractConstraintsOptions = {
-	reportUncheckedExpressionTypes?: boolean;
+	reportUncheckedExpressionTypes: boolean;
 };
 
 export function checkContractConstraints(
 	ir: ArtifactIR,
 	contracts: ArtifactContract[] = [],
-	options: CheckContractConstraintsOptions = {},
+	options: CheckContractConstraintsOptions,
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const index = indexArtifactIR(ir);

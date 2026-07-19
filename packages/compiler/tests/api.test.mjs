@@ -210,7 +210,12 @@ test("check category APIs expose the strict check groups", () => {
 	const source = `<div></div>\n{% script %}\nconst refs = {};\nexport default island(({ refs }) => refs.missing);\n{% endscript %}`;
 	const compiled = compileNazareArtifact(source, "component.nz.liquid");
 
-	assert.deepEqual(checkContractConstraints(compiled.ir), []);
+	assert.deepEqual(
+		checkContractConstraints(compiled.ir, [], {
+			reportUncheckedExpressionTypes: true,
+		}),
+		[],
+	);
 	assert.ok(
 		checkComponentAuthoringConstraints(compiled.ir).some(
 			(issue) => issue.code === "CONSTRAINT_UNKNOWN_REF",
