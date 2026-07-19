@@ -518,7 +518,7 @@ export function uncheckedDataBindingType(
 	span: SourceSpan | undefined,
 ): Diagnostic {
 	return {
-		severity: "warning",
+		severity: "error",
 		code: "CONSTRAINT_UNCHECKED_DATA_BINDING_TYPE",
 		message: `data binding "${property}" on ref "${refName}" uses expression "${expression}" whose type cannot be mapped unambiguously to string, number, or boolean; it will be exposed to scripts as a string`,
 		nodeId,
@@ -642,7 +642,7 @@ export function uncheckedPropArgumentType(
 	span: SourceSpan | undefined,
 ): Diagnostic {
 	return {
-		severity: "warning",
+		severity: "error",
 		code: "CONSTRAINT_UNCHECKED_PROP_ARGUMENT_TYPE",
 		message: `Prop ${argumentName} expects ${expectedKind}, but the argument expression type is unknown and could not be checked statically`,
 		nodeId,

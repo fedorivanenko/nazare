@@ -257,7 +257,7 @@ Role: user-facing semantic checks.
 Findings:
 
 - `CompilerMode` default is `strict`. Good, documented.
-- `isAssignable()` returns true if either side is `unknown` for migration tolerance. Strict mode now surfaces typed render-site gaps with a warning instead of silently accepting them.
+- `isAssignable()` returns true if either side is `unknown` for migration tolerance inside the assignability relation. Strict mode now rejects typed render-site gaps with `CONSTRAINT_UNCHECKED_PROP_ARGUMENT_TYPE` before assignability can silently accept them.
 
 #### `packages/compiler/src/check-vanilla.ts`
 
@@ -402,9 +402,9 @@ Findings:
 
 ## Priority follow-ups
 
-1. Consider whether unchecked-type warnings should become errors in a future hard-strict mode.
+1. No blocking strict-unknown follow-up remains from this audit.
 
 
 ## Summary
 
-Plain Liquid frontend matches the requested shape: explicit frontend, explicit options, strict parse by default, explicit failure states, no regex semantic settings facts, unsupported dependency markup as errors, and pass-through emit gated by `canEmit` unless explicitly overridden. Worktree is green for compiler checks (`biome`, compiler typecheck, plain tests, full compiler tests). Remaining item is a broader compiler policy decision: whether unchecked-type warnings should become errors in a future hard-strict mode.
+Plain Liquid frontend matches the requested shape: explicit frontend, explicit options, strict parse by default, explicit failure states, no regex semantic settings facts, unsupported dependency markup as errors, and pass-through emit gated by `canEmit` unless explicitly overridden. Worktree is green for compiler checks (`biome`, compiler typecheck, plain tests, full compiler tests). Strict mode rejects unchecked render-argument and data-binding type gaps as errors.

@@ -68,11 +68,14 @@ const cases = [
 		expect: "CONSTRAINT_PROP_TYPE_MISMATCH",
 	},
 	{
-		name: "unchecked render argument type warns in strict mode",
+		name: "unchecked render argument type errors in strict mode",
 		files: { "link.nz.liquid": LINK },
 		src: `{% import Link from "./link.nz.liquid" %}\n{% render Link { href: "https://x.dev", text: dynamicTitle } %}`,
 		check: (r) => {
-			assert.ok(codes(r).includes("CONSTRAINT_UNCHECKED_PROP_ARGUMENT_TYPE"));
+			const unchecked = r.issues.find(
+				(issue) => issue.code === "CONSTRAINT_UNCHECKED_PROP_ARGUMENT_TYPE",
+			);
+			assert.equal(unchecked?.severity, "error");
 			const loose = compileNazareArtifact(r.source, "component.nz.liquid", {
 				readFile: (path) => ({ "link.nz.liquid": LINK })[path],
 				strictness: "loose",
@@ -260,12 +263,17 @@ const cases = [
 		expect: "CONSTRAINT_UNKNOWN_PROPS_REFERENCE",
 	},
 	{
-		name: "unchecked data binding type warns",
+		name: "unchecked data binding type errors",
 		src: `<div ref="root" data-step="{{ dynamicStep }}"></div>\n{% script %}\nexport default island(({ data }) => console.log(data.root.step));\n{% endscript %}`,
-		expect: "CONSTRAINT_UNCHECKED_DATA_BINDING_TYPE",
+		check: (r) => {
+			const unchecked = r.issues.find(
+				(issue) => issue.code === "CONSTRAINT_UNCHECKED_DATA_BINDING_TYPE",
+			);
+			assert.equal(unchecked?.severity, "error");
+		},
 	},
 	{
-		name: "mixed data binding type warns",
+		name: "mixed data binding type errors",
 		src: `{% props { value: number.or(string).required() } %}\n<div ref="root" data-value="{{ props.value }}"></div>\n{% script %}\nexport default island(({ data }) => console.log(data.root.value));\n{% endscript %}`,
 		expect: "CONSTRAINT_UNCHECKED_DATA_BINDING_TYPE",
 	},
