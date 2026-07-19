@@ -1,6 +1,8 @@
 ---
 // biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
 import CodeBlock from "../../components/CodeBlock.astro";
+// biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
+import Footer from "../../components/Footer.astro";
 
 // biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
 const nazareExample = [
@@ -64,5 +66,6 @@ const nazareExample = [
 				<CodeBlock code={nazareExample} language="nz.liquid" title="product-card.nz.liquid" />
 			</section>
 		</main>
+		<Footer />
 	</body>
 </html>

@@ -1,3 +1,140 @@
+---
+// biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
+import CodeBlock from "../components/CodeBlock.astro";
+// biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
+import Footer from "../components/Footer.astro";
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const installCommand = "curl -fsSL https://nazare.engineering/install | sh";
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const typesExample = [
+	'{% import ProductCard from "./product-card.nz.liquid" %}',
+	"{% props {",
+	"  product: ShopifyProduct.required(),",
+	"  showVendor: boolean.default(false),",
+	"} %}",
+	"",
+	"{% render ProductCard {",
+	"  product: props.product,",
+	"  showVendor: props.showVendor,",
+	"} %}",
+].join("\n");
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const diagnosticsExample = [
+	"✓ product matches Product",
+	"✓ showVendor expects boolean",
+	"✓ all required props provided",
+].join("\n");
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const workspaceExample = [
+	"themes/",
+	"  main-store",
+	"  outlet-store",
+	"  campaign-store",
+	"",
+	"packages/",
+	"  components",
+	"  styles",
+	"  utilities",
+].join("\n");
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const stackExample = `Nazare
+│
+├── Build
+│   ├── Types / built
+│   │   ├── .nz.liquid
+│   │   ├── Typed props
+│   │   ├── Explicit imports
+│   │   ├── Composition
+│   │   └── Liquid output
+│   │
+│   ├── Workspace / planned
+│   │   ├── Multiple themes in one repository
+│   │   ├── Shared packages
+│   │   └── Theme-specific outputs
+│   │
+│   ├── Assets / planned
+│   │   ├── CSS processing
+│   │   ├── JavaScript processing
+│   │   └── Asset transformations
+│   │
+│   ├── Extensions / built
+│   │   └── Custom .mjs secondary outputs
+│   │
+│   ├── Plugin API / planned
+│   │   ├── CSS hooks
+│   │   ├── JavaScript hooks
+│   │   └── Asset hooks
+│   │
+│   ├── Editor Tooling / planned
+│   │   ├── Diagnostics
+│   │   ├── Autocomplete
+│   │   └── Theme Check integration
+│   │
+│   ├── Dev / planned
+│   │   ├── Watch workspace and shared packages
+│   │   ├── Run build incrementally
+│   │   ├── Surface diagnostics
+│   │   └── Integrate with Shopify CLI preview
+│   │
+│   └── Validate / planned
+│       ├── Check templates
+│       ├── Check component usage
+│       └── Validate against storefront data
+│
+├── Registry
+│   ├── Components / built
+│   │   ├── Liquid
+│   │   ├── .nz.liquid
+│   │   ├── CSS
+│   │   ├── JavaScript
+│   │   └── Assets
+│   │
+│   ├── Private Registries / built
+│   │   ├── Internal design systems
+│   │   ├── Agency component libraries
+│   │   └── Store-specific components
+│   │
+│   └── Browser / planned
+│       ├── Browse components
+│       ├── Preview states
+│       ├── Test with mocked Shopify data
+│       └── Read installation documentation
+│
+├── Runtime / partial
+│   ├── Basic island runtime / built
+│   ├── Runtime asset emission / built
+│   ├── Load strategies / planned
+│   ├── Rehydration + Shopify section events / planned
+│   └── Framework adapters / planned
+│
+└── Inspect / partial
+    ├── AST, IR, schema, artifact, and graph output / built
+    ├── Theme structure / planned
+    ├── Dependency graph / planned
+    ├── Component and schema inventory / planned
+    ├── Duplication and dead-code analysis / planned
+    │
+    ├── Migrate / planned
+    │   ├── Consume Inspect output
+    │   ├── Create a Nazare workspace
+    │   └── Introduce Build and Types incrementally
+    │
+    ├── Intent / planned
+    │   ├── Theme dependency graph
+    │   ├── Storefront data model
+    │   └── Explicit context for AI agents
+    │
+    └── Bridge / planned
+        ├── Connect your own backend
+        ├── A/B tests and feature rollouts
+        └── Personalization and remote configuration`;
+---
+
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
@@ -17,7 +154,7 @@
 		<title>Nazare</title>
 		<meta
 			name="description"
-			content="Nazare is an easy-to-maintain and easy-to-update Liquid toolkit."
+			content="Nazare is a family of open-source tools for building native Shopify themes that are easier to build, share, maintain, and evolve."
 		/>
 	</head>
 	<body>
@@ -28,81 +165,143 @@
 			</nav>
 		</header>
 		<main class="site-shell stack">
-			<button
-				class="theme-toggle"
-				type="button"
-				onclick="setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark')"
-			>
-				Toggle theme
-			</button>
 			<section class="stack">
-				<h1 class="heading">Easy-to-maintain and easy-to-update Liquid in one toolkit.</h1>
+				<h1 class="heading">Nazare</h1>
 				<p class="muted">
-					Nazare brings type safety, reusable components, and whole-repo intelligence to
-					Shopify Liquid — without forcing you into a complex headless architecture.
+					Nazare is a family of open-source tools for building native Shopify themes that
+					are easier to build, share, maintain, and evolve.
 				</p>
 				<p>
-					Nazare is incrementally adoptable. Start with individual pieces like the
-					registry or types for your current Liquid theme, or adopt the full stack.
+					Add type-safe components, explicit dependencies, editable registries, and shared
+					storefront architecture without leaving Shopify’s themes.
 				</p>
-				<div>
-					<a href="https://github.com/fedorivanenko/nazare">View source</a>
-				</div>
+				<CodeBlock code={installCommand} language="bash" />
+				<p>
+					<a href="https://github.com/fedorivanenko/nazare">GitHub</a>
+				</p>
 			</section>
-			<section class="card stack">
-				<h2 class="heading">Right Now</h2>
-				<ul>
-					<li>
-						Install editable, styleless components from an open-source registry inspired
-						by shadcn/ui.
-					</li>
-					<li>
-						Get strong type-checking with clear validation errors, React-style
-						composition, and forget about prop drilling with a TS-inspired superset.
-					</li>
-					<li>
-						Organize source code in a developer-friendly, monorepo-style workspace while
-						compiling to a standard Shopify theme.
-					</li>
-					<li>
-						Have full support of your current Liquid theme with extra validation and
-						protection layer.
-					</li>
-				</ul>
+
+			<section class="stack">
+				<h2 class="heading">Improve the DX without leaving Liquid</h2>
+				<p>
+					Liquid was designed as a simple, safe templating language. But modern Shopify
+					themes are no longer simple.
+				</p>
+				<p>
+					As themes grow into large, long-lived systems, the relationships between
+					components, data, scripts, and templates remain mostly implicit. Developers
+					spend more time tracing dependencies, checking parameters, duplicating patterns,
+					testing manually, and avoiding unintended breakage.
+				</p>
+				<p>The usual response is to leave Liquid behind and rebuild headless.</p>
+				<p>Nazare takes a different approach:</p>
+				<p>→ keep Shopify’s native theme architecture and bring the best development primitives to it.</p>
 			</section>
-			<section class="card stack">
-				<h2 class="heading">Soon</h2>
-				<ul>
-					<li>
-						Deduplicate and minify CSS with an integrated pipeline and first-class
-						Tailwind support.
-					</li>
-					<li>
-						Control load strategies and hydration with a tiny JS island framework, or
-						bring any JS you want.
-					</li>
-					<li>
-						Get a hosted Storybook-style environment for browsing, testing, and
-						documenting components.
-					</li>
-					<li>Validate templates against typed storefront data before deployment.</li>
-					<li>
-						Give AI agents an explicit model of your theme and storefront so they can
-						understand and modify your codebase far more reliably.
-					</li>
-					<li>
-						Run A/B tests and personalize your storefront without bringing complex
-						headless solutions.
-					</li>
-				</ul>
-				<p>Plus LSP, dev server, theme-check iterations, and more.</p>
+
+			<section class="stack">
+				<h2 class="heading">Registry</h2>
+				<p><strong>Editable components for Shopify Liquid</strong></p>
+				<p>
+					Install styleless components directly into your project. Own the source, adapt
+					every line, and publish your own public or private registry.
+				</p>
+				<p>Develop and deploy your private registries to speed up development.</p>
+				<CodeBlock code="Components Gallery" language="text" />
+				<p>→ <a href="/registry">Browse Registry</a></p>
+			</section>
+
+			<section class="stack">
+				<h2 class="heading">Types</h2>
+				<p><strong>Safer, more composable Liquid</strong></p>
+				<p>
+					Add typed component interfaces, explicit imports, composition, and clear
+					diagnostics through <code>.nz.liquid</code>.
+				</p>
+				<p>Nazare compiles the additional syntax to standard Liquid before deployment.</p>
+				<CodeBlock code={typesExample} language="nz.liquid" />
+				<CodeBlock code={diagnosticsExample} language="text" />
+				<p>
+					Write with explicit interfaces and diagnostics during development and deploy
+					standard Shopify Liquid.
+				</p>
+				<p>→ <a href="/docs">Explore Types</a></p>
+			</section>
+
+			<section class="stack">
+				<h2 class="heading">Workspace</h2>
+				<p>Manage several Shopify themes and shared packages in one monorepo-style repository.</p>
+				<p>
+					Share components, styles, utilities, and storefront logic across themes while
+					keeping theme-specific code isolated.
+				</p>
+				<p>Each theme builds into a self-contained Shopify theme ready to deploy.</p>
+				<CodeBlock code={workspaceExample} language="text" />
+				<p>→ <a href="/docs">Explore Workspace</a></p>
+			</section>
+
+			<section class="stack">
+				<h2 class="heading">More of the stack</h2>
+				<p>
+					Nazare is growing into a complete development environment for native Shopify
+					storefronts.
+				</p>
+				<CodeBlock code={stackExample} language="text" />
+			</section>
+
+			<section class="stack">
+				<h2 class="heading">Adopt incrementally</h2>
+				<p>Nazare does not require a rewrite.</p>
+				<p>
+					Use each tool independently, or combine them as one integrated development
+					environment.
+				</p>
+				<p>
+					Start with one registry component. Add types to selected parts of your theme.
+					Move shared code into packages when it becomes useful.
+				</p>
+				<p>
+					Existing Liquid remains valid, and the deployed output stays compatible with
+					Shopify’s native theme system.
+				</p>
+			</section>
+
+			<section class="stack">
+				<h2 class="heading">Bring modern frontend ideas to Liquid</h2>
+				<p>
+					Over the past decade, JavaScript gained better ways to organize, compose,
+					validate, and understand frontend code: modules, typed interfaces, reusable
+					components, build graphs, registries, and intelligent editor tooling.
+				</p>
+				<p>Nazare brings those ideas to Liquid.</p>
+				<p>
+					Not by turning Liquid into JavaScript or replacing Shopify’s native runtime, but
+					by adapting the best patterns of modern frontend development to the way Shopify
+					themes actually work.
+				</p>
+			</section>
+
+			<section class="stack">
+				<h2 class="heading">Open source</h2>
+				<p>Nazare produces code you can inspect, change, and own.</p>
+				<p>
+					Registry components become part of your project. The compiler outputs standard
+					Liquid. Themes remain deployable through Shopify’s normal workflow.
+				</p>
+				<p>No proprietary storefront runtime. No forced replatforming.</p>
+			</section>
+
+			<section class="stack">
+				<h2 class="heading">Build native Shopify themes that stay easy to evolve</h2>
+				<p>Start with the tool you need today. Adopt more of the stack when it becomes useful.</p>
+				<p>
+					<a href="/docs">Get started</a> · <a href="https://github.com/fedorivanenko/nazare">View on GitHub</a>
+				</p>
+				<blockquote>
+					<p>One engineer can do a lot more today than a year ago.</p>
+					<cite>Jarred Sumner</cite>
+				</blockquote>
 			</section>
 		</main>
-		<script is:inline>
-			window.setTheme = (theme) => {
-				document.documentElement.dataset.theme = theme;
-				localStorage.setItem("theme", theme);
-			};
-		</script>
+		<Footer />
 	</body>
 </html>

@@ -105,7 +105,8 @@ a {
 	padding: 4rem 1.25rem;
 }
 
-.site-header {
+.site-header,
+.site-footer__inner {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -114,6 +115,19 @@ a {
 	max-width: var(--content-width);
 	margin-inline: auto;
 	padding: 1.25rem;
+}
+
+.site-footer {
+	margin-top: auto;
+	color: var(--muted-foreground);
+}
+
+.site-footer__links {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.75rem;
 }
 
 .stack {
