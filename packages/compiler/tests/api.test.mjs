@@ -24,11 +24,23 @@ test("generic compileArtifact selects the Nazare Liquid frontend", () => {
 		file: "component.nz.liquid",
 	});
 
+	assert.equal(compiled.ok, true);
 	assert.equal(compiled.frontend, "nazare-liquid");
 	assert.equal(compiled.canEmit, true);
 	assert.equal(compiled.contract.path, "component.nz.liquid");
-	assert.equal(compiled.capabilities.explicitContract, true);
+	assert.equal(compiled.frontendSupport.explicitPropsSyntax, true);
+	assert.equal(compiled.contractProvenance, "explicit");
 	assert.ok(compiled.ast);
+});
+
+test("Nazare Liquid contract provenance reports no explicit contract syntax", () => {
+	const compiled = compileArtifact({
+		source: "<div></div>",
+		file: "component.nz.liquid",
+	});
+
+	assert.equal(compiled.ok, true);
+	assert.equal(compiled.contractProvenance, "none");
 });
 
 test("compileArtifact reports unsupported input when no frontend matches", () => {
@@ -37,9 +49,11 @@ test("compileArtifact reports unsupported input when no frontend matches", () =>
 		file: "component.txt",
 	});
 
-	assert.equal(compiled.frontend, "unsupported");
+	assert.equal(compiled.ok, false);
+	assert.equal(compiled.frontend, undefined);
 	assert.equal(compiled.canEmit, false);
 	assert.equal(compiled.issues[0].code, "UNSUPPORTED_COMPILER_INPUT");
+	assert.equal("contract" in compiled, false);
 });
 
 test("compileArtifact honors an explicit frontend", () => {
@@ -50,6 +64,7 @@ test("compileArtifact honors an explicit frontend", () => {
 		frontend: nazareLiquidFrontend,
 	});
 
+	assert.equal(compiled.ok, true);
 	assert.equal(compiled.frontend, "nazare-liquid");
 	assert.ok(compiled.ast);
 });

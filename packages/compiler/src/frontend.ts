@@ -1,6 +1,5 @@
 import type {
 	ArtifactContract,
-	ArtifactGraph,
 	ArtifactIR,
 	ArtifactSyntaxNode,
 	Diagnostic,
@@ -18,32 +17,47 @@ export type CompileInput = {
 	strictness?: CompilerMode;
 };
 
-export type FrontendCapabilities = {
-	/** Contract facts came from explicit source-language syntax, not inference. */
-	explicitContract: boolean;
-	explicitProps: boolean;
-	explicitSchema: boolean;
-	explicitImports: boolean;
-	explicitBehavior: boolean;
-	/** Contract facts include best-effort inference and may need warnings. */
-	inferredContract: boolean;
+export type FrontendSupport = {
+	explicitPropsSyntax: boolean;
+	explicitSchemaSyntax: boolean;
+	explicitImportsSyntax: boolean;
+	explicitBehaviorSyntax: boolean;
+	rawInference: boolean;
 };
 
-export type FrontendResult = {
-	/** Frontend-owned AST, if callers need compatibility details. */
-	ast?: NazareAst;
-	/** Shared syntax/IR facts consumed by graph/check/emit. */
-	syntax: ArtifactSyntaxNode[];
-	ir: ArtifactIR;
-	graph: ArtifactGraph;
-	contract: ArtifactContract;
+export type ContractProvenance = "explicit" | "inferred" | "mixed" | "none";
+
+type FrontendResultBase = {
+	/** Dependency contracts discovered while resolving frontend imports. */
 	contracts: ArtifactContract[];
-	capabilities: FrontendCapabilities;
-	issues: Diagnostic[];
+	/** Frontend notes, already phase-marked if needed by the frontend. */
 	notes: Diagnostic[];
 	/** Source text the current emitter should operate on. */
-	sourceForEmit?: string;
+	sourceForEmit: string;
+	frontendSupport: FrontendSupport;
+	contractProvenance: ContractProvenance;
 };
+
+export type NazareAstFrontendResult = FrontendResultBase & {
+	kind: "nazare-ast";
+	/** Frontend-owned parse tree; shared projection happens in compileArtifact(). */
+	ast: NazareAst;
+	/** Resolve-phase diagnostics; compileArtifact() phase-marks and projects them. */
+	resolveIssues: Diagnostic[];
+};
+
+export type DirectIRFrontendResult = FrontendResultBase & {
+	kind: "direct-ir";
+	/** Source-language frontend syntax facts; graph/contract/checks happen centrally. */
+	syntax: ArtifactSyntaxNode[];
+	ir: ArtifactIR;
+	/** Contract key to use when deriving the artifact contract from IR. */
+	contractPath: string;
+	/** Frontend diagnostics that are not emitted by shared IR checks; compileArtifact() defaults unphased entries to parse. */
+	issues: Diagnostic[];
+};
+
+export type FrontendResult = NazareAstFrontendResult | DirectIRFrontendResult;
 
 export type CompilerFrontend = {
 	name: string;
@@ -51,11 +65,10 @@ export type CompilerFrontend = {
 	compile(input: CompileInput): FrontendResult;
 };
 
-export const NAZARE_LIQUID_CAPABILITIES: FrontendCapabilities = {
-	explicitContract: true,
-	explicitProps: true,
-	explicitSchema: true,
-	explicitImports: true,
-	explicitBehavior: true,
-	inferredContract: false,
+export const NAZARE_LIQUID_SUPPORT: FrontendSupport = {
+	explicitPropsSyntax: true,
+	explicitSchemaSyntax: true,
+	explicitImportsSyntax: true,
+	explicitBehaviorSyntax: true,
+	rawInference: false,
 };

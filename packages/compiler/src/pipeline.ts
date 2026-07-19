@@ -23,6 +23,13 @@ export type ProjectArtifactOptions = {
 	resolveIssues?: Diagnostic[];
 };
 
+export type ProjectIROptions = {
+	mode?: CompilerMode;
+	contracts?: ArtifactContract[];
+	issues?: Diagnostic[];
+	contractPath: string;
+};
+
 export type ProjectedArtifact = {
 	syntax: ArtifactSyntaxNode[];
 	ir: ArtifactIR;
@@ -43,16 +50,40 @@ export function projectArtifact(
 		...markDiagnostics(options.resolveIssues ?? [], "resolve"),
 		...markDiagnostics(ast.diagnostics, "parse"),
 		...markDiagnostics(checkVanillaSchema(ast), "check"),
-		...markDiagnostics(
-			checkArtifactIR(ir, contracts, { mode: options.mode }),
-			"check",
-		),
-		...markDiagnostics(validateArtifactIR(ir), "validate"),
-		...markDiagnostics(validateArtifactGraph(graph), "validate"),
+		...sharedIRIssues(ir, graph, contracts, options.mode),
 	];
 	const contract = contractFromIR(ir, ast.file, contracts);
 
 	return { syntax, ir, graph, issues, contract };
+}
+
+export function projectIR(
+	syntax: ArtifactSyntaxNode[],
+	ir: ArtifactIR,
+	options: ProjectIROptions,
+): ProjectedArtifact {
+	const contracts = options.contracts ?? [];
+	const graph = artifactGraphFromIR(ir);
+	const issues = [
+		...markDiagnostics(options.issues ?? [], "parse"),
+		...sharedIRIssues(ir, graph, contracts, options.mode),
+	];
+	const contract = contractFromIR(ir, options.contractPath, contracts);
+
+	return { syntax, ir, graph, issues, contract };
+}
+
+function sharedIRIssues(
+	ir: ArtifactIR,
+	graph: ArtifactGraph,
+	contracts: ArtifactContract[],
+	mode?: CompilerMode,
+): Diagnostic[] {
+	return [
+		...markDiagnostics(checkArtifactIR(ir, contracts, { mode }), "check"),
+		...markDiagnostics(validateArtifactIR(ir), "validate"),
+		...markDiagnostics(validateArtifactGraph(graph), "validate"),
+	];
 }
 
 export function markDiagnostics(

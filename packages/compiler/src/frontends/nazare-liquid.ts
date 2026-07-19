@@ -1,11 +1,13 @@
+import type { NazareAst } from "../ast.js";
 import {
 	type CompileInput,
 	type CompilerFrontend,
+	type ContractProvenance,
 	type FrontendResult,
-	NAZARE_LIQUID_CAPABILITIES,
+	NAZARE_LIQUID_SUPPORT,
 } from "../frontend.js";
 import { parseNazareLiquid } from "../parser.js";
-import { markDiagnostics, projectArtifact } from "../pipeline.js";
+import { markDiagnostics } from "../pipeline.js";
 import { resolveAssetImports, resolveComponentContracts } from "../resolver.js";
 
 export const nazareLiquidFrontend: CompilerFrontend = {
@@ -20,26 +22,25 @@ export const nazareLiquidFrontend: CompilerFrontend = {
 			input.readFile,
 		);
 		const assetResolution = resolveAssetImports(parsedAst, input.readFile);
-		const ast = assetResolution.ast;
-		const contracts = contractResolution.contracts;
-
-		const projected = projectArtifact(ast, {
-			contracts,
-			mode: input.strictness,
-			resolveIssues: contractResolution.issues,
-		});
 
 		return {
-			ast,
-			syntax: projected.syntax,
-			ir: projected.ir,
-			graph: projected.graph,
-			issues: projected.issues,
-			notes: markDiagnostics(ast.notes, "parse"),
-			contract: projected.contract,
-			contracts,
-			capabilities: NAZARE_LIQUID_CAPABILITIES,
+			kind: "nazare-ast",
+			ast: assetResolution.ast,
+			contracts: contractResolution.contracts,
+			resolveIssues: contractResolution.issues,
+			notes: markDiagnostics(assetResolution.ast.notes, "parse"),
 			sourceForEmit: input.source,
+			frontendSupport: NAZARE_LIQUID_SUPPORT,
+			contractProvenance: contractProvenance(assetResolution.ast),
 		};
 	},
 };
+
+function contractProvenance(ast: NazareAst): ContractProvenance {
+	const hasExplicitContractSyntax =
+		ast.schema !== undefined ||
+		ast.nodes.some(
+			(node) => node.type === "NazareComponent" || node.type === "NazareProps",
+		);
+	return hasExplicitContractSyntax ? "explicit" : "none";
+}

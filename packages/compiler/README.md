@@ -87,10 +87,16 @@ Selection order:
 3. built-in `nazareLiquidFrontend` for `.nz.liquid` files;
 4. unsupported-input diagnostic.
 
-Returns frontend-agnostic compiler data plus:
+Returns a discriminated result:
+
+- success: `ok: true` plus frontend-agnostic compiler data;
+- failure: `ok: false` plus diagnostics, with no fabricated semantic model.
+
+Success adds:
 
 - `frontend` — selected frontend name;
-- `capabilities` — explicit/inferred contract flags;
+- `frontendSupport` — source syntax features the frontend supports;
+- `contractProvenance` — `explicit`, `inferred`, `mixed`, or `none`;
 - `sourceForEmit` — source the emitter should use;
 - optional `ast` — present for the built-in Nazare Liquid frontend.
 
