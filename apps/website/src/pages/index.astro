@@ -3,6 +3,17 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="generator" content={Astro.generator} />
+		<script is:inline>
+			(() => {
+				try {
+					const theme = localStorage.getItem("theme");
+					if (theme === "dark" || theme === "light") {
+						document.documentElement.dataset.theme = theme;
+					}
+				} catch {}
+			})();
+		</script>
+		<link rel="stylesheet" href="/styles/global.css" />
 		<title>Nazare</title>
 		<meta
 			name="description"
@@ -10,16 +21,23 @@
 		/>
 	</head>
 	<body>
-		<header>
+		<header class="site-header">
 			<a href="/" aria-label="Nazare home">Nazare</a>
 			<nav aria-label="Primary navigation">
 				<a href="https://github.com/fedorivanenko/nazare">GitHub</a>
 			</nav>
 		</header>
-		<main>
-			<section>
-				<h1>Easy-to-maintain and easy-to-update Liquid in one toolkit.</h1>
-				<p>
+		<main class="site-shell stack">
+			<button
+				class="theme-toggle"
+				type="button"
+				onclick="setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark')"
+			>
+				Toggle theme
+			</button>
+			<section class="stack">
+				<h1 class="heading">Easy-to-maintain and easy-to-update Liquid in one toolkit.</h1>
+				<p class="muted">
 					Nazare brings type safety, reusable components, and whole-repo intelligence to
 					Shopify Liquid — without forcing you into a complex headless architecture.
 				</p>
@@ -31,8 +49,8 @@
 					<a href="https://github.com/fedorivanenko/nazare">View source</a>
 				</div>
 			</section>
-			<section>
-				<h2>Right Now</h2>
+			<section class="card stack">
+				<h2 class="heading">Right Now</h2>
 				<ul>
 					<li>
 						Install editable, styleless components from an open-source registry inspired
@@ -52,8 +70,8 @@
 					</li>
 				</ul>
 			</section>
-			<section>
-				<h2>Soon</h2>
+			<section class="card stack">
+				<h2 class="heading">Soon</h2>
 				<ul>
 					<li>
 						Deduplicate and minify CSS with an integrated pipeline and first-class
@@ -80,5 +98,11 @@
 				<p>Plus LSP, dev server, theme-check iterations, and more.</p>
 			</section>
 		</main>
+		<script is:inline>
+			window.setTheme = (theme) => {
+				document.documentElement.dataset.theme = theme;
+				localStorage.setItem("theme", theme);
+			};
+		</script>
 	</body>
 </html>

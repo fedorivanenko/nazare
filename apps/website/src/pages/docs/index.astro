@@ -3,6 +3,17 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="generator" content={Astro.generator} />
+		<script is:inline>
+			(() => {
+				try {
+					const theme = localStorage.getItem("theme");
+					if (theme === "dark" || theme === "light") {
+						document.documentElement.dataset.theme = theme;
+					}
+				} catch {}
+			})();
+		</script>
+		<link rel="stylesheet" href="/styles/global.css" />
 		<title>Docs | Nazare</title>
 		<meta
 			name="description"
@@ -10,13 +21,13 @@
 		/>
 	</head>
 	<body>
-		<header>
+		<header class="site-header">
 			<a href="/">Nazare</a>
 		</header>
-		<main>
-			<section>
-				<p>Documentation</p>
-				<h1>Docs route ready for generated content.</h1>
+		<main class="site-shell stack">
+			<section class="card stack">
+				<p class="muted">Documentation</p>
+				<h1 class="heading">Docs route ready for generated content.</h1>
 				<p>
 					This placeholder keeps <code>/docs</code> available. Later, generated docs can be
 					written into <code>src/content/docs</code> or emitted as Astro pages under
