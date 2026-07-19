@@ -22,7 +22,6 @@ import type {
 	NazareReferenceNode,
 	NazareScriptNode,
 	NazareStyleNode,
-	SettingsRead,
 } from "./ast.js";
 import {
 	controlFlowNotLowered,
@@ -50,7 +49,8 @@ import {
 import { isRelativeSpecifier, resolveImportPath } from "./paths.js";
 import { type LiquidRegion, scanRegionReferences } from "./references.js";
 import { scanScript } from "./script-scan.js";
-import { offsetFromPosition, spanFromOffsets } from "./source.js";
+import { scanSettingsReadsFromLiquidAst } from "./settings-reads.js";
+import { spanFromOffsets } from "./source.js";
 import { parseTypeExpression } from "./type-expression.js";
 
 const importPattern = /^([A-Za-z_$][\w$]*)\s+from\s+["']([^"']+)["']$/;
@@ -228,12 +228,9 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 	);
 
 	const schema = extractAuthoredSchema(ast, source, file);
-	const settingsReads = scanSettingsReads(
-		styleExtraction.blankedSource,
-		schema,
-		source,
-		file,
-	);
+	const settingsScan = scanSettingsReadsFromLiquidAst(ast, source, file);
+	diagnostics.push(...settingsScan.diagnostics);
+	const settingsReads = settingsScan.reads;
 
 	return {
 		file,
@@ -698,44 +695,6 @@ function extractAuthoredSchema(
 		};
 	}
 	return undefined;
-}
-
-/**
- * Literal section.settings.x / block.settings.x reads anywhere in the file,
- * control flow included — Liquid renders unknown settings silently blank,
- * so unmodeled regions must be scanned too. The schema block is excluded
- * (its JSON may mention setting paths in copy).
- */
-function scanSettingsReads(
-	scanSource: string,
-	schema: AuthoredSchema | undefined,
-	source: string,
-	file: string,
-): SettingsRead[] {
-	let scannable = scanSource;
-	if (schema) {
-		const start = offsetFromPosition(source, schema.span.start);
-		const end = offsetFromPosition(source, schema.span.end);
-		scannable =
-			scannable.slice(0, start) +
-			scannable.slice(start, end).replace(/[^\n]/g, " ") +
-			scannable.slice(end);
-	}
-
-	const reads: SettingsRead[] = [];
-	for (const match of scannable.matchAll(
-		/\b(section|block)\.settings\.([A-Za-z_][A-Za-z0-9_-]*)/g,
-	)) {
-		reads.push({
-			object: match[1] as "section" | "block",
-			name: match[2],
-			span: spanFromOffsets(source, file, {
-				start: match.index,
-				end: match.index + match[0].length,
-			}),
-		});
-	}
-	return reads;
 }
 
 function extractStyleBlocks(

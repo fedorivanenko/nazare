@@ -77,7 +77,8 @@ Selection order:
 1. explicit `frontend` option;
 2. caller-provided `frontends` whose `accepts(file, source)` returns true;
 3. built-in `nazareLiquidFrontend` for `.nz.liquid` files;
-4. unsupported-input diagnostic.
+4. built-in `plainLiquidFrontend` for plain `.liquid` files;
+5. unsupported-input diagnostic.
 
 Returns a discriminated result:
 
@@ -90,7 +91,27 @@ Success adds:
 - `frontendSupport` — source syntax features the frontend supports;
 - `contractProvenance` — `explicit`, `inferred`, `mixed`, or `none`;
 - `sourceForEmit` — source the emitter should use;
-- optional `ast` — present for the built-in Nazare Liquid frontend.
+- optional `ast` — present for the built-in Nazare Liquid frontend;
+- `frontendMetadata` — frontend-owned metadata for typed wrappers and tooling.
+
+Frontend-specific options travel through `frontendOptions`. The built-in plain Liquid frontend accepts `{ parseMode: "strict" | "tolerant" }`.
+
+Built-in frontend support:
+
+- `nazareLiquidFrontend` — `.nz.liquid` component frontend with explicit props/imports/behavior syntax;
+- `plainLiquidFrontend` — plain Shopify `.liquid` frontend for coexistence validation and dependency indexing.
+
+### `compilePlainLiquid(source, file)`
+
+Parses one existing Shopify `.liquid` file without interpreting Nazare syntax. Returns Liquid parse diagnostics, authored schema diagnostics, static/dynamic dependencies from `{% render %}`, `{% include %}`, `{% section %}`, `{% sections %}`, and `{% layout %}`, plus a `canEmit` flag. Strict parsing is the default; pass `{ parseMode: "tolerant" }` for editor/preview tooling.
+
+Use this for coexistence mode: legacy theme files stay plain Shopify Liquid, but the compiler can still validate and index them beside `.nz.liquid` components.
+
+### `buildPlainLiquid(source, file)`
+
+Runs `compilePlainLiquid()` and emits the source unchanged at the same theme-relative path when no error diagnostics exist. Pass `{ emitOnError: true }` for explicit preview-style pass-through output.
+
+`compilePlainLiquid()` is a typed convenience wrapper around `compileArtifact({ frontend: plainLiquidFrontend })`, so it shares the same frontend selection/projection path rather than maintaining a parallel compiler flow.
 
 ### `compileNazareArtifact(source, file, options?)`
 
