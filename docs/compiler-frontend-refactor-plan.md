@@ -40,7 +40,7 @@ compileNazareArtifact(source, file)
 → syntaxFromAst(ast)
 → bindArtifactIR(syntax)
 → check/validate/project
-→ CompileResult
+→ CompileArtifactResult
 
 buildNazareTheme(source, file)
 → compileNazareArtifact(source, file)
@@ -99,18 +99,34 @@ The key design choice: frontends must output compiler facts, not arbitrary rende
 Preferred long-term boundary:
 
 ```ts
-export type FrontendResult = {
-  ir: ArtifactIR;
-  contract: ArtifactContract;
+export type FrontendResult = NazareAstFrontendResult | DirectIRFrontendResult;
+
+export type NazareAstFrontendResult = {
+  kind: "nazare-ast";
+  ast: NazareAst;
   contracts: ArtifactContract[];
-  capabilities: FrontendCapabilities;
-  sourceForEmit?: string;
+  resolveIssues: Diagnostic[];
+  notes: Diagnostic[];
+  sourceForEmit: string;
+  frontendSupport: FrontendSupport;
+  contractProvenance: ContractProvenance;
+};
+
+export type DirectIRFrontendResult = {
+  kind: "direct-ir";
+  syntax: ArtifactSyntaxNode[];
+  ir: ArtifactIR;
+  contractPath: string;
+  contracts: ArtifactContract[];
   issues: Diagnostic[];
   notes: Diagnostic[];
+  sourceForEmit: string;
+  frontendSupport: FrontendSupport;
+  contractProvenance: ContractProvenance;
 };
 ```
 
-`ArtifactIR` is the shared semantic model. `NazareAst` remains implementation detail of the `.nz.liquid` frontend.
+`ArtifactIR` is the shared semantic model, but frontends should not own final `ArtifactIR`/`ArtifactGraph`/`ArtifactContract` projection unless they are a future direct-IR frontend. Current Nazare frontends return parse/resolution facts; direct-IR frontends can return `ArtifactIR`, but `compileArtifact()` still owns graph/check/validate/contract projection.
 
 Short-term bridge for raw Liquid may output virtual `.nz.liquid`, then delegate to the Nazare frontend. That is an implementation shortcut, not the final architecture.
 
@@ -135,16 +151,17 @@ export type CompilerFrontend = {
   compile(input: CompileInput): FrontendResult;
 };
 
-export type FrontendCapabilities = {
-  explicitContract: boolean;
-  explicitProps: boolean;
-  explicitSchema: boolean;
-  explicitImports: boolean;
-  explicitBehavior: boolean;
-  inferredContract: boolean;
+export type FrontendSupport = {
+  explicitPropsSyntax: boolean;
+  explicitSchemaSyntax: boolean;
+  explicitImportsSyntax: boolean;
+  explicitBehaviorSyntax: boolean;
+  rawInference: boolean;
 };
 
-export function compileArtifact(options: CompileArtifactOptions): CompileResult;
+export type ContractProvenance = "explicit" | "inferred" | "mixed" | "none";
+
+export function compileArtifact(options: CompileArtifactOptions): CompileArtifactResult;
 ```
 
 Selection order:
@@ -165,12 +182,15 @@ These call `compileArtifact({ frontend: nazareLiquidFrontend, ... })`.
 
 ## Result model
 
-`CompileResult` should become frontend-agnostic:
+`CompileArtifactResult` is frontend-agnostic and discriminated:
 
 ```ts
-export type CompileResult = {
+export type CompileArtifactResult = CompileArtifactSuccess | CompileArtifactFailure;
+
+export type CompileArtifactSuccess = {
+  ok: true;
   frontend: string;
-  syntax?: ArtifactSyntaxNode[];
+  syntax: ArtifactSyntaxNode[];
   ir: ArtifactIR;
   graph: ArtifactGraph;
   issues: Diagnostic[];
@@ -178,8 +198,17 @@ export type CompileResult = {
   canEmit: boolean;
   contract: ArtifactContract;
   contracts: ArtifactContract[];
-  capabilities: FrontendCapabilities;
-  sourceForEmit?: string;
+  frontendSupport: FrontendSupport;
+  contractProvenance: ContractProvenance;
+  sourceForEmit: string;
+};
+
+export type CompileArtifactFailure = {
+  ok: false;
+  frontend?: string;
+  issues: Diagnostic[];
+  notes: Diagnostic[];
+  canEmit: false;
 };
 ```
 
@@ -292,7 +321,7 @@ This removes virtual source and makes raw Liquid a real frontend.
 Checks need capability-aware gates.
 
 ```text
-FrontendCapabilities + CompilerMode
+FrontendSupport + ContractProvenance + CompilerMode
 → enabled check set
 ```
 
@@ -404,7 +433,7 @@ Browse should not require compiler. If Browse later gets live previews, that pre
 
 ### Phase 1: extract frontend seam
 
-- Add `CompilerFrontend`, `CompileInput`, `FrontendResult`, `FrontendCapabilities` types.
+- Add `CompilerFrontend`, `CompileInput`, `FrontendResult`, `FrontendSupport`, and `ContractProvenance` types.
 - Move current hardcoded path into `nazareLiquidFrontend`.
 - Add `compileArtifact()` generic entry point.
 - Implement `compileNazareArtifact()` as wrapper.
@@ -412,8 +441,8 @@ Browse should not require compiler. If Browse later gets live previews, that pre
 
 ### Phase 2: make pipeline frontend-agnostic
 
-- Make generic `CompileResult` not require `ast`.
-- Gate checks by capabilities.
+- Make generic `CompileArtifactResult` not require `ast` and return no semantic model on failure.
+- Gate checks by frontend support and contract provenance.
 - Audit `emitTheme()` for parser-specific assumptions.
 - Move required emit facts into `ArtifactIR`/contracts.
 
