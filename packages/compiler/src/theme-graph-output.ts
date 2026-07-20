@@ -2,6 +2,7 @@ import type {
 	InspectNazareThemeResult,
 	SemanticThemeGraphEdge,
 	SemanticThemeGraphNode,
+	ThemeImpactSummary,
 	ThemeReference,
 	ThemeSemanticModel,
 } from "./theme-facts.js";
@@ -453,8 +454,84 @@ export function themeGraphFromModel(
 		nodes: nodes.sort((a, b) => a.id.localeCompare(b.id)),
 		edges: edges.sort((a, b) => a.id.localeCompare(b.id)),
 		evidence: model.evidence,
+		impact: impactSummary(model),
 		issues: model.issues,
 	};
+}
+
+function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
+	const declarationPathById = new Map(
+		model.declarations.map((declaration) => [declaration.id, declaration.path]),
+	);
+	const dependencies = new Map<string, Set<string>>();
+	const dependents = new Map<string, Set<string>>();
+	const add = (from: string, to: string | undefined) => {
+		if (!to || from === to) return;
+		dependencies.set(from, dependencies.get(from) ?? new Set());
+		dependencies.get(from)?.add(to);
+		dependents.set(to, dependents.get(to) ?? new Set());
+		dependents.get(to)?.add(from);
+	};
+	for (const reference of model.references) {
+		add(
+			reference.fromPath,
+			reference.resolvedDeclarationId
+				? declarationPathById.get(reference.resolvedDeclarationId)
+				: undefined,
+		);
+	}
+	for (const instance of model.sectionInstances) {
+		add(
+			instance.templatePath,
+			instance.resolvedDeclarationId
+				? declarationPathById.get(instance.resolvedDeclarationId)
+				: undefined,
+		);
+	}
+	const affectedPages = new Map<string, Set<string>>();
+	for (const page of model.pages) {
+		const visited = new Set<string>();
+		const stack = [page.path];
+		while (stack.length > 0) {
+			const path = stack.pop();
+			if (!path || visited.has(path)) continue;
+			visited.add(path);
+			affectedPages.set(path, affectedPages.get(path) ?? new Set());
+			affectedPages.get(path)?.add(page.path);
+			for (const dependency of dependencies.get(path) ?? [])
+				stack.push(dependency);
+		}
+	}
+	const declaredFiles = new Set(model.files.map((file) => file.path));
+	const entryFiles = new Set([
+		...model.pages.map((page) => page.path),
+		...model.declarations
+			.filter(
+				(declaration) =>
+					declaration.kind === "layout" || declaration.kind === "locale",
+			)
+			.map((declaration) => declaration.path),
+	]);
+	const referencedFiles = new Set([...dependents.keys(), ...entryFiles]);
+	return {
+		dependencies: sortedRecord(dependencies),
+		dependents: sortedRecord(dependents),
+		affectedPages: sortedRecord(affectedPages),
+		unusedFiles: [...declaredFiles]
+			.filter((path) => !referencedFiles.has(path))
+			.sort((a, b) => a.localeCompare(b)),
+	};
+}
+
+function sortedRecord(map: Map<string, Set<string>>): Record<string, string[]> {
+	return Object.fromEntries(
+		[...map.entries()]
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([key, values]) => [
+				key,
+				[...values].sort((a, b) => a.localeCompare(b)),
+			]),
+	);
 }
 
 function unresolvedNodeId(reference: ThemeReference): string {

@@ -565,11 +565,19 @@ export type SemanticThemeGraphEdge =
 			targetName?: string;
 	  };
 
+export type ThemeImpactSummary = {
+	dependencies: Record<string, string[]>;
+	dependents: Record<string, string[]>;
+	affectedPages: Record<string, string[]>;
+	unusedFiles: string[];
+};
+
 export interface InspectNazareThemeResult {
 	version: 1;
 	root: string;
 	nodes: SemanticThemeGraphNode[];
 	edges: SemanticThemeGraphEdge[];
 	evidence: ThemeEvidenceRecord[];
+	impact: ThemeImpactSummary;
 	issues: Diagnostic[];
 }
