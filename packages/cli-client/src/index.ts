@@ -318,7 +318,15 @@ async function runInspect(
 		output.error(`Unsupported inspect format ${format}; expected json`);
 		return 1;
 	}
-	const root = resolve(projectRoot, dirArg ?? ".");
+	const inspectRoot =
+		dirArg ?? (await readProjectManifest(projectRoot)).build?.sourceRoot;
+	if (!inspectRoot) {
+		output.error(
+			'Usage: nazare inspect theme [dir] --format json (or set "build.sourceRoot" in nazare.theme.json)',
+		);
+		return 1;
+	}
+	const root = resolve(projectRoot, inspectRoot);
 	if (isOutsideRoot(projectRoot, root)) {
 		output.error(`${root} is outside the project root ${projectRoot}`);
 		return 1;
