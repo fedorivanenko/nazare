@@ -6,6 +6,7 @@ import type {
 	ThemeSemanticModel,
 } from "./theme-facts.js";
 import {
+	blockId,
 	dataObjectId,
 	dataPropertyId,
 	fileId,
@@ -104,6 +105,21 @@ export function themeGraphFromModel(
 			to: declaration.id,
 		});
 	}
+	for (const page of model.pages) {
+		pushNode({
+			id: page.id,
+			kind: "page",
+			name: page.name,
+			path: page.path,
+			pageType: page.pageType,
+		});
+		pushEdge({
+			id: `edge:pageUsesTemplate:${page.id}->${page.templateDeclarationId}`,
+			kind: "pageUsesTemplate",
+			from: page.id,
+			to: page.templateDeclarationId,
+		});
+	}
 	for (const schema of model.schemas) {
 		pushNode({
 			id: schema.id,
@@ -131,6 +147,37 @@ export function themeGraphFromModel(
 			id: `edge:definesSetting:${schemaId(setting.path, setting.schemaPath)}->${setting.id}`,
 			kind: "definesSetting",
 			from: schemaId(setting.path, setting.schemaPath),
+			to: setting.id,
+		});
+	}
+	for (const block of model.blocks) {
+		pushNode({
+			id: block.id,
+			kind: "block",
+			path: block.path,
+			blockType: block.blockType,
+			name: block.name,
+		});
+		pushEdge({
+			id: `edge:definesBlock:${fileId(block.path)}->${block.id}`,
+			kind: "definesBlock",
+			from: fileId(block.path),
+			to: block.id,
+		});
+	}
+	for (const setting of model.blockSettings) {
+		pushNode({
+			id: setting.id,
+			kind: "blockSetting",
+			path: setting.path,
+			blockType: setting.blockType,
+			settingId: setting.settingId,
+			settingType: setting.settingType,
+		});
+		pushEdge({
+			id: `edge:definesBlockSetting:${blockId(setting.path, setting.blockType)}->${setting.id}`,
+			kind: "definesBlockSetting",
+			from: blockId(setting.path, setting.blockType),
 			to: setting.id,
 		});
 	}

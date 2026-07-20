@@ -96,6 +96,61 @@ test("template JSON sections create section instances", () => {
 	assert.ok(graph.edges.some((edge) => edge.kind === "instanceOf"));
 });
 
+test("templates create page composition nodes", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "templates/product.json",
+			contents: JSON.stringify({ sections: {} }),
+		},
+	]);
+
+	assert.ok(
+		graph.nodes.some(
+			(node) =>
+				node.kind === "page" &&
+				node.path === "templates/product.json" &&
+				node.pageType === "product",
+		),
+	);
+	assert.ok(graph.edges.some((edge) => edge.kind === "pageUsesTemplate"));
+});
+
+test("section schemas create block and block setting nodes", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "sections/main.liquid",
+			contents: `{% schema %}${JSON.stringify({
+				blocks: [
+					{
+						type: "feature",
+						name: "Feature",
+						settings: [{ type: "text", id: "heading" }],
+					},
+				],
+			})}{% endschema %}`,
+		},
+	]);
+
+	assert.ok(
+		graph.nodes.some(
+			(node) =>
+				node.kind === "block" &&
+				node.path === "sections/main.liquid" &&
+				node.blockType === "feature",
+		),
+	);
+	assert.ok(
+		graph.nodes.some(
+			(node) =>
+				node.kind === "blockSetting" &&
+				node.blockType === "feature" &&
+				node.settingId === "heading",
+		),
+	);
+	assert.ok(graph.edges.some((edge) => edge.kind === "definesBlock"));
+	assert.ok(graph.edges.some((edge) => edge.kind === "definesBlockSetting"));
+});
+
 test("settings_schema settings point at existing schema nodes", () => {
 	const graph = inspectNazareTheme([
 		{

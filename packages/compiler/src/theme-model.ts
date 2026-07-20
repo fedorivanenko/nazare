@@ -1,5 +1,7 @@
 import type { Diagnostic } from "@nazare/core";
 import type {
+	ThemeBlockRecord,
+	ThemeBlockSettingRecord,
 	ThemeCapabilityRecord,
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
@@ -7,6 +9,7 @@ import type {
 	ThemeExpectedInputRecord,
 	ThemeFact,
 	ThemeFileRecord,
+	ThemePageRecord,
 	ThemeReference,
 	ThemeRenderArgumentRecord,
 	ThemeRenderSiteRecord,
@@ -26,6 +29,8 @@ export function buildThemeSemanticModel(
 	const declarations: ThemeDeclaration[] = [];
 	const schemas: ThemeSchemaRecord[] = [];
 	const settings: ThemeSettingRecord[] = [];
+	const blocks: ThemeBlockRecord[] = [];
+	const blockSettings: ThemeBlockSettingRecord[] = [];
 	const sectionInstances: ThemeSectionInstanceRecord[] = [];
 	const settingReads: ThemeSettingReadRecord[] = [];
 	const dataAccesses: ThemeDataAccessRecord[] = [];
@@ -85,6 +90,25 @@ export function buildThemeSemanticModel(
 				id: settingId(fact.path, fact.schemaPath, fact.settingId),
 				path: fact.path,
 				schemaPath: fact.schemaPath,
+				settingId: fact.settingId,
+				settingType: fact.settingType,
+				span: fact.span,
+			});
+		}
+		if (fact.kind === "declaresBlock") {
+			blocks.push({
+				id: blockId(fact.path, fact.blockType),
+				path: fact.path,
+				blockType: fact.blockType,
+				name: fact.name,
+				span: fact.span,
+			});
+		}
+		if (fact.kind === "definesBlockSetting") {
+			blockSettings.push({
+				id: blockSettingId(fact.path, fact.blockType, fact.settingId),
+				path: fact.path,
+				blockType: fact.blockType,
 				settingId: fact.settingId,
 				settingType: fact.settingType,
 				span: fact.span,
@@ -234,6 +258,7 @@ export function buildThemeSemanticModel(
 		if (declaration) instance.resolvedDeclarationId = declaration.id;
 	}
 
+	const pages = pageRecords(declarations);
 	const expectedInputs = expectedInputRecords(declarations, dataAccesses);
 	const renderSites = renderSiteRecords(references, renderArguments);
 	addInputDiagnostics(
@@ -301,9 +326,14 @@ export function buildThemeSemanticModel(
 		references: references.sort((a, b) => a.id.localeCompare(b.id)),
 		schemas: dedupeById(schemas).sort((a, b) => a.id.localeCompare(b.id)),
 		settings: dedupeById(settings).sort((a, b) => a.id.localeCompare(b.id)),
+		blocks: dedupeById(blocks).sort((a, b) => a.id.localeCompare(b.id)),
+		blockSettings: dedupeById(blockSettings).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
 		sectionInstances: dedupeById(sectionInstances).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
+		pages: dedupeById(pages).sort((a, b) => a.id.localeCompare(b.id)),
 		settingReads: dedupeById(settingReads).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
@@ -325,6 +355,23 @@ export function buildThemeSemanticModel(
 		evidence: dedupeById(evidence).sort((a, b) => a.id.localeCompare(b.id)),
 		issues: modelIssues,
 	};
+}
+
+function pageRecords(declarations: ThemeDeclaration[]): ThemePageRecord[] {
+	return declarations
+		.filter((declaration) => declaration.kind === "template")
+		.map((declaration) => ({
+			id: pageId(declaration.path),
+			path: declaration.path,
+			name: declaration.name,
+			pageType: pageTypeFromTemplateName(declaration.name),
+			templateDeclarationId: declaration.id,
+		}));
+}
+
+function pageTypeFromTemplateName(name: string): string {
+	const [pageType] = name.split(".");
+	return pageType || "unknown";
 }
 
 function evidenceRecords(records: {
@@ -626,6 +673,22 @@ export function settingId(
 	id: string,
 ): string {
 	return `setting:${path}:${schemaPath}:${id}`;
+}
+
+export function blockId(path: string, blockType: string): string {
+	return `block:${path}:${blockType}`;
+}
+
+export function blockSettingId(
+	path: string,
+	blockType: string,
+	settingId: string,
+): string {
+	return `block-setting:${path}:${blockType}:${settingId}`;
+}
+
+export function pageId(path: string): string {
+	return `page:${path}`;
 }
 
 export function sectionInstanceId(
