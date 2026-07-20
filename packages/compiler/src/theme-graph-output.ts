@@ -2,6 +2,7 @@ import type {
 	InspectNazareThemeResult,
 	SemanticThemeGraphEdge,
 	SemanticThemeGraphNode,
+	ThemeGraphViews,
 	ThemeImpactSummary,
 	ThemeReference,
 	ThemeSemanticModel,
@@ -448,14 +449,105 @@ export function themeGraphFromModel(
 		}
 	}
 
+	const sortedNodes = nodes.sort((a, b) => a.id.localeCompare(b.id));
+	const sortedEdges = edges.sort((a, b) => a.id.localeCompare(b.id));
 	return {
 		version: 1,
 		root: model.root,
-		nodes: nodes.sort((a, b) => a.id.localeCompare(b.id)),
-		edges: edges.sort((a, b) => a.id.localeCompare(b.id)),
+		nodes: sortedNodes,
+		edges: sortedEdges,
 		evidence: model.evidence,
 		impact: impactSummary(model),
+		views: graphViews(sortedNodes, sortedEdges),
 		issues: model.issues,
+	};
+}
+
+function graphViews(
+	nodes: SemanticThemeGraphNode[],
+	edges: SemanticThemeGraphEdge[],
+): ThemeGraphViews {
+	const view = (
+		nodeKinds: Set<SemanticThemeGraphNode["kind"]>,
+		edgeKinds: Set<SemanticThemeGraphEdge["kind"]>,
+	) => ({
+		nodeIds: nodes
+			.filter((node) => nodeKinds.has(node.kind))
+			.map((node) => node.id)
+			.sort((a, b) => a.localeCompare(b)),
+		edgeIds: edges
+			.filter((edge) => edgeKinds.has(edge.kind))
+			.map((edge) => edge.id)
+			.sort((a, b) => a.localeCompare(b)),
+	});
+	return {
+		themeStructure: view(
+			new Set([
+				"file",
+				"template",
+				"section",
+				"sectionInstance",
+				"snippet",
+				"component",
+				"asset",
+				"layout",
+			]),
+			new Set([
+				"declares",
+				"renders",
+				"imports",
+				"referencesAsset",
+				"templateContainsSection",
+				"templateContainsSectionInstance",
+				"instanceOf",
+			]),
+		),
+		shopifyData: view(
+			new Set(["file", "shopifyObject", "shopifyProperty"]),
+			new Set(["accessesData", "declares"]),
+		),
+		storefrontArchitecture: view(
+			new Set([
+				"page",
+				"template",
+				"sectionInstance",
+				"section",
+				"snippet",
+				"capability",
+				"classification",
+			]),
+			new Set([
+				"pageUsesTemplate",
+				"templateContainsSectionInstance",
+				"instanceOf",
+				"renders",
+				"hasCapability",
+				"classifiedAs",
+			]),
+		),
+		configuration: view(
+			new Set([
+				"file",
+				"schema",
+				"setting",
+				"block",
+				"blockSetting",
+				"locale",
+				"localeKey",
+			]),
+			new Set([
+				"definesSchema",
+				"definesSetting",
+				"definesBlock",
+				"definesBlockSetting",
+				"readsSetting",
+				"referencesLocaleKey",
+			]),
+		),
+		changeImpact: view(
+			new Set(nodes.map((node) => node.kind)),
+			new Set(edges.map((edge) => edge.kind)),
+		),
 	};
 }
 

@@ -565,6 +565,19 @@ export type SemanticThemeGraphEdge =
 			targetName?: string;
 	  };
 
+export type ThemeGraphView = {
+	nodeIds: string[];
+	edgeIds: string[];
+};
+
+export type ThemeGraphViews = {
+	themeStructure: ThemeGraphView;
+	shopifyData: ThemeGraphView;
+	storefrontArchitecture: ThemeGraphView;
+	configuration: ThemeGraphView;
+	changeImpact: ThemeGraphView;
+};
+
 export type ThemeImpactSummary = {
 	dependencies: Record<string, string[]>;
 	dependents: Record<string, string[]>;
@@ -579,5 +592,6 @@ export interface InspectNazareThemeResult {
 	edges: SemanticThemeGraphEdge[];
 	evidence: ThemeEvidenceRecord[];
 	impact: ThemeImpactSummary;
+	views: ThemeGraphViews;
 	issues: Diagnostic[];
 }
