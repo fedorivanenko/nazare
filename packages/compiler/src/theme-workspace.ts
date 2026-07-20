@@ -24,6 +24,7 @@ import { collectJsonThemeFacts } from "./theme-json-facts.js";
 import { collectPlainLiquidThemeFacts } from "./theme-liquid-facts.js";
 import { buildThemeSemanticModel } from "./theme-model.js";
 import { collectNazareThemeFacts } from "./theme-nazare-facts.js";
+import { collectSourceThemeFacts } from "./theme-source-facts.js";
 
 export function analyzeNazareTheme(
 	files: ThemeInputFile[],
@@ -118,6 +119,9 @@ function analyzeNormalizedThemeFiles(
 	for (const file of files) {
 		const fileKind = classifyThemeFile(file.path);
 		facts.push({ kind: "file", path: file.path, fileKind });
+		if (file.path.endsWith(".liquid")) {
+			facts.push(...collectSourceThemeFacts(file.path, file.contents));
+		}
 		if (fileKind === "asset") {
 			facts.push({
 				kind: "declaresAsset",

@@ -1,11 +1,14 @@
 import type { Diagnostic } from "@nazare/core";
 import type {
+	ThemeDataAccessRecord,
 	ThemeDeclaration,
 	ThemeFact,
 	ThemeFileRecord,
 	ThemeReference,
+	ThemeRenderArgumentRecord,
 	ThemeSchemaRecord,
 	ThemeSemanticModel,
+	ThemeSettingReadRecord,
 	ThemeSettingRecord,
 } from "./theme-facts.js";
 
@@ -18,6 +21,9 @@ export function buildThemeSemanticModel(
 	const declarations: ThemeDeclaration[] = [];
 	const schemas: ThemeSchemaRecord[] = [];
 	const settings: ThemeSettingRecord[] = [];
+	const settingReads: ThemeSettingReadRecord[] = [];
+	const dataAccesses: ThemeDataAccessRecord[] = [];
+	const renderArguments: ThemeRenderArgumentRecord[] = [];
 
 	for (const fact of facts) {
 		if (fact.kind === "file") {
@@ -60,6 +66,37 @@ export function buildThemeSemanticModel(
 				schemaPath: fact.schemaPath,
 				settingId: fact.settingId,
 				settingType: fact.settingType,
+				span: fact.span,
+			});
+		}
+		if (fact.kind === "readsSetting") {
+			settingReads.push({
+				id: settingReadId(fact.fromPath, fact.settingObject, fact.settingId),
+				fromPath: fact.fromPath,
+				settingObject: fact.settingObject,
+				settingId: fact.settingId,
+				span: fact.span,
+			});
+		}
+		if (fact.kind === "readsShopifyData") {
+			dataAccesses.push({
+				id: dataAccessId(fact.fromPath, fact.expression),
+				fromPath: fact.fromPath,
+				object: fact.object,
+				propertyPath: fact.propertyPath,
+				expression: fact.expression,
+				span: fact.span,
+			});
+		}
+		if (fact.kind === "passesRenderArgument") {
+			renderArguments.push({
+				id: renderArgumentId(fact.fromPath, fact.targetName, fact.argumentName),
+				fromPath: fact.fromPath,
+				targetName: fact.targetName,
+				argumentName: fact.argumentName,
+				valueExpression: fact.valueExpression,
+				sourceObject: fact.sourceObject,
+				sourcePath: fact.sourcePath,
 				span: fact.span,
 			});
 		}
@@ -170,6 +207,19 @@ export function buildThemeSemanticModel(
 		}
 	}
 
+	const settingByPathAndId = new Map(
+		settings.map((setting) => [
+			`${setting.path}:${setting.settingId}`,
+			setting,
+		]),
+	);
+	for (const read of settingReads) {
+		const setting = settingByPathAndId.get(
+			`${read.fromPath}:${read.settingId}`,
+		);
+		if (setting) read.resolvedSettingId = setting.id;
+	}
+
 	for (const ref of references) {
 		if (!ref.static || ref.resolvedDeclarationId) continue;
 		const targetKey = ref.targetName
@@ -204,6 +254,15 @@ export function buildThemeSemanticModel(
 		references: references.sort((a, b) => a.id.localeCompare(b.id)),
 		schemas: dedupeById(schemas).sort((a, b) => a.id.localeCompare(b.id)),
 		settings: dedupeById(settings).sort((a, b) => a.id.localeCompare(b.id)),
+		settingReads: dedupeById(settingReads).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
+		dataAccesses: dedupeById(dataAccesses).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
+		renderArguments: dedupeById(renderArguments).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
 		issues: modelIssues,
 	};
 }
@@ -267,4 +326,32 @@ export function settingId(
 	id: string,
 ): string {
 	return `setting:${path}:${schemaPath}:${id}`;
+}
+
+export function settingReadId(
+	path: string,
+	settingObject: string,
+	settingId: string,
+): string {
+	return `setting-read:${path}:${settingObject}:${settingId}`;
+}
+
+export function dataObjectId(object: string): string {
+	return `shopify-object:${object}`;
+}
+
+export function dataPropertyId(object: string, propertyPath: string): string {
+	return `shopify-property:${object}.${propertyPath}`;
+}
+
+export function dataAccessId(path: string, expression: string): string {
+	return `data-access:${path}:${expression}`;
+}
+
+export function renderArgumentId(
+	path: string,
+	targetName: string,
+	argumentName: string,
+): string {
+	return `render-argument:${path}:${targetName}:${argumentName}`;
 }

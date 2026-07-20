@@ -146,9 +146,12 @@ export type {
 	SemanticThemeGraphNode,
 	ThemeAnalysis,
 	ThemeBuildResult,
+	ThemeDataAccessRecord,
 	ThemeFact,
 	ThemeInputFile,
+	ThemeRenderArgumentRecord,
 	ThemeSemanticModel,
+	ThemeSettingReadRecord,
 } from "./theme-facts.js";
 export {
 	analyzeNazareTheme,

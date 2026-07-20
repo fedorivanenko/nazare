@@ -5,7 +5,12 @@ import type {
 	ThemeReference,
 	ThemeSemanticModel,
 } from "./theme-facts.js";
-import { fileId, schemaId } from "./theme-model.js";
+import {
+	dataObjectId,
+	dataPropertyId,
+	fileId,
+	schemaId,
+} from "./theme-model.js";
 
 export function themeGraphFromModel(
 	model: ThemeSemanticModel,
@@ -112,6 +117,107 @@ export function themeGraphFromModel(
 			from: schemaId(setting.path, setting.schemaPath),
 			to: setting.id,
 		});
+	}
+	for (const settingRead of model.settingReads) {
+		const to =
+			settingRead.resolvedSettingId ??
+			`unresolved:setting:${settingRead.settingObject}:${settingRead.settingId}`;
+		if (!settingRead.resolvedSettingId) {
+			pushNode({
+				id: to,
+				kind: "unresolved",
+				targetKind: "setting",
+				name: `${settingRead.settingObject}.settings.${settingRead.settingId}`,
+			});
+		}
+		pushEdge({
+			id: `edge:readsSetting:${settingRead.id}`,
+			kind: "readsSetting",
+			from: fileId(settingRead.fromPath),
+			to,
+		});
+	}
+	for (const dataAccess of model.dataAccesses) {
+		const objectId = dataObjectId(dataAccess.object);
+		pushNode({
+			id: objectId,
+			kind: "shopifyObject",
+			object: dataAccess.object,
+		});
+		const to = dataAccess.propertyPath
+			? dataPropertyId(dataAccess.object, dataAccess.propertyPath)
+			: objectId;
+		if (dataAccess.propertyPath) {
+			pushNode({
+				id: to,
+				kind: "shopifyProperty",
+				object: dataAccess.object,
+				propertyPath: dataAccess.propertyPath,
+			});
+			pushEdge({
+				id: `edge:declares:${objectId}->${to}`,
+				kind: "declares",
+				from: objectId,
+				to,
+			});
+		}
+		pushEdge({
+			id: `edge:accessesData:${dataAccess.id}`,
+			kind: "accessesData",
+			from: fileId(dataAccess.fromPath),
+			to,
+			expression: dataAccess.expression,
+		});
+	}
+	for (const argument of model.renderArguments) {
+		pushNode({
+			id: argument.id,
+			kind: "renderArgument",
+			argumentName: argument.argumentName,
+			valueExpression: argument.valueExpression,
+			fromPath: argument.fromPath,
+			targetName: argument.targetName,
+		});
+		pushEdge({
+			id: `edge:passesArgument:${argument.id}`,
+			kind: "passesArgument",
+			from: fileId(argument.fromPath),
+			to: argument.id,
+			argumentName: argument.argumentName,
+			valueExpression: argument.valueExpression,
+		});
+		if (argument.sourceObject && !argument.sourceObject.endsWith(".settings")) {
+			const objectId = dataObjectId(argument.sourceObject);
+			pushNode({
+				id: objectId,
+				kind: "shopifyObject",
+				object: argument.sourceObject,
+			});
+			const to = argument.sourcePath
+				? dataPropertyId(argument.sourceObject, argument.sourcePath)
+				: objectId;
+			if (argument.sourcePath) {
+				pushNode({
+					id: to,
+					kind: "shopifyProperty",
+					object: argument.sourceObject,
+					propertyPath: argument.sourcePath,
+				});
+				pushEdge({
+					id: `edge:declares:${objectId}->${to}`,
+					kind: "declares",
+					from: objectId,
+					to,
+				});
+			}
+			pushEdge({
+				id: `edge:argumentValue:${argument.id}`,
+				kind: "accessesData",
+				from: argument.id,
+				to,
+				expression: argument.valueExpression,
+			});
+		}
 	}
 	for (const reference of model.references) {
 		const to = reference.resolvedDeclarationId ?? unresolvedNodeId(reference);

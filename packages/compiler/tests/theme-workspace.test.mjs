@@ -128,6 +128,40 @@ test("duplicate declarations make references explicitly ambiguous", () => {
 	assert.equal(reference.resolvedDeclarationId, undefined);
 });
 
+test("inspectNazareTheme records data access, settings reads, and render args", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "sections/product-card.liquid",
+			contents: `{% render 'price', product: product %}\n{{ product.price }}\n{{ section.settings.heading }}\n{% schema %}{"settings":[{"type":"text","id":"heading"}]}{% endschema %}`,
+		},
+		{ path: "snippets/price.liquid", contents: `{{ product.price }}` },
+	]);
+
+	assert.ok(
+		graph.nodes.some(
+			(node) =>
+				node.kind === "shopifyProperty" &&
+				node.object === "product" &&
+				node.propertyPath === "price",
+		),
+	);
+	assert.ok(
+		graph.edges.some(
+			(edge) =>
+				edge.kind === "accessesData" && edge.expression === "product.price",
+		),
+	);
+	assert.ok(graph.edges.some((edge) => edge.kind === "readsSetting"));
+	assert.ok(
+		graph.nodes.some(
+			(node) =>
+				node.kind === "renderArgument" &&
+				node.argumentName === "product" &&
+				node.valueExpression === "product",
+		),
+	);
+});
+
 test("buildNazareThemeWorkspace reports invalid scoped files", () => {
 	const missing = buildNazareThemeWorkspace([], {
 		scope: { kind: "file", path: "missing.nz.liquid" },
