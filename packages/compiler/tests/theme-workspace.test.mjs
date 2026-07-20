@@ -151,6 +151,27 @@ test("section schemas create block and block setting nodes", () => {
 	assert.ok(graph.edges.some((edge) => edge.kind === "definesBlockSetting"));
 });
 
+test("source behavior creates capability and classification records", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "sections/main-product.liquid",
+			contents: `<form action="{{ routes.cart_add_url }}"><input name="id" value="{{ product.selected_or_first_available_variant.id }}">{{ product.price }}</form>`,
+		},
+	]);
+
+	assert.ok(
+		graph.nodes.some(
+			(node) => node.kind === "capability" && node.capability === "addsToCart",
+		),
+	);
+	assert.ok(
+		graph.nodes.some(
+			(node) => node.kind === "classification" && node.label === "productForm",
+		),
+	);
+	assert.ok(graph.edges.some((edge) => edge.kind === "classifiedAs"));
+});
+
 test("source filters create asset and locale references", () => {
 	const graph = inspectNazareTheme([
 		{
