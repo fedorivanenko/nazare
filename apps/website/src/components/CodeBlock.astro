@@ -9,19 +9,37 @@ interface Props {
 
 // biome-ignore lint/correctness/noUnusedVariables: Astro template uses these values.
 const { code, language = "text", title } = Astro.props;
+// biome-ignore lint/correctness/noUnusedVariables: Astro template renders this value.
+const languageLabel = String(language);
 // biome-ignore lint/correctness/noUnusedVariables: Astro template injects highlighted HTML.
-const html = await highlightCode(code.trim(), language);
+const html = (await highlightCode(code.trim(), language))
+	.replace("--shiki-light-bg:#fff", "--shiki-light-bg:var(--muted)")
+	.replace("--shiki-dark-bg:#24292e", "--shiki-dark-bg:var(--muted)");
 ---
 
 <figure class="code-block">
 	<div class="code-block__bar">
 		<div class="code-block__label">
-			<span class="code-block__prompt" aria-hidden="true">›_</span>
+			<span class="code-block__language">{languageLabel}</span>
 			{title ? <figcaption class="code-block__title">{title}</figcaption> : null}
 		</div>
 		<button class="code-block__copy" type="button" data-copy-code={code.trim()} aria-label="Copy code">
-			<span class="code-block__copy-text">Copy</span>
-			<span class="code-block__copy-icon" aria-hidden="true"></span>
+			<svg
+				class="code-block__copy-icon"
+				xmlns="http://www.w3.org/2000/svg"
+				width="16"
+				height="16"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"
+			>
+				<rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+				<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+			</svg>
 		</button>
 	</div>
 	<Fragment set:html={html} />
@@ -50,13 +68,12 @@ const html = await highlightCode(code.trim(), language);
 	)) {
 		button.addEventListener("click", async () => {
 			const code = button.dataset.copyCode;
-			const label = button.querySelector(".code-block__copy-text");
-			if (!code || !label) return;
+			if (!code) return;
 
 			await copyText(code);
-			label.textContent = "Copied";
+			button.setAttribute("aria-label", "Copied");
 			window.setTimeout(() => {
-				label.textContent = "Copy";
+				button.setAttribute("aria-label", "Copy code");
 			}, 1200);
 		});
 	}
