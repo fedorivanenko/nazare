@@ -23,6 +23,39 @@ const renderArgumentPattern = /(?:^|,)\s*([A-Za-z_][\w-]*)\s*:\s*([^,}%\n]+)/g;
 const assetFilterPattern =
 	/['"]([^'"]+)['"]\s*\|\s*(?:asset_url|asset_img_url|stylesheet_tag|script_tag)/g;
 const localeFilterPattern = /['"]([^'"]+)['"]\s*\|\s*t\b/g;
+const capabilityPatterns: Array<{
+	capability: string;
+	confidence: number;
+	pattern: RegExp;
+}> = [
+	{
+		capability: "addsToCart",
+		confidence: 0.95,
+		pattern: /(?:\/cart\/add|routes\.cart_add_url)/g,
+	},
+	{
+		capability: "updatesCart",
+		confidence: 0.9,
+		pattern:
+			/(?:\/cart\/(?:change|update)|routes\.cart_change_url|routes\.cart_update_url)/g,
+	},
+	{
+		capability: "selectsVariants",
+		confidence: 0.85,
+		pattern:
+			/(?:product\.variants|selected_or_first_available_variant|name=["']id["'])/g,
+	},
+	{
+		capability: "performsPredictiveSearch",
+		confidence: 0.9,
+		pattern: /(?:predictive_search|\/search\/suggest)/g,
+	},
+	{
+		capability: "filtersCollections",
+		confidence: 0.8,
+		pattern: /(?:collection\.filters|filter\.active_values|filter\.values)/g,
+	},
+];
 
 export function collectSourceThemeFacts(
 	path: string,
@@ -34,6 +67,7 @@ export function collectSourceThemeFacts(
 		...collectRenderArgumentFacts(path, contents),
 		...collectAssetReferenceFacts(path, contents),
 		...collectLocaleReferenceFacts(path, contents),
+		...collectCapabilityFacts(path, contents),
 	];
 }
 
@@ -127,6 +161,22 @@ function collectLocaleReferenceFacts(
 		static: true,
 		span: matchSpan(path, contents, match),
 	}));
+}
+
+function collectCapabilityFacts(path: string, contents: string): ThemeFact[] {
+	const facts: ThemeFact[] = [];
+	for (const capability of capabilityPatterns) {
+		for (const match of contents.matchAll(capability.pattern)) {
+			facts.push({
+				kind: "detectsCapability",
+				path,
+				capability: capability.capability,
+				confidence: capability.confidence,
+				span: matchSpan(path, contents, match),
+			});
+		}
+	}
+	return facts;
 }
 
 function sourceExpression(

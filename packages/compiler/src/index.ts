@@ -149,6 +149,8 @@ export type {
 	ThemeBlockSettingRecord,
 	ThemeBuildResult,
 	ThemeCapabilityRecord,
+	ThemeCapabilitySignalRecord,
+	ThemeClassificationRecord,
 	ThemeDataAccessRecord,
 	ThemeEvidenceRecord,
 	ThemeExpectedInputRecord,

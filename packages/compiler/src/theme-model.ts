@@ -3,6 +3,8 @@ import type {
 	ThemeBlockRecord,
 	ThemeBlockSettingRecord,
 	ThemeCapabilityRecord,
+	ThemeCapabilitySignalRecord,
+	ThemeClassificationRecord,
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
 	ThemeEvidenceRecord,
@@ -39,6 +41,7 @@ export function buildThemeSemanticModel(
 	const settingReads: ThemeSettingReadRecord[] = [];
 	const dataAccesses: ThemeDataAccessRecord[] = [];
 	const renderArguments: ThemeRenderArgumentRecord[] = [];
+	const capabilitySignals: ThemeCapabilitySignalRecord[] = [];
 
 	for (const fact of facts) {
 		if (fact.kind === "file") {
@@ -152,6 +155,15 @@ export function buildThemeSemanticModel(
 				object: fact.object,
 				propertyPath: fact.propertyPath,
 				expression: fact.expression,
+				span: fact.span,
+			});
+		}
+		if (fact.kind === "detectsCapability") {
+			capabilitySignals.push({
+				id: capabilitySignalId(fact.path, fact.capability),
+				path: fact.path,
+				capability: fact.capability,
+				confidence: fact.confidence,
 				span: fact.span,
 			});
 		}
@@ -291,7 +303,8 @@ export function buildThemeSemanticModel(
 		renderArguments,
 		declarations,
 	);
-	const capabilities = capabilityRecords(dataAccesses);
+	const capabilities = capabilityRecords(dataAccesses, capabilitySignals);
+	const classifications = classificationRecords(capabilities, dataAccesses);
 	const evidence = evidenceRecords({
 		references,
 		schemas,
@@ -299,6 +312,7 @@ export function buildThemeSemanticModel(
 		settingReads,
 		dataAccesses,
 		renderArguments,
+		capabilitySignals,
 	});
 
 	const settingByPathAndId = new Map(
@@ -398,7 +412,13 @@ export function buildThemeSemanticModel(
 		renderSites: dedupeById(renderSites).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
+		capabilitySignals: dedupeById(capabilitySignals).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
 		capabilities: dedupeById(capabilities).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
+		classifications: dedupeById(classifications).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
 		evidence: dedupeById(evidence).sort((a, b) => a.id.localeCompare(b.id)),
@@ -430,6 +450,7 @@ function evidenceRecords(records: {
 	settingReads: ThemeSettingReadRecord[];
 	dataAccesses: ThemeDataAccessRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
+	capabilitySignals: ThemeCapabilitySignalRecord[];
 }): ThemeEvidenceRecord[] {
 	return [
 		...records.references.map((reference) => ({
@@ -472,6 +493,13 @@ function evidenceRecords(records: {
 			kind: "renderArgument" as const,
 			file: argument.fromPath,
 			span: argument.span,
+			extractor: "theme-source-facts",
+		})),
+		...records.capabilitySignals.map((signal) => ({
+			id: signal.id,
+			kind: "dataRead" as const,
+			file: signal.path,
+			span: signal.span,
 			extractor: "theme-source-facts",
 		})),
 	];
@@ -604,8 +632,18 @@ function addInputDiagnostics(
 
 function capabilityRecords(
 	dataAccesses: ThemeDataAccessRecord[],
+	capabilitySignals: ThemeCapabilitySignalRecord[],
 ): ThemeCapabilityRecord[] {
 	const byPathCapability = new Map<string, ThemeCapabilityRecord>();
+	for (const signal of capabilitySignals) {
+		byPathCapability.set(signal.id.replace("capability-signal", "capability"), {
+			id: capabilityId(signal.path, signal.capability),
+			path: signal.path,
+			capability: signal.capability,
+			confidence: signal.confidence,
+			evidenceIds: [signal.id],
+		});
+	}
 	for (const access of dataAccesses) {
 		for (const capability of capabilitiesForAccess(access)) {
 			const id = capabilityId(access.fromPath, capability.name);
@@ -630,6 +668,78 @@ function capabilityRecords(
 		}
 	}
 	return [...byPathCapability.values()];
+}
+
+function classificationRecords(
+	capabilities: ThemeCapabilityRecord[],
+	dataAccesses: ThemeDataAccessRecord[],
+): ThemeClassificationRecord[] {
+	const capabilitiesByPath = new Map<string, Set<string>>();
+	for (const capability of capabilities) {
+		capabilitiesByPath.set(
+			capability.path,
+			capabilitiesByPath.get(capability.path) ?? new Set(),
+		);
+		capabilitiesByPath.get(capability.path)?.add(capability.capability);
+	}
+	const dataByPath = new Map<string, Set<string>>();
+	for (const access of dataAccesses) {
+		dataByPath.set(
+			access.fromPath,
+			dataByPath.get(access.fromPath) ?? new Set(),
+		);
+		dataByPath
+			.get(access.fromPath)
+			?.add(`${access.object}.${access.propertyPath ?? ""}`);
+	}
+	const records: ThemeClassificationRecord[] = [];
+	for (const [path, caps] of capabilitiesByPath) {
+		const data = dataByPath.get(path) ?? new Set();
+		const labels: Array<{
+			label: string;
+			confidence: number;
+			uncertainty?: string;
+		}> = [];
+		if (caps.has("addsToCart") && caps.has("selectsVariants"))
+			labels.push({ label: "productForm", confidence: 0.9 });
+		if (
+			caps.has("displaysProductPrice") &&
+			(caps.has("displaysProductMedia") || data.has("product.title"))
+		)
+			labels.push({
+				label: "productCard",
+				confidence: 0.75,
+				uncertainty: "could be full product section",
+			});
+		if (caps.has("updatesCart") || caps.has("displaysCartItems"))
+			labels.push({
+				label: "cartDrawer",
+				confidence: 0.65,
+				uncertainty: "cart page and drawer share signals",
+			});
+		if (caps.has("performsPredictiveSearch"))
+			labels.push({ label: "searchOverlay", confidence: 0.8 });
+		if (caps.has("filtersCollections"))
+			labels.push({ label: "collectionGrid", confidence: 0.75 });
+		if (caps.has("usesLocalization"))
+			labels.push({ label: "localizationSelector", confidence: 0.7 });
+		for (const label of labels) {
+			const evidenceIds = capabilities
+				.filter((capability) => capability.path === path)
+				.flatMap((capability) => capability.evidenceIds);
+			records.push({
+				id: classificationId(path, label.label),
+				path,
+				label: label.label,
+				confidence: label.confidence,
+				evidenceIds: [...new Set(evidenceIds)].sort((a, b) =>
+					a.localeCompare(b),
+				),
+				uncertainty: label.uncertainty ? [label.uncertainty] : [],
+			});
+		}
+	}
+	return records;
 }
 
 function capabilitiesForAccess(
@@ -793,4 +903,12 @@ export function expectedInputId(path: string, name: string): string {
 
 export function capabilityId(path: string, capability: string): string {
 	return `capability:${path}:${capability}`;
+}
+
+export function capabilitySignalId(path: string, capability: string): string {
+	return `capability-signal:${path}:${capability}`;
+}
+
+export function classificationId(path: string, label: string): string {
+	return `classification:${path}:${label}`;
 }

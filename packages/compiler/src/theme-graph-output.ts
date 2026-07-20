@@ -383,6 +383,22 @@ export function themeGraphFromModel(
 			to: capability.id,
 		});
 	}
+	for (const classification of model.classifications) {
+		pushNode({
+			id: classification.id,
+			kind: "classification",
+			label: classification.label,
+			confidence: classification.confidence,
+			evidenceIds: classification.evidenceIds,
+			uncertainty: classification.uncertainty,
+		});
+		pushEdge({
+			id: `edge:classifiedAs:${fileId(classification.path)}->${classification.id}`,
+			kind: "classifiedAs",
+			from: fileId(classification.path),
+			to: classification.id,
+		});
+	}
 	for (const reference of model.references) {
 		const to = reference.resolvedDeclarationId ?? unresolvedNodeId(reference);
 		if (!reference.resolvedDeclarationId) {

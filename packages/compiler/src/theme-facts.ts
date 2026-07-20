@@ -148,6 +148,13 @@ export type ThemeFact =
 			sourceObject?: string;
 			sourcePath?: string;
 			span?: SourceSpan;
+	  }
+	| {
+			kind: "detectsCapability";
+			path: string;
+			capability: string;
+			confidence: number;
+			span?: SourceSpan;
 	  };
 
 export type ThemeFileRecord = {
@@ -290,6 +297,23 @@ export type ThemeCapabilityRecord = {
 	evidenceIds: string[];
 };
 
+export type ThemeCapabilitySignalRecord = {
+	id: string;
+	path: string;
+	capability: string;
+	confidence: number;
+	span?: SourceSpan;
+};
+
+export type ThemeClassificationRecord = {
+	id: string;
+	path: string;
+	label: string;
+	confidence: number;
+	evidenceIds: string[];
+	uncertainty: string[];
+};
+
 export type ThemeEvidenceRecord = {
 	id: string;
 	kind:
@@ -341,7 +365,9 @@ export interface ThemeSemanticModel {
 	renderArguments: ThemeRenderArgumentRecord[];
 	expectedInputs: ThemeExpectedInputRecord[];
 	renderSites: ThemeRenderSiteRecord[];
+	capabilitySignals: ThemeCapabilitySignalRecord[];
 	capabilities: ThemeCapabilityRecord[];
+	classifications: ThemeClassificationRecord[];
 	evidence: ThemeEvidenceRecord[];
 	issues: Diagnostic[];
 }
@@ -451,6 +477,14 @@ export type SemanticThemeGraphNode =
 	  }
 	| {
 			id: string;
+			kind: "classification";
+			label: string;
+			confidence: number;
+			evidenceIds: string[];
+			uncertainty: string[];
+	  }
+	| {
+			id: string;
 			kind: "unresolved";
 			targetKind:
 				| "snippet"
@@ -508,6 +542,7 @@ export type SemanticThemeGraphEdge =
 			valueExpression: string;
 	  }
 	| { id: string; kind: "hasCapability"; from: string; to: string }
+	| { id: string; kind: "classifiedAs"; from: string; to: string }
 	| { id: string; kind: "expectsInput"; from: string; to: string }
 	| {
 			id: string;
