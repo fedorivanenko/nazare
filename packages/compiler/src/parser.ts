@@ -644,7 +644,7 @@ function parseNazareImportTag(
 		return undefined;
 	}
 
-	if (specifier.endsWith(".liquid")) {
+	if (specifier.endsWith(".nz.liquid")) {
 		if (!/^[A-Z]/.test(localName)) {
 			diagnostics.push(importComponentCase(localName, span));
 			return undefined;

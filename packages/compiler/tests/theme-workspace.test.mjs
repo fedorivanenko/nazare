@@ -99,7 +99,7 @@ test("duplicate normalized paths are diagnostics", () => {
 	);
 });
 
-test("duplicate declarations are diagnostics and do not resolve by hidden precedence", () => {
+test("duplicate declarations make references explicitly ambiguous", () => {
 	const analysis = analyzeNazareTheme([
 		{ path: "sections/main.liquid", contents: `{% render 'button' %}` },
 		{ path: "snippets/button.liquid", contents: "plain" },
@@ -111,6 +111,15 @@ test("duplicate declarations are diagnostics and do not resolve by hidden preced
 			(issue) => issue.code === "THEME_DUPLICATE_DECLARATION",
 		),
 	);
+	assert.ok(
+		analysis.issues.some((issue) => issue.code === "THEME_AMBIGUOUS_REFERENCE"),
+	);
+	assert.equal(
+		analysis.issues.some(
+			(issue) => issue.code === "THEME_UNRESOLVED_REFERENCE",
+		),
+		false,
+	);
 	const reference = analysis.ir.references.find(
 		(candidate) =>
 			candidate.kind === "rendersSnippet" && candidate.targetName === "button",
@@ -119,16 +128,28 @@ test("duplicate declarations are diagnostics and do not resolve by hidden preced
 	assert.equal(reference.resolvedDeclarationId, undefined);
 });
 
-test("buildNazareThemeWorkspace reports missing scoped files", () => {
-	const built = buildNazareThemeWorkspace([], {
+test("buildNazareThemeWorkspace reports invalid scoped files", () => {
+	const missing = buildNazareThemeWorkspace([], {
 		scope: { kind: "file", path: "missing.nz.liquid" },
 	});
 
 	assert.ok(
-		built.issues.some((issue) => issue.code === "THEME_SCOPE_FILE_NOT_FOUND"),
+		missing.issues.some((issue) => issue.code === "THEME_SCOPE_FILE_NOT_FOUND"),
 	);
-	assert.deepEqual(built.artifacts, []);
-	assert.deepEqual(built.emitted.files, []);
+	assert.deepEqual(missing.artifacts, []);
+	assert.deepEqual(missing.emitted.files, []);
+
+	const unsupported = buildNazareThemeWorkspace(
+		[{ path: "sections/main.liquid", contents: "<section>Main</section>" }],
+		{ scope: { kind: "file", path: "sections/main.liquid" } },
+	);
+	assert.ok(
+		unsupported.issues.some(
+			(issue) => issue.code === "THEME_SCOPE_UNSUPPORTED_FILE_KIND",
+		),
+	);
+	assert.deepEqual(unsupported.artifacts, []);
+	assert.deepEqual(unsupported.emitted.files, []);
 });
 
 test("buildNazareThemeWorkspace builds a file scope without unrelated diagnostics or duplicate compile diagnostics", () => {
@@ -148,9 +169,9 @@ test("buildNazareThemeWorkspace builds a file scope without unrelated diagnostic
 		[
 			{
 				path: "a.nz.liquid",
-				contents: `{% import Child from "./child.liquid" %}<div>A</div>`,
+				contents: `{% import Child from "./child.nz.liquid" %}<div>A</div>`,
 			},
-			{ path: "child.liquid", contents: `<span>Child</span>` },
+			{ path: "child.nz.liquid", contents: `<span>Child</span>` },
 			{
 				path: "b.nz.liquid",
 				contents: `{% import Missing from "./missing.nz.liquid" %}`,

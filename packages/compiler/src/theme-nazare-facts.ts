@@ -1,6 +1,6 @@
 import type { Diagnostic } from "@nazare/core";
 import { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
-import { compileArtifact } from "./index.js";
+import { projectArtifact } from "./pipeline.js";
 import type { ReadFile } from "./resolver.js";
 import type { ThemeBuiltArtifact, ThemeFact } from "./theme-facts.js";
 import { themeNameFromPath } from "./theme-file-classifier.js";
@@ -11,26 +11,44 @@ export function collectNazareThemeFacts(
 	options: { readFile?: ReadFile; strictness?: "strict" | "loose" } = {},
 ): { facts: ThemeFact[]; issues: Diagnostic[]; artifact?: ThemeBuiltArtifact } {
 	const facts: ThemeFact[] = [];
-	const compiled = compileArtifact({
+	const frontendResult = nazareLiquidFrontend.compile({
 		source: contents,
 		file: path,
 		readFile: options.readFile,
 		strictness: options.strictness,
-		frontend: nazareLiquidFrontend,
 	});
-	if (!compiled.ok || !compiled.ast) return { facts, issues: compiled.issues };
+	if (frontendResult.kind !== "nazare-ast") {
+		return {
+			facts,
+			issues: [
+				{
+					severity: "error",
+					code: "THEME_NAZARE_FRONTEND_RESULT_UNSUPPORTED",
+					message: `Nazare Liquid frontend returned ${frontendResult.kind} for ${path}`,
+					phase: "parse",
+				},
+			],
+		};
+	}
+	const projected = projectArtifact(frontendResult.ast, {
+		contracts: frontendResult.contracts,
+		mode: options.strictness,
+		resolveIssues: frontendResult.resolveIssues,
+	});
+	const issues = projected.issues;
+	const canEmit = !issues.some((issue) => issue.severity === "error");
 	const artifact: ThemeBuiltArtifact = {
 		path,
 		source: contents,
-		ast: compiled.ast,
-		ir: compiled.ir,
-		contract: compiled.contract,
-		contracts: compiled.contracts,
-		canEmit: compiled.canEmit,
-		notes: compiled.notes,
+		ast: frontendResult.ast,
+		ir: projected.ir,
+		contract: projected.contract,
+		contracts: frontendResult.contracts,
+		canEmit,
+		notes: frontendResult.notes,
 	};
 
-	for (const node of compiled.syntax) {
+	for (const node of projected.syntax) {
 		if (node.kind === "component") {
 			facts.push({
 				kind: "declaresComponent",
@@ -72,15 +90,15 @@ export function collectNazareThemeFacts(
 			});
 		}
 	}
-	if (compiled.ast?.schema) {
+	if (frontendResult.ast.schema) {
 		const schemaPath = "schema";
 		facts.push({
 			kind: "definesSchema",
 			path,
 			schemaPath,
-			span: compiled.ast.schema.span,
+			span: frontendResult.ast.schema.span,
 		});
-		for (const node of compiled.ast.nodes) {
+		for (const node of frontendResult.ast.nodes) {
 			if (node.type !== "NazareProps") continue;
 			for (const prop of node.props) {
 				facts.push({
@@ -94,5 +112,5 @@ export function collectNazareThemeFacts(
 			}
 		}
 	}
-	return { facts, issues: compiled.issues, artifact };
+	return { facts, issues, artifact };
 }
