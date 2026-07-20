@@ -22,7 +22,7 @@ import type {
 	NazareExtensionRegistration,
 } from "@nazare/compiler";
 import {
-	buildNazareTheme,
+	buildNazareThemeWorkspace,
 	checkComponentScripts,
 	parseNazareLiquid,
 	themeSchemaFromIR,
@@ -144,6 +144,12 @@ export async function buildTheme(
 			return undefined;
 		}
 	};
+	const workspaceFiles = await Promise.all(
+		sourceFiles.map(async (path) => ({
+			path,
+			contents: await readFile(join(projectRoot, path), "utf8"),
+		})),
+	);
 
 	const planned = new Map<string, PlannedFile>();
 	// Merchant-owned data files (settings values, section instances, block
@@ -168,26 +174,33 @@ export async function buildTheme(
 
 		if (file.endsWith(".nz.liquid")) {
 			compiled.push(file);
-			const built = buildNazareTheme(contents, file, {
+			const built = buildNazareThemeWorkspace(workspaceFiles, {
+				scope: { kind: "file", path: file },
 				name: artifactBaseName(file),
-				readFile: readProjectFile,
 				strictness: options.strictness,
 				emitOnError: false,
 			});
-			components.push({
-				file,
-				source: contents,
-				schema: built.ast.schema,
-				ir: built.ir,
-				contract: built.contract,
-				importedContracts: built.contracts,
-				canEmit: built.canEmit,
-			});
-			issues.push(
-				...built.issues,
-				...checkComponentScripts(built.ir, { readFile: readProjectFile }),
+			const artifact = built.artifacts.find(
+				(candidate) => candidate.path === file,
 			);
-			notes.push(...built.notes);
+			if (artifact) {
+				components.push({
+					file,
+					source: contents,
+					schema: artifact.ast.schema,
+					ir: artifact.ir,
+					contract: artifact.contract,
+					importedContracts: artifact.contracts,
+					canEmit: artifact.canEmit,
+				});
+				issues.push(
+					...built.issues,
+					...checkComponentScripts(artifact.ir, { readFile: readProjectFile }),
+				);
+				notes.push(...artifact.notes);
+			} else {
+				issues.push(...built.issues);
+			}
 			for (const themeFile of built.emitted.files) {
 				planFile(planned, conflicts, themeFile.path, themeFile.contents, file);
 			}
@@ -199,10 +212,10 @@ export async function buildTheme(
 						themeFile.path.startsWith("blocks/")) &&
 					themeFile.path.endsWith(".liquid"),
 			);
-			if (schemaBearing) {
-				const schema = themeSchemaFromIR(built.ir, {
+			if (schemaBearing && artifact) {
+				const schema = themeSchemaFromIR(artifact.ir, {
 					name: artifactBaseName(file),
-					contracts: built.contracts,
+					contracts: artifact.contracts,
 				});
 				manifest.sections[schemaBearing.path] = {
 					settings: schema.settings

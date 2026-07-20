@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildNazareTheme, compileNazareArtifact } from "../dist/index.js";
+import {
+	buildNazareThemeWorkspace,
+	compileNazareArtifact,
+} from "../dist/index.js";
+
+function buildWorkspaceFile(source, file, options = {}) {
+	const built = buildNazareThemeWorkspace([{ path: file, contents: source }], {
+		...options,
+		scope: { kind: "file", path: file },
+	});
+	return {
+		emitted: built.emitted,
+		issues: built.issues,
+	};
+}
 
 test("compile: nz-root is explicit syntax", () => {
 	const result = compileNazareArtifact(
@@ -28,7 +42,7 @@ test("emit: implicit single-root fallback is surfaced", () => {
 {% script %}
 export default island(() => {});
 {% endscript %}`;
-	const built = buildNazareTheme(source, "component.nz.liquid", {
+	const built = buildWorkspaceFile(source, "component.nz.liquid", {
 		name: "component",
 	});
 
@@ -43,7 +57,7 @@ test("emit: nz-root selects explicit root and is stripped", () => {
 {% script %}
 export default island(() => {});
 {% endscript %}`;
-	const built = buildNazareTheme(source, "component.nz.liquid", {
+	const built = buildWorkspaceFile(source, "component.nz.liquid", {
 		name: "component",
 	});
 	const liquid = built.emitted.files.find(
@@ -63,7 +77,7 @@ test("emit: multiple nz-root markers warn and first wins", () => {
 {% script %}
 export default island(() => {});
 {% endscript %}`;
-	const built = buildNazareTheme(source, "component.nz.liquid", {
+	const built = buildWorkspaceFile(source, "component.nz.liquid", {
 		name: "component",
 	});
 	const liquid = built.emitted.files.find(
