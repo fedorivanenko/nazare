@@ -150,6 +150,7 @@ export type {
 	ThemeFact,
 	ThemeInputFile,
 	ThemeRenderArgumentRecord,
+	ThemeSectionInstanceRecord,
 	ThemeSemanticModel,
 	ThemeSettingReadRecord,
 } from "./theme-facts.js";

@@ -7,6 +7,7 @@ import type {
 	ThemeReference,
 	ThemeRenderArgumentRecord,
 	ThemeSchemaRecord,
+	ThemeSectionInstanceRecord,
 	ThemeSemanticModel,
 	ThemeSettingReadRecord,
 	ThemeSettingRecord,
@@ -21,6 +22,7 @@ export function buildThemeSemanticModel(
 	const declarations: ThemeDeclaration[] = [];
 	const schemas: ThemeSchemaRecord[] = [];
 	const settings: ThemeSettingRecord[] = [];
+	const sectionInstances: ThemeSectionInstanceRecord[] = [];
 	const settingReads: ThemeSettingReadRecord[] = [];
 	const dataAccesses: ThemeDataAccessRecord[] = [];
 	const renderArguments: ThemeRenderArgumentRecord[] = [];
@@ -42,6 +44,12 @@ export function buildThemeSemanticModel(
 		if (fact.kind === "declaresTemplate") {
 			declarations.push(declaration("template", fact.path, fact.name));
 		}
+		if (fact.kind === "declaresLayout") {
+			declarations.push(declaration("layout", fact.path, fact.name));
+		}
+		if (fact.kind === "declaresLocale") {
+			declarations.push(declaration("locale", fact.path, fact.name));
+		}
 		if (fact.kind === "declaresAsset") {
 			declarations.push(declaration("asset", fact.path, fact.name));
 		}
@@ -49,6 +57,15 @@ export function buildThemeSemanticModel(
 			declarations.push({
 				...declaration("component", fact.path, fact.name),
 				componentKind: fact.componentKind,
+			});
+		}
+		if (fact.kind === "sectionInstance") {
+			sectionInstances.push({
+				id: sectionInstanceId(fact.templatePath, fact.instanceId),
+				templatePath: fact.templatePath,
+				instanceId: fact.instanceId,
+				sectionType: fact.sectionType,
+				static: fact.static,
 			});
 		}
 		if (fact.kind === "definesSchema") {
@@ -207,6 +224,12 @@ export function buildThemeSemanticModel(
 		}
 	}
 
+	for (const instance of sectionInstances) {
+		if (!instance.sectionType) continue;
+		const declaration = byKindName.get(`section:${instance.sectionType}`);
+		if (declaration) instance.resolvedDeclarationId = declaration.id;
+	}
+
 	const settingByPathAndId = new Map(
 		settings.map((setting) => [
 			`${setting.path}:${setting.settingId}`,
@@ -254,6 +277,9 @@ export function buildThemeSemanticModel(
 		references: references.sort((a, b) => a.id.localeCompare(b.id)),
 		schemas: dedupeById(schemas).sort((a, b) => a.id.localeCompare(b.id)),
 		settings: dedupeById(settings).sort((a, b) => a.id.localeCompare(b.id)),
+		sectionInstances: dedupeById(sectionInstances).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
 		settingReads: dedupeById(settingReads).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
@@ -326,6 +352,13 @@ export function settingId(
 	id: string,
 ): string {
 	return `setting:${path}:${schemaPath}:${id}`;
+}
+
+export function sectionInstanceId(
+	templatePath: string,
+	instanceId: string,
+): string {
+	return `section-instance:${templatePath}:${instanceId}`;
 }
 
 export function settingReadId(

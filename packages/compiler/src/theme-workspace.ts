@@ -131,6 +131,20 @@ function analyzeNormalizedThemeFiles(
 			facts.push({ kind: "declaresAsset", path: file.path, name: file.path });
 			continue;
 		}
+		if (fileKind === "layout") {
+			facts.push({
+				kind: "declaresLayout",
+				path: file.path,
+				name: themeNameFromPath(file.path),
+			});
+		}
+		if (fileKind === "locale") {
+			facts.push({
+				kind: "declaresLocale",
+				path: file.path,
+				name: themeNameFromPath(file.path),
+			});
+		}
 		if (fileKind === "nazareComponent") {
 			const result = collectNazareThemeFacts(file.path, file.contents, {
 				readFile,
