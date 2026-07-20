@@ -268,6 +268,22 @@ export function themeGraphFromModel(
 			});
 		}
 	}
+	for (const input of model.expectedInputs) {
+		pushNode({
+			id: input.id,
+			kind: "expectedInput",
+			path: input.path,
+			name: input.name,
+			required: input.required,
+			evidenceIds: input.evidenceIds,
+		});
+		pushEdge({
+			id: `edge:expectsInput:${fileId(input.path)}->${input.id}`,
+			kind: "expectsInput",
+			from: fileId(input.path),
+			to: input.id,
+		});
+	}
 	for (const capability of model.capabilities) {
 		pushNode({
 			id: capability.id,

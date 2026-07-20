@@ -221,6 +221,23 @@ export type ThemeCapabilityRecord = {
 	evidenceIds: string[];
 };
 
+export type ThemeExpectedInputRecord = {
+	id: string;
+	path: string;
+	name: string;
+	required: boolean;
+	evidenceIds: string[];
+};
+
+export type ThemeRenderSiteRecord = {
+	id: string;
+	fromPath: string;
+	targetName?: string;
+	resolvedDeclarationId?: string;
+	argumentIds: string[];
+	span?: SourceSpan;
+};
+
 export interface ThemeSemanticModel {
 	version: 1;
 	root: string;
@@ -233,6 +250,8 @@ export interface ThemeSemanticModel {
 	settingReads: ThemeSettingReadRecord[];
 	dataAccesses: ThemeDataAccessRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
+	expectedInputs: ThemeExpectedInputRecord[];
+	renderSites: ThemeRenderSiteRecord[];
 	capabilities: ThemeCapabilityRecord[];
 	issues: Diagnostic[];
 }
@@ -310,6 +329,14 @@ export type SemanticThemeGraphNode =
 	  }
 	| {
 			id: string;
+			kind: "expectedInput";
+			path: string;
+			name: string;
+			required: boolean;
+			evidenceIds: string[];
+	  }
+	| {
+			id: string;
 			kind: "capability";
 			capability: string;
 			confidence: number;
@@ -358,6 +385,7 @@ export type SemanticThemeGraphEdge =
 			valueExpression: string;
 	  }
 	| { id: string; kind: "hasCapability"; from: string; to: string }
+	| { id: string; kind: "expectsInput"; from: string; to: string }
 	| {
 			id: string;
 			kind: "templateContainsSection";
