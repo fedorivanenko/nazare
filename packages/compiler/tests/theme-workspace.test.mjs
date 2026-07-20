@@ -96,6 +96,35 @@ test("template JSON sections create section instances", () => {
 	assert.ok(graph.edges.some((edge) => edge.kind === "instanceOf"));
 });
 
+test("impact summary links dependencies, dependents, pages, and unused files", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "templates/product.json",
+			contents: JSON.stringify({
+				sections: { main: { type: "main-product" } },
+			}),
+		},
+		{ path: "sections/main-product.liquid", contents: `{% render 'price' %}` },
+		{ path: "snippets/price.liquid", contents: `{{ product.price }}` },
+		{ path: "snippets/unused.liquid", contents: `Unused` },
+	]);
+
+	assert.deepEqual(graph.impact.dependencies["templates/product.json"], [
+		"sections/main-product.liquid",
+	]);
+	assert.ok(
+		graph.impact.dependents["snippets/price.liquid"].includes(
+			"sections/main-product.liquid",
+		),
+	);
+	assert.ok(
+		graph.impact.affectedPages["snippets/price.liquid"].includes(
+			"templates/product.json",
+		),
+	);
+	assert.ok(graph.impact.unusedFiles.includes("snippets/unused.liquid"));
+});
+
 test("templates create page composition nodes", () => {
 	const graph = inspectNazareTheme([
 		{
