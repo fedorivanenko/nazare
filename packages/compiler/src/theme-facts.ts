@@ -86,6 +86,31 @@ export type ThemeFact =
 			settingId: string;
 			settingType?: string;
 			span?: SourceSpan;
+	  }
+	| {
+			kind: "readsSetting";
+			fromPath: string;
+			settingObject: "section" | "block";
+			settingId: string;
+			span?: SourceSpan;
+	  }
+	| {
+			kind: "readsShopifyData";
+			fromPath: string;
+			object: string;
+			propertyPath?: string;
+			expression: string;
+			span?: SourceSpan;
+	  }
+	| {
+			kind: "passesRenderArgument";
+			fromPath: string;
+			targetName: string;
+			argumentName: string;
+			valueExpression: string;
+			sourceObject?: string;
+			sourcePath?: string;
+			span?: SourceSpan;
 	  };
 
 export type ThemeFileRecord = {
@@ -134,6 +159,35 @@ export type ThemeSettingRecord = {
 	span?: SourceSpan;
 };
 
+export type ThemeSettingReadRecord = {
+	id: string;
+	fromPath: string;
+	settingObject: "section" | "block";
+	settingId: string;
+	resolvedSettingId?: string;
+	span?: SourceSpan;
+};
+
+export type ThemeDataAccessRecord = {
+	id: string;
+	fromPath: string;
+	object: string;
+	propertyPath?: string;
+	expression: string;
+	span?: SourceSpan;
+};
+
+export type ThemeRenderArgumentRecord = {
+	id: string;
+	fromPath: string;
+	targetName: string;
+	argumentName: string;
+	valueExpression: string;
+	sourceObject?: string;
+	sourcePath?: string;
+	span?: SourceSpan;
+};
+
 export interface ThemeSemanticModel {
 	version: 1;
 	root: string;
@@ -142,6 +196,9 @@ export interface ThemeSemanticModel {
 	references: ThemeReference[];
 	schemas: ThemeSchemaRecord[];
 	settings: ThemeSettingRecord[];
+	settingReads: ThemeSettingReadRecord[];
+	dataAccesses: ThemeDataAccessRecord[];
+	renderArguments: ThemeRenderArgumentRecord[];
 	issues: Diagnostic[];
 }
 
@@ -192,10 +249,25 @@ export type SemanticThemeGraphNode =
 			settingId: string;
 			settingType?: string;
 	  }
+	| { id: string; kind: "shopifyObject"; object: string }
+	| {
+			id: string;
+			kind: "shopifyProperty";
+			object: string;
+			propertyPath: string;
+	  }
+	| {
+			id: string;
+			kind: "renderArgument";
+			argumentName: string;
+			valueExpression: string;
+			fromPath: string;
+			targetName: string;
+	  }
 	| {
 			id: string;
 			kind: "unresolved";
-			targetKind: "snippet" | "section" | "asset" | "component";
+			targetKind: "snippet" | "section" | "asset" | "component" | "setting";
 			name?: string;
 	  };
 
@@ -218,6 +290,22 @@ export type SemanticThemeGraphEdge =
 	  }
 	| { id: string; kind: "definesSchema"; from: string; to: string }
 	| { id: string; kind: "definesSetting"; from: string; to: string }
+	| { id: string; kind: "readsSetting"; from: string; to: string }
+	| {
+			id: string;
+			kind: "accessesData";
+			from: string;
+			to: string;
+			expression: string;
+	  }
+	| {
+			id: string;
+			kind: "passesArgument";
+			from: string;
+			to: string;
+			argumentName: string;
+			valueExpression: string;
+	  }
 	| {
 			id: string;
 			kind: "templateContainsSection";
