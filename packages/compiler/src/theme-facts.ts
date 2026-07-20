@@ -38,6 +38,8 @@ export type ThemeFact =
 	| { kind: "declaresSection"; path: string; name: string }
 	| { kind: "declaresSnippet"; path: string; name: string }
 	| { kind: "declaresTemplate"; path: string; name: string }
+	| { kind: "declaresLayout"; path: string; name: string }
+	| { kind: "declaresLocale"; path: string; name: string }
 	| { kind: "declaresAsset"; path: string; name: string }
 	| {
 			kind: "declaresComponent";
@@ -72,6 +74,13 @@ export type ThemeFact =
 			targetPath: string;
 			localName: string;
 			span?: SourceSpan;
+	  }
+	| {
+			kind: "sectionInstance";
+			templatePath: string;
+			instanceId: string;
+			sectionType?: string;
+			static: boolean;
 	  }
 	| {
 			kind: "definesSchema";
@@ -121,7 +130,14 @@ export type ThemeFileRecord = {
 
 export type ThemeDeclaration = {
 	id: string;
-	kind: "section" | "snippet" | "template" | "asset" | "component";
+	kind:
+		| "section"
+		| "snippet"
+		| "template"
+		| "layout"
+		| "locale"
+		| "asset"
+		| "component";
 	path: string;
 	name: string;
 	componentKind?: string;
@@ -157,6 +173,15 @@ export type ThemeSettingRecord = {
 	settingId: string;
 	settingType?: string;
 	span?: SourceSpan;
+};
+
+export type ThemeSectionInstanceRecord = {
+	id: string;
+	templatePath: string;
+	instanceId: string;
+	sectionType?: string;
+	resolvedDeclarationId?: string;
+	static: boolean;
 };
 
 export type ThemeSettingReadRecord = {
@@ -196,6 +221,7 @@ export interface ThemeSemanticModel {
 	references: ThemeReference[];
 	schemas: ThemeSchemaRecord[];
 	settings: ThemeSettingRecord[];
+	sectionInstances: ThemeSectionInstanceRecord[];
 	settingReads: ThemeSettingReadRecord[];
 	dataAccesses: ThemeDataAccessRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
@@ -232,7 +258,16 @@ export type SemanticThemeGraphNode =
 	| { id: string; kind: "section"; name: string; path: string }
 	| { id: string; kind: "snippet"; name: string; path: string }
 	| { id: string; kind: "template"; name: string; path: string }
+	| { id: string; kind: "layout"; name: string; path: string }
+	| { id: string; kind: "locale"; name: string; path: string }
 	| { id: string; kind: "asset"; name: string; path: string }
+	| {
+			id: string;
+			kind: "sectionInstance";
+			templatePath: string;
+			instanceId: string;
+			sectionType?: string;
+	  }
 	| {
 			id: string;
 			kind: "component";
@@ -309,6 +344,19 @@ export type SemanticThemeGraphEdge =
 	| {
 			id: string;
 			kind: "templateContainsSection";
+			from: string;
+			to: string;
+			targetName?: string;
+	  }
+	| {
+			id: string;
+			kind: "templateContainsSectionInstance";
+			from: string;
+			to: string;
+	  }
+	| {
+			id: string;
+			kind: "instanceOf";
 			from: string;
 			to: string;
 			targetName?: string;

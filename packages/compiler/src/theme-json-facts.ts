@@ -33,13 +33,20 @@ export function collectJsonThemeFacts(
 	if (isTemplateLikeJson(path)) {
 		const sections = (parsed as { sections?: unknown }).sections;
 		if (sections && typeof sections === "object" && !Array.isArray(sections)) {
-			for (const section of Object.values(sections)) {
+			for (const [instanceId, section] of Object.entries(sections)) {
 				if (!section || typeof section !== "object") continue;
 				const type = (section as { type?: unknown }).type;
 				facts.push({
 					kind: "containsSection",
 					fromPath: path,
 					targetName: typeof type === "string" ? type : undefined,
+					static: typeof type === "string",
+				});
+				facts.push({
+					kind: "sectionInstance",
+					templatePath: path,
+					instanceId,
+					sectionType: typeof type === "string" ? type : undefined,
 					static: typeof type === "string",
 				});
 			}

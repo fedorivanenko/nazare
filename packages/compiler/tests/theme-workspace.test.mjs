@@ -67,6 +67,35 @@ test("analyzeNazareTheme extracts template JSON sections", () => {
 	);
 });
 
+test("template JSON sections create section instances", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "templates/product.json",
+			contents: JSON.stringify({
+				sections: { main: { type: "main-product" } },
+				order: ["main"],
+			}),
+		},
+		{
+			path: "sections/main-product.liquid",
+			contents: "<section>Product</section>",
+		},
+	]);
+
+	assert.ok(
+		graph.nodes.some(
+			(node) =>
+				node.kind === "sectionInstance" &&
+				node.instanceId === "main" &&
+				node.sectionType === "main-product",
+		),
+	);
+	assert.ok(
+		graph.edges.some((edge) => edge.kind === "templateContainsSectionInstance"),
+	);
+	assert.ok(graph.edges.some((edge) => edge.kind === "instanceOf"));
+});
+
 test("settings_schema settings point at existing schema nodes", () => {
 	const graph = inspectNazareTheme([
 		{

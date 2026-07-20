@@ -64,6 +64,22 @@ export function themeGraphFromModel(
 				path: declaration.path,
 			});
 		}
+		if (declaration.kind === "layout") {
+			pushNode({
+				id: declaration.id,
+				kind: "layout",
+				name: declaration.name,
+				path: declaration.path,
+			});
+		}
+		if (declaration.kind === "locale") {
+			pushNode({
+				id: declaration.id,
+				kind: "locale",
+				name: declaration.name,
+				path: declaration.path,
+			});
+		}
 		if (declaration.kind === "asset") {
 			pushNode({
 				id: declaration.id,
@@ -116,6 +132,39 @@ export function themeGraphFromModel(
 			kind: "definesSetting",
 			from: schemaId(setting.path, setting.schemaPath),
 			to: setting.id,
+		});
+	}
+	for (const instance of model.sectionInstances) {
+		pushNode({
+			id: instance.id,
+			kind: "sectionInstance",
+			templatePath: instance.templatePath,
+			instanceId: instance.instanceId,
+			sectionType: instance.sectionType,
+		});
+		pushEdge({
+			id: `edge:templateContainsSectionInstance:${instance.id}`,
+			kind: "templateContainsSectionInstance",
+			from: fileId(instance.templatePath),
+			to: instance.id,
+		});
+		const to =
+			instance.resolvedDeclarationId ??
+			`unresolved:section:${instance.sectionType ?? instance.id}`;
+		if (!instance.resolvedDeclarationId) {
+			pushNode({
+				id: to,
+				kind: "unresolved",
+				targetKind: "section",
+				name: instance.sectionType,
+			});
+		}
+		pushEdge({
+			id: `edge:instanceOf:${instance.id}`,
+			kind: "instanceOf",
+			from: instance.id,
+			to,
+			targetName: instance.sectionType,
 		});
 	}
 	for (const settingRead of model.settingReads) {
