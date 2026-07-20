@@ -148,6 +148,7 @@ export type {
 	ThemeBuildResult,
 	ThemeCapabilityRecord,
 	ThemeDataAccessRecord,
+	ThemeEvidenceRecord,
 	ThemeExpectedInputRecord,
 	ThemeFact,
 	ThemeInputFile,

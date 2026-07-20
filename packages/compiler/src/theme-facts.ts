@@ -221,6 +221,21 @@ export type ThemeCapabilityRecord = {
 	evidenceIds: string[];
 };
 
+export type ThemeEvidenceRecord = {
+	id: string;
+	kind:
+		| "schema"
+		| "schemaSetting"
+		| "settingRead"
+		| "dataRead"
+		| "renderCall"
+		| "renderArgument"
+		| "dependency";
+	file: string;
+	span?: SourceSpan;
+	extractor: string;
+};
+
 export type ThemeExpectedInputRecord = {
 	id: string;
 	path: string;
@@ -253,6 +268,7 @@ export interface ThemeSemanticModel {
 	expectedInputs: ThemeExpectedInputRecord[];
 	renderSites: ThemeRenderSiteRecord[];
 	capabilities: ThemeCapabilityRecord[];
+	evidence: ThemeEvidenceRecord[];
 	issues: Diagnostic[];
 }
 
@@ -412,5 +428,6 @@ export interface InspectNazareThemeResult {
 	root: string;
 	nodes: SemanticThemeGraphNode[];
 	edges: SemanticThemeGraphEdge[];
+	evidence: ThemeEvidenceRecord[];
 	issues: Diagnostic[];
 }

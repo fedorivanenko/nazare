@@ -3,6 +3,7 @@ import type {
 	ThemeCapabilityRecord,
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
+	ThemeEvidenceRecord,
 	ThemeExpectedInputRecord,
 	ThemeFact,
 	ThemeFileRecord,
@@ -244,6 +245,14 @@ export function buildThemeSemanticModel(
 		declarations,
 	);
 	const capabilities = capabilityRecords(dataAccesses);
+	const evidence = evidenceRecords({
+		references,
+		schemas,
+		settings,
+		settingReads,
+		dataAccesses,
+		renderArguments,
+	});
 
 	const settingByPathAndId = new Map(
 		settings.map((setting) => [
@@ -313,8 +322,63 @@ export function buildThemeSemanticModel(
 		capabilities: dedupeById(capabilities).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
+		evidence: dedupeById(evidence).sort((a, b) => a.id.localeCompare(b.id)),
 		issues: modelIssues,
 	};
+}
+
+function evidenceRecords(records: {
+	references: ThemeReference[];
+	schemas: ThemeSchemaRecord[];
+	settings: ThemeSettingRecord[];
+	settingReads: ThemeSettingReadRecord[];
+	dataAccesses: ThemeDataAccessRecord[];
+	renderArguments: ThemeRenderArgumentRecord[];
+}): ThemeEvidenceRecord[] {
+	return [
+		...records.references.map((reference) => ({
+			id: reference.id,
+			kind: "dependency" as const,
+			file: reference.fromPath,
+			span: reference.span,
+			extractor: "theme-liquid-dependencies",
+		})),
+		...records.schemas.map((schema) => ({
+			id: schema.id,
+			kind: "schema" as const,
+			file: schema.path,
+			span: schema.span,
+			extractor: "theme-schema",
+		})),
+		...records.settings.map((setting) => ({
+			id: setting.id,
+			kind: "schemaSetting" as const,
+			file: setting.path,
+			span: setting.span,
+			extractor: "theme-schema",
+		})),
+		...records.settingReads.map((read) => ({
+			id: read.id,
+			kind: "settingRead" as const,
+			file: read.fromPath,
+			span: read.span,
+			extractor: "theme-source-facts",
+		})),
+		...records.dataAccesses.map((access) => ({
+			id: access.id,
+			kind: "dataRead" as const,
+			file: access.fromPath,
+			span: access.span,
+			extractor: "theme-source-facts",
+		})),
+		...records.renderArguments.map((argument) => ({
+			id: argument.id,
+			kind: "renderArgument" as const,
+			file: argument.fromPath,
+			span: argument.span,
+			extractor: "theme-source-facts",
+		})),
+	];
 }
 
 function expectedInputRecords(

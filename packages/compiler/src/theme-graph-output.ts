@@ -352,6 +352,7 @@ export function themeGraphFromModel(
 		root: model.root,
 		nodes: nodes.sort((a, b) => a.id.localeCompare(b.id)),
 		edges: edges.sort((a, b) => a.id.localeCompare(b.id)),
+		evidence: model.evidence,
 		issues: model.issues,
 	};
 }
