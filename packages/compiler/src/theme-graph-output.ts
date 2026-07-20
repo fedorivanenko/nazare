@@ -134,6 +134,43 @@ export function themeGraphFromModel(
 			to: schema.id,
 		});
 	}
+	for (const localeKey of model.localeKeys) {
+		pushNode({
+			id: localeKey.id,
+			kind: "localeKey",
+			path: localeKey.path,
+			key: localeKey.key,
+		});
+		pushEdge({
+			id: `edge:declares:${fileId(localeKey.path)}->${localeKey.id}`,
+			kind: "declares",
+			from: fileId(localeKey.path),
+			to: localeKey.id,
+		});
+	}
+	for (const localeReference of model.localeReferences) {
+		const targets =
+			localeReference.resolvedLocaleKeyIds.length > 0
+				? localeReference.resolvedLocaleKeyIds
+				: [`unresolved:locale:${localeReference.key ?? localeReference.id}`];
+		for (const to of targets) {
+			if (to.startsWith("unresolved:")) {
+				pushNode({
+					id: to,
+					kind: "unresolved",
+					targetKind: "localeKey",
+					name: localeReference.key,
+				});
+			}
+			pushEdge({
+				id: `edge:referencesLocaleKey:${localeReference.id}->${to}`,
+				kind: "referencesLocaleKey",
+				from: fileId(localeReference.fromPath),
+				to,
+				key: localeReference.key,
+			});
+		}
+	}
 	for (const setting of model.settings) {
 		pushNode({
 			id: setting.id,

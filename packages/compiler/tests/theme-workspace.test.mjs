@@ -151,6 +151,37 @@ test("section schemas create block and block setting nodes", () => {
 	assert.ok(graph.edges.some((edge) => edge.kind === "definesBlockSetting"));
 });
 
+test("source filters create asset and locale references", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "sections/main.liquid",
+			contents: `{{ 'theme.css' | asset_url }} {{ 'general.accessibility.skip_to_content' | t }}`,
+		},
+		{ path: "assets/theme.css", contents: "body{}" },
+		{
+			path: "locales/en.default.json",
+			contents: JSON.stringify({
+				general: { accessibility: { skip_to_content: "Skip" } },
+			}),
+		},
+	]);
+
+	assert.ok(
+		graph.edges.some(
+			(edge) =>
+				edge.kind === "referencesAsset" && edge.targetName === "theme.css",
+		),
+	);
+	assert.ok(
+		graph.nodes.some(
+			(node) =>
+				node.kind === "localeKey" &&
+				node.key === "general.accessibility.skip_to_content",
+		),
+	);
+	assert.ok(graph.edges.some((edge) => edge.kind === "referencesLocaleKey"));
+});
+
 test("settings_schema settings point at existing schema nodes", () => {
 	const graph = inspectNazareTheme([
 		{

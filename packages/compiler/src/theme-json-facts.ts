@@ -52,6 +52,11 @@ export function collectJsonThemeFacts(
 			}
 		}
 	}
+	if (path.startsWith("locales/") && path.endsWith(".json")) {
+		for (const key of flattenLocaleKeys(parsed)) {
+			facts.push({ kind: "definesLocaleKey", path, key });
+		}
+	}
 	if (path === "config/settings_schema.json" && Array.isArray(parsed)) {
 		const schemaPath = "config/settings_schema.json";
 		facts.push({ kind: "definesSchema", path, schemaPath });
@@ -75,6 +80,20 @@ export function collectJsonThemeFacts(
 		}
 	}
 	return { facts, issues: [] };
+}
+
+function flattenLocaleKeys(value: unknown, prefix = ""): string[] {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+	const keys: string[] = [];
+	for (const [key, child] of Object.entries(value)) {
+		const fullKey = prefix ? `${prefix}.${key}` : key;
+		if (child && typeof child === "object" && !Array.isArray(child)) {
+			keys.push(...flattenLocaleKeys(child, fullKey));
+			continue;
+		}
+		keys.push(fullKey);
+	}
+	return keys;
 }
 
 function isTemplateLikeJson(path: string): boolean {
