@@ -94,7 +94,7 @@ const emitExample = [
 		<main class="site-shell stack">
 			<section class="stack">
 				<p class="muted">Language spec</p>
-				<h1 class="heading">Nazare adds a typed component layer to Shopify Liquid.</h1>
+				<h1 class="heading--title">Nazare adds a typed component layer to Shopify Liquid.</h1>
 				<p>
 					A <code>.nz.liquid</code> file is Liquid plus a small set of compile-time tags
 					and attributes. Nazare checks those constructs during development, then emits
@@ -104,7 +104,7 @@ const emitExample = [
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">File kinds</h2>
+				<h2 class="heading--subtitle">File kinds</h2>
 				<p>Files are snippets by default. One optional <code>{"{% component %}"}</code> tag changes output kind.</p>
 				<ul>
 					<li><code>{"{% component snippet %}"}</code> emits to <code>snippets/</code>.</li>
@@ -114,7 +114,7 @@ const emitExample = [
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">Imports and rendering</h2>
+				<h2 class="heading--subtitle">Imports and rendering</h2>
 				<p>
 					Imports make dependencies explicit. Component imports are capitalized;
 					behavior and style imports are lowercase. Specifiers must be relative and stay
@@ -127,7 +127,7 @@ const emitExample = [
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">Props and type DSL</h2>
+				<h2 class="heading--subtitle">Props and type DSL</h2>
 				<p>
 					Props are declared with <code>{"{% props { ... } %}"}</code> and read as
 					<code>props.name</code>. In strict mode, undeclared <code>props.x</code> is an error.
@@ -140,7 +140,7 @@ const emitExample = [
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">Blocks, styles, refs, and scripts</h2>
+				<h2 class="heading--subtitle">Blocks, styles, refs, and scripts</h2>
 				<p>
 					Sections can expose one <code>{"{% blocks %}"}</code> slot, optionally limited to
 					imported block components. Bound stylesheets behave like CSS modules. Refs and
@@ -150,7 +150,7 @@ const emitExample = [
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">Islands and roots</h2>
+				<h2 class="heading--subtitle">Islands and roots</h2>
 				<p>
 					Behavior can be imported and mounted with <code>island="name"</code>. Without an
 					island attribute, behavior mounts on the component root. <code>nz-root</code>
@@ -159,7 +159,7 @@ const emitExample = [
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">Diagnostics and emit</h2>
+				<h2 class="heading--subtitle">Diagnostics and emit</h2>
 				<p>
 					Diagnostics carry severity and phase: parse, resolve, check, validate, or emit.
 					Strict mode checks package-author contracts; loose mode keeps migration builds

@@ -2,6 +2,8 @@
 import "../styles/global.css";
 
 // biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
+import Button from "../components/Button.astro";
+// biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
 import CodeBlock from "../components/CodeBlock.astro";
 // biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
 import Footer from "../components/Footer.astro";
@@ -164,32 +166,53 @@ const stackExample = `Nazare
 	</head>
 	<body>
 		<header class="site-header">
-			<a href="/" aria-label="Nazare home">Nazare</a>
+			<a href="/" aria-label="Nazare home"
+			    style="display: block; text-decoration: none; font-size:20px; font-weight: 600;"
+			>
+			    Nazare
+			</a>
 			<nav aria-label="Primary navigation">
 				<a href="/language">Language</a>
-				<a href="/docs">Docs</a>
 				<a href="https://github.com/fedorivanenko/nazare">GitHub</a>
 			</nav>
 		</header>
 		<main class="site-shell stack">
 			<section class="stack">
-				<h1 class="heading">Nazare</h1>
-				<p class="muted">
-					Nazare is a family of open-source tools for building native Shopify themes that
-					are easier to build, share, maintain, and evolve.
+				<h1 class="heading--title"
+				    style="max-width:20ch"
+				>
+					Reduce the cost of changing Shopify themes
+				</h1>
+				<p>
+				    Nazare is an open-source toolkit that brings modern software engineering to native Shopify themes, making them easier to build, maintain, and evolve.
 				</p>
 				<p>
-					Add type-safe components, explicit dependencies, editable registries, and shared
-					storefront architecture without leaving Shopify’s themes.
+                    It introduces explicit interfaces, dependencies, and reusable abstractions, replacing implicit conventions with verifiable architecture that is easier for both humans and AI to understand, change, and automate.
 				</p>
-				<CodeBlock code={installCommand} language="bash" />
 				<p>
-					<a href="https://github.com/fedorivanenko/nazare">GitHub</a>
+				    Build with type-safe components, editable registries, and a structured project architecture—without leaving Shopify's native theme ecosystem.
 				</p>
+				<p>
+				    Nazare does not require a rewrite.<br/>
+					Start by intalling Nazare CLI and adopt incrementally.
+				</p>
+				<div class="code-block-group">
+					<div class="code-block-group__header">
+						<h3 class="heading--small">Install Nazare CLI</h3>
+						<a
+							class="muted"
+							style="font-size:0.85rem;"
+							href="https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh"
+						>
+							View install script
+						</a>
+					</div>
+					<CodeBlock code={installCommand} language="bash" />
+				</div>
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">Improve the DX without leaving Liquid</h2>
+				<h2 class="heading--subtitle">Improve the DX without leaving Liquid</h2>
 				<p>
 					Liquid was designed as a simple, safe templating language. But modern Shopify
 					themes are no longer simple.
@@ -206,7 +229,7 @@ const stackExample = `Nazare
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">Registry</h2>
+				<h2 class="heading--subtitle">Registry</h2>
 				<p><strong>Editable components for Shopify Liquid</strong></p>
 				<p>
 					Install styleless components directly into your project. Own the source, adapt
@@ -218,7 +241,7 @@ const stackExample = `Nazare
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">Types</h2>
+				<h2 class="heading--subtitle">Types</h2>
 				<p><strong>Safer, more composable Liquid</strong></p>
 				<p>
 					Add typed component interfaces, explicit imports, composition, and clear
@@ -235,7 +258,7 @@ const stackExample = `Nazare
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">Workspace</h2>
+				<h2 class="heading--subtitle">Workspace</h2>
 				<p>Manage several Shopify themes and shared packages in one monorepo-style repository.</p>
 				<p>
 					Share components, styles, utilities, and storefront logic across themes while
@@ -247,7 +270,7 @@ const stackExample = `Nazare
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">More of the stack</h2>
+				<h2 class="heading--subtitle">More of the stack</h2>
 				<p>
 					Nazare is growing into a complete development environment for native Shopify
 					storefronts.
@@ -256,7 +279,7 @@ const stackExample = `Nazare
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">Adopt incrementally</h2>
+				<h2 class="heading--subtitle">Adopt incrementally</h2>
 				<p>Nazare does not require a rewrite.</p>
 				<p>
 					Use each tool independently, or combine them as one integrated development
@@ -273,7 +296,7 @@ const stackExample = `Nazare
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">Bring modern frontend ideas to Liquid</h2>
+				<h2 class="heading--subtitle">Bring modern frontend ideas to Liquid</h2>
 				<p>
 					Over the past decade, JavaScript gained better ways to organize, compose,
 					validate, and understand frontend code: modules, typed interfaces, reusable
@@ -288,7 +311,7 @@ const stackExample = `Nazare
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">Open source</h2>
+				<h2 class="heading--subtitle">Open source</h2>
 				<p>Nazare produces code you can inspect, change, and own.</p>
 				<p>
 					Registry components become part of your project. The compiler outputs standard
@@ -298,11 +321,13 @@ const stackExample = `Nazare
 			</section>
 
 			<section class="stack">
-				<h2 class="heading">Build native Shopify themes that stay easy to evolve</h2>
+				<h2 class="heading--subtitle">Build native Shopify themes that stay easy to evolve</h2>
 				<p>Start with the tool you need today. Adopt more of the stack when it becomes useful.</p>
-				<p>
-					<a href="/language">Read language spec</a> · <a href="/docs">Get started</a> · <a href="https://github.com/fedorivanenko/nazare">View on GitHub</a>
-				</p>
+				<div class="button-row">
+					<Button href="/language">Read language spec</Button>
+					<Button href="/docs" variant="secondary">Get started</Button>
+					<Button href="https://github.com/fedorivanenko/nazare" variant="secondary">View on GitHub</Button>
+				</div>
 				<blockquote>
 					<p>One engineer can do a lot more today than a year ago.</p>
 					<cite>Jarred Sumner</cite>
