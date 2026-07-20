@@ -155,6 +155,8 @@ export type {
 	ThemeEvidenceRecord,
 	ThemeExpectedInputRecord,
 	ThemeFact,
+	ThemeGraphView,
+	ThemeGraphViews,
 	ThemeImpactSummary,
 	ThemeInputFile,
 	ThemeLocaleKeyRecord,

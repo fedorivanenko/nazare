@@ -18,6 +18,7 @@ test("inspectNazareTheme projects plain Liquid dependencies and schema", () => {
 	assert.ok(
 		graph.nodes.some((node) => node.kind === "section" && node.name === "main"),
 	);
+	assert.ok(graph.views.themeStructure.edgeIds.length > 0);
 	assert.ok(
 		graph.nodes.some((node) => node.kind === "snippet" && node.name === "card"),
 	);
