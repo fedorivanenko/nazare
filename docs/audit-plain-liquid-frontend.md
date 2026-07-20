@@ -80,7 +80,7 @@ Flow:
 2. `nazare-ast` results go through `projectArtifact()`.
 3. `direct-ir` results go through `projectIR()`.
 4. `compileNazareArtifact()` forces `nazareLiquidFrontend` and throws only if generic result is failure or AST missing.
-5. `buildNazareTheme()` compiles, checks dependencies, emits.
+5. `buildNazareThemeWorkspace()` analyzes workspace files, applies build scope, checks dependencies through workspace context, and emits.
 6. `compilePlainLiquid()` forces `plainLiquidFrontend` and extracts typed metadata.
 7. `buildPlainLiquid()` emits source unchanged only when `canEmit` or explicit `emitOnError`.
 

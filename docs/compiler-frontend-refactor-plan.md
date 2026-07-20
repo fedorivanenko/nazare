@@ -42,7 +42,7 @@ compileNazareArtifact(source, file)
 → check/validate/project
 → CompileArtifactResult
 
-buildNazareTheme(source, file)
+buildNazareThemeWorkspace(files, { scope })
 → compileNazareArtifact(source, file)
 → checkDependencies(ast)
 → emitTheme(source, compiled)
@@ -175,7 +175,7 @@ Compatibility wrappers remain stable:
 
 ```ts
 compileNazareArtifact(source, file, options)
-buildNazareTheme(source, file, options)
+buildNazareThemeWorkspace(files, options)
 ```
 
 These call `compileArtifact({ frontend: nazareLiquidFrontend, ... })`.

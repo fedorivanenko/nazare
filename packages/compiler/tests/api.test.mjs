@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-	buildNazareTheme,
+	buildNazareThemeWorkspace,
 	checkComponentAuthoringConstraints,
 	checkContractConstraints,
 	checkScriptConstraints,
@@ -16,6 +16,21 @@ import {
 	parseNazareLiquid,
 	resolveAssetImports,
 } from "../dist/index.js";
+
+function buildWorkspaceFile(source, file, options = {}) {
+	const built = buildNazareThemeWorkspace([{ path: file, contents: source }], {
+		...options,
+		scope: { kind: "file", path: file },
+	});
+	const artifact = built.artifacts[0];
+	return {
+		...(artifact ?? {}),
+		emitted: built.emitted,
+		issues: built.issues,
+		emittedOnError: built.emittedOnError,
+		canEmit: artifact?.canEmit ?? false,
+	};
+}
 
 test("generic compileArtifact selects the Nazare Liquid frontend", () => {
 	const source = `{% props title: string %}<h1>{{ props.title }}</h1>`;
@@ -107,9 +122,9 @@ test("emitLiquidFile reports overlapping emit edits as a diagnostic", () => {
 	);
 });
 
-test("buildNazareTheme aggregates emit diagnostics", () => {
+test("buildNazareThemeWorkspace aggregates emit diagnostics", () => {
 	const source = `{% script %}\nconsole.log("no default export");\n{% endscript %}`;
-	const built = buildNazareTheme(source, "component.nz.liquid", {
+	const built = buildWorkspaceFile(source, "component.nz.liquid", {
 		name: "component",
 	});
 	assert.ok(
@@ -129,9 +144,9 @@ test("buildNazareTheme aggregates emit diagnostics", () => {
 	);
 });
 
-test("buildNazareTheme skips emit on compile errors by default", () => {
+test("buildNazareThemeWorkspace skips emit on compile errors by default", () => {
 	const source = `{% import Missing from "./missing.nz.liquid" %}\n{% render Missing {} %}`;
-	const built = buildNazareTheme(source, "component.nz.liquid", {
+	const built = buildWorkspaceFile(source, "component.nz.liquid", {
 		name: "component",
 	});
 
@@ -141,9 +156,9 @@ test("buildNazareTheme skips emit on compile errors by default", () => {
 	assert.ok(built.issues.some((issue) => issue.phase === "resolve"));
 });
 
-test("buildNazareTheme emits on compile errors only when explicitly requested", () => {
+test("buildNazareThemeWorkspace emits on compile errors only when explicitly requested", () => {
 	const source = `{% import Missing from "./missing.nz.liquid" %}\n{% render Missing {} %}`;
-	const built = buildNazareTheme(source, "component.nz.liquid", {
+	const built = buildWorkspaceFile(source, "component.nz.liquid", {
 		name: "component",
 		emitOnError: true,
 	});
@@ -256,10 +271,16 @@ test("checking dependencies is an explicit call, not a compile-time policy", asy
 	);
 
 	// build validates its dependencies, so the child error appears there.
-	const built = buildNazareTheme(source, "component.nz.liquid", {
-		name: "component",
-		readFile,
-	});
+	const built = buildNazareThemeWorkspace(
+		[
+			{ path: "component.nz.liquid", contents: source },
+			{ path: "child.nz.liquid", contents: files["child.nz.liquid"] },
+		],
+		{
+			name: "component",
+			scope: { kind: "file", path: "component.nz.liquid" },
+		},
+	);
 	assert.equal(hasChildError(built.issues), true);
 });
 
