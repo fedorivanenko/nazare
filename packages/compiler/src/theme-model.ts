@@ -1,5 +1,6 @@
 import type { Diagnostic } from "@nazare/core";
 import type {
+	ThemeCapabilityRecord,
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
 	ThemeFact,
@@ -230,6 +231,8 @@ export function buildThemeSemanticModel(
 		if (declaration) instance.resolvedDeclarationId = declaration.id;
 	}
 
+	const capabilities = capabilityRecords(dataAccesses);
+
 	const settingByPathAndId = new Map(
 		settings.map((setting) => [
 			`${setting.path}:${setting.settingId}`,
@@ -289,8 +292,72 @@ export function buildThemeSemanticModel(
 		renderArguments: dedupeById(renderArguments).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
+		capabilities: dedupeById(capabilities).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
 		issues: modelIssues,
 	};
+}
+
+function capabilityRecords(
+	dataAccesses: ThemeDataAccessRecord[],
+): ThemeCapabilityRecord[] {
+	const byPathCapability = new Map<string, ThemeCapabilityRecord>();
+	for (const access of dataAccesses) {
+		for (const capability of capabilitiesForAccess(access)) {
+			const id = capabilityId(access.fromPath, capability.name);
+			const existing = byPathCapability.get(id);
+			if (existing) {
+				existing.evidenceIds = [
+					...new Set([...existing.evidenceIds, access.id]),
+				];
+				existing.confidence = Math.max(
+					existing.confidence,
+					capability.confidence,
+				);
+				continue;
+			}
+			byPathCapability.set(id, {
+				id,
+				path: access.fromPath,
+				capability: capability.name,
+				confidence: capability.confidence,
+				evidenceIds: [access.id],
+			});
+		}
+	}
+	return [...byPathCapability.values()];
+}
+
+function capabilitiesForAccess(
+	access: ThemeDataAccessRecord,
+): { name: string; confidence: number }[] {
+	const path = access.propertyPath ?? "";
+	if (access.object === "product" && path === "price") {
+		return [{ name: "displaysProductPrice", confidence: 0.95 }];
+	}
+	if (
+		access.object === "product" &&
+		/(^|\.)(featured_image|media|images)$/.test(path)
+	) {
+		return [{ name: "displaysProductMedia", confidence: 0.85 }];
+	}
+	if (access.object === "cart" && /(^|\.)items/.test(path)) {
+		return [{ name: "displaysCartItems", confidence: 0.9 }];
+	}
+	if (access.object === "cart") {
+		return [{ name: "usesCart", confidence: 0.75 }];
+	}
+	if (access.object === "search") {
+		return [{ name: "usesSearch", confidence: 0.75 }];
+	}
+	if (access.object === "recommendations") {
+		return [{ name: "displaysRecommendations", confidence: 0.85 }];
+	}
+	if (access.object === "localization") {
+		return [{ name: "usesLocalization", confidence: 0.85 }];
+	}
+	return [];
 }
 
 function declaration(
@@ -387,4 +454,8 @@ export function renderArgumentId(
 	argumentName: string,
 ): string {
 	return `render-argument:${path}:${targetName}:${argumentName}`;
+}
+
+export function capabilityId(path: string, capability: string): string {
+	return `capability:${path}:${capability}`;
 }

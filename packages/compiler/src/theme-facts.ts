@@ -213,6 +213,14 @@ export type ThemeRenderArgumentRecord = {
 	span?: SourceSpan;
 };
 
+export type ThemeCapabilityRecord = {
+	id: string;
+	path: string;
+	capability: string;
+	confidence: number;
+	evidenceIds: string[];
+};
+
 export interface ThemeSemanticModel {
 	version: 1;
 	root: string;
@@ -225,6 +233,7 @@ export interface ThemeSemanticModel {
 	settingReads: ThemeSettingReadRecord[];
 	dataAccesses: ThemeDataAccessRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
+	capabilities: ThemeCapabilityRecord[];
 	issues: Diagnostic[];
 }
 
@@ -301,6 +310,13 @@ export type SemanticThemeGraphNode =
 	  }
 	| {
 			id: string;
+			kind: "capability";
+			capability: string;
+			confidence: number;
+			evidenceIds: string[];
+	  }
+	| {
+			id: string;
 			kind: "unresolved";
 			targetKind: "snippet" | "section" | "asset" | "component" | "setting";
 			name?: string;
@@ -341,6 +357,7 @@ export type SemanticThemeGraphEdge =
 			argumentName: string;
 			valueExpression: string;
 	  }
+	| { id: string; kind: "hasCapability"; from: string; to: string }
 	| {
 			id: string;
 			kind: "templateContainsSection";

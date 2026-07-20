@@ -146,6 +146,7 @@ export type {
 	SemanticThemeGraphNode,
 	ThemeAnalysis,
 	ThemeBuildResult,
+	ThemeCapabilityRecord,
 	ThemeDataAccessRecord,
 	ThemeFact,
 	ThemeInputFile,
