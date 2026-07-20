@@ -180,6 +180,14 @@ test("inspectNazareTheme records data access, settings reads, and render args", 
 				edge.kind === "accessesData" && edge.expression === "product.price",
 		),
 	);
+	assert.ok(
+		graph.nodes.some(
+			(node) =>
+				node.kind === "capability" &&
+				node.capability === "displaysProductPrice" &&
+				node.confidence > 0,
+		),
+	);
 	assert.ok(graph.edges.some((edge) => edge.kind === "readsSetting"));
 	assert.ok(
 		graph.nodes.some(

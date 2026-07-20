@@ -268,6 +268,21 @@ export function themeGraphFromModel(
 			});
 		}
 	}
+	for (const capability of model.capabilities) {
+		pushNode({
+			id: capability.id,
+			kind: "capability",
+			capability: capability.capability,
+			confidence: capability.confidence,
+			evidenceIds: capability.evidenceIds,
+		});
+		pushEdge({
+			id: `edge:hasCapability:${fileId(capability.path)}->${capability.id}`,
+			kind: "hasCapability",
+			from: fileId(capability.path),
+			to: capability.id,
+		});
+	}
 	for (const reference of model.references) {
 		const to = reference.resolvedDeclarationId ?? unresolvedNodeId(reference);
 		if (!reference.resolvedDeclarationId) {
