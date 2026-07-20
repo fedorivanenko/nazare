@@ -9,6 +9,8 @@ import type {
 	ThemeExpectedInputRecord,
 	ThemeFact,
 	ThemeFileRecord,
+	ThemeLocaleKeyRecord,
+	ThemeLocaleReferenceRecord,
 	ThemePageRecord,
 	ThemeReference,
 	ThemeRenderArgumentRecord,
@@ -32,6 +34,8 @@ export function buildThemeSemanticModel(
 	const blocks: ThemeBlockRecord[] = [];
 	const blockSettings: ThemeBlockSettingRecord[] = [];
 	const sectionInstances: ThemeSectionInstanceRecord[] = [];
+	const localeKeys: ThemeLocaleKeyRecord[] = [];
+	const localeReferences: ThemeLocaleReferenceRecord[] = [];
 	const settingReads: ThemeSettingReadRecord[] = [];
 	const dataAccesses: ThemeDataAccessRecord[] = [];
 	const renderArguments: ThemeRenderArgumentRecord[] = [];
@@ -92,6 +96,24 @@ export function buildThemeSemanticModel(
 				schemaPath: fact.schemaPath,
 				settingId: fact.settingId,
 				settingType: fact.settingType,
+				span: fact.span,
+			});
+		}
+		if (fact.kind === "definesLocaleKey") {
+			localeKeys.push({
+				id: localeKeyId(fact.path, fact.key),
+				path: fact.path,
+				key: fact.key,
+				span: fact.span,
+			});
+		}
+		if (fact.kind === "referencesLocaleKey") {
+			localeReferences.push({
+				id: localeReferenceId(fact.fromPath, fact.key ?? "dynamic"),
+				fromPath: fact.fromPath,
+				key: fact.key,
+				resolvedLocaleKeyIds: [],
+				static: fact.static,
 				span: fact.span,
 			});
 		}
@@ -292,6 +314,29 @@ export function buildThemeSemanticModel(
 		if (setting) read.resolvedSettingId = setting.id;
 	}
 
+	const localeKeysByKey = new Map<string, ThemeLocaleKeyRecord[]>();
+	for (const key of localeKeys) {
+		localeKeysByKey.set(key.key, [
+			...(localeKeysByKey.get(key.key) ?? []),
+			key,
+		]);
+	}
+	for (const reference of localeReferences) {
+		if (!reference.static || !reference.key) continue;
+		reference.resolvedLocaleKeyIds = (
+			localeKeysByKey.get(reference.key) ?? []
+		).map((key) => key.id);
+		if (reference.resolvedLocaleKeyIds.length === 0) {
+			modelIssues.push({
+				severity: "warning",
+				code: "THEME_UNRESOLVED_LOCALE_KEY",
+				message: `Unresolved locale key ${reference.key} from ${reference.fromPath}`,
+				phase: "resolve",
+				span: reference.span,
+			});
+		}
+	}
+
 	for (const ref of references) {
 		if (!ref.static || ref.resolvedDeclarationId) continue;
 		const targetKey = ref.targetName
@@ -334,6 +379,10 @@ export function buildThemeSemanticModel(
 			a.id.localeCompare(b.id),
 		),
 		pages: dedupeById(pages).sort((a, b) => a.id.localeCompare(b.id)),
+		localeKeys: dedupeById(localeKeys).sort((a, b) => a.id.localeCompare(b.id)),
+		localeReferences: dedupeById(localeReferences).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
 		settingReads: dedupeById(settingReads).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
@@ -689,6 +738,14 @@ export function blockSettingId(
 
 export function pageId(path: string): string {
 	return `page:${path}`;
+}
+
+export function localeKeyId(path: string, key: string): string {
+	return `locale-key:${path}:${key}`;
+}
+
+export function localeReferenceId(path: string, key: string): string {
+	return `locale-reference:${path}:${key}`;
 }
 
 export function sectionInstanceId(

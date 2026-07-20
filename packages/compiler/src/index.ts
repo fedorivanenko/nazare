@@ -154,6 +154,8 @@ export type {
 	ThemeExpectedInputRecord,
 	ThemeFact,
 	ThemeInputFile,
+	ThemeLocaleKeyRecord,
+	ThemeLocaleReferenceRecord,
 	ThemePageRecord,
 	ThemeRenderArgumentRecord,
 	ThemeRenderSiteRecord,

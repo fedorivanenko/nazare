@@ -20,6 +20,9 @@ const dataAccessPattern =
 const settingReadPattern = /\b(section|block)\.settings\.([A-Za-z_][\w-]*)/g;
 const renderTagPattern = /{%\s*render\s+['"]([^'"]+)['"]([\s\S]*?)%}/g;
 const renderArgumentPattern = /(?:^|,)\s*([A-Za-z_][\w-]*)\s*:\s*([^,}%\n]+)/g;
+const assetFilterPattern =
+	/['"]([^'"]+)['"]\s*\|\s*(?:asset_url|asset_img_url|stylesheet_tag|script_tag)/g;
+const localeFilterPattern = /['"]([^'"]+)['"]\s*\|\s*t\b/g;
 
 export function collectSourceThemeFacts(
 	path: string,
@@ -29,6 +32,8 @@ export function collectSourceThemeFacts(
 		...collectDataAccessFacts(path, contents),
 		...collectSettingReadFacts(path, contents),
 		...collectRenderArgumentFacts(path, contents),
+		...collectAssetReferenceFacts(path, contents),
+		...collectLocaleReferenceFacts(path, contents),
 	];
 }
 
@@ -96,6 +101,32 @@ function collectRenderArgumentFacts(
 		}
 	}
 	return facts;
+}
+
+function collectAssetReferenceFacts(
+	path: string,
+	contents: string,
+): ThemeFact[] {
+	return [...contents.matchAll(assetFilterPattern)].map((match) => ({
+		kind: "referencesAsset" as const,
+		fromPath: path,
+		targetName: match[1],
+		static: true,
+		span: matchSpan(path, contents, match),
+	}));
+}
+
+function collectLocaleReferenceFacts(
+	path: string,
+	contents: string,
+): ThemeFact[] {
+	return [...contents.matchAll(localeFilterPattern)].map((match) => ({
+		kind: "referencesLocaleKey" as const,
+		fromPath: path,
+		key: match[1],
+		static: true,
+		span: matchSpan(path, contents, match),
+	}));
 }
 
 function sourceExpression(

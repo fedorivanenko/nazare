@@ -69,6 +69,19 @@ export type ThemeFact =
 			span?: SourceSpan;
 	  }
 	| {
+			kind: "definesLocaleKey";
+			path: string;
+			key: string;
+			span?: SourceSpan;
+	  }
+	| {
+			kind: "referencesLocaleKey";
+			fromPath: string;
+			key?: string;
+			static: boolean;
+			span?: SourceSpan;
+	  }
+	| {
 			kind: "importsComponent";
 			fromPath: string;
 			targetPath: string;
@@ -224,6 +237,22 @@ export type ThemeBlockSettingRecord = {
 	span?: SourceSpan;
 };
 
+export type ThemeLocaleKeyRecord = {
+	id: string;
+	path: string;
+	key: string;
+	span?: SourceSpan;
+};
+
+export type ThemeLocaleReferenceRecord = {
+	id: string;
+	fromPath: string;
+	key?: string;
+	resolvedLocaleKeyIds: string[];
+	static: boolean;
+	span?: SourceSpan;
+};
+
 export type ThemeSettingReadRecord = {
 	id: string;
 	fromPath: string;
@@ -305,6 +334,8 @@ export interface ThemeSemanticModel {
 	blockSettings: ThemeBlockSettingRecord[];
 	sectionInstances: ThemeSectionInstanceRecord[];
 	pages: ThemePageRecord[];
+	localeKeys: ThemeLocaleKeyRecord[];
+	localeReferences: ThemeLocaleReferenceRecord[];
 	settingReads: ThemeSettingReadRecord[];
 	dataAccesses: ThemeDataAccessRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
@@ -348,6 +379,7 @@ export type SemanticThemeGraphNode =
 	| { id: string; kind: "page"; name: string; path: string; pageType: string }
 	| { id: string; kind: "layout"; name: string; path: string }
 	| { id: string; kind: "locale"; name: string; path: string }
+	| { id: string; kind: "localeKey"; path: string; key: string }
 	| { id: string; kind: "asset"; name: string; path: string }
 	| {
 			id: string;
@@ -420,7 +452,13 @@ export type SemanticThemeGraphNode =
 	| {
 			id: string;
 			kind: "unresolved";
-			targetKind: "snippet" | "section" | "asset" | "component" | "setting";
+			targetKind:
+				| "snippet"
+				| "section"
+				| "asset"
+				| "component"
+				| "setting"
+				| "localeKey";
 			name?: string;
 	  };
 
@@ -440,6 +478,13 @@ export type SemanticThemeGraphEdge =
 			from: string;
 			to: string;
 			targetName?: string;
+	  }
+	| {
+			id: string;
+			kind: "referencesLocaleKey";
+			from: string;
+			to: string;
+			key?: string;
 	  }
 	| { id: string; kind: "definesSchema"; from: string; to: string }
 	| { id: string; kind: "definesSetting"; from: string; to: string }
