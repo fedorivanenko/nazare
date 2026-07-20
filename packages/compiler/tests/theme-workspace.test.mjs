@@ -206,6 +206,14 @@ test("inspectNazareTheme records data access, settings reads, and render args", 
 				node.required,
 		),
 	);
+	assert.ok(
+		graph.evidence.some(
+			(evidence) =>
+				evidence.kind === "dataRead" &&
+				evidence.file === "snippets/price.liquid" &&
+				evidence.extractor === "theme-source-facts",
+		),
+	);
 });
 
 test("analyzeNazareTheme reports missing inferred render inputs", () => {
