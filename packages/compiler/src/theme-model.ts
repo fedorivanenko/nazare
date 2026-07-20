@@ -171,15 +171,27 @@ export function buildThemeSemanticModel(
 	}
 
 	for (const ref of references) {
-		if (ref.static && !ref.resolvedDeclarationId) {
+		if (!ref.static || ref.resolvedDeclarationId) continue;
+		const targetKey = ref.targetName
+			? `${ref.targetKind}:${ref.targetName}`
+			: undefined;
+		if (targetKey && ambiguousDeclarationKeys.has(targetKey)) {
 			modelIssues.push({
 				severity: "warning",
-				code: "THEME_UNRESOLVED_REFERENCE",
-				message: `Unresolved ${ref.targetKind} reference${ref.targetName ? ` ${ref.targetName}` : ""} from ${ref.fromPath}`,
+				code: "THEME_AMBIGUOUS_REFERENCE",
+				message: `Ambiguous ${ref.targetKind} reference ${ref.targetName} from ${ref.fromPath}`,
 				phase: "resolve",
 				span: ref.span,
 			});
+			continue;
 		}
+		modelIssues.push({
+			severity: "warning",
+			code: "THEME_UNRESOLVED_REFERENCE",
+			message: `Unresolved ${ref.targetKind} reference${ref.targetName ? ` ${ref.targetName}` : ""} from ${ref.fromPath}`,
+			phase: "resolve",
+			span: ref.span,
+		});
 	}
 
 	return {
