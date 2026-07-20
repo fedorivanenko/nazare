@@ -97,6 +97,21 @@ export type ThemeFact =
 			span?: SourceSpan;
 	  }
 	| {
+			kind: "declaresBlock";
+			path: string;
+			blockType: string;
+			name?: string;
+			span?: SourceSpan;
+	  }
+	| {
+			kind: "definesBlockSetting";
+			path: string;
+			blockType: string;
+			settingId: string;
+			settingType?: string;
+			span?: SourceSpan;
+	  }
+	| {
 			kind: "readsSetting";
 			fromPath: string;
 			settingObject: "section" | "block";
@@ -184,6 +199,31 @@ export type ThemeSectionInstanceRecord = {
 	static: boolean;
 };
 
+export type ThemePageRecord = {
+	id: string;
+	path: string;
+	name: string;
+	pageType: string;
+	templateDeclarationId: string;
+};
+
+export type ThemeBlockRecord = {
+	id: string;
+	path: string;
+	blockType: string;
+	name?: string;
+	span?: SourceSpan;
+};
+
+export type ThemeBlockSettingRecord = {
+	id: string;
+	path: string;
+	blockType: string;
+	settingId: string;
+	settingType?: string;
+	span?: SourceSpan;
+};
+
 export type ThemeSettingReadRecord = {
 	id: string;
 	fromPath: string;
@@ -261,7 +301,10 @@ export interface ThemeSemanticModel {
 	references: ThemeReference[];
 	schemas: ThemeSchemaRecord[];
 	settings: ThemeSettingRecord[];
+	blocks: ThemeBlockRecord[];
+	blockSettings: ThemeBlockSettingRecord[];
 	sectionInstances: ThemeSectionInstanceRecord[];
+	pages: ThemePageRecord[];
 	settingReads: ThemeSettingReadRecord[];
 	dataAccesses: ThemeDataAccessRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
@@ -302,6 +345,7 @@ export type SemanticThemeGraphNode =
 	| { id: string; kind: "section"; name: string; path: string }
 	| { id: string; kind: "snippet"; name: string; path: string }
 	| { id: string; kind: "template"; name: string; path: string }
+	| { id: string; kind: "page"; name: string; path: string; pageType: string }
 	| { id: string; kind: "layout"; name: string; path: string }
 	| { id: string; kind: "locale"; name: string; path: string }
 	| { id: string; kind: "asset"; name: string; path: string }
@@ -320,6 +364,21 @@ export type SemanticThemeGraphNode =
 			componentKind?: string;
 	  }
 	| { id: string; kind: "schema"; path: string; schemaPath: string }
+	| {
+			id: string;
+			kind: "block";
+			path: string;
+			blockType: string;
+			name?: string;
+	  }
+	| {
+			id: string;
+			kind: "blockSetting";
+			path: string;
+			blockType: string;
+			settingId: string;
+			settingType?: string;
+	  }
 	| {
 			id: string;
 			kind: "setting";
@@ -384,6 +443,9 @@ export type SemanticThemeGraphEdge =
 	  }
 	| { id: string; kind: "definesSchema"; from: string; to: string }
 	| { id: string; kind: "definesSetting"; from: string; to: string }
+	| { id: string; kind: "definesBlock"; from: string; to: string }
+	| { id: string; kind: "definesBlockSetting"; from: string; to: string }
+	| { id: string; kind: "pageUsesTemplate"; from: string; to: string }
 	| { id: string; kind: "readsSetting"; from: string; to: string }
 	| {
 			id: string;

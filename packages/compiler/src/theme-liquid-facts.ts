@@ -67,6 +67,39 @@ function schemaFacts(path: string, ast: PlainLiquidAst): ThemeFact[] {
 				});
 			}
 		}
+		const blocks = (parsed as { blocks?: unknown }).blocks;
+		if (Array.isArray(blocks)) {
+			for (const block of blocks) {
+				if (!block || typeof block !== "object") continue;
+				const type = (block as { type?: unknown }).type;
+				if (typeof type !== "string") continue;
+				const name = (block as { name?: unknown }).name;
+				facts.push({
+					kind: "declaresBlock",
+					path,
+					blockType: type,
+					name: typeof name === "string" ? name : undefined,
+					span: ast.schema.span,
+				});
+				const settings = (block as { settings?: unknown }).settings;
+				if (!Array.isArray(settings)) continue;
+				for (const setting of settings) {
+					if (!setting || typeof setting !== "object") continue;
+					const id = (setting as { id?: unknown }).id;
+					if (typeof id !== "string") continue;
+					const settingType = (setting as { type?: unknown }).type;
+					facts.push({
+						kind: "definesBlockSetting",
+						path,
+						blockType: type,
+						settingId: id,
+						settingType:
+							typeof settingType === "string" ? settingType : undefined,
+						span: ast.schema.span,
+					});
+				}
+			}
+		}
 	} catch {
 		// Existing plain Liquid checks report schema JSON issues. Keep extraction best-effort.
 	}
