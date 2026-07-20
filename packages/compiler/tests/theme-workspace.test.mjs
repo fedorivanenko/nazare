@@ -352,15 +352,28 @@ test("inspectNazareTheme records data access, settings reads, and render args", 
 	);
 });
 
-test("analyzeNazareTheme reports missing inferred render inputs", () => {
-	const analysis = analyzeNazareTheme([
+test("analyzeNazareTheme reports missing and unknown inferred render inputs", () => {
+	const missing = analyzeNazareTheme([
 		{ path: "sections/card.liquid", contents: `{% render 'price' %}` },
 		{ path: "snippets/price.liquid", contents: `{{ product.price }}` },
 	]);
 
 	assert.ok(
-		analysis.issues.some(
+		missing.issues.some(
 			(issue) => issue.code === "THEME_RENDER_ARGUMENT_MISSING",
+		),
+	);
+
+	const unknown = analyzeNazareTheme([
+		{
+			path: "sections/card.liquid",
+			contents: `{% render 'price', product: product, unused: product %}`,
+		},
+		{ path: "snippets/price.liquid", contents: `{{ product.price }}` },
+	]);
+	assert.ok(
+		unknown.issues.some(
+			(issue) => issue.code === "THEME_RENDER_ARGUMENT_UNKNOWN",
 		),
 	);
 });

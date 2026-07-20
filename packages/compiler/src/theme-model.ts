@@ -605,6 +605,7 @@ function addInputDiagnostics(
 			...(argumentNamesByTarget.get(reference.targetName) ?? []),
 			argumentNames,
 		]);
+		const expectedNames = new Set(expected.map((input) => input.name));
 		for (const input of expected) {
 			if (!input.required || argumentNames.has(input.name)) continue;
 			issues.push({
@@ -614,6 +615,18 @@ function addInputDiagnostics(
 				phase: "resolve",
 				span: site.span,
 			});
+		}
+		if (expectedNames.size > 0) {
+			for (const argumentName of argumentNames) {
+				if (expectedNames.has(argumentName)) continue;
+				issues.push({
+					severity: "warning",
+					code: "THEME_RENDER_ARGUMENT_UNKNOWN",
+					message: `Render of ${reference.targetName} from ${site.fromPath} passes argument ${argumentName}, but the target does not read it as an inferred input`,
+					phase: "resolve",
+					span: site.span,
+				});
+			}
 		}
 	}
 	for (const [targetName, sets] of argumentNamesByTarget) {
