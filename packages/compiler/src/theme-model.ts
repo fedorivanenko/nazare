@@ -3,10 +3,12 @@ import type {
 	ThemeCapabilityRecord,
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
+	ThemeExpectedInputRecord,
 	ThemeFact,
 	ThemeFileRecord,
 	ThemeReference,
 	ThemeRenderArgumentRecord,
+	ThemeRenderSiteRecord,
 	ThemeSchemaRecord,
 	ThemeSectionInstanceRecord,
 	ThemeSemanticModel,
@@ -231,6 +233,16 @@ export function buildThemeSemanticModel(
 		if (declaration) instance.resolvedDeclarationId = declaration.id;
 	}
 
+	const expectedInputs = expectedInputRecords(declarations, dataAccesses);
+	const renderSites = renderSiteRecords(references, renderArguments);
+	addInputDiagnostics(
+		modelIssues,
+		renderSites,
+		expectedInputs,
+		references,
+		renderArguments,
+		declarations,
+	);
 	const capabilities = capabilityRecords(dataAccesses);
 
 	const settingByPathAndId = new Map(
@@ -292,11 +304,142 @@ export function buildThemeSemanticModel(
 		renderArguments: dedupeById(renderArguments).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
+		expectedInputs: dedupeById(expectedInputs).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
+		renderSites: dedupeById(renderSites).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
 		capabilities: dedupeById(capabilities).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
 		issues: modelIssues,
 	};
+}
+
+function expectedInputRecords(
+	declarations: ThemeDeclaration[],
+	dataAccesses: ThemeDataAccessRecord[],
+): ThemeExpectedInputRecord[] {
+	const componentPaths = new Set(
+		declarations
+			.filter(
+				(declaration) =>
+					declaration.kind === "snippet" || declaration.kind === "component",
+			)
+			.map((declaration) => declaration.path),
+	);
+	const byId = new Map<string, ThemeExpectedInputRecord>();
+	for (const access of dataAccesses) {
+		if (!componentPaths.has(access.fromPath)) continue;
+		const id = expectedInputId(access.fromPath, access.object);
+		const existing = byId.get(id);
+		if (existing) {
+			existing.evidenceIds = [...new Set([...existing.evidenceIds, access.id])];
+			continue;
+		}
+		byId.set(id, {
+			id,
+			path: access.fromPath,
+			name: access.object,
+			required: true,
+			evidenceIds: [access.id],
+		});
+	}
+	return [...byId.values()];
+}
+
+function renderSiteRecords(
+	references: ThemeReference[],
+	renderArguments: ThemeRenderArgumentRecord[],
+): ThemeRenderSiteRecord[] {
+	const argsBySite = new Map<string, ThemeRenderArgumentRecord[]>();
+	for (const argument of renderArguments) {
+		const key = `${argument.fromPath}:${argument.targetName}`;
+		argsBySite.set(key, [...(argsBySite.get(key) ?? []), argument]);
+	}
+	return references
+		.filter((reference) => reference.kind === "rendersSnippet")
+		.map((reference) => ({
+			id: renderSiteId(reference.id),
+			fromPath: reference.fromPath,
+			targetName: reference.targetName,
+			resolvedDeclarationId: reference.resolvedDeclarationId,
+			argumentIds: (reference.targetName
+				? (argsBySite.get(`${reference.fromPath}:${reference.targetName}`) ??
+					[])
+				: []
+			).map((argument) => argument.id),
+			span: reference.span,
+		}));
+}
+
+function addInputDiagnostics(
+	issues: Diagnostic[],
+	renderSites: ThemeRenderSiteRecord[],
+	expectedInputs: ThemeExpectedInputRecord[],
+	references: ThemeReference[],
+	renderArguments: ThemeRenderArgumentRecord[],
+	declarations: ThemeDeclaration[],
+): void {
+	const expectedByDeclaration = new Map<string, ThemeExpectedInputRecord[]>();
+	for (const input of expectedInputs) {
+		const key = input.path;
+		expectedByDeclaration.set(key, [
+			...(expectedByDeclaration.get(key) ?? []),
+			input,
+		]);
+	}
+	const referenceById = new Map(
+		references.map((reference) => [renderSiteId(reference.id), reference]),
+	);
+	const argumentById = new Map(
+		renderArguments.map((argument) => [argument.id, argument]),
+	);
+	const declarationById = new Map(
+		declarations.map((declaration) => [declaration.id, declaration]),
+	);
+	const argumentNamesByTarget = new Map<string, Set<string>[]>();
+	for (const site of renderSites) {
+		const reference = referenceById.get(site.id);
+		if (!reference?.resolvedDeclarationId || !reference.targetName) continue;
+		const declarationPath = declarationById.get(
+			reference.resolvedDeclarationId,
+		)?.path;
+		if (!declarationPath) continue;
+		const expected = expectedByDeclaration.get(declarationPath) ?? [];
+		const argumentNames = new Set(
+			site.argumentIds
+				.map((id) => argumentById.get(id)?.argumentName)
+				.filter((name): name is string => typeof name === "string"),
+		);
+		argumentNamesByTarget.set(reference.targetName, [
+			...(argumentNamesByTarget.get(reference.targetName) ?? []),
+			argumentNames,
+		]);
+		for (const input of expected) {
+			if (!input.required || argumentNames.has(input.name)) continue;
+			issues.push({
+				severity: "warning",
+				code: "THEME_RENDER_ARGUMENT_MISSING",
+				message: `Render of ${reference.targetName} from ${site.fromPath} does not pass inferred required input ${input.name}`,
+				phase: "resolve",
+				span: site.span,
+			});
+		}
+	}
+	for (const [targetName, sets] of argumentNamesByTarget) {
+		const signatures = new Set(
+			sets.map((set) => [...set].sort((a, b) => a.localeCompare(b)).join(",")),
+		);
+		if (signatures.size <= 1) continue;
+		issues.push({
+			severity: "warning",
+			code: "THEME_RENDER_ARGUMENT_INCONSISTENT",
+			message: `Render calls for ${targetName} use inconsistent argument sets: ${[...signatures].join(" | ")}`,
+			phase: "resolve",
+		});
+	}
 }
 
 function capabilityRecords(
@@ -454,6 +597,14 @@ export function renderArgumentId(
 	argumentName: string,
 ): string {
 	return `render-argument:${path}:${targetName}:${argumentName}`;
+}
+
+export function renderSiteId(referenceId: string): string {
+	return `render-site:${referenceId}`;
+}
+
+export function expectedInputId(path: string, name: string): string {
+	return `expected-input:${path}:${name}`;
 }
 
 export function capabilityId(path: string, capability: string): string {

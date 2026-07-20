@@ -197,6 +197,28 @@ test("inspectNazareTheme records data access, settings reads, and render args", 
 				node.valueExpression === "product",
 		),
 	);
+	assert.ok(
+		graph.nodes.some(
+			(node) =>
+				node.kind === "expectedInput" &&
+				node.path === "snippets/price.liquid" &&
+				node.name === "product" &&
+				node.required,
+		),
+	);
+});
+
+test("analyzeNazareTheme reports missing inferred render inputs", () => {
+	const analysis = analyzeNazareTheme([
+		{ path: "sections/card.liquid", contents: `{% render 'price' %}` },
+		{ path: "snippets/price.liquid", contents: `{{ product.price }}` },
+	]);
+
+	assert.ok(
+		analysis.issues.some(
+			(issue) => issue.code === "THEME_RENDER_ARGUMENT_MISSING",
+		),
+	);
 });
 
 test("buildNazareThemeWorkspace reports invalid scoped files", () => {
