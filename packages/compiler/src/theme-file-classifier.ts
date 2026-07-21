@@ -1,3 +1,5 @@
+import { baseNameOf } from "./paths.js";
+
 export type ThemeFileKind =
 	| "section"
 	| "snippet"
@@ -44,11 +46,7 @@ export function classifyThemeFile(path: string): ThemeFileKind {
 	return "other";
 }
 
+/** The theme-facing name of a file: its basename, known extensions stripped. */
 export function themeNameFromPath(path: string): string {
-	const normalized = normalizeThemePath(path);
-	const base = normalized.slice(normalized.lastIndexOf("/") + 1);
-	if (base.endsWith(".nz.liquid")) return base.slice(0, -".nz.liquid".length);
-	if (base.endsWith(".liquid")) return base.slice(0, -".liquid".length);
-	if (base.endsWith(".json")) return base.slice(0, -".json".length);
-	return base;
+	return baseNameOf(normalizeThemePath(path));
 }

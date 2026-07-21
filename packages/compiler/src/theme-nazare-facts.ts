@@ -1,20 +1,31 @@
 import type { Diagnostic } from "@nazare/core";
 import { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
 import { projectArtifact } from "./pipeline.js";
-import type { ReadFile } from "./resolver.js";
-import type { ThemeBuiltArtifact, ThemeFact } from "./theme-facts.js";
+import type { DependencyResolver, ReadFile } from "./resolver.js";
+import {
+	renderSiteKey,
+	type ThemeBuiltArtifact,
+	type ThemeFact,
+} from "./theme-facts.js";
 import { themeNameFromPath } from "./theme-file-classifier.js";
+import { collectSourceThemeFacts } from "./theme-source-facts.js";
 
 export function collectNazareThemeFacts(
 	path: string,
 	contents: string,
-	options: { readFile?: ReadFile; strictness?: "strict" | "loose" } = {},
+	options: {
+		readFile?: ReadFile;
+		/** Workspace-shared dependency caches; see resolver.ts. */
+		dependencyResolver?: DependencyResolver;
+		strictness?: "strict" | "loose";
+	} = {},
 ): { facts: ThemeFact[]; issues: Diagnostic[]; artifact?: ThemeBuiltArtifact } {
 	const facts: ThemeFact[] = [];
 	const frontendResult = nazareLiquidFrontend.compile({
 		source: contents,
 		file: path,
 		readFile: options.readFile,
+		dependencyResolver: options.dependencyResolver,
 		strictness: options.strictness,
 	});
 	if (frontendResult.kind !== "nazare-ast") {
@@ -85,11 +96,45 @@ export function collectNazareThemeFacts(
 				kind: "rendersSnippet",
 				fromPath: path,
 				targetName: node.targetName,
+				siteId: renderSiteKey(path, node.span),
 				static: true,
 				span: node.span,
 			});
 		}
 	}
+	// Nazare render arguments come from the component's own parse — the
+	// LiquidHTML AST cannot model the { prop: expr } render form.
+	for (const node of frontendResult.ast.nodes) {
+		if (node.type !== "NazareRender") continue;
+		const siteId = renderSiteKey(path, node.span);
+		for (const prop of node.props) {
+			facts.push({
+				kind: "passesRenderArgument",
+				fromPath: path,
+				targetName: node.target,
+				siteId,
+				argumentName: prop.name,
+				valueExpression: prop.expression,
+				span: prop.span,
+			});
+		}
+	}
+	// The parser already located settings reads; map, don't re-scan.
+	for (const read of frontendResult.ast.settingsReads) {
+		facts.push({
+			kind: "readsSetting",
+			fromPath: path,
+			settingObject: read.object,
+			settingId: read.name,
+			span: read.span,
+		});
+	}
+	// Source facts walk the component's LiquidHTML AST, which the parser built
+	// from script/style-blanked text (same offsets) — behavior code can never
+	// produce a data-read fact.
+	facts.push(
+		...collectSourceThemeFacts(path, contents, frontendResult.ast.liquidAst),
+	);
 	if (frontendResult.ast.schema) {
 		const schemaPath = "schema";
 		facts.push({

@@ -595,6 +595,8 @@ function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
 		}
 	}
 	const declaredFiles = new Set(model.files.map((file) => file.path));
+	// Entry points nothing references by name but Shopify itself consumes:
+	// pages (templates), layout, locales, and the config files.
 	const entryFiles = new Set([
 		...model.pages.map((page) => page.path),
 		...model.declarations
@@ -603,6 +605,13 @@ function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
 					declaration.kind === "layout" || declaration.kind === "locale",
 			)
 			.map((declaration) => declaration.path),
+		...model.files
+			.filter(
+				(file) =>
+					file.fileKind === "settingsSchema" ||
+					file.fileKind === "settingsData",
+			)
+			.map((file) => file.path),
 	]);
 	const referencedFiles = new Set([...dependents.keys(), ...entryFiles]);
 	return {

@@ -30,7 +30,25 @@ export interface BuildNazareThemeWorkspaceOptions
 	extends AnalyzeNazareThemeOptions {
 	scope?: BuildThemeScope;
 	emitOnError?: boolean;
+	/**
+	 * Emit name for the scoped artifact; only honored for a file scope — a
+	 * workspace build names each artifact by its own file basename, since one
+	 * name cannot apply to many artifacts.
+	 */
 	name?: string;
+}
+
+/**
+ * Stable render-call-site identity: file path plus the render tag's start
+ * position. Every extractor derives it the same way, so arguments and sites
+ * collected by different extractors join on it.
+ */
+export function renderSiteKey(
+	fromPath: string,
+	span: SourceSpan | undefined,
+): string {
+	if (!span) return `${fromPath}@unknown`;
+	return `${fromPath}@${span.start.line}:${span.start.column}`;
 }
 
 export type ThemeFact =
@@ -51,6 +69,8 @@ export type ThemeFact =
 			kind: "rendersSnippet";
 			fromPath: string;
 			targetName?: string;
+			/** Stable per-call-site key (path@line:column); joins arguments to sites. */
+			siteId: string;
 			static: boolean;
 			span?: SourceSpan;
 	  }
@@ -143,11 +163,28 @@ export type ThemeFact =
 			kind: "passesRenderArgument";
 			fromPath: string;
 			targetName: string;
+			/** The render site this argument belongs to; same key as rendersSnippet. */
+			siteId: string;
 			argumentName: string;
 			valueExpression: string;
 			sourceObject?: string;
 			sourcePath?: string;
 			span?: SourceSpan;
+	  }
+	| {
+			/** A bare variable read that is neither a Liquid global nor assigned
+			 * locally — in render-isolated scope, an input the file expects. */
+			kind: "readsFreeVariable";
+			fromPath: string;
+			name: string;
+			span?: SourceSpan;
+	  }
+	| {
+			/** The named object appears in an if/unless/case condition in this
+			 * file, so reads of it are treated as guarded (optional). */
+			kind: "guardsObject";
+			fromPath: string;
+			name: string;
 	  }
 	| {
 			kind: "detectsCapability";
@@ -282,10 +319,19 @@ export type ThemeRenderArgumentRecord = {
 	id: string;
 	fromPath: string;
 	targetName: string;
+	siteId: string;
 	argumentName: string;
 	valueExpression: string;
 	sourceObject?: string;
 	sourcePath?: string;
+	span?: SourceSpan;
+};
+
+/** A free (non-global, unassigned) variable read; evidence for expected inputs. */
+export type ThemeVariableReadRecord = {
+	id: string;
+	fromPath: string;
+	name: string;
 	span?: SourceSpan;
 };
 
@@ -362,6 +408,7 @@ export interface ThemeSemanticModel {
 	localeReferences: ThemeLocaleReferenceRecord[];
 	settingReads: ThemeSettingReadRecord[];
 	dataAccesses: ThemeDataAccessRecord[];
+	variableReads: ThemeVariableReadRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
 	expectedInputs: ThemeExpectedInputRecord[];
 	renderSites: ThemeRenderSiteRecord[];
@@ -387,6 +434,8 @@ export type ThemeBuiltArtifact = {
 	contracts: ArtifactContract[];
 	canEmit: boolean;
 	notes: Diagnostic[];
+	/** This artifact's own emitted files; set by buildNazareThemeWorkspace. */
+	emitted?: EmitResult;
 };
 
 export interface ThemeBuildResult {

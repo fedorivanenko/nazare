@@ -1,4 +1,5 @@
 import type { Diagnostic } from "@nazare/core";
+import { CONTEXT_INPUT_OBJECTS } from "./theme-source-facts.js";
 import type {
 	ThemeBlockRecord,
 	ThemeBlockSettingRecord,
@@ -22,6 +23,7 @@ import type {
 	ThemeSemanticModel,
 	ThemeSettingReadRecord,
 	ThemeSettingRecord,
+	ThemeVariableReadRecord,
 } from "./theme-facts.js";
 
 export function buildThemeSemanticModel(
@@ -40,6 +42,9 @@ export function buildThemeSemanticModel(
 	const localeReferences: ThemeLocaleReferenceRecord[] = [];
 	const settingReads: ThemeSettingReadRecord[] = [];
 	const dataAccesses: ThemeDataAccessRecord[] = [];
+	const variableReads: ThemeVariableReadRecord[] = [];
+	const guardedObjects = new Set<string>();
+	const renderSiteFacts: Extract<ThemeFact, { kind: "rendersSnippet" }>[] = [];
 	const renderArguments: ThemeRenderArgumentRecord[] = [];
 	const capabilitySignals: ThemeCapabilitySignalRecord[] = [];
 
@@ -148,6 +153,20 @@ export function buildThemeSemanticModel(
 				span: fact.span,
 			});
 		}
+		if (fact.kind === "rendersSnippet") {
+			renderSiteFacts.push(fact);
+		}
+		if (fact.kind === "readsFreeVariable") {
+			variableReads.push({
+				id: variableReadId(fact.fromPath, fact.name),
+				fromPath: fact.fromPath,
+				name: fact.name,
+				span: fact.span,
+			});
+		}
+		if (fact.kind === "guardsObject") {
+			guardedObjects.add(`${fact.fromPath}:${fact.name}`);
+		}
 		if (fact.kind === "readsShopifyData") {
 			dataAccesses.push({
 				id: dataAccessId(fact.fromPath, fact.expression),
@@ -169,9 +188,10 @@ export function buildThemeSemanticModel(
 		}
 		if (fact.kind === "passesRenderArgument") {
 			renderArguments.push({
-				id: renderArgumentId(fact.fromPath, fact.targetName, fact.argumentName),
+				id: renderArgumentId(fact.siteId, fact.argumentName),
 				fromPath: fact.fromPath,
 				targetName: fact.targetName,
+				siteId: fact.siteId,
 				argumentName: fact.argumentName,
 				valueExpression: fact.valueExpression,
 				sourceObject: fact.sourceObject,
@@ -293,13 +313,21 @@ export function buildThemeSemanticModel(
 	}
 
 	const pages = pageRecords(declarations);
-	const expectedInputs = expectedInputRecords(declarations, dataAccesses);
-	const renderSites = renderSiteRecords(references, renderArguments);
+	const expectedInputs = expectedInputRecords(
+		declarations,
+		dataAccesses,
+		variableReads,
+		guardedObjects,
+	);
+	const renderSites = renderSiteRecords(
+		renderSiteFacts,
+		byKindName,
+		renderArguments,
+	);
 	addInputDiagnostics(
 		modelIssues,
 		renderSites,
 		expectedInputs,
-		references,
 		renderArguments,
 		declarations,
 	);
@@ -311,6 +339,7 @@ export function buildThemeSemanticModel(
 		settings,
 		settingReads,
 		dataAccesses,
+		variableReads,
 		renderArguments,
 		capabilitySignals,
 	});
@@ -403,6 +432,9 @@ export function buildThemeSemanticModel(
 		dataAccesses: dedupeById(dataAccesses).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
+		variableReads: dedupeById(variableReads).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
 		renderArguments: dedupeById(renderArguments).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
@@ -449,6 +481,7 @@ function evidenceRecords(records: {
 	settings: ThemeSettingRecord[];
 	settingReads: ThemeSettingReadRecord[];
 	dataAccesses: ThemeDataAccessRecord[];
+	variableReads: ThemeVariableReadRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
 	capabilitySignals: ThemeCapabilitySignalRecord[];
 }): ThemeEvidenceRecord[] {
@@ -488,6 +521,13 @@ function evidenceRecords(records: {
 			span: access.span,
 			extractor: "theme-source-facts",
 		})),
+		...records.variableReads.map((read) => ({
+			id: read.id,
+			kind: "dataRead" as const,
+			file: read.fromPath,
+			span: read.span,
+			extractor: "theme-source-facts",
+		})),
 		...records.renderArguments.map((argument) => ({
 			id: argument.id,
 			kind: "renderArgument" as const,
@@ -505,9 +545,18 @@ function evidenceRecords(records: {
 	];
 }
 
+/**
+ * What a snippet expects its caller to pass: reads of page-context objects
+ * ({% render %} isolates scope, so product/collection/... must be passed)
+ * plus free variable reads (bare names that are neither Liquid globals nor
+ * assigned in the file). An input is required unless the file guards the
+ * name in a condition — a guarded read tolerates absence.
+ */
 function expectedInputRecords(
 	declarations: ThemeDeclaration[],
 	dataAccesses: ThemeDataAccessRecord[],
+	variableReads: ThemeVariableReadRecord[],
+	guardedObjects: Set<string>,
 ): ThemeExpectedInputRecord[] {
 	const componentPaths = new Set(
 		declarations
@@ -518,69 +567,80 @@ function expectedInputRecords(
 			.map((declaration) => declaration.path),
 	);
 	const byId = new Map<string, ThemeExpectedInputRecord>();
-	for (const access of dataAccesses) {
-		if (!componentPaths.has(access.fromPath)) continue;
-		const id = expectedInputId(access.fromPath, access.object);
+	const addInput = (path: string, name: string, evidenceId: string): void => {
+		const id = expectedInputId(path, name);
 		const existing = byId.get(id);
 		if (existing) {
-			existing.evidenceIds = [...new Set([...existing.evidenceIds, access.id])];
-			continue;
+			existing.evidenceIds = [
+				...new Set([...existing.evidenceIds, evidenceId]),
+			];
+			return;
 		}
 		byId.set(id, {
 			id,
-			path: access.fromPath,
-			name: access.object,
-			required: true,
-			evidenceIds: [access.id],
+			path,
+			name,
+			required: !guardedObjects.has(`${path}:${name}`),
+			evidenceIds: [evidenceId],
 		});
+	};
+	for (const access of dataAccesses) {
+		if (!componentPaths.has(access.fromPath)) continue;
+		if (!CONTEXT_INPUT_OBJECTS.has(access.object)) continue;
+		addInput(access.fromPath, access.object, access.id);
+	}
+	for (const read of variableReads) {
+		if (!componentPaths.has(read.fromPath)) continue;
+		addInput(read.fromPath, read.name, read.id);
 	}
 	return [...byId.values()];
 }
 
+/**
+ * One record per render call site — sites are identified by their siteId
+ * (path@line:column), so two renders of the same target from one file keep
+ * their own argument lists instead of sharing one.
+ */
 function renderSiteRecords(
-	references: ThemeReference[],
+	renderSiteFacts: Extract<ThemeFact, { kind: "rendersSnippet" }>[],
+	byKindName: Map<string, ThemeDeclaration>,
 	renderArguments: ThemeRenderArgumentRecord[],
 ): ThemeRenderSiteRecord[] {
-	const argsBySite = new Map<string, ThemeRenderArgumentRecord[]>();
+	const argsBySiteId = new Map<string, ThemeRenderArgumentRecord[]>();
 	for (const argument of renderArguments) {
-		const key = `${argument.fromPath}:${argument.targetName}`;
-		argsBySite.set(key, [...(argsBySite.get(key) ?? []), argument]);
+		argsBySiteId.set(argument.siteId, [
+			...(argsBySiteId.get(argument.siteId) ?? []),
+			argument,
+		]);
 	}
-	return references
-		.filter((reference) => reference.kind === "rendersSnippet")
-		.map((reference) => ({
-			id: renderSiteId(reference.id),
-			fromPath: reference.fromPath,
-			targetName: reference.targetName,
-			resolvedDeclarationId: reference.resolvedDeclarationId,
-			argumentIds: (reference.targetName
-				? (argsBySite.get(`${reference.fromPath}:${reference.targetName}`) ??
-					[])
-				: []
-			).map((argument) => argument.id),
-			span: reference.span,
-		}));
+	return renderSiteFacts.map((fact) => ({
+		id: renderSiteId(fact.siteId),
+		fromPath: fact.fromPath,
+		targetName: fact.targetName,
+		resolvedDeclarationId: fact.targetName
+			? byKindName.get(`snippet:${fact.targetName}`)?.id
+			: undefined,
+		argumentIds: (argsBySiteId.get(fact.siteId) ?? []).map(
+			(argument) => argument.id,
+		),
+		span: fact.span,
+	}));
 }
 
 function addInputDiagnostics(
 	issues: Diagnostic[],
 	renderSites: ThemeRenderSiteRecord[],
 	expectedInputs: ThemeExpectedInputRecord[],
-	references: ThemeReference[],
 	renderArguments: ThemeRenderArgumentRecord[],
 	declarations: ThemeDeclaration[],
 ): void {
 	const expectedByDeclaration = new Map<string, ThemeExpectedInputRecord[]>();
 	for (const input of expectedInputs) {
-		const key = input.path;
-		expectedByDeclaration.set(key, [
-			...(expectedByDeclaration.get(key) ?? []),
+		expectedByDeclaration.set(input.path, [
+			...(expectedByDeclaration.get(input.path) ?? []),
 			input,
 		]);
 	}
-	const referenceById = new Map(
-		references.map((reference) => [renderSiteId(reference.id), reference]),
-	);
 	const argumentById = new Map(
 		renderArguments.map((argument) => [argument.id, argument]),
 	);
@@ -589,10 +649,9 @@ function addInputDiagnostics(
 	);
 	const argumentNamesByTarget = new Map<string, Set<string>[]>();
 	for (const site of renderSites) {
-		const reference = referenceById.get(site.id);
-		if (!reference?.resolvedDeclarationId || !reference.targetName) continue;
+		if (!site.resolvedDeclarationId || !site.targetName) continue;
 		const declarationPath = declarationById.get(
-			reference.resolvedDeclarationId,
+			site.resolvedDeclarationId,
 		)?.path;
 		if (!declarationPath) continue;
 		const expected = expectedByDeclaration.get(declarationPath) ?? [];
@@ -601,8 +660,8 @@ function addInputDiagnostics(
 				.map((id) => argumentById.get(id)?.argumentName)
 				.filter((name): name is string => typeof name === "string"),
 		);
-		argumentNamesByTarget.set(reference.targetName, [
-			...(argumentNamesByTarget.get(reference.targetName) ?? []),
+		argumentNamesByTarget.set(site.targetName, [
+			...(argumentNamesByTarget.get(site.targetName) ?? []),
 			argumentNames,
 		]);
 		const expectedNames = new Set(expected.map((input) => input.name));
@@ -611,7 +670,7 @@ function addInputDiagnostics(
 			issues.push({
 				severity: "warning",
 				code: "THEME_RENDER_ARGUMENT_MISSING",
-				message: `Render of ${reference.targetName} from ${site.fromPath} does not pass inferred required input ${input.name}`,
+				message: `Render of ${site.targetName} from ${site.fromPath} does not pass inferred required input ${input.name}`,
 				phase: "resolve",
 				span: site.span,
 			});
@@ -622,7 +681,7 @@ function addInputDiagnostics(
 				issues.push({
 					severity: "warning",
 					code: "THEME_RENDER_ARGUMENT_UNKNOWN",
-					message: `Render of ${reference.targetName} from ${site.fromPath} passes argument ${argumentName}, but the target does not read it as an inferred input`,
+					message: `Render of ${site.targetName} from ${site.fromPath} passes argument ${argumentName}, but the target does not read it as an inferred input`,
 					phase: "resolve",
 					span: site.span,
 				});
@@ -649,8 +708,9 @@ function capabilityRecords(
 ): ThemeCapabilityRecord[] {
 	const byPathCapability = new Map<string, ThemeCapabilityRecord>();
 	for (const signal of capabilitySignals) {
-		byPathCapability.set(signal.id.replace("capability-signal", "capability"), {
-			id: capabilityId(signal.path, signal.capability),
+		const id = capabilityId(signal.path, signal.capability);
+		byPathCapability.set(id, {
+			id,
 			path: signal.path,
 			capability: signal.capability,
 			confidence: signal.confidence,
@@ -708,13 +768,20 @@ function classificationRecords(
 	const records: ThemeClassificationRecord[] = [];
 	for (const [path, caps] of capabilitiesByPath) {
 		const data = dataByPath.get(path) ?? new Set();
+		// Each label names the capabilities that argue for it; its evidence is
+		// exactly the evidence of those capabilities, never the whole file's.
 		const labels: Array<{
 			label: string;
 			confidence: number;
+			capabilities: string[];
 			uncertainty?: string;
 		}> = [];
 		if (caps.has("addsToCart") && caps.has("selectsVariants"))
-			labels.push({ label: "productForm", confidence: 0.9 });
+			labels.push({
+				label: "productForm",
+				confidence: 0.9,
+				capabilities: ["addsToCart", "selectsVariants"],
+			});
 		if (
 			caps.has("displaysProductPrice") &&
 			(caps.has("displaysProductMedia") || data.has("product.title"))
@@ -722,23 +789,41 @@ function classificationRecords(
 			labels.push({
 				label: "productCard",
 				confidence: 0.75,
+				capabilities: ["displaysProductPrice", "displaysProductMedia"],
 				uncertainty: "could be full product section",
 			});
 		if (caps.has("updatesCart") || caps.has("displaysCartItems"))
 			labels.push({
 				label: "cartDrawer",
 				confidence: 0.65,
+				capabilities: ["updatesCart", "displaysCartItems"],
 				uncertainty: "cart page and drawer share signals",
 			});
 		if (caps.has("performsPredictiveSearch"))
-			labels.push({ label: "searchOverlay", confidence: 0.8 });
+			labels.push({
+				label: "searchOverlay",
+				confidence: 0.8,
+				capabilities: ["performsPredictiveSearch"],
+			});
 		if (caps.has("filtersCollections"))
-			labels.push({ label: "collectionGrid", confidence: 0.75 });
+			labels.push({
+				label: "collectionGrid",
+				confidence: 0.75,
+				capabilities: ["filtersCollections"],
+			});
 		if (caps.has("usesLocalization"))
-			labels.push({ label: "localizationSelector", confidence: 0.7 });
+			labels.push({
+				label: "localizationSelector",
+				confidence: 0.7,
+				capabilities: ["usesLocalization"],
+			});
 		for (const label of labels) {
+			const contributing = new Set(label.capabilities);
 			const evidenceIds = capabilities
-				.filter((capability) => capability.path === path)
+				.filter(
+					(capability) =>
+						capability.path === path && contributing.has(capability.capability),
+				)
 				.flatMap((capability) => capability.evidenceIds);
 			records.push({
 				id: classificationId(path, label.label),
@@ -823,6 +908,9 @@ function dedupeById<T extends { id: string }>(items: T[]): T[] {
 	return [...seen.values()];
 }
 
+// Single owner of every theme-graph ID format (the artifact-layer namespace
+// lives in ids.ts). IDs are opaque: construct them here, never parse data
+// back out of one.
 export function fileId(path: string): string {
 	return `file:${path}`;
 }
@@ -899,15 +987,18 @@ export function dataAccessId(path: string, expression: string): string {
 }
 
 export function renderArgumentId(
-	path: string,
-	targetName: string,
+	siteId: string,
 	argumentName: string,
 ): string {
-	return `render-argument:${path}:${targetName}:${argumentName}`;
+	return `render-argument:${siteId}:${argumentName}`;
 }
 
-export function renderSiteId(referenceId: string): string {
-	return `render-site:${referenceId}`;
+export function renderSiteId(siteId: string): string {
+	return `render-site:${siteId}`;
+}
+
+export function variableReadId(path: string, name: string): string {
+	return `variable-read:${path}:${name}`;
 }
 
 export function expectedInputId(path: string, name: string): string {

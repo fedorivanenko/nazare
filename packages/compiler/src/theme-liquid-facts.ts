@@ -1,7 +1,8 @@
 import type { Diagnostic } from "@nazare/core";
 import { type PlainLiquidAst, parsePlainLiquid } from "./plain-liquid.js";
-import type { ThemeFact } from "./theme-facts.js";
+import { renderSiteKey, type ThemeFact } from "./theme-facts.js";
 import { themeNameFromPath } from "./theme-file-classifier.js";
+import { collectSourceThemeFacts } from "./theme-source-facts.js";
 
 export function collectPlainLiquidThemeFacts(
 	path: string,
@@ -9,6 +10,7 @@ export function collectPlainLiquidThemeFacts(
 ): { facts: ThemeFact[]; issues: Diagnostic[] } {
 	const ast = parsePlainLiquid(contents, path, { parseMode: "tolerant" });
 	const facts: ThemeFact[] = [];
+	const issues: Diagnostic[] = [...ast.diagnostics];
 	const name = themeNameFromPath(path);
 	if (path.startsWith("sections/") && path.endsWith(".liquid")) {
 		facts.push({ kind: "declaresSection", path, name });
@@ -25,6 +27,7 @@ export function collectPlainLiquidThemeFacts(
 				kind: "rendersSnippet",
 				fromPath: path,
 				targetName: dependency.name,
+				siteId: renderSiteKey(path, dependency.span),
 				static: dependency.static,
 				span: dependency.span,
 			});
@@ -39,11 +42,28 @@ export function collectPlainLiquidThemeFacts(
 			});
 		}
 	}
-	facts.push(...schemaFacts(path, ast));
-	return { facts, issues: ast.diagnostics };
+	// The parser already located every settings read; map, don't re-scan.
+	for (const read of ast.settingsReads) {
+		facts.push({
+			kind: "readsSetting",
+			fromPath: path,
+			settingObject: read.object,
+			settingId: read.name,
+			span: read.span,
+		});
+	}
+	if (ast.factsCollected) {
+		facts.push(...collectSourceThemeFacts(path, contents, ast.liquidAst));
+	}
+	facts.push(...schemaFacts(path, ast, issues));
+	return { facts, issues };
 }
 
-function schemaFacts(path: string, ast: PlainLiquidAst): ThemeFact[] {
+function schemaFacts(
+	path: string,
+	ast: PlainLiquidAst,
+	issues: Diagnostic[],
+): ThemeFact[] {
 	if (!ast.schema) return [];
 	const schemaPath = "schema";
 	const facts: ThemeFact[] = [
@@ -100,8 +120,16 @@ function schemaFacts(path: string, ast: PlainLiquidAst): ThemeFact[] {
 				}
 			}
 		}
-	} catch {
-		// Existing plain Liquid checks report schema JSON issues. Keep extraction best-effort.
+	} catch (error) {
+		// No other pass parses this schema in the analysis path, so the failure
+		// must be reported here or it disappears.
+		issues.push({
+			severity: "error",
+			code: "THEME_SCHEMA_JSON_INVALID",
+			message: `Invalid schema JSON in ${path}: ${error instanceof Error ? error.message : String(error)}`,
+			phase: "parse",
+			span: ast.schema.span,
+		});
 	}
 	return facts;
 }
