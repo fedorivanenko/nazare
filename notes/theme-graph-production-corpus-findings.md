@@ -282,6 +282,26 @@ Corpus spot rerun results:
 
 This removes a major false-positive class, but remaining missing-input warnings still need sampling and scope/default analysis.
 
+### Default and guarded-alias inputs
+
+Implemented:
+
+- reads used only to initialize a local alias no longer count as an unsafe use by themselves;
+- later guarded or unguarded uses of that alias determine input requirement;
+- `default`-filtered inputs become optional;
+- filtered values no longer create false direct aliases.
+
+Latest missing-argument changes:
+
+| Theme | Before | After | Required expected inputs before | After |
+|---|---:|---:|---:|---:|
+| alkamind-nazare | 611 | 218 | 319 | 82 |
+| alkamind-old | 527 | 501 | 453 | 387 |
+| climatic-health | 441 | 386 | 89 | 72 |
+| ucan | 201 | 197 | 140 | 127 |
+
+Remaining warnings now concentrate in direct unguarded reads, large generated Zipify interfaces, and parameters that Liquid tolerates as `nil` but source does not explicitly default.
+
 ### Expression walker coverage
 
 Implemented expected handling for nested Liquid tags/branches, raw tags, and logical expressions without double-walking nested tags.
@@ -338,8 +358,8 @@ Latest diagnostic changes:
 
 | Theme | Baseline issues | Latest issues | Baseline unscanned | Latest unscanned | Baseline missing arguments | Latest missing arguments |
 |---|---:|---:|---:|---:|---:|---:|
-| alkamind-old | 2,325 | 1,241 | 958 | 11 | 653 | 527 |
-| ucan | 985 | 436 | 369 | 11 | 410 | 290 |
+| alkamind-old | 2,325 | 1,215 | 958 | 11 | 653 | 501 |
+| ucan | 985 | 343 | 369 | 11 | 410 | 197 |
 
 Recovered Zipify facts expose additional interface candidates that were previously absent rather than proven correct. Remaining missing-argument warnings still require precision sampling.
 
@@ -360,13 +380,43 @@ UCan measurement:
 | Cold | 71.6s | 1.8MB |
 | Warm, unchanged | 3.3s | 1.8MB |
 
+### Production corpus golden queries
+
+Added durable expectations in:
+
+- `notes/theme-graph-production-corpus-golden.json`;
+- `scripts/check-theme-graph-corpus.mjs`;
+- `pnpm test:corpus`.
+
+Each corpus theme now checks:
+
+- canonical node/edge ordering and unique identities;
+- valid edge endpoints and evidence references;
+- required page, layout, section, snippet, Shopify property, locale, capability, and classification nodes;
+- concrete render, data-access, and setting-read relationships;
+- dependency, dependent, and affected-page impact queries;
+- all five required graph views;
+- zero skipped/parser-failure diagnostics and bounded unscanned-expression warnings.
+
+Current live-theme run:
+
+| Theme | Nodes | Edges | Issues | Golden result |
+|---|---:|---:|---:|---|
+| alkamind-nazare | 2,666 | 6,040 | 300 | pass |
+| alkamind-old | 9,382 | 20,086 | 1,215 | pass |
+| climatic-health | 2,561 | 5,747 | 498 | pass |
+| ucan | 4,258 | 8,790 | 343 | pass |
+
+Corpus roots can be supplied through `NAZARE_CORPUS_*` variables, `--project theme=path`, or precomputed graphs through `--graph theme=path`.
+
 ### Validation
 
-- 204 compiler tests pass;
+- 205 compiler tests pass;
+- all four production corpus golden checks pass;
 - Biome checks pass;
 - canonical input-order test remains green.
 
-Worker-based cold parser parallelism remains unimplemented.
+Worker-based cold parser parallelism and missing-input precision scoring remain unimplemented.
 
 ## Acceptance target
 

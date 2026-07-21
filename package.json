@@ -8,6 +8,7 @@
 		"typecheck": "tsc -b",
 		"check:no-dist": "test -z \"$(git ls-files '*/dist/*')\"",
 		"test:compiler": "pnpm -s build && node --test --test-concurrency=32 packages/compiler/tests/*.test.mjs",
+		"test:corpus": "pnpm -s build && node scripts/check-theme-graph-corpus.mjs",
 		"test:all": "pnpm -s build && NAZARE_FULL_CLI_TESTS=1 node --test --test-concurrency=32 packages/compiler/tests/*.test.mjs packages/theme/tests/*.test.mjs packages/registry/tests/*.test.mjs packages/cli-client/tests/*.test.mjs apps/registry-api/tests/*.test.mjs",
 		"test:theme": "pnpm -s build && node --test --test-concurrency=32 packages/theme/tests/*.test.mjs",
 		"test:registry": "pnpm -s build && node --test --test-concurrency=32 packages/registry/tests/*.test.mjs packages/cli-client/tests/install.test.mjs packages/cli-client/tests/publish.test.mjs",
