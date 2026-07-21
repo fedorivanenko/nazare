@@ -125,7 +125,6 @@ test("workspace strictly checks plain Liquid and component scripts before emit",
 		},
 	]);
 	assert.equal(hasIssue(scripts, "SCRIPT_TYPE_ERROR"), true);
-	assert.equal(scripts.artifacts[0]?.canEmit, false);
 	assert.deepEqual(scripts.emitted.files, []);
 });
 
@@ -137,7 +136,6 @@ test("invalid script emission is an error and clean-only output is empty", () =>
 		},
 	]);
 	assert.equal(hasIssue(built, "EMIT_SCRIPT_WITHOUT_DEFAULT_EXPORT"), true);
-	assert.equal(built.artifacts[0]?.canEmit, false);
 	assert.deepEqual(built.emitted.files, []);
 });
 

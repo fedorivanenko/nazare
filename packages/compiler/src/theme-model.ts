@@ -548,6 +548,17 @@ function assertThemeSemanticModel(model: ThemeSemanticModel): void {
 		}
 	}
 	for (const read of model.settingReads) {
+		if (read.resolvedSettingId && (read.candidateSettingIds?.length ?? 0) > 0) {
+			throw new Error(
+				`Theme setting read ${read.id} has both resolved and candidate settings`,
+			);
+		}
+		if (read.candidateSettingIds) {
+			assertUniqueSorted(
+				read.candidateSettingIds,
+				`Theme setting read ${read.id} candidate settings`,
+			);
+		}
 		if (read.resolvedSettingId && !settingIds.has(read.resolvedSettingId)) {
 			throw new Error(
 				`Theme setting read ${read.id} resolves to missing setting ${read.resolvedSettingId}`,
@@ -571,6 +582,7 @@ function assertThemeSemanticModel(model: ThemeSemanticModel): void {
 		}
 	}
 	for (const site of model.renderSites) {
+		assertUnique(site.argumentIds, `Theme render site ${site.id} arguments`);
 		for (const argumentId of site.argumentIds) {
 			if (!renderArgumentIds.has(argumentId)) {
 				throw new Error(
@@ -585,6 +597,13 @@ function assertThemeSemanticModel(model: ThemeSemanticModel): void {
 		...model.capabilities,
 		...model.classifications,
 	]) {
+		if (record.evidenceIds.length === 0) {
+			throw new Error(`Theme semantic record ${record.id} has no evidence`);
+		}
+		assertUnique(
+			record.evidenceIds,
+			`Theme semantic record ${record.id} evidence`,
+		);
 		for (const evidenceId of record.evidenceIds) {
 			if (!evidenceIds.has(evidenceId)) {
 				throw new Error(
@@ -592,6 +611,20 @@ function assertThemeSemanticModel(model: ThemeSemanticModel): void {
 				);
 			}
 		}
+	}
+}
+
+function assertUnique(values: string[], label: string): void {
+	if (values.length !== new Set(values).size) {
+		throw new Error(`${label} must be unique`);
+	}
+}
+
+function assertUniqueSorted(values: string[], label: string): void {
+	assertUnique(values, label);
+	const sorted = [...values].sort((a, b) => a.localeCompare(b));
+	if (values.some((value, index) => value !== sorted[index])) {
+		throw new Error(`${label} must be sorted`);
 	}
 }
 
