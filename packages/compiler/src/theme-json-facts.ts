@@ -125,6 +125,71 @@ function collectTemplateFacts(
 			sectionType: section.type,
 			static: true,
 		});
+		collectBlockInstances(path, instanceId, section.blocks, facts, issues);
+	}
+}
+
+function collectBlockInstances(
+	ownerPath: string,
+	sectionInstanceId: string,
+	value: unknown,
+	facts: ThemeFact[],
+	issues: Diagnostic[],
+	parentInstanceId?: string,
+): void {
+	if (value === undefined) return;
+	if (!isRecord(value)) {
+		issues.push(
+			invalidJsonShape(
+				ownerPath,
+				"THEME_TEMPLATE_INVALID_BLOCKS",
+				`Blocks for section instance ${sectionInstanceId} must be an object`,
+			),
+		);
+		return;
+	}
+	for (const [instanceId, block] of Object.entries(value)) {
+		if (!isRecord(block)) {
+			issues.push(
+				invalidJsonShape(
+					ownerPath,
+					"THEME_TEMPLATE_INVALID_BLOCK_INSTANCE",
+					`Template block ${instanceId} must be an object`,
+				),
+			);
+			continue;
+		}
+		const blockType =
+			typeof block.type === "string" && block.type.length > 0
+				? block.type
+				: undefined;
+		if (!blockType) {
+			issues.push(
+				invalidJsonShape(
+					ownerPath,
+					"THEME_TEMPLATE_INVALID_BLOCK_TYPE",
+					`Template block ${instanceId} must have a non-empty string type`,
+				),
+			);
+			continue;
+		}
+		facts.push({
+			kind: "blockInstance",
+			ownerPath,
+			sectionInstanceId,
+			instanceId,
+			blockType,
+			parentInstanceId,
+			static: true,
+		});
+		collectBlockInstances(
+			ownerPath,
+			sectionInstanceId,
+			block.blocks,
+			facts,
+			issues,
+			instanceId,
+		);
 	}
 }
 
