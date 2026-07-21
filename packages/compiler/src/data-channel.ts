@@ -25,7 +25,9 @@ export type DataChannel = Map<string, Map<string, ResolvedDataBinding>>;
  * by exact (trimmed) source text. Both the channel and the check pass use
  * this map so they cannot disagree on what a binding's type is.
  */
-export function propTypesByExpression(ir: ArtifactIR): Map<string, SemanticType> {
+export function propTypesByExpression(
+	ir: ArtifactIR,
+): Map<string, SemanticType> {
 	const propTypes = new Map<string, SemanticType>();
 	for (const node of ir.syntax) {
 		if (node.kind === "prop-declaration") {

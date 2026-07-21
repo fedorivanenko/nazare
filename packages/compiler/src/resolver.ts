@@ -2,7 +2,6 @@
 // this module is the explicit boundary where imports become contracts or inline
 // behavior/style nodes. All filesystem access goes through ReadFile.
 import type { ArtifactContract, Diagnostic, SourceSpan } from "@nazare/core";
-import type { ReadFile } from "./read-file.js";
 import type {
 	NazareAst,
 	NazareNode,
@@ -17,6 +16,7 @@ import {
 	scanRefAccesses,
 } from "./parser.js";
 import { markDiagnostics, projectArtifact } from "./pipeline.js";
+import type { ReadFile } from "./read-file.js";
 import { bindArtifactIR, contractFromIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
 
@@ -144,8 +144,9 @@ export function resolveComponentContracts(
 	readFile: ReadFile | undefined,
 	resolver?: DependencyResolver,
 ): ComponentContractResolution {
-	return (resolver ?? createDependencyResolver(readFile))
-		.resolveComponentContracts(ast);
+	return (
+		resolver ?? createDependencyResolver(readFile)
+	).resolveComponentContracts(ast);
 }
 
 /**
