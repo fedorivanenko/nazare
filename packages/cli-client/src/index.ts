@@ -8,6 +8,7 @@ import {
 	checkComponentScripts,
 	compileNazareArtifact,
 	inspectNazareTheme,
+	type ThemeAnalysisCache,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
 import { registryFromEnv } from "@nazare/registry";
@@ -332,10 +333,15 @@ async function runInspect(
 		return 1;
 	}
 	const files = await collectThemeInputFiles(root, projectRoot);
+	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v1.json");
+	const cache = await readThemeAnalysisCache(cachePath);
 	const inspected = inspectNazareTheme(files, {
 		root: relative(projectRoot, root).split(sep).join("/") || ".",
 		strictness: cliOptions.strictness,
+		cache,
 	});
+	await mkdir(join(projectRoot, ".nazare-out"), { recursive: true });
+	await writeFile(cachePath, JSON.stringify(cache));
 	output.log(JSON.stringify(inspected, null, 2));
 	return hasErrors(
 		inspected.issues.filter((issue) => issue.severity === "error"),
@@ -347,6 +353,34 @@ async function runInspect(
 function isOutsideRoot(root: string, path: string): boolean {
 	const relativePath = relative(root, path);
 	return relativePath.startsWith("..") || relativePath.startsWith(sep);
+}
+
+async function readThemeAnalysisCache(
+	path: string,
+): Promise<ThemeAnalysisCache> {
+	try {
+		const parsed = JSON.parse(
+			await readFile(path, "utf8"),
+		) as Partial<ThemeAnalysisCache>;
+		if (
+			parsed.version === 1 &&
+			parsed.entries &&
+			typeof parsed.entries === "object" &&
+			!Array.isArray(parsed.entries) &&
+			Object.values(parsed.entries).every(
+				(entry) =>
+					!!entry &&
+					typeof entry.fingerprint === "string" &&
+					Array.isArray(entry.facts) &&
+					Array.isArray(entry.issues),
+			)
+		) {
+			return parsed as ThemeAnalysisCache;
+		}
+	} catch {
+		// Missing, stale, or malformed cache: rebuild from source.
+	}
+	return { version: 1, entries: {} };
 }
 
 async function collectThemeInputFiles(

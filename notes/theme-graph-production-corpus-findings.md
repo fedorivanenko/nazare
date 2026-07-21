@@ -343,13 +343,30 @@ Latest diagnostic changes:
 
 Recovered Zipify facts expose additional interface candidates that were previously absent rather than proven correct. Remaining missing-argument warnings still require precision sampling.
 
+### Incremental fact cache
+
+Implemented:
+
+- per-file content fingerprints over analyzer revision, file kind, parse mode, and source;
+- reusable fact/diagnostic cache for plain Liquid, JSON, locales, and assets;
+- changed-file invalidation and deleted-file pruning;
+- CLI persistence at `.nazare-out/inspect-cache-v1.json`;
+- Nazare components intentionally remain uncached because dependency state affects their analysis.
+
+UCan measurement:
+
+| Run | Runtime | Cache size |
+|---|---:|---:|
+| Cold | 71.6s | 1.8MB |
+| Warm, unchanged | 3.3s | 1.8MB |
+
 ### Validation
 
-- 203 compiler tests pass;
+- 204 compiler tests pass;
 - Biome checks pass;
 - canonical input-order test remains green.
 
-Persistent content-hash caching and worker-based parser parallelism remain unimplemented.
+Worker-based cold parser parallelism remains unimplemented.
 
 ## Acceptance target
 

@@ -205,9 +205,36 @@ function analyzeNormalizedThemeFiles(
 	// component re-parses its whole import closure from scratch.
 	const dependencyResolver: DependencyResolver =
 		createDependencyResolver(readFile);
+	const cache = options.cache?.version === 1 ? options.cache : undefined;
+	if (cache) {
+		const currentPaths = new Set(files.map((file) => file.path));
+		for (const path of Object.keys(cache.entries)) {
+			if (!currentPaths.has(path)) delete cache.entries[path];
+		}
+	}
 
 	for (const file of files) {
 		const fileKind = classifyThemeFile(file.path);
+		const cacheable = fileKind !== "nazareComponent";
+		const fingerprint = cacheable
+			? themeFileFingerprint(file, fileKind, options)
+			: undefined;
+		const cached = cacheable ? cache?.entries[file.path] : undefined;
+		if (cached && cached.fingerprint === fingerprint) {
+			facts.push(...cached.facts);
+			issues.push(...cached.issues);
+			continue;
+		}
+		const factStart = facts.length;
+		const issueStart = issues.length;
+		const saveCacheEntry = (): void => {
+			if (!cache || !cacheable || !fingerprint) return;
+			cache.entries[file.path] = {
+				fingerprint,
+				facts: facts.slice(factStart),
+				issues: issues.slice(issueStart),
+			};
+		};
 		facts.push({ kind: "file", path: file.path, fileKind });
 		if (fileKind === "asset") {
 			// One declaration per asset; the model additionally indexes assets by
@@ -217,6 +244,7 @@ function analyzeNormalizedThemeFiles(
 				path: file.path,
 				name: themeNameFromPath(file.path),
 			});
+			saveCacheEntry();
 			continue;
 		}
 		if (fileKind === "layout") {
@@ -264,6 +292,7 @@ function analyzeNormalizedThemeFiles(
 			});
 			facts.push(...result.facts);
 			issues.push(...result.issues);
+			saveCacheEntry();
 			continue;
 		}
 		if (file.path.endsWith(".json")) {
@@ -271,10 +300,27 @@ function analyzeNormalizedThemeFiles(
 			facts.push(...result.facts);
 			issues.push(...result.issues);
 		}
+		saveCacheEntry();
 	}
 
 	const ir = buildThemeSemanticModel(facts, issues, { root: options.root });
 	return { ir, artifacts, issues: ir.issues };
+}
+
+const THEME_FACT_CACHE_REVISION = "theme-facts-v1";
+
+function themeFileFingerprint(
+	file: ThemeInputFile,
+	fileKind: ReturnType<typeof classifyThemeFile>,
+	options: AnalyzeNazareThemeOptions,
+): string {
+	let hash = 2_166_136_261;
+	const input = `${THEME_FACT_CACHE_REVISION}\0${fileKind}\0${options.plainLiquidParseMode ?? "tolerant"}\0${file.contents}`;
+	for (let index = 0; index < input.length; index += 1) {
+		hash ^= input.charCodeAt(index);
+		hash = Math.imul(hash, 16_777_619);
+	}
+	return `${input.length}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 function buildScopeIssues(
