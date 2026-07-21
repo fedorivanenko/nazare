@@ -12,6 +12,7 @@ import type {
 	ThemeFileRecord,
 	ThemeLocaleKeyRecord,
 	ThemeLocaleReferenceRecord,
+	ThemeLocaleTranslationRecord,
 	ThemePageRecord,
 	ThemeReference,
 	ThemeRenderArgumentRecord,
@@ -40,6 +41,7 @@ export function buildThemeSemanticModel(
 	const sectionInstances: ThemeSectionInstanceRecord[] = [];
 	const blockInstances: ThemeBlockInstanceRecord[] = [];
 	const localeKeys: ThemeLocaleKeyRecord[] = [];
+	const localeTranslations: ThemeLocaleTranslationRecord[] = [];
 	const localeReferences: ThemeLocaleReferenceRecord[] = [];
 	const settingReads: ThemeSettingReadRecord[] = [];
 	const dataAccesses: ThemeDataAccessRecord[] = [];
@@ -130,10 +132,13 @@ export function buildThemeSemanticModel(
 			});
 		}
 		if (fact.kind === "definesLocaleKey") {
-			localeKeys.push({
-				id: localeKeyId(fact.path, fact.key),
+			const keyId = localeKeyId(fact.key);
+			localeKeys.push({ id: keyId, key: fact.key });
+			localeTranslations.push({
+				id: localeTranslationId(fact.path, fact.key),
 				path: fact.path,
 				key: fact.key,
+				localeKeyId: keyId,
 				span: fact.span,
 			});
 		}
@@ -508,18 +513,13 @@ export function buildThemeSemanticModel(
 		});
 	}
 
-	const localeKeysByKey = new Map<string, ThemeLocaleKeyRecord[]>();
-	for (const key of localeKeys) {
-		localeKeysByKey.set(key.key, [
-			...(localeKeysByKey.get(key.key) ?? []),
-			key,
-		]);
-	}
+	const localeKeyByKey = new Map(
+		localeKeys.map((localeKey) => [localeKey.key, localeKey]),
+	);
 	for (const reference of localeReferences) {
 		if (!reference.static || !reference.key) continue;
-		reference.resolvedLocaleKeyIds = (
-			localeKeysByKey.get(reference.key) ?? []
-		).map((key) => key.id);
+		const resolved = localeKeyByKey.get(reference.key);
+		reference.resolvedLocaleKeyIds = resolved ? [resolved.id] : [];
 		if (reference.resolvedLocaleKeyIds.length === 0) {
 			modelIssues.push({
 				severity: "warning",
@@ -577,6 +577,9 @@ export function buildThemeSemanticModel(
 		),
 		pages: dedupeById(pages).sort((a, b) => a.id.localeCompare(b.id)),
 		localeKeys: dedupeById(localeKeys).sort((a, b) => a.id.localeCompare(b.id)),
+		localeTranslations: dedupeById(localeTranslations).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
 		localeReferences: dedupeById(localeReferences).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
@@ -681,6 +684,13 @@ function assertThemeSemanticModel(model: ThemeSemanticModel): void {
 					`Theme setting read ${read.id} has missing candidate ${candidateId}`,
 				);
 			}
+		}
+	}
+	for (const translation of model.localeTranslations) {
+		if (!localeKeyIds.has(translation.localeKeyId)) {
+			throw new Error(
+				`Theme locale translation ${translation.id} resolves to missing locale key ${translation.localeKeyId}`,
+			);
 		}
 	}
 	for (const reference of model.localeReferences) {
@@ -1195,8 +1205,12 @@ export function pageId(path: string): string {
 	return `page:${path}`;
 }
 
-export function localeKeyId(path: string, key: string): string {
-	return `locale-key:${path}:${key}`;
+export function localeKeyId(key: string): string {
+	return `locale-key:${key}`;
+}
+
+export function localeTranslationId(path: string, key: string): string {
+	return `locale-translation:${path}:${key}`;
 }
 
 export function localeReferenceId(

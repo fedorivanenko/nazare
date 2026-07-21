@@ -159,18 +159,21 @@ export function themeGraphFromModel(
 			to: schema.id,
 		});
 	}
+	const translationPathsByLocaleKeyId = new Map<string, string[]>();
+	for (const translation of model.localeTranslations) {
+		translationPathsByLocaleKeyId.set(translation.localeKeyId, [
+			...(translationPathsByLocaleKeyId.get(translation.localeKeyId) ?? []),
+			translation.path,
+		]);
+	}
 	for (const localeKey of model.localeKeys) {
 		pushNode({
 			id: localeKey.id,
 			kind: "localeKey",
-			path: localeKey.path,
 			key: localeKey.key,
-		});
-		pushEdge({
-			id: `edge:declares:${fileId(localeKey.path)}->${localeKey.id}`,
-			kind: "declares",
-			from: fileId(localeKey.path),
-			to: localeKey.id,
+			translationPaths: [
+				...new Set(translationPathsByLocaleKeyId.get(localeKey.id) ?? []),
+			].sort((a, b) => a.localeCompare(b)),
 		});
 	}
 	for (const localeReference of model.localeReferences) {
