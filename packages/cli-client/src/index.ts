@@ -354,41 +354,57 @@ async function collectThemeInputFiles(
 	projectRoot: string,
 ): Promise<{ path: string; contents: string }[]> {
 	const ignored = new Set(["node_modules", ".git", "dist", ".nazare-out"]);
-	const files: { path: string; contents: string }[] = [];
+	const candidates: { path: string; absolutePath: string }[] = [];
 	async function walk(dir: string): Promise<void> {
-		for (const entry of await readdir(dir, { withFileTypes: true })) {
-			if (ignored.has(entry.name)) continue;
-			const abs = join(dir, entry.name);
-			if (entry.isDirectory()) {
-				await walk(abs);
-				continue;
-			}
-			if (!entry.isFile()) continue;
-			const rel = relative(root, abs).split(sep).join("/");
-			if (!isInspectThemeFile(rel)) continue;
-			files.push({
-				path: rel,
-				contents: shouldReadInspectContents(rel)
-					? await readFile(abs, "utf8")
-					: "",
-			});
-		}
+		const entries = await readdir(dir, { withFileTypes: true });
+		await Promise.all(
+			entries.map(async (entry) => {
+				if (ignored.has(entry.name)) return;
+				const absolutePath = join(dir, entry.name);
+				if (entry.isDirectory()) {
+					await walk(absolutePath);
+					return;
+				}
+				if (!entry.isFile()) return;
+				const path = relative(root, absolutePath).split(sep).join("/");
+				if (isInspectThemeFile(path)) candidates.push({ path, absolutePath });
+			}),
+		);
 	}
 	const rootStat = await stat(root);
 	if (rootStat.isFile()) {
 		const path = relative(projectRoot, root).split(sep).join("/");
-		if (isInspectThemeFile(path)) {
-			files.push({
-				path,
-				contents: shouldReadInspectContents(path)
-					? await readFile(root, "utf8")
-					: "",
-			});
-		}
+		if (isInspectThemeFile(path)) candidates.push({ path, absolutePath: root });
 	} else {
 		await walk(root);
 	}
-	return files.sort((a, b) => a.path.localeCompare(b.path));
+	candidates.sort((a, b) => a.path.localeCompare(b.path));
+	return mapConcurrent(candidates, 32, async ({ path, absolutePath }) => ({
+		path,
+		contents: shouldReadInspectContents(path)
+			? await readFile(absolutePath, "utf8")
+			: "",
+	}));
+}
+
+async function mapConcurrent<Input, OutputValue>(
+	values: Input[],
+	concurrency: number,
+	map: (value: Input) => Promise<OutputValue>,
+): Promise<OutputValue[]> {
+	const results = new Array<OutputValue>(values.length);
+	let nextIndex = 0;
+	const workers = Array.from(
+		{ length: Math.min(concurrency, values.length) },
+		async () => {
+			while (nextIndex < values.length) {
+				const index = nextIndex++;
+				results[index] = await map(values[index] as Input);
+			}
+		},
+	);
+	await Promise.all(workers);
+	return results;
 }
 
 function isInspectThemeFile(path: string): boolean {

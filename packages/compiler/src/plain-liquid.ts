@@ -6,6 +6,7 @@ import type { Diagnostic, SourceSpan } from "@nazare/core";
 import {
 	type DocumentNode,
 	NodeTypes,
+	toLiquidAST,
 	toLiquidHtmlAST,
 	walk,
 } from "@shopify/liquid-html-parser";
@@ -105,16 +106,34 @@ export function parsePlainLiquid(
 	const diagnostics: Diagnostic[] = [];
 	let ast: DocumentNode;
 	let factsCollected = true;
+	const analysisSource = sourceForLiquidAnalysis(source);
 	try {
-		ast = toLiquidHtmlAST(sourceForLiquidAnalysis(source), {
+		ast = toLiquidHtmlAST(analysisSource, {
 			mode: parseMode,
 			allowUnclosedDocumentNode: parseMode === "tolerant",
 		});
-	} catch (error) {
-		factsCollected = false;
-		diagnostics.push(parseLiquidError(error, file));
-		diagnostics.push(plainLiquidFactsSkipped(file));
-		ast = emptyAst();
+	} catch (htmlError) {
+		try {
+			if (parseMode !== "tolerant" || analysisSource.length > 16_384) {
+				throw htmlError;
+			}
+			// Shopify themes commonly interleave HTML start/end tags across Liquid
+			// branches. Valid rendered HTML can therefore be invalid as one static
+			// HTML tree. Liquid-only fallback preserves tags, expressions, and exact
+			// offsets while intentionally dropping unreliable HTML structure. Cap
+			// fallback size: generated files make Liquid-only recovery disproportionately
+			// expensive and should use a future streaming extractor instead.
+			ast = toLiquidAST(analysisSource, {
+				mode: "tolerant",
+				allowUnclosedDocumentNode: true,
+			});
+			diagnostics.push(htmlStructureIgnored(file, htmlError));
+		} catch (error) {
+			factsCollected = false;
+			diagnostics.push(parseLiquidError(error, file));
+			diagnostics.push(plainLiquidFactsSkipped(file));
+			ast = emptyAst();
+		}
 	}
 
 	const schema = factsCollected
@@ -176,6 +195,17 @@ function blankNonLiquidCharacters(source: string): string {
 		offset = index + match[0].length;
 	}
 	return result + source.slice(offset).replace(/[^\n\r]/g, " ");
+}
+
+function htmlStructureIgnored(file: string, error: unknown): Diagnostic {
+	const parsed = parseLiquidError(error, file);
+	return {
+		severity: "warning",
+		code: "PLAIN_LIQUID_HTML_STRUCTURE_IGNORED",
+		message: `${parsed.message}; recovered with Liquid-only parsing`,
+		phase: "parse",
+		span: parsed.span,
+	};
 }
 
 function plainLiquidFactsSkipped(file: string): Diagnostic {
