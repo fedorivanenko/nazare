@@ -11,7 +11,6 @@ import {
 	walk,
 } from "@shopify/liquid-html-parser";
 import type {
-	AuthoredSchema,
 	NazareAssetImportNode,
 	NazareAst,
 	NazareDataBinding,
@@ -46,6 +45,11 @@ import {
 	parseMalformedRenderArgument,
 	parseUnclosedRawBlock,
 } from "./diagnostics.js";
+import {
+	extractAuthoredSchema,
+	liquidTagMarkup,
+	parseLiquidError,
+} from "./liquid-ast.js";
 import { isRelativeSpecifier, resolveImportPath } from "./paths.js";
 import { type LiquidRegion, scanRegionReferences } from "./references.js";
 import { scanScript } from "./script-scan.js";
@@ -100,7 +104,7 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 	} catch (error) {
 		// Broken Liquid is a diagnostic, not a crash: report it and continue
 		// with an empty document (scripts/styles were already extracted).
-		diagnostics.push(parseLiquidError(error, source, file));
+		diagnostics.push(parseLiquidError(error, file));
 		ast = toLiquidHtmlAST("", {
 			mode: "tolerant",
 			allowUnclosedDocumentNode: true,
@@ -574,18 +578,6 @@ function extractScriptBlocks(
 	return { scripts, blankedSource };
 }
 
-function liquidTagMarkup(
-	source: string,
-	position: SourceRange,
-	name: string,
-): string {
-	const raw = source.slice(position.start, position.end);
-	return raw
-		.replace(new RegExp(`^\\s*\\{%-?\\s*${name}\\b`), "")
-		.replace(/-?%}\s*$/, "")
-		.trim();
-}
-
 function parseNazareRenderTag(
 	tag: LiquidTagLike,
 	source: string,
@@ -661,39 +653,6 @@ function parseNazareImportTag(
 	}
 
 	diagnostics.push(importUnsupportedExtension(specifier, span));
-	return undefined;
-}
-
-function parseLiquidError(
-	error: unknown,
-	_source: string,
-	file: string,
-): NazareAst["diagnostics"][number] {
-	const loc = (error as { loc?: { start?: { line: number; column: number } } })
-		.loc;
-	const start = loc?.start ?? { line: 1, column: 1 };
-	return {
-		severity: "error",
-		code: "NAZARE_PARSE_LIQUID",
-		message: `Liquid parse error: ${error instanceof Error ? error.message : String(error)}`,
-		span: { file, start, end: start },
-	};
-}
-
-function extractAuthoredSchema(
-	ast: ReturnType<typeof toLiquidHtmlAST>,
-	source: string,
-	file: string,
-): AuthoredSchema | undefined {
-	for (const node of ast.children) {
-		if (node.type !== NodeTypes.LiquidRawTag || node.name !== "schema") {
-			continue;
-		}
-		return {
-			source: node.body.value,
-			span: spanFromOffsets(source, file, node.position),
-		};
-	}
 	return undefined;
 }
 
@@ -1073,24 +1032,39 @@ function parseProps(
 	nodeStart: number,
 	diagnostics: NazareAst["diagnostics"],
 ): NazarePropDeclaration[] {
-	const body = trimBraces(markup);
+	// One anchor locates the markup in the source; every entry's span derives
+	// from its tracked offset within it — never a per-name text search, which
+	// could match an earlier occurrence of the same text.
+	const markupStart = source.indexOf(markup, nodeStart);
+	const trimmed = markup.trim();
+	const hasBraces = trimmed.startsWith("{") && trimmed.endsWith("}");
+	const leadingWhitespace = markup.length - markup.trimStart().length;
+	const body = hasBraces ? trimmed.slice(1, -1) : trimmed;
+	const bodyStart =
+		markupStart >= 0
+			? markupStart + leadingWhitespace + (hasBraces ? 1 : 0)
+			: nodeStart;
+	const located = markupStart >= 0;
 	const props: NazarePropDeclaration[] = [];
 	const seen = new Set<string>();
 
-	for (const entry of splitTopLevel(body)) {
-		const separator = entry.indexOf(":");
-		const name = separator === -1 ? "" : entry.slice(0, separator).trim();
+	for (const entry of splitTopLevelWithOffsets(body)) {
+		const separator = entry.text.indexOf(":");
+		const name = separator === -1 ? "" : entry.text.slice(0, separator).trim();
 		const typeExpression =
-			separator === -1 ? "" : entry.slice(separator + 1).trim();
+			separator === -1 ? "" : entry.text.slice(separator + 1).trim();
 
-		const offset = source.indexOf(name || entry, nodeStart);
+		// The entry text is already trimmed, so the name starts exactly at the
+		// entry's offset.
+		const start = located ? bodyStart + entry.start : nodeStart;
+		const length = located ? (name || entry.text).length : 0;
 		const span = spanFromOffsets(source, file, {
-			start: offset >= 0 ? offset : nodeStart,
-			end: offset >= 0 ? offset + (name || entry).length : nodeStart,
+			start,
+			end: start + length,
 		});
 
 		if (!isIdentifier(name) || !typeExpression) {
-			diagnostics.push(parseMalformedPropDeclaration(entry, span));
+			diagnostics.push(parseMalformedPropDeclaration(entry.text, span));
 			continue;
 		}
 		if (seen.has(name)) {
@@ -1175,19 +1149,6 @@ function parsePassedProps(
 	}
 
 	return props;
-}
-
-function trimBraces(markup: string): string {
-	const trimmed = markup.trim();
-	if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-		return trimmed.slice(1, -1);
-	}
-
-	return trimmed;
-}
-
-function splitTopLevel(input: string): string[] {
-	return splitTopLevelWithOffsets(input).map((part) => part.text);
 }
 
 function splitTopLevelWithOffsets(

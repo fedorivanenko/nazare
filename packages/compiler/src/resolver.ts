@@ -2,6 +2,7 @@
 // this module is the explicit boundary where imports become contracts or inline
 // behavior/style nodes. All filesystem access goes through ReadFile.
 import type { ArtifactContract, Diagnostic, SourceSpan } from "@nazare/core";
+import type { ReadFile } from "./read-file.js";
 import type {
 	NazareAst,
 	NazareNode,
@@ -19,7 +20,7 @@ import { markDiagnostics, projectArtifact } from "./pipeline.js";
 import { bindArtifactIR, contractFromIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
 
-export type ReadFile = (path: string) => string | undefined;
+export type { ReadFile } from "./read-file.js";
 
 export type ComponentContractResolution = {
 	contracts: ArtifactContract[];
@@ -31,7 +32,13 @@ export type AssetImportResolution = {
 	issues: Diagnostic[];
 };
 
-type DependencyContext = {
+/**
+ * Caches parsed dependency ASTs and derived contracts behind one ReadFile.
+ * A build creates one resolver and threads it through compile and
+ * checkDependencies so every dependency is parsed and bound exactly once;
+ * one-off calls that pass none get a private resolver instead.
+ */
+export type DependencyResolver = {
 	loadAst: (path: string) => NazareAst | undefined;
 	resolveComponentContracts: (ast: NazareAst) => ComponentContractResolution;
 };
@@ -42,9 +49,9 @@ type ContractDerivation = {
 	cacheable: boolean;
 };
 
-function createDependencyContext(
+export function createDependencyResolver(
 	readFile: ReadFile | undefined,
-): DependencyContext {
+): DependencyResolver {
 	const astCache = new Map<string, NazareAst | undefined>();
 	const contractCache = new Map<string, ArtifactContract | undefined>();
 
@@ -135,8 +142,10 @@ function createDependencyContext(
 export function resolveComponentContracts(
 	ast: NazareAst,
 	readFile: ReadFile | undefined,
+	resolver?: DependencyResolver,
 ): ComponentContractResolution {
-	return createDependencyContext(readFile).resolveComponentContracts(ast);
+	return (resolver ?? createDependencyResolver(readFile))
+		.resolveComponentContracts(ast);
 }
 
 /**
@@ -144,15 +153,16 @@ export function resolveComponentContracts(
  * diagnostics (deduped per path). This is the explicit opt-in the build makes
  * to validate its dependencies; a plain compile checks only the entry file.
  * Unreadable imports are silent here — resolveComponentContracts reports them.
+ * Passing the build's resolver reuses its parse/contract caches.
  */
 export function checkDependencies(
 	ast: NazareAst,
 	readFile: ReadFile | undefined,
-	options: { mode?: CompilerMode } = {},
+	options: { mode?: CompilerMode; resolver?: DependencyResolver } = {},
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const checked = new Set<string>();
-	const dependencies = createDependencyContext(readFile);
+	const dependencies = options.resolver ?? createDependencyResolver(readFile);
 
 	const visit = (path: string): void => {
 		if (checked.has(path)) return;

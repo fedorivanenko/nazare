@@ -29,7 +29,6 @@ export type SemanticType =
 	| { kind: "function"; returns?: SemanticType }
 	| { kind: "object"; name?: string; fields?: Record<string, SemanticType> }
 	| { kind: "array"; element: SemanticType }
-	| { kind: "literal"; value: unknown }
 	| { kind: "union"; members: SemanticType[] }
 	| { kind: "nil" }
 	| { kind: "unknown" };

@@ -36,12 +36,14 @@ export function checkVanillaSchema(ast: NazareAst): Diagnostic[] {
 			.filter((id): id is string => typeof id === "string"),
 	);
 
+	// Block reads are checkable only when every block is a classic inline
+	// block — one "@theme"/"@app" entry brings settings declared in other
+	// files, so the full id set is unknowable here. A classic block without a
+	// settings array still counts (it simply declares no ids).
 	const blocks = parsed.blocks ?? [];
 	const classicBlocks =
 		blocks.length > 0 &&
-		blocks.every(
-			(block) => block.type !== "@theme" && Array.isArray(block.settings),
-		);
+		blocks.every((block) => block.type !== "@theme" && block.type !== "@app");
 	const blockIds = new Set(
 		blocks.flatMap((block) =>
 			(block.settings ?? [])

@@ -14,6 +14,7 @@ import {
 	scriptImportNotFound,
 } from "./diagnostics.js";
 import { isRelativeSpecifier, resolveImportPath } from "./paths.js";
+import type { ReadFile } from "./read-file.js";
 
 export type BundleResult = {
 	/** Self-contained expression evaluating to the entry's exports.default. */
@@ -21,8 +22,7 @@ export type BundleResult = {
 	issues: Diagnostic[];
 };
 
-/** Reads a project file by its project-relative path (see index.ts). */
-export type ReadFile = (path: string) => string | undefined;
+
 
 type Module = {
 	id: string;
@@ -161,7 +161,8 @@ export function importSpecifiers(source: string): string[] {
 	return specifiers;
 }
 
-function indent(text: string, prefix: string): string {
+/** Prefixes every non-empty line; shared with emit's script wrapping. */
+export function indent(text: string, prefix: string): string {
 	return text
 		.split("\n")
 		.map((line) => (line ? prefix + line : line))
