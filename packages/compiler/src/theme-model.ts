@@ -1,5 +1,6 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
 import type {
+	ThemeBlockInstanceRecord,
 	ThemeBlockRecord,
 	ThemeBlockSettingRecord,
 	ThemeCapabilitySignalRecord,
@@ -37,6 +38,7 @@ export function buildThemeSemanticModel(
 	const blocks: ThemeBlockRecord[] = [];
 	const blockSettings: ThemeBlockSettingRecord[] = [];
 	const sectionInstances: ThemeSectionInstanceRecord[] = [];
+	const blockInstances: ThemeBlockInstanceRecord[] = [];
 	const localeKeys: ThemeLocaleKeyRecord[] = [];
 	const localeReferences: ThemeLocaleReferenceRecord[] = [];
 	const settingReads: ThemeSettingReadRecord[] = [];
@@ -73,6 +75,12 @@ export function buildThemeSemanticModel(
 		if (fact.kind === "declaresAsset") {
 			declarations.push(declaration("asset", fact.path, fact.name));
 		}
+		if (fact.kind === "declaresSectionGroup") {
+			declarations.push(declaration("sectionGroup", fact.path, fact.name));
+		}
+		if (fact.kind === "declaresThemeBlock") {
+			declarations.push(declaration("themeBlock", fact.path, fact.name));
+		}
 		if (fact.kind === "declaresComponent") {
 			declarations.push({
 				...declaration("component", fact.path, fact.name),
@@ -85,6 +93,21 @@ export function buildThemeSemanticModel(
 				templatePath: fact.templatePath,
 				instanceId: fact.instanceId,
 				sectionType: fact.sectionType,
+				static: fact.static,
+			});
+		}
+		if (fact.kind === "blockInstance") {
+			blockInstances.push({
+				id: blockInstanceId(
+					fact.ownerPath,
+					fact.sectionInstanceId,
+					fact.instanceId,
+				),
+				ownerPath: fact.ownerPath,
+				sectionInstanceId: fact.sectionInstanceId,
+				instanceId: fact.instanceId,
+				blockType: fact.blockType,
+				parentInstanceId: fact.parentInstanceId,
 				static: fact.static,
 			});
 		}
@@ -165,6 +188,8 @@ export function buildThemeSemanticModel(
 				id: variableReadId(fact.fromPath, fact.name, fact.span),
 				fromPath: fact.fromPath,
 				name: fact.name,
+				propertyPath: fact.propertyPath,
+				expression: fact.expression,
 				span: fact.span,
 			});
 		}
@@ -279,6 +304,36 @@ export function buildThemeSemanticModel(
 				}),
 			);
 		}
+		if (fact.kind === "containsSectionGroup") {
+			references.push(
+				reference({
+					kind: "containsSectionGroup",
+					fromPath: fact.fromPath,
+					targetKind: "sectionGroup",
+					targetName: fact.targetName,
+					static: fact.static,
+					span: fact.span,
+					declaration: fact.targetName
+						? byKindName.get(`sectionGroup:${fact.targetName}`)
+						: undefined,
+				}),
+			);
+		}
+		if (fact.kind === "usesLayout") {
+			references.push(
+				reference({
+					kind: "usesLayout",
+					fromPath: fact.fromPath,
+					targetKind: "layout",
+					targetName: fact.targetName,
+					static: fact.static,
+					span: fact.span,
+					declaration: fact.targetName
+						? byKindName.get(`layout:${fact.targetName}`)
+						: undefined,
+				}),
+			);
+		}
 		if (fact.kind === "referencesAsset") {
 			const declaration = fact.targetName
 				? (byKindName.get(`asset:${fact.targetName}`) ??
@@ -317,6 +372,35 @@ export function buildThemeSemanticModel(
 		const declaration = byKindName.get(`section:${instance.sectionType}`);
 		if (declaration) instance.resolvedDeclarationId = declaration.id;
 	}
+	const sectionInstanceByOwnerAndId = new Map(
+		sectionInstances.map((instance) => [
+			`${instance.templatePath}:${instance.instanceId}`,
+			instance,
+		]),
+	);
+	for (const instance of blockInstances) {
+		if (!instance.blockType) continue;
+		const themeBlock = byKindName.get(`themeBlock:${instance.blockType}`);
+		if (themeBlock) {
+			instance.resolvedBlockId = themeBlock.id;
+			continue;
+		}
+		const sectionInstance = sectionInstanceByOwnerAndId.get(
+			`${instance.ownerPath}:${instance.sectionInstanceId}`,
+		);
+		const sectionPath = sectionInstance?.resolvedDeclarationId
+			? declarations.find(
+					(declaration) =>
+						declaration.id === sectionInstance.resolvedDeclarationId,
+				)?.path
+			: undefined;
+		if (!sectionPath) continue;
+		const schemaBlock = blocks.find(
+			(block) =>
+				block.path === sectionPath && block.blockType === instance.blockType,
+		);
+		if (schemaBlock) instance.resolvedBlockId = schemaBlock.id;
+	}
 
 	const pages = pageRecords(declarations);
 	const expectedInputs = expectedInputRecords(
@@ -337,10 +421,21 @@ export function buildThemeSemanticModel(
 		renderArguments,
 		declarations,
 	);
+	dataAccesses.push(
+		...deriveArgumentDataAccesses(
+			renderSites,
+			renderArguments,
+			expectedInputs,
+			declarations,
+			variableReads,
+		),
+	);
 	const capabilities = inferCapabilities(dataAccesses, capabilitySignals);
 	const classifications = inferClassifications(capabilities, dataAccesses);
 	const evidence = evidenceRecords({
 		references,
+		sectionInstances,
+		blockInstances,
 		localeReferences,
 		schemas,
 		settings,
@@ -461,7 +556,7 @@ export function buildThemeSemanticModel(
 	}
 
 	const model: ThemeSemanticModel = {
-		version: 1,
+		version: 2,
 		root: options.root ?? ".",
 		files: [...files.values()].sort((a, b) => a.path.localeCompare(b.path)),
 		declarations: dedupeById(declarations).sort((a, b) =>
@@ -475,6 +570,9 @@ export function buildThemeSemanticModel(
 			a.id.localeCompare(b.id),
 		),
 		sectionInstances: dedupeById(sectionInstances).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
+		blockInstances: dedupeById(blockInstances).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
 		pages: dedupeById(pages).sort((a, b) => a.id.localeCompare(b.id)),
@@ -544,6 +642,19 @@ function assertThemeSemanticModel(model: ThemeSemanticModel): void {
 		) {
 			throw new Error(
 				`Theme section instance ${instance.id} resolves to missing declaration ${instance.resolvedDeclarationId}`,
+			);
+		}
+	}
+	const blockIds = new Set([
+		...model.blocks.map((block) => block.id),
+		...model.declarations
+			.filter((declaration) => declaration.kind === "themeBlock")
+			.map((declaration) => declaration.id),
+	]);
+	for (const instance of model.blockInstances) {
+		if (instance.resolvedBlockId && !blockIds.has(instance.resolvedBlockId)) {
+			throw new Error(
+				`Theme block instance ${instance.id} resolves to missing block ${instance.resolvedBlockId}`,
 			);
 		}
 	}
@@ -647,6 +758,8 @@ function pageTypeFromTemplateName(name: string): string {
 
 function evidenceRecords(records: {
 	references: ThemeReference[];
+	sectionInstances: ThemeSectionInstanceRecord[];
+	blockInstances: ThemeBlockInstanceRecord[];
 	localeReferences: ThemeLocaleReferenceRecord[];
 	schemas: ThemeSchemaRecord[];
 	settings: ThemeSettingRecord[];
@@ -657,6 +770,18 @@ function evidenceRecords(records: {
 	capabilitySignals: ThemeCapabilitySignalRecord[];
 }): ThemeEvidenceRecord[] {
 	return [
+		...records.sectionInstances.map((instance) => ({
+			id: instance.id,
+			kind: "templateConfig" as const,
+			file: instance.templatePath,
+			extractor: "theme-json-facts",
+		})),
+		...records.blockInstances.map((instance) => ({
+			id: instance.id,
+			kind: "templateConfig" as const,
+			file: instance.ownerPath,
+			extractor: "theme-json-facts",
+		})),
 		...records.references.map((reference) => ({
 			id: reference.id,
 			kind:
@@ -748,31 +873,72 @@ function expectedInputRecords(
 			.map((declaration) => declaration.path),
 	);
 	const byId = new Map<string, ThemeExpectedInputRecord>();
-	const addInput = (path: string, name: string, evidenceId: string): void => {
+	const addInput = (
+		path: string,
+		name: string,
+		propertyPath: string | undefined,
+		evidenceId: string,
+		origin: ThemeExpectedInputRecord["origin"],
+	): void => {
 		const id = expectedInputId(path, name);
 		const existing = byId.get(id);
 		if (existing) {
+			existing.propertyPaths = [
+				...new Set([
+					...existing.propertyPaths,
+					...(propertyPath ? [propertyPath] : []),
+				]),
+			].sort((a, b) => a.localeCompare(b));
 			existing.evidenceIds = [
 				...new Set([...existing.evidenceIds, evidenceId]),
 			];
+			// A free-variable read is stronger evidence than ambient context.
+			if (origin === "freeVariable") {
+				existing.origin = origin;
+				existing.requirement = guardedObjects.has(`${path}:${name}`)
+					? "optional"
+					: "required";
+				existing.required = existing.requirement === "required";
+			}
 			return;
 		}
+		const requirement =
+			origin === "ambientShopifyContext"
+				? "unknown"
+				: guardedObjects.has(`${path}:${name}`)
+					? "optional"
+					: "required";
 		byId.set(id, {
 			id,
 			path,
 			name,
-			required: !guardedObjects.has(`${path}:${name}`),
+			required: requirement === "required",
+			requirement,
+			origin,
+			propertyPaths: propertyPath ? [propertyPath] : [],
 			evidenceIds: [evidenceId],
 		});
 	};
 	for (const access of dataAccesses) {
 		if (!componentPaths.has(access.fromPath)) continue;
 		if (!CONTEXT_INPUT_OBJECTS.has(access.object)) continue;
-		addInput(access.fromPath, access.object, access.id);
+		addInput(
+			access.fromPath,
+			access.object,
+			access.propertyPath,
+			access.id,
+			"ambientShopifyContext",
+		);
 	}
 	for (const read of variableReads) {
 		if (!componentPaths.has(read.fromPath)) continue;
-		addInput(read.fromPath, read.name, read.id);
+		addInput(
+			read.fromPath,
+			read.name,
+			read.propertyPath,
+			read.id,
+			"freeVariable",
+		);
 	}
 	return [...byId.values()];
 }
@@ -807,6 +973,68 @@ function renderSiteRecords(
 		),
 		span: fact.span,
 	}));
+}
+
+function deriveArgumentDataAccesses(
+	renderSites: ThemeRenderSiteRecord[],
+	renderArguments: ThemeRenderArgumentRecord[],
+	expectedInputs: ThemeExpectedInputRecord[],
+	declarations: ThemeDeclaration[],
+	variableReads: ThemeVariableReadRecord[],
+): ThemeDataAccessRecord[] {
+	const declarationById = new Map(
+		declarations.map((declaration) => [declaration.id, declaration]),
+	);
+	const argumentById = new Map(
+		renderArguments.map((argument) => [argument.id, argument]),
+	);
+	const inputsByPathAndName = new Map(
+		expectedInputs.map((input) => [`${input.path}:${input.name}`, input]),
+	);
+	const variableReadById = new Map(
+		variableReads.map((read) => [read.id, read]),
+	);
+	const accesses: ThemeDataAccessRecord[] = [];
+	for (const site of renderSites) {
+		if (!site.resolvedDeclarationId) continue;
+		const targetPath = declarationById.get(site.resolvedDeclarationId)?.path;
+		if (!targetPath) continue;
+		for (const argumentId of site.argumentIds) {
+			const argument = argumentById.get(argumentId);
+			if (
+				!argument?.sourceObject ||
+				argument.sourceObject.endsWith(".settings")
+			)
+				continue;
+			const input = inputsByPathAndName.get(
+				`${targetPath}:${argument.argumentName}`,
+			);
+			if (!input) continue;
+			for (const inputPropertyPath of input.propertyPaths) {
+				const propertyPath = [argument.sourcePath, inputPropertyPath]
+					.filter(Boolean)
+					.join(".");
+				const expression = propertyPath
+					? `${argument.sourceObject}.${propertyPath}`
+					: argument.sourceObject;
+				const readEvidence = input.evidenceIds
+					.map((id) => variableReadById.get(id))
+					.find((read) => read?.propertyPath === inputPropertyPath);
+				accesses.push({
+					id: `data-access-derived:${targetPath}:${argument.id}:${expression}`,
+					fromPath: targetPath,
+					object: argument.sourceObject,
+					propertyPath: propertyPath || undefined,
+					expression,
+					origin: "renderArgument",
+					sourceRenderArgumentId: argument.id,
+					inputName: argument.argumentName,
+					span: readEvidence?.span,
+				});
+			}
+		}
+	}
+	return accesses;
 }
 
 function addInputDiagnostics(
@@ -984,6 +1212,14 @@ export function sectionInstanceId(
 	instanceId: string,
 ): string {
 	return `section-instance:${templatePath}:${instanceId}`;
+}
+
+export function blockInstanceId(
+	ownerPath: string,
+	sectionInstanceId: string,
+	instanceId: string,
+): string {
+	return `block-instance:${ownerPath}:${sectionInstanceId}:${instanceId}`;
 }
 
 export function settingReadId(

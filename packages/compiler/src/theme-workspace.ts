@@ -226,6 +226,20 @@ function analyzeNormalizedThemeFiles(
 				name: themeNameFromPath(file.path),
 			});
 		}
+		if (fileKind === "sectionGroup") {
+			facts.push({
+				kind: "declaresSectionGroup",
+				path: file.path,
+				name: themeNameFromPath(file.path),
+			});
+		}
+		if (fileKind === "themeBlock") {
+			facts.push({
+				kind: "declaresThemeBlock",
+				path: file.path,
+				name: themeNameFromPath(file.path),
+			});
+		}
 		if (fileKind === "locale") {
 			facts.push({
 				kind: "declaresLocale",

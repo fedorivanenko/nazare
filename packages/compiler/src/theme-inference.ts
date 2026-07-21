@@ -105,9 +105,30 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
 	},
 	{
 		label: "localizationSelector",
-		confidence: 0.7,
-		evidenceCapabilities: ["usesLocalization"],
-		matches: (capabilities) => capabilities.has("usesLocalization"),
+		confidence: 0.8,
+		evidenceCapabilities: ["switchesLocalization"],
+		matches: (capabilities) => capabilities.has("switchesLocalization"),
+		uncertainty: [],
+	},
+	{
+		label: "productGallery",
+		confidence: 0.65,
+		evidenceCapabilities: ["displaysProductMedia"],
+		matches: (capabilities) => capabilities.has("displaysProductMedia"),
+		uncertainty: ["single product image and media gallery share signals"],
+	},
+	{
+		label: "recommendations",
+		confidence: 0.85,
+		evidenceCapabilities: ["displaysRecommendations"],
+		matches: (capabilities) => capabilities.has("displaysRecommendations"),
+		uncertainty: [],
+	},
+	{
+		label: "navigation",
+		confidence: 0.8,
+		evidenceCapabilities: ["displaysNavigation"],
+		matches: (capabilities) => capabilities.has("displaysNavigation"),
 		uncertainty: [],
 	},
 ];

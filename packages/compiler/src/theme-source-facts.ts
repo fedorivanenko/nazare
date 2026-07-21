@@ -34,6 +34,7 @@ export const SHOPIFY_DATA_OBJECTS = new Set([
 	"search",
 	"recommendations",
 	"localization",
+	"linklists",
 	"metafields",
 	"metaobjects",
 ]);
@@ -126,6 +127,11 @@ const lookupCapabilityRules: LookupCapabilityRule[] = [
 			(object === "collection" && /(^|\.)filters($|\.)/.test(path)) ||
 			(object === "filter" && (path === "active_values" || path === "values")),
 	},
+	{
+		capability: "displaysNavigation",
+		confidence: 0.8,
+		matches: (object) => object === "linklists",
+	},
 ];
 
 // Signals only visible as literal text (form actions, input names, JS calls
@@ -153,6 +159,12 @@ const textCapabilityRules: Array<{
 		confidence: 0.9,
 		pattern: /(?:predictive_search|\/search\/suggest)/g,
 	},
+	{
+		capability: "switchesLocalization",
+		confidence: 0.9,
+		pattern:
+			/(?:form\s+['"]localization['"]|localization\.country|localization\.language)/g,
+	},
 ];
 
 export function collectSourceThemeFacts(
@@ -167,7 +179,14 @@ export function collectSourceThemeFacts(
 	const guardRangesByName = new Map<string, SourceRange[]>();
 	const localBindingRangesByName = new Map<string, SourceRange[]>();
 	const conditionalAssignmentRanges: SourceRange[] = [];
-	const freeReads: { name: string; offset: number; span?: SourceSpan }[] = [];
+	const aliasBindings = new Map<string, AliasBinding[]>();
+	const freeReads: {
+		name: string;
+		propertyPath?: string;
+		expression: string;
+		offset: number;
+		span?: SourceSpan;
+	}[] = [];
 
 	walk(ast, (node) => {
 		if (node.type !== NodeTypes.LiquidTag) return;
@@ -192,6 +211,38 @@ export function collectSourceThemeFacts(
 		}
 	});
 
+	// Collect unconditional lookup aliases before reading expressions. This
+	// preserves property provenance through common `assign alias = product`
+	// patterns without guessing across conditional assignments.
+	walk(ast, (node) => {
+		if (node.type !== NodeTypes.LiquidTag) return;
+		const tag = node as LiquidHtmlNode & { markup?: unknown };
+		visitLiquidExpressions(tag.markup, {
+			onAssign: (markup) => {
+				const offset = expressionStart(markup);
+				if (isOffsetWithinRanges(offset, conditionalAssignmentRanges)) return;
+				const rawValue = markup.value as
+					| PositionedLookup
+					| { expression?: unknown }
+					| undefined;
+				const value =
+					rawValue && (rawValue as { type?: unknown }).type === "VariableLookup"
+						? (rawValue as PositionedLookup)
+						: ((rawValue as { expression?: unknown } | undefined)?.expression as
+								| PositionedLookup
+								| undefined);
+				if (!value || value.type !== "VariableLookup") return;
+				aliasBindings.set(markup.name, [
+					...(aliasBindings.get(markup.name) ?? []),
+					{ offset, lookup: value },
+				]);
+			},
+		});
+	});
+	for (const bindings of aliasBindings.values()) {
+		bindings.sort((a, b) => a.offset - b.offset);
+	}
+
 	const pushCapability = (
 		capability: string,
 		confidence: number,
@@ -210,8 +261,14 @@ export function collectSourceThemeFacts(
 		lookup: PositionedLookup,
 		inCondition: boolean,
 	): void => {
-		const propertyPath = stringLookupPath(lookup);
 		const position = lookup.position;
+		const resolved = resolveAliasedLookup(
+			lookup,
+			position?.start ?? Number.POSITIVE_INFINITY,
+			aliasBindings,
+		);
+		const object = resolved.object;
+		const propertyPath = resolved.propertyPath;
 		const span = rangeSpan(path, source, position);
 		const guarded =
 			inCondition ||
@@ -221,26 +278,26 @@ export function collectSourceThemeFacts(
 				));
 		if (guarded) guardedNames.add(lookup.name);
 		else unguardedNames.add(lookup.name);
-		if (SHOPIFY_DATA_OBJECTS.has(lookup.name)) {
+		if (SHOPIFY_DATA_OBJECTS.has(object)) {
 			facts.push({
 				kind: "readsShopifyData",
 				fromPath: path,
-				object: lookup.name,
+				object,
 				propertyPath: propertyPath || undefined,
-				expression: propertyPath
-					? `${lookup.name}.${propertyPath}`
-					: lookup.name,
+				expression: propertyPath ? `${object}.${propertyPath}` : object,
 				span,
 			});
-		} else if (!LIQUID_GLOBAL_NAMES.has(lookup.name)) {
+		} else if (!LIQUID_GLOBAL_NAMES.has(object)) {
 			freeReads.push({
-				name: lookup.name,
+				name: object,
+				propertyPath: propertyPath || undefined,
+				expression: propertyPath ? `${object}.${propertyPath}` : object,
 				offset: position?.start ?? Number.POSITIVE_INFINITY,
 				span,
 			});
 		}
 		for (const rule of lookupCapabilityRules) {
-			if (rule.matches(lookup.name, propertyPath)) {
+			if (rule.matches(object, propertyPath)) {
 				pushCapability(rule.capability, rule.confidence, span);
 			}
 		}
@@ -324,6 +381,8 @@ export function collectSourceThemeFacts(
 			kind: "readsFreeVariable",
 			fromPath: path,
 			name: read.name,
+			propertyPath: read.propertyPath,
+			expression: read.expression,
 			span: read.span,
 		});
 	}
@@ -348,6 +407,35 @@ export function collectSourceThemeFacts(
 	}
 
 	return facts;
+}
+
+type AliasBinding = { offset: number; lookup: PositionedLookup };
+
+function resolveAliasedLookup(
+	lookup: PositionedLookup,
+	offset: number,
+	bindingsByName: Map<string, AliasBinding[]>,
+	seen = new Set<string>(),
+): { object: string; propertyPath: string } {
+	const ownPath = stringLookupPath(lookup);
+	if (seen.has(lookup.name))
+		return { object: lookup.name, propertyPath: ownPath };
+	const candidates = (bindingsByName.get(lookup.name) ?? []).filter(
+		(binding) => binding.offset <= offset,
+	);
+	const binding = candidates.at(-1);
+	if (!binding) return { object: lookup.name, propertyPath: ownPath };
+	seen.add(lookup.name);
+	const source = resolveAliasedLookup(
+		binding.lookup,
+		binding.offset,
+		bindingsByName,
+		seen,
+	);
+	return {
+		object: source.object,
+		propertyPath: [source.propertyPath, ownPath].filter(Boolean).join("."),
+	};
 }
 
 function expressionStart(value: unknown): number {
@@ -414,6 +502,30 @@ function renderArgumentFacts(
 		spanFromOffsets(source, path, tagPosition),
 	);
 	const facts: ThemeFact[] = [];
+	const implicitLookup = markup.variable?.name as PositionedLookup | undefined;
+	if (
+		markup.variable?.type === "RenderVariableExpression" &&
+		implicitLookup?.type === "VariableLookup" &&
+		typeof implicitLookup.name === "string"
+	) {
+		const implicitName =
+			typeof markup.alias?.value === "string" ? markup.alias.value : targetName;
+		const valueExpression =
+			sliceRange(source, implicitLookup.position) ?? implicitLookup.name;
+		facts.push({
+			kind: "passesRenderArgument",
+			fromPath: path,
+			targetName,
+			siteId,
+			argumentName: implicitName,
+			valueExpression,
+			...argumentSource(
+				implicitLookup,
+				markup.variable.kind === "for" ? "for" : "with",
+			),
+			span: rangeSpan(path, source, markup.variable.position),
+		});
+	}
 	for (const argument of namedArguments(markup.args)) {
 		const valueSource = sliceRange(source, argumentValueRange(argument));
 		facts.push({
@@ -431,7 +543,10 @@ function renderArgumentFacts(
 }
 
 /** sourceObject/sourcePath of an argument whose value is a plain lookup. */
-function argumentSource(value: unknown): {
+function argumentSource(
+	value: unknown,
+	bindingKind: "with" | "for" = "with",
+): {
 	sourceObject?: string;
 	sourcePath?: string;
 } {
@@ -455,10 +570,23 @@ function argumentSource(value: unknown): {
 		};
 	}
 	if (!SHOPIFY_DATA_OBJECTS.has(lookup.name)) return {};
+	if (bindingKind === "for") {
+		const elementObject = collectionElementObject(lookup.name, propertyPath);
+		if (elementObject) return { sourceObject: elementObject };
+	}
 	return {
 		sourceObject: lookup.name,
 		sourcePath: propertyPath || undefined,
 	};
+}
+
+function collectionElementObject(
+	object: string,
+	propertyPath: string,
+): string | undefined {
+	if (object === "collection" && propertyPath === "products") return "product";
+	if (object === "product" && propertyPath === "variants") return "variant";
+	return undefined;
 }
 
 /** Dot-joined String lookups; stops at the first dynamic (non-String) index. */

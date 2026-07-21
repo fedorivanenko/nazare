@@ -54,6 +54,8 @@ export type ThemeFact =
 	| { kind: "declaresLayout"; path: string; name: string }
 	| { kind: "declaresLocale"; path: string; name: string }
 	| { kind: "declaresAsset"; path: string; name: string }
+	| { kind: "declaresSectionGroup"; path: string; name: string }
+	| { kind: "declaresThemeBlock"; path: string; name: string }
 	| {
 			kind: "declaresComponent";
 			path: string;
@@ -72,6 +74,20 @@ export type ThemeFact =
 	  }
 	| {
 			kind: "containsSection";
+			fromPath: string;
+			targetName?: string;
+			static: boolean;
+			span?: SourceSpan;
+	  }
+	| {
+			kind: "containsSectionGroup";
+			fromPath: string;
+			targetName?: string;
+			static: boolean;
+			span?: SourceSpan;
+	  }
+	| {
+			kind: "usesLayout";
 			fromPath: string;
 			targetName?: string;
 			static: boolean;
@@ -109,6 +125,15 @@ export type ThemeFact =
 			templatePath: string;
 			instanceId: string;
 			sectionType?: string;
+			static: boolean;
+	  }
+	| {
+			kind: "blockInstance";
+			ownerPath: string;
+			sectionInstanceId: string;
+			instanceId: string;
+			blockType?: string;
+			parentInstanceId?: string;
 			static: boolean;
 	  }
 	| {
@@ -168,11 +193,13 @@ export type ThemeFact =
 			span?: SourceSpan;
 	  }
 	| {
-			/** A bare variable read that is neither a Liquid global nor assigned
-			 * locally — in render-isolated scope, an input the file expects. */
+			/** A variable read that is neither a Liquid global nor assigned
+			 * locally — evidence for an inferred component input. */
 			kind: "readsFreeVariable";
 			fromPath: string;
 			name: string;
+			propertyPath?: string;
+			expression: string;
 			span?: SourceSpan;
 	  }
 	| {
@@ -205,6 +232,8 @@ export type ThemeDeclaration = {
 		| "layout"
 		| "locale"
 		| "asset"
+		| "sectionGroup"
+		| "themeBlock"
 		| "component";
 	path: string;
 	name: string;
@@ -216,10 +245,18 @@ export type ThemeReference = {
 	kind:
 		| "rendersSnippet"
 		| "containsSection"
+		| "containsSectionGroup"
+		| "usesLayout"
 		| "referencesAsset"
 		| "importsComponent";
 	fromPath: string;
-	targetKind: "snippet" | "section" | "asset" | "component";
+	targetKind:
+		| "snippet"
+		| "section"
+		| "sectionGroup"
+		| "layout"
+		| "asset"
+		| "component";
 	targetName?: string;
 	targetPath?: string;
 	resolvedDeclarationId?: string;
@@ -258,6 +295,17 @@ export type ThemePageRecord = {
 	name: string;
 	pageType: string;
 	templateDeclarationId: string;
+};
+
+export type ThemeBlockInstanceRecord = {
+	id: string;
+	ownerPath: string;
+	sectionInstanceId: string;
+	instanceId: string;
+	blockType?: string;
+	parentInstanceId?: string;
+	resolvedBlockId?: string;
+	static: boolean;
 };
 
 export type ThemeBlockRecord = {
@@ -309,6 +357,9 @@ export type ThemeDataAccessRecord = {
 	object: string;
 	propertyPath?: string;
 	expression: string;
+	origin?: "direct" | "renderArgument";
+	sourceRenderArgumentId?: string;
+	inputName?: string;
 	span?: SourceSpan;
 };
 
@@ -329,6 +380,8 @@ export type ThemeVariableReadRecord = {
 	id: string;
 	fromPath: string;
 	name: string;
+	propertyPath?: string;
+	expression: string;
 	span?: SourceSpan;
 };
 
@@ -366,6 +419,7 @@ export type ThemeEvidenceRecord = {
 		| "dataRead"
 		| "renderCall"
 		| "renderArgument"
+		| "templateConfig"
 		| "dependency";
 	file: string;
 	span?: SourceSpan;
@@ -376,7 +430,11 @@ export type ThemeExpectedInputRecord = {
 	id: string;
 	path: string;
 	name: string;
+	/** Compatibility projection. True only when source proves caller input need. */
 	required: boolean;
+	requirement: "required" | "optional" | "unknown";
+	origin: "freeVariable" | "ambientShopifyContext";
+	propertyPaths: string[];
 	evidenceIds: string[];
 };
 
@@ -391,7 +449,7 @@ export type ThemeRenderSiteRecord = {
 };
 
 export interface ThemeSemanticModel {
-	version: 1;
+	version: 2;
 	root: string;
 	files: ThemeFileRecord[];
 	declarations: ThemeDeclaration[];
@@ -401,6 +459,7 @@ export interface ThemeSemanticModel {
 	blocks: ThemeBlockRecord[];
 	blockSettings: ThemeBlockSettingRecord[];
 	sectionInstances: ThemeSectionInstanceRecord[];
+	blockInstances: ThemeBlockInstanceRecord[];
 	pages: ThemePageRecord[];
 	localeKeys: ThemeLocaleKeyRecord[];
 	localeReferences: ThemeLocaleReferenceRecord[];
@@ -454,12 +513,30 @@ export type SemanticThemeGraphNode =
 	| { id: string; kind: "locale"; name: string; path: string }
 	| { id: string; kind: "localeKey"; path: string; key: string }
 	| { id: string; kind: "asset"; name: string; path: string }
+	| { id: string; kind: "sectionGroup"; name: string; path: string }
+	| { id: string; kind: "themeBlock"; name: string; path: string }
 	| {
 			id: string;
 			kind: "sectionInstance";
 			templatePath: string;
 			instanceId: string;
 			sectionType?: string;
+	  }
+	| {
+			id: string;
+			kind: "blockInstance";
+			ownerPath: string;
+			sectionInstanceId: string;
+			instanceId: string;
+			blockType?: string;
+			parentInstanceId?: string;
+	  }
+	| {
+			id: string;
+			kind: "renderSite";
+			fromPath: string;
+			targetName?: string;
+			invocationKind: "render" | "include";
 	  }
 	| {
 			id: string;
@@ -513,6 +590,9 @@ export type SemanticThemeGraphNode =
 			path: string;
 			name: string;
 			required: boolean;
+			requirement: "required" | "optional" | "unknown";
+			origin: "freeVariable" | "ambientShopifyContext";
+			propertyPaths: string[];
 			evidenceIds: string[];
 	  }
 	| {
@@ -536,6 +616,9 @@ export type SemanticThemeGraphNode =
 			targetKind:
 				| "snippet"
 				| "section"
+				| "sectionGroup"
+				| "layout"
+				| "themeBlock"
 				| "asset"
 				| "component"
 				| "setting"
@@ -543,8 +626,13 @@ export type SemanticThemeGraphNode =
 			name?: string;
 	  };
 
-export type SemanticThemeGraphEdge =
+export type SemanticThemeGraphEdge = (
 	| { id: string; kind: "declares"; from: string; to: string }
+	| { id: string; kind: "implementedBy"; from: string; to: string }
+	| { id: string; kind: "invokes"; from: string; to: string }
+	| { id: string; kind: "resolvesRenderTarget"; from: string; to: string }
+	| { id: string; kind: "hasArgument"; from: string; to: string }
+	| { id: string; kind: "satisfiesInput"; from: string; to: string }
 	| {
 			id: string;
 			kind: "renders";
@@ -562,6 +650,20 @@ export type SemanticThemeGraphEdge =
 	  }
 	| {
 			id: string;
+			kind: "containsSectionGroup";
+			from: string;
+			to: string;
+			targetName?: string;
+	  }
+	| {
+			id: string;
+			kind: "usesLayout";
+			from: string;
+			to: string;
+			targetName?: string;
+	  }
+	| {
+			id: string;
 			kind: "referencesLocaleKey";
 			from: string;
 			to: string;
@@ -572,7 +674,27 @@ export type SemanticThemeGraphEdge =
 	| { id: string; kind: "definesBlock"; from: string; to: string }
 	| { id: string; kind: "definesBlockSetting"; from: string; to: string }
 	| { id: string; kind: "pageUsesTemplate"; from: string; to: string }
+	| {
+			id: string;
+			kind: "pageContainsSectionInstance";
+			from: string;
+			to: string;
+	  }
+	| {
+			id: string;
+			kind: "sectionInstanceContainsBlockInstance";
+			from: string;
+			to: string;
+	  }
+	| {
+			id: string;
+			kind: "blockInstanceContainsBlockInstance";
+			from: string;
+			to: string;
+	  }
+	| { id: string; kind: "instanceOfBlock"; from: string; to: string }
 	| { id: string; kind: "readsSetting"; from: string; to: string }
+	| { id: string; kind: "argumentReadsSetting"; from: string; to: string }
 	| {
 			id: string;
 			kind: "accessesData";
@@ -610,7 +732,8 @@ export type SemanticThemeGraphEdge =
 			from: string;
 			to: string;
 			targetName?: string;
-	  };
+	  }
+) & { evidenceIds?: string[] };
 
 export type ThemeGraphView = {
 	nodeIds: string[];
@@ -633,7 +756,7 @@ export type ThemeImpactSummary = {
 };
 
 export interface InspectNazareThemeResult {
-	version: 1;
+	version: 2;
 	root: string;
 	nodes: SemanticThemeGraphNode[];
 	edges: SemanticThemeGraphEdge[];

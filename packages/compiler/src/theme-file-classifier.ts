@@ -2,7 +2,9 @@ import { baseNameOf } from "./paths.js";
 
 export type ThemeFileKind =
 	| "section"
+	| "sectionGroup"
 	| "snippet"
+	| "themeBlock"
 	| "templateJson"
 	| "templateLiquid"
 	| "layout"
@@ -41,7 +43,9 @@ export function classifyThemeFile(path: string): ThemeFileKind {
 	const normalized = normalizeThemePath(path);
 	if (normalized.endsWith(".nz.liquid")) return "nazareComponent";
 	if (/^sections\/[^/]+\.liquid$/.test(normalized)) return "section";
+	if (/^sections\/[^/]+\.json$/.test(normalized)) return "sectionGroup";
 	if (/^snippets\/[^/]+\.liquid$/.test(normalized)) return "snippet";
+	if (/^blocks\/[^/]+\.liquid$/.test(normalized)) return "themeBlock";
 	if (/^templates\/.+\.json$/.test(normalized)) return "templateJson";
 	if (/^templates\/.+\.liquid$/.test(normalized)) return "templateLiquid";
 	if (/^layout\/[^/]+\.liquid$/.test(normalized)) return "layout";

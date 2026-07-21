@@ -148,6 +148,7 @@ export type {
 	SemanticThemeGraphEdge,
 	SemanticThemeGraphNode,
 	ThemeAnalysis,
+	ThemeBlockInstanceRecord,
 	ThemeBlockRecord,
 	ThemeBlockSettingRecord,
 	ThemeBuildResult,

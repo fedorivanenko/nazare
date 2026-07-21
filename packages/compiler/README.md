@@ -129,6 +129,28 @@ Returns:
 - `contracts` — imported component contracts;
 - `canEmit` — false if compile errors exist.
 
+### `analyzeNazareTheme(files, options)` / `inspectNazareTheme(files, options)`
+
+Build deterministic whole-theme semantics from ordinary Shopify theme files and optional Nazare components. `analyzeNazareTheme()` returns canonical version 2 `ThemeSemanticModel` IR. `inspectNazareTheme()` projects that IR into stable version 2 graph nodes, edges, evidence, query views, and impact indexes.
+
+Semantic output distinguishes:
+
+- direct source facts, carrying source evidence;
+- derived value-flow facts, such as a passed `product` becoming `product.price` inside a snippet;
+- inferred inputs, with `required`, `optional`, or `unknown` requirement state;
+- capabilities/classifications, carrying confidence and uncertainty;
+- unresolved dynamic or missing targets.
+
+Graph structure includes pages, templates, layouts, section groups, section and block instances, reusable theme blocks, render sites, render arguments, input satisfaction, Shopify data properties, settings, assets, and locales. Render calls project explicitly as:
+
+```txt
+caller file → render site → target snippet
+                    └────→ argument → expected input
+                                      → Shopify data or setting origin
+```
+
+Theme analysis uses tolerant plain-Liquid parsing by default. A failed parse emits diagnostics and never fabricates skipped facts.
+
 ### `buildNazareThemeWorkspace(files, options)`
 
 Analyzes workspace files and emits Shopify theme files for the selected scope.

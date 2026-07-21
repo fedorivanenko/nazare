@@ -75,7 +75,10 @@ test("theme input inference handles render arguments and Liquid scope", () => {
 		hasIssue(
 			[
 				{ path: "sections/card.liquid", contents: `{% render 'price' %}` },
-				{ path: "snippets/price.liquid", contents: `{{ product.price }}` },
+				{
+					path: "snippets/price.liquid",
+					contents: `{{ card_product.price }}`,
+				},
 			],
 			"THEME_RENDER_ARGUMENT_MISSING",
 		),
@@ -86,9 +89,12 @@ test("theme input inference handles render arguments and Liquid scope", () => {
 			[
 				{
 					path: "sections/card.liquid",
-					contents: `{% render 'price', product: product, unused: product %}`,
+					contents: `{% render 'price', card_product: product, unused: product %}`,
 				},
-				{ path: "snippets/price.liquid", contents: `{{ product.price }}` },
+				{
+					path: "snippets/price.liquid",
+					contents: `{{ card_product.price }}`,
+				},
 			],
 			"THEME_RENDER_ARGUMENT_UNKNOWN",
 		),
@@ -99,9 +105,12 @@ test("theme input inference handles render arguments and Liquid scope", () => {
 			[
 				{
 					path: "sections/main.liquid",
-					contents: `{% render 'price', product: product %}\n{% render 'price' %}`,
+					contents: `{% render 'price', card_product: product %}\n{% render 'price' %}`,
 				},
-				{ path: "snippets/price.liquid", contents: `{{ product.price }}` },
+				{
+					path: "snippets/price.liquid",
+					contents: `{{ card_product.price }}`,
+				},
 			],
 			"THEME_RENDER_ARGUMENT_INCONSISTENT",
 		),
@@ -114,7 +123,7 @@ test("theme input inference handles render arguments and Liquid scope", () => {
 				{ path: "sections/main.liquid", contents: `{% render 'price' %}` },
 				{
 					path: "snippets/price.liquid",
-					contents: `{% if product %}{{ product.price }}{% endif %}`,
+					contents: `{% if card_product %}{{ card_product.price }}{% endif %}`,
 				},
 			],
 			"THEME_RENDER_ARGUMENT_MISSING",
@@ -128,7 +137,7 @@ test("theme input inference handles render arguments and Liquid scope", () => {
 				{
 					path: "snippets/price.liquid",
 					contents:
-						"{% if product %}{{ product.price }}{% endif %}{{ product.title }}",
+						"{% if card_product %}{{ card_product.price }}{% endif %}{{ card_product.title }}",
 				},
 			],
 			"THEME_RENDER_ARGUMENT_MISSING",
@@ -147,6 +156,79 @@ test("theme input inference handles render arguments and Liquid scope", () => {
 			"THEME_RENDER_ARGUMENT_MISSING",
 		),
 		false,
+	);
+});
+
+test("ambient Shopify context remains unknown rather than required", () => {
+	const analysis = analyzeNazareTheme([
+		{ path: "sections/main.liquid", contents: `{% render 'price' %}` },
+		{ path: "snippets/price.liquid", contents: `{{ product.price }}` },
+	]);
+	assert.equal(
+		analysis.issues.some(
+			(issue) => issue.code === "THEME_RENDER_ARGUMENT_MISSING",
+		),
+		false,
+	);
+	assert.deepEqual(analysis.ir.expectedInputs, [
+		{
+			id: "expected-input:snippets/price.liquid:product",
+			path: "snippets/price.liquid",
+			name: "product",
+			required: false,
+			requirement: "unknown",
+			origin: "ambientShopifyContext",
+			propertyPaths: ["price"],
+			evidenceIds: ["data-access:snippets/price.liquid:product.price:1:4-1:17"],
+		},
+	]);
+});
+
+test("render aliases preserve input and Shopify property provenance", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "sections/main.liquid",
+			contents: `{% render 'price' with product as card_product %}`,
+		},
+		{
+			path: "snippets/price.liquid",
+			contents: `{% assign displayed = card_product %}{{ displayed.price }}`,
+		},
+	]);
+	assert.equal(
+		analysis.issues.some(
+			(issue) =>
+				issue.code === "THEME_RENDER_ARGUMENT_MISSING" ||
+				issue.code === "LIQUID_UNSCANNED_SETTINGS_EXPRESSION",
+		),
+		false,
+	);
+	assert.equal(analysis.ir.renderArguments[0]?.argumentName, "card_product");
+	assert.ok(
+		analysis.ir.dataAccesses.some(
+			(access) =>
+				access.fromPath === "snippets/price.liquid" &&
+				access.expression === "product.price" &&
+				access.origin === "renderArgument",
+		),
+	);
+});
+
+test("render for bindings preserve collection element type", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "sections/main.liquid",
+			contents: `{% render 'price' for collection.products as card_product %}`,
+		},
+		{ path: "snippets/price.liquid", contents: `{{ card_product.price }}` },
+	]);
+	assert.ok(
+		analysis.ir.dataAccesses.some(
+			(access) =>
+				access.fromPath === "snippets/price.liquid" &&
+				access.expression === "product.price" &&
+				access.origin === "renderArgument",
+		),
 	);
 });
 

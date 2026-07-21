@@ -70,24 +70,29 @@ Estimated spec coverage: 80–90% after implementation through commit `8b2a1f1`.
 
 Implemented since this note was created:
 
-- render input inference;
+- render-site, argument, expected-input, and input-satisfaction graph records;
+- `required` / `optional` / `unknown` input requirement states, keeping ambient Shopify context uncertain;
+- Shopify `render` named arguments and `with` / `for` / `as` bindings;
+- unconditional Liquid assignment alias tracking and caller-to-snippet Shopify property provenance;
 - missing/unknown/inconsistent render input diagnostics;
-- evidence records;
-- page composition nodes;
-- block and block setting nodes;
+- edge-linked evidence records;
+- traversable page → template → section-instance composition;
+- reusable `blocks/*.liquid`, section-schema blocks, and JSON block instances;
+- layouts and section-group dependencies;
+- section/block setting reads and setting-to-render-argument influence;
 - asset filter references;
 - locale key extraction and references;
-- action capabilities;
-- storefront classifications;
+- action capabilities and uncertainty-bearing storefront classifications;
 - impact summary;
-- graph view indexes.
+- stable graph view indexes and input-order determinism tests.
 
 Known remaining gaps:
 
-- scanner still uses deterministic regex foundations for some Liquid facts; final robustness should move more extraction to Liquid AST traversal;
-- block instances from runtime dynamic Liquid loops are not fully reconstructed;
-- setting-to-controlled-component influence is partial, based on reads, not full control-flow slicing;
-- classifiers are deterministic but intentionally conservative; more Shopify patterns should be added over time.
+- runtime-created block structure cannot be fully reconstructed statically;
+- value flow handles static render arguments and unconditional lookup aliases, but not every conditional/capture/filter mutation or arbitrary multi-hop flow;
+- setting influence follows direct reads and render arguments, not full control-flow slicing into JavaScript behavior;
+- implicit Shopify platform context, admin template assignments, app injection, and remote runtime state remain unavailable or must stay explicitly unknown;
+- capability text signals remain conservative deterministic heuristics; classifiers need real-theme corpus calibration and more patterns.
 
 ## Target requirements
 
