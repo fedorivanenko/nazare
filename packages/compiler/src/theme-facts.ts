@@ -13,10 +13,23 @@ export interface ThemeInputFile {
 	contents: string;
 }
 
+export interface ThemeAnalysisCacheEntry {
+	fingerprint: string;
+	facts: ThemeFact[];
+	issues: Diagnostic[];
+}
+
+export interface ThemeAnalysisCache {
+	version: 1;
+	entries: Record<string, ThemeAnalysisCacheEntry>;
+}
+
 export interface AnalyzeNazareThemeOptions {
 	root?: string;
 	strictness?: "strict" | "loose";
 	plainLiquidParseMode?: "strict" | "tolerant";
+	/** Mutable per-file fact cache. Nazare components remain uncached. */
+	cache?: ThemeAnalysisCache;
 }
 
 export type InspectNazareThemeOptions = AnalyzeNazareThemeOptions;
