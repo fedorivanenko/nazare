@@ -312,6 +312,39 @@ test("branch-local assignments and captures are not inferred as inputs", () => {
 	assert.ok(
 		siblingBranch.ir.expectedInputs.some((input) => input.name === "width"),
 	);
+
+	const exhaustiveBranches = analyzeNazareTheme([
+		{
+			path: "snippets/exhaustive.liquid",
+			contents:
+				"{% if mode %}{% assign label = 'a' %}{% else %}{% capture label %}b{% endcapture %}{% endif %}{{ label }}",
+		},
+	]);
+	assert.equal(
+		exhaustiveBranches.ir.expectedInputs.some(
+			(input) => input.name === "label",
+		),
+		false,
+	);
+
+	const branchConditions = analyzeNazareTheme([
+		{
+			path: "snippets/conditional-inputs.liquid",
+			contents:
+				"{% if primary %}{{ primary }}{% elsif fallback %}{{ fallback }}{% unless hidden %}visible{% endunless %}{% endif %}",
+		},
+	]);
+	assert.deepEqual(
+		branchConditions.ir.expectedInputs.map((input) => [
+			input.name,
+			input.requirement,
+		]),
+		[
+			["fallback", "optional"],
+			["hidden", "optional"],
+			["primary", "optional"],
+		],
+	);
 });
 
 test("conditional aliases preserve property flow only inside their branch", () => {

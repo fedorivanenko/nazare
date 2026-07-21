@@ -124,9 +124,9 @@ test("plain Liquid tolerant mode allows editor-style partial files", () => {
 	assert.equal(result.ast.factsCollected, true);
 });
 
-test("plain Liquid tolerant mode recovers facts from branch-dependent HTML", () => {
+test("plain Liquid tolerant mode recovers facts from large malformed HTML", () => {
 	const result = compilePlainLiquid(
-		"<h2><h3>{{ section.settings.title }}</h2></h3>{% render 'card' %}",
+		`<h2><h3><div data-generated="${"x".repeat(20_000)}">{{ section.settings.title }}</h2></h3>{% render 'card' %}`,
 		"sections/branch-html.liquid",
 		{ parseMode: "tolerant" },
 	);
@@ -134,11 +134,6 @@ test("plain Liquid tolerant mode recovers facts from branch-dependent HTML", () 
 	assert.equal(result.ast.factsCollected, true);
 	assert.equal(result.ast.settingsReads.length, 1);
 	assert.equal(result.dependencies[0]?.name, "card");
-	assert.ok(
-		result.issues.some(
-			(issue) => issue.code === "PLAIN_LIQUID_HTML_STRUCTURE_IGNORED",
-		),
-	);
 	assert.equal(
 		result.issues.some((issue) => issue.severity === "error"),
 		false,

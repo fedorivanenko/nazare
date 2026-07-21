@@ -190,8 +190,14 @@ export function collectSourceThemeFacts(
 
 	walk(ast, (node) => {
 		if (node.type === NodeTypes.LiquidBranch) {
-			const range = (node as { position?: SourceRange }).position;
-			if (range) lexicalScopeRanges.push(range);
+			const branch = node as { markup?: unknown; position?: SourceRange };
+			if (branch.position) {
+				lexicalScopeRanges.push(branch.position);
+				registerBranchGuardRange(
+					{ markup: branch.markup, position: branch.position },
+					guardRangesByName,
+				);
+			}
 			return;
 		}
 		if (node.type !== NodeTypes.LiquidTag) return;
@@ -200,7 +206,9 @@ export function collectSourceThemeFacts(
 			markup?: unknown;
 			position?: SourceRange;
 		};
-		if (tag.name === "if") registerIfGuardRanges(tag, guardRangesByName);
+		if (tag.name === "if" || tag.name === "unless") {
+			registerIfGuardRanges(tag, guardRangesByName);
+		}
 		if (tag.name === "for" || tag.name === "tablerow") {
 			registerLoopBindingRange(tag, localBindingRangesByName);
 		}
@@ -256,6 +264,22 @@ export function collectSourceThemeFacts(
 				]);
 			},
 		});
+		if (
+			(tag.name === "if" || tag.name === "unless" || tag.name === "case") &&
+			tag.position
+		) {
+			for (const name of definitelyAssignedByConditional(
+				tag as { children?: unknown[] },
+			)) {
+				addLocalDefinition(localDefinitions, name, {
+					offset: tag.position.end,
+					range: innermostContainingRange(
+						tag.position.start,
+						lexicalScopeIndex,
+					),
+				});
+			}
+		}
 	});
 	for (const definitions of localDefinitions.values()) {
 		definitions.sort((a, b) => a.offset - b.offset);
@@ -340,7 +364,10 @@ export function collectSourceThemeFacts(
 			position: SourceRange;
 		};
 		const tagName = typeof tag.name === "string" ? tag.name : undefined;
-		const inCondition = tagName === "if";
+		const inCondition =
+			tagName === "if" ||
+			tagName === "unless" ||
+			(node.type === NodeTypes.LiquidBranch && tag.markup !== undefined);
 
 		if (
 			(tagName === "render" || tagName === "include") &&
@@ -424,6 +451,61 @@ export function collectSourceThemeFacts(
 	}
 
 	return facts;
+}
+
+const definiteAssignmentsByConditional = new WeakMap<object, Set<string>>();
+
+function definitelyAssignedByConditional(tag: {
+	children?: unknown[];
+}): Set<string> {
+	const cached = definiteAssignmentsByConditional.get(tag);
+	if (cached) return cached;
+	const branches = (tag.children ?? []).filter(
+		(child): child is { name?: unknown; children?: unknown[] } =>
+			!!child && (child as { type?: unknown }).type === NodeTypes.LiquidBranch,
+	);
+	if (branches.length === 0 || branches.at(-1)?.name !== "else") {
+		const empty = new Set<string>();
+		definiteAssignmentsByConditional.set(tag, empty);
+		return empty;
+	}
+	const assignedByBranch = branches.map((branch) =>
+		definitelyAssignedInSequence(branch.children ?? []),
+	);
+	const [first, ...rest] = assignedByBranch;
+	const result = new Set(
+		[...(first ?? [])].filter((name) =>
+			rest.every((assigned) => assigned.has(name)),
+		),
+	);
+	definiteAssignmentsByConditional.set(tag, result);
+	return result;
+}
+
+function definitelyAssignedInSequence(nodes: unknown[]): Set<string> {
+	const assigned = new Set<string>();
+	for (const value of nodes) {
+		const node = value as {
+			type?: unknown;
+			name?: unknown;
+			markup?: unknown;
+			children?: unknown[];
+		};
+		if (node.type !== NodeTypes.LiquidTag) continue;
+		if (node.name === "capture") {
+			const name = (node.markup as PositionedLookup | undefined)?.name;
+			if (name) assigned.add(name);
+		}
+		visitLiquidExpressions(node.markup, {
+			onAssign: (markup) => assigned.add(markup.name),
+		});
+		if (node.name === "if" || node.name === "unless" || node.name === "case") {
+			for (const name of definitelyAssignedByConditional(node)) {
+				assigned.add(name);
+			}
+		}
+	}
+	return assigned;
 }
 
 type LocalDefinition = { offset: number; range?: SourceRange };
@@ -565,6 +647,20 @@ function registerLoopBindingRange(
 			localBindingRangesByName.set(markup.variableName, [
 				...(localBindingRangesByName.get(markup.variableName) ?? []),
 				bodyRange,
+			]);
+		},
+	});
+}
+
+function registerBranchGuardRange(
+	branch: { markup?: unknown; position: SourceRange },
+	guardRangesByName: Map<string, SourceRange[]>,
+): void {
+	visitLiquidExpressions(branch.markup, {
+		onLookup: (lookup) => {
+			guardRangesByName.set(lookup.name, [
+				...(guardRangesByName.get(lookup.name) ?? []),
+				branch.position,
 			]);
 		},
 	});

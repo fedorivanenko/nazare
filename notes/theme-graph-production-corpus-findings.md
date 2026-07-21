@@ -317,26 +317,31 @@ Detailed translation provenance remains available in analysis IR without forcing
 
 Implemented:
 
-- tolerant Liquid-only fallback when static HTML structure parsing fails;
-- 16KB recovery cap to avoid pathological generated-page parsing costs;
+- tolerant inspection parses a masked Liquid-only projection instead of requiring one static HTML tree;
+- schema bodies remain intact while generated HTML/CSS/JavaScript text is masked with offsets preserved;
+- all 64 baseline parser failures now produce semantic facts;
+- strict builds retain full LiquidHTML validation;
 - concurrent directory traversal and bounded-concurrency file reads;
-- indexed lexical-scope lookup instead of repeated full range scans.
+- indexed lexical-scope lookup instead of repeated full range scans;
+- exhaustive conditional assignment joins and `if`/`elsif`/`unless` guard handling.
 
 Latest large-theme reruns:
 
-| Theme | Baseline runtime | Latest runtime | Parse failures recovered | Baseline output | Latest output |
+| Theme | Baseline runtime | Latest observed runtime | Parse failures | Baseline output | Latest output |
 |---|---:|---:|---:|---:|---:|
-| alkamind-old | 100s | 48s | 6 of 30 | 60.6MB | 22.9MB |
-| ucan | 219s | 232s | 8 of 34 | 11.6MB | 11.4MB |
+| alkamind-old | 100s | 114s | 30 → 0 | 60.6MB | 29.8MB |
+| ucan | 219s | 69s | 34 → 0 | 11.6MB | 12.4MB |
 
-UCan remains the performance outlier. Its generated Replo files exceed the bounded fallback and dominate CPU work. Those files need a streaming Liquid extractor rather than unrestricted full-AST recovery.
+Alkamind-old now extracts substantially more generated Zipify code, increasing graph size and analysis work despite locale compaction. UCan benefits heavily because Replo HTML no longer enters static HTML-tree parsing.
 
 Latest diagnostic changes:
 
 | Theme | Baseline issues | Latest issues | Baseline unscanned | Latest unscanned | Baseline missing arguments | Latest missing arguments |
 |---|---:|---:|---:|---:|---:|---:|
-| alkamind-old | 2,325 | 1,021 | 958 | 9 | 653 | 361 |
-| ucan | 985 | 496 | 369 | 11 | 410 | 290 |
+| alkamind-old | 2,325 | 1,241 | 958 | 11 | 653 | 527 |
+| ucan | 985 | 436 | 369 | 11 | 410 | 290 |
+
+Recovered Zipify facts expose additional interface candidates that were previously absent rather than proven correct. Remaining missing-argument warnings still require precision sampling.
 
 ### Validation
 
@@ -344,7 +349,7 @@ Latest diagnostic changes:
 - Biome checks pass;
 - canonical input-order test remains green.
 
-Persistent content-hash caching, worker-based parser parallelism, and streaming recovery for large generated files remain unimplemented.
+Persistent content-hash caching and worker-based parser parallelism remain unimplemented.
 
 ## Acceptance target
 
