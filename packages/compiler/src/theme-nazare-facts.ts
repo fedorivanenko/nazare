@@ -59,6 +59,14 @@ export function collectNazareThemeFacts(
 		notes: frontendResult.notes,
 	};
 
+	const snippetNameByImportAlias = new Map(
+		projected.syntax
+			.filter((node) => node.kind === "import")
+			.map((node) => [node.localName, themeNameFromPath(node.path)]),
+	);
+	const resolvedRenderName = (targetName: string): string =>
+		snippetNameByImportAlias.get(targetName) ?? targetName;
+
 	for (const node of projected.syntax) {
 		if (node.kind === "component") {
 			facts.push({
@@ -91,27 +99,26 @@ export function collectNazareThemeFacts(
 				span: node.span,
 			});
 		}
-		if (node.kind === "render-site") {
-			facts.push({
-				kind: "rendersSnippet",
-				fromPath: path,
-				targetName: node.targetName,
-				siteId: renderSiteKey(path, node.span),
-				static: true,
-				span: node.span,
-			});
-		}
 	}
 	// Nazare render arguments come from the component's own parse — the
 	// LiquidHTML AST cannot model the { prop: expr } render form.
 	for (const node of frontendResult.ast.nodes) {
 		if (node.type !== "NazareRender") continue;
 		const siteId = renderSiteKey(path, node.span);
+		facts.push({
+			kind: "rendersSnippet",
+			fromPath: path,
+			targetName: resolvedRenderName(node.target),
+			siteId,
+			invocationKind: "render",
+			static: true,
+			span: node.span,
+		});
 		for (const prop of node.props) {
 			facts.push({
 				kind: "passesRenderArgument",
 				fromPath: path,
-				targetName: node.target,
+				targetName: resolvedRenderName(node.target),
 				siteId,
 				argumentName: prop.name,
 				valueExpression: prop.expression,
