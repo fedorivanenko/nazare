@@ -490,6 +490,13 @@ function assertGraphIntegrity(
 	}
 	for (const [viewName, view] of Object.entries(views)) {
 		const viewNodeIds = new Set(view.nodeIds);
+		for (const nodeId of view.nodeIds) {
+			if (!nodeIds.has(nodeId)) {
+				throw new Error(
+					`Semantic theme graph view ${viewName} references missing node ${nodeId}`,
+				);
+			}
+		}
 		for (const edgeId of view.edgeIds) {
 			const edge = edgeById.get(edgeId);
 			if (!edge) {
