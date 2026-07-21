@@ -10,6 +10,13 @@ import {
 	walk,
 } from "@shopify/liquid-html-parser";
 import type { AuthoredSchema, SettingsRead } from "./ast.js";
+import {
+	extractAuthoredSchema,
+	isLiquidString,
+	isVariableLookup,
+	liquidTagMarkup,
+	parseLiquidError,
+} from "./liquid-ast.js";
 import { scanSettingsReadsFromLiquidAst } from "./settings-reads.js";
 import { spanFromOffsets } from "./source.js";
 
@@ -77,22 +84,9 @@ type LiquidTagLike = {
 	position: { start: number; end: number };
 };
 
-type LiquidStringLike = {
-	type: "String";
-	value: string;
-	position: { start: number; end: number };
-	source?: string;
-};
-
 type RenderMarkupLike = {
 	type: "RenderMarkup";
 	snippet?: unknown;
-};
-
-type VariableLookupLike = {
-	type: "VariableLookup";
-	name: string;
-	lookups?: unknown[];
 };
 
 type DependencyExtraction =
@@ -150,18 +144,6 @@ export function parsePlainLiquid(
 	};
 }
 
-function parseLiquidError(error: unknown, file: string): Diagnostic {
-	const loc = (error as { loc?: { start?: { line: number; column: number } } })
-		.loc;
-	const start = loc?.start ?? { line: 1, column: 1 };
-	return {
-		severity: "error",
-		code: "NAZARE_PARSE_LIQUID",
-		message: `Liquid parse error: ${error instanceof Error ? error.message : String(error)}`,
-		span: { file, start, end: start },
-	};
-}
-
 function plainLiquidFactsSkipped(file: string): Diagnostic {
 	const position = { line: 1, column: 1 };
 	return {
@@ -204,23 +186,6 @@ function emptyAst(): DocumentNode {
 		mode: "tolerant",
 		allowUnclosedDocumentNode: true,
 	});
-}
-
-function extractAuthoredSchema(
-	ast: DocumentNode,
-	source: string,
-	file: string,
-): AuthoredSchema | undefined {
-	for (const node of ast.children) {
-		if (node.type !== NodeTypes.LiquidRawTag || node.name !== "schema") {
-			continue;
-		}
-		return {
-			source: node.body.value,
-			span: spanFromOffsets(source, file, node.position),
-		};
-	}
-	return undefined;
 }
 
 function collectDependencies(
@@ -296,38 +261,6 @@ function dependencyName(extraction: DependencyExtraction): string | undefined {
 
 function isRenderMarkup(markup: unknown): markup is RenderMarkupLike {
 	return !!markup && (markup as { type?: unknown }).type === "RenderMarkup";
-}
-
-function isVariableLookup(node: unknown): node is VariableLookupLike {
-	return (
-		!!node &&
-		(node as { type?: unknown }).type === "VariableLookup" &&
-		typeof (node as { name?: unknown }).name === "string"
-	);
-}
-
-function isLiquidString(node: unknown): node is LiquidStringLike {
-	const position = (node as { position?: unknown } | undefined)?.position;
-	return (
-		!!node &&
-		(node as { type?: unknown }).type === "String" &&
-		typeof (node as { value?: unknown }).value === "string" &&
-		!!position &&
-		typeof (position as { start?: unknown }).start === "number" &&
-		typeof (position as { end?: unknown }).end === "number"
-	);
-}
-
-function liquidTagMarkup(
-	source: string,
-	position: { start: number; end: number },
-	name: string,
-): string {
-	const raw = source.slice(position.start, position.end);
-	return raw
-		.replace(new RegExp(`^\\s*\\{%-?\\s*${name}\\b`), "")
-		.replace(/-?%}\s*$/, "")
-		.trim();
 }
 
 function isDependencyTag(tagName: string): boolean {

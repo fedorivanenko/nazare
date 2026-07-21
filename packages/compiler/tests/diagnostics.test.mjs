@@ -512,6 +512,30 @@ const cases = [
 		src: `<div ref="root"></div>\n{% script %}\nimport { gone } from "@x/missing";\nexport default island(() => {});\n{% endscript %}`,
 		expect: "SCRIPT_IMPORT_BARE",
 	},
+	{
+		name: "two imports sharing a basename collide on the emitted snippet name",
+		files: {
+			"a/card.nz.liquid": `{% props { t: string.required() } %}<span>{{ props.t }}</span>`,
+			"b/card.nz.liquid": `{% props { t: string.required() } %}<b>{{ props.t }}</b>`,
+		},
+		src: `{% import CardA from "./a/card.nz.liquid" %}\n{% import CardB from "./b/card.nz.liquid" %}\n{% render CardA { t: "x" } %}\n{% render CardB { t: "y" } %}`,
+		expect: "IMPORT_BASENAME_COLLISION",
+	},
+	{
+		name: "dynamic import() in a script is unsupported module syntax",
+		src: `<div ref="root"></div>\n{% script %}\nexport default island(() => {\n  import("./extra.js");\n});\n{% endscript %}`,
+		expect: "SCRIPT_MODULE_SYNTAX_UNSUPPORTED",
+	},
+	{
+		name: "setting on a type with no editor input is an error",
+		src: `{% props { items: array(ShopifyProduct).setting({ label: "Items" }) } %}\n<div>{{ props.items }}</div>`,
+		expect: "CONSTRAINT_SETTING_TYPE_UNSUPPORTED",
+	},
+	{
+		name: "typo in a props type name fails the parse",
+		src: `{% props { title: strng.required() } %}\n<span>{{ props.title }}</span>`,
+		expect: "NAZARE_PARSE_TYPE_EXPRESSION",
+	},
 ];
 
 function codes(result) {

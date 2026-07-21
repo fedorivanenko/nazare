@@ -80,6 +80,22 @@ test("type-expression: unknown calls report error", () => {
 	assert.deepEqual(parsed.typeInfo.valueType, { kind: "string" });
 });
 
+test("type-expression: unknown base type name reports error", () => {
+	const parsed = parseTypeExpression("strng.required()");
+	assert.equal(parsed.error, "unknown type name: strng");
+	assert.deepEqual(parsed.typeInfo.valueType, { kind: "unknown" });
+});
+
+test("type-expression: unknown type name in or() reports error", () => {
+	const parsed = parseTypeExpression("url.or(strin)");
+	assert.equal(parsed.error, "unknown type name: strin");
+});
+
+test("type-expression: uppercase names are nominal objects, never unknown", () => {
+	const parsed = parseTypeExpression("CustomThing.optional()");
+	assert.equal(parsed.error, undefined);
+});
+
 test("type-expression: or() builds a union", () => {
 	const parsed = parseTypeExpression("url.or(string)");
 	assert.deepEqual(parsed.typeInfo.valueType, {

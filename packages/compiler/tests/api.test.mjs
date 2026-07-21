@@ -216,7 +216,11 @@ test("CHECK_RULES is the single source of truth for what each mode checks", asyn
 	const strict = CHECK_RULES.filter((rule) =>
 		rule.modes.includes("strict"),
 	).map((rule) => rule.name);
-	assert.deepEqual(loose, ["contract-constraints", "script-constraints"]);
+	assert.deepEqual(loose, [
+		"contract-constraints",
+		"script-constraints",
+		"emit-name-constraints",
+	]);
 	assert.ok(strict.includes("component-authoring-constraints"));
 	assert.ok(strict.includes("style-constraints"));
 });

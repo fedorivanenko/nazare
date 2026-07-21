@@ -87,6 +87,22 @@ export function importBindingCase(
 	};
 }
 
+export function importBasenameCollision(
+	firstPath: string,
+	secondPath: string,
+	baseName: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "IMPORT_BASENAME_COLLISION",
+		message: `Imported components "${firstPath}" and "${secondPath}" both emit as "${baseName}" — emitted theme files are named by file basename, so one would overwrite the other. Rename one file`,
+		nodeId,
+		span,
+	};
+}
+
 export function importNotFound(
 	path: string,
 	span: SourceSpan | undefined,
@@ -107,6 +123,18 @@ export function importCycle(
 		severity: "error",
 		code: "IMPORT_CYCLE",
 		message: `Import cycle: "${path}" is already being compiled while deriving its contract`,
+		span,
+	};
+}
+
+export function parseLiquidCrash(
+	message: string,
+	span: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_PARSE_LIQUID",
+		message: `Liquid parse error: ${message}`,
 		span,
 	};
 }
@@ -349,6 +377,21 @@ export function unknownSettingRead(
 		severity: "error",
 		code: "CONSTRAINT_UNKNOWN_SETTING_READ",
 		message: `${object}.settings.${settingId} is read but the schema declares no setting "${settingId}"; it will render blank`,
+		span,
+	};
+}
+
+export function settingTypeUnsupported(
+	propName: string,
+	typeKind: string,
+	nodeId: Id,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "CONSTRAINT_SETTING_TYPE_UNSUPPORTED",
+		message: `Prop ${propName} declares .setting() but its type "${typeKind}" maps to no theme-editor input, so no setting can be generated; remove .setting() or use a supported type`,
+		nodeId,
 		span,
 	};
 }
