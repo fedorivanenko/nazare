@@ -429,6 +429,23 @@ Current live-theme run:
 
 Corpus roots can be supplied through `NAZARE_CORPUS_*` variables, `--project theme=path`, or precomputed graphs through `--graph theme=path`.
 
+The golden suite now also pins expected inputs, capabilities, cart consumers, setting-to-render-argument influence, and unused-file answers.
+
+### Final benchmark and readiness
+
+Final cache-cold/cache-warm one-run observations:
+
+| Theme | Baseline cold | Final cold | Final warm | Output | Cache |
+|---|---:|---:|---:|---:|---:|
+| alkamind-nazare | 37s | 5.84s | 1.54s | 7.0MB | 1.1MB |
+| alkamind-old | 100s | 43.29s | 2.58s | 29.3MB | 7.8MB |
+| climatic-health | 36s | 6.67s | 1.66s | 6.9MB | 1.0MB |
+| ucan | 219s | 47.79s | 1.95s | 11.9MB | 1.9MB |
+
+The persistent fact cache was absent for each cold run and reused for its warm run; filesystem and operating-system caches were not flushed. These are observations, not median/p95 measurements.
+
+The requirements audit and scoped production-readiness verdict are in `notes/theme-graph-production-readiness.md`.
+
 ### Validation
 
 - 206 compiler tests pass;
