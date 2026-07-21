@@ -313,13 +313,38 @@ Measured on the 26 locale files from alkamind-old:
 
 Detailed translation provenance remains available in analysis IR without forcing graph consumers to load one node and multiple edges per locale/key pair.
 
+### Parser recovery and inspection throughput
+
+Implemented:
+
+- tolerant Liquid-only fallback when static HTML structure parsing fails;
+- 16KB recovery cap to avoid pathological generated-page parsing costs;
+- concurrent directory traversal and bounded-concurrency file reads;
+- indexed lexical-scope lookup instead of repeated full range scans.
+
+Latest large-theme reruns:
+
+| Theme | Baseline runtime | Latest runtime | Parse failures recovered | Baseline output | Latest output |
+|---|---:|---:|---:|---:|---:|
+| alkamind-old | 100s | 48s | 6 of 30 | 60.6MB | 22.9MB |
+| ucan | 219s | 232s | 8 of 34 | 11.6MB | 11.4MB |
+
+UCan remains the performance outlier. Its generated Replo files exceed the bounded fallback and dominate CPU work. Those files need a streaming Liquid extractor rather than unrestricted full-AST recovery.
+
+Latest diagnostic changes:
+
+| Theme | Baseline issues | Latest issues | Baseline unscanned | Latest unscanned | Baseline missing arguments | Latest missing arguments |
+|---|---:|---:|---:|---:|---:|---:|
+| alkamind-old | 2,325 | 1,021 | 958 | 9 | 653 | 361 |
+| ucan | 985 | 496 | 369 | 11 | 410 | 290 |
+
 ### Validation
 
-- 202 compiler tests pass;
+- 203 compiler tests pass;
 - Biome checks pass;
 - canonical input-order test remains green.
 
-Performance parallelism/caching and parser-failure clustering remain unimplemented.
+Persistent content-hash caching, worker-based parser parallelism, and streaming recovery for large generated files remain unimplemented.
 
 ## Acceptance target
 
