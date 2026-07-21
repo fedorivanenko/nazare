@@ -24,7 +24,13 @@ export type LiquidFilterLike = {
 export type RenderMarkupLike = {
 	type: "RenderMarkup";
 	snippet?: unknown;
-	variable?: unknown;
+	variable?: {
+		type?: unknown;
+		kind?: unknown;
+		name?: unknown;
+		position?: SourceRange;
+	};
+	alias?: { type?: unknown; value?: unknown; position?: SourceRange } | null;
 	args?: unknown;
 	position?: SourceRange;
 };
@@ -96,6 +102,8 @@ export function visitLiquidExpressions(
 			return;
 		case "CycleMarkup":
 		case "RenderMarkup":
+		case "RenderVariableExpression":
+		case "RenderAliasExpression":
 		case "NamedArgument":
 		case "Comparison":
 		case "Condition":
@@ -131,6 +139,8 @@ function visitKnownChildren(
 		"lookups",
 		"snippet",
 		"variable",
+		"alias",
+		"name",
 		"collection",
 		"start",
 		"end",

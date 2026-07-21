@@ -9,6 +9,7 @@ import type {
 } from "./theme-facts.js";
 import {
 	blockId,
+	blockInstanceId,
 	dataObjectId,
 	dataPropertyId,
 	fileId,
@@ -91,6 +92,22 @@ export function themeGraphFromModel(
 				path: declaration.path,
 			});
 		}
+		if (declaration.kind === "sectionGroup") {
+			pushNode({
+				id: declaration.id,
+				kind: "sectionGroup",
+				name: declaration.name,
+				path: declaration.path,
+			});
+		}
+		if (declaration.kind === "themeBlock") {
+			pushNode({
+				id: declaration.id,
+				kind: "themeBlock",
+				name: declaration.name,
+				path: declaration.path,
+			});
+		}
 		if (declaration.kind === "component") {
 			pushNode({
 				id: declaration.id,
@@ -105,6 +122,12 @@ export function themeGraphFromModel(
 			kind: "declares",
 			from: fileId(declaration.path),
 			to: declaration.id,
+		});
+		pushEdge({
+			id: `edge:implementedBy:${declaration.id}->${fileId(declaration.path)}`,
+			kind: "implementedBy",
+			from: declaration.id,
+			to: fileId(declaration.path),
 		});
 	}
 	for (const page of model.pages) {
@@ -170,6 +193,7 @@ export function themeGraphFromModel(
 				from: fileId(localeReference.fromPath),
 				to,
 				key: localeReference.key,
+				evidenceIds: [localeReference.id],
 			});
 		}
 	}
@@ -204,6 +228,11 @@ export function themeGraphFromModel(
 			to: block.id,
 		});
 	}
+	const themeBlockByPath = new Map(
+		model.declarations
+			.filter((declaration) => declaration.kind === "themeBlock")
+			.map((declaration) => [declaration.path, declaration]),
+	);
 	for (const setting of model.blockSettings) {
 		pushNode({
 			id: setting.id,
@@ -213,13 +242,22 @@ export function themeGraphFromModel(
 			settingId: setting.settingId,
 			settingType: setting.settingType,
 		});
+		const owner =
+			themeBlockByPath.get(setting.path)?.id ??
+			blockId(setting.path, setting.blockType);
 		pushEdge({
-			id: `edge:definesBlockSetting:${blockId(setting.path, setting.blockType)}->${setting.id}`,
+			id: `edge:definesBlockSetting:${owner}->${setting.id}`,
 			kind: "definesBlockSetting",
-			from: blockId(setting.path, setting.blockType),
+			from: owner,
 			to: setting.id,
 		});
 	}
+	const pageByPath = new Map(model.pages.map((page) => [page.path, page]));
+	const templateDeclarationByPath = new Map(
+		model.declarations
+			.filter((declaration) => declaration.kind === "template")
+			.map((declaration) => [declaration.path, declaration]),
+	);
 	for (const instance of model.sectionInstances) {
 		pushNode({
 			id: instance.id,
@@ -231,9 +269,22 @@ export function themeGraphFromModel(
 		pushEdge({
 			id: `edge:templateContainsSectionInstance:${instance.id}`,
 			kind: "templateContainsSectionInstance",
-			from: fileId(instance.templatePath),
+			from:
+				templateDeclarationByPath.get(instance.templatePath)?.id ??
+				fileId(instance.templatePath),
 			to: instance.id,
+			evidenceIds: [instance.id],
 		});
+		const page = pageByPath.get(instance.templatePath);
+		if (page) {
+			pushEdge({
+				id: `edge:pageContainsSectionInstance:${page.id}->${instance.id}`,
+				kind: "pageContainsSectionInstance",
+				from: page.id,
+				to: instance.id,
+				evidenceIds: [instance.id],
+			});
+		}
 		const to =
 			instance.resolvedDeclarationId ??
 			`unresolved:section:${instance.sectionType ?? instance.id}`;
@@ -251,6 +302,52 @@ export function themeGraphFromModel(
 			from: instance.id,
 			to,
 			targetName: instance.sectionType,
+			evidenceIds: [instance.id],
+		});
+	}
+	for (const instance of model.blockInstances) {
+		pushNode({
+			id: instance.id,
+			kind: "blockInstance",
+			ownerPath: instance.ownerPath,
+			sectionInstanceId: instance.sectionInstanceId,
+			instanceId: instance.instanceId,
+			blockType: instance.blockType,
+			parentInstanceId: instance.parentInstanceId,
+		});
+		const parentId = instance.parentInstanceId
+			? blockInstanceId(
+					instance.ownerPath,
+					instance.sectionInstanceId,
+					instance.parentInstanceId,
+				)
+			: `section-instance:${instance.ownerPath}:${instance.sectionInstanceId}`;
+		pushEdge({
+			id: `edge:${instance.parentInstanceId ? "blockInstanceContainsBlockInstance" : "sectionInstanceContainsBlockInstance"}:${parentId}->${instance.id}`,
+			kind: instance.parentInstanceId
+				? "blockInstanceContainsBlockInstance"
+				: "sectionInstanceContainsBlockInstance",
+			from: parentId,
+			to: instance.id,
+			evidenceIds: [instance.id],
+		});
+		const target =
+			instance.resolvedBlockId ??
+			`unresolved:themeBlock:${instance.blockType ?? instance.id}`;
+		if (!instance.resolvedBlockId) {
+			pushNode({
+				id: target,
+				kind: "unresolved",
+				targetKind: "themeBlock",
+				name: instance.blockType,
+			});
+		}
+		pushEdge({
+			id: `edge:instanceOfBlock:${instance.id}->${target}`,
+			kind: "instanceOfBlock",
+			from: instance.id,
+			to: target,
+			evidenceIds: [instance.id],
 		});
 	}
 	for (const settingRead of model.settingReads) {
@@ -273,6 +370,7 @@ export function themeGraphFromModel(
 				kind: "readsSetting",
 				from: fileId(settingRead.fromPath),
 				to: target,
+				evidenceIds: [settingRead.id],
 			});
 		}
 	}
@@ -306,7 +404,90 @@ export function themeGraphFromModel(
 			from: fileId(dataAccess.fromPath),
 			to,
 			expression: dataAccess.expression,
+			evidenceIds: [dataAccess.id],
 		});
+	}
+	const declarationById = new Map(
+		model.declarations.map((declaration) => [declaration.id, declaration]),
+	);
+	const expectedInputByPathAndName = new Map(
+		model.expectedInputs.map((input) => [`${input.path}:${input.name}`, input]),
+	);
+	const renderArgumentById = new Map(
+		model.renderArguments.map((argument) => [argument.id, argument]),
+	);
+	const renderEvidenceByLocation = new Map(
+		model.references
+			.filter((reference) => reference.kind === "rendersSnippet")
+			.map((reference) => [
+				`${reference.fromPath}:${reference.span?.start.line}:${reference.span?.start.column}`,
+				reference.id,
+			]),
+	);
+	for (const site of model.renderSites) {
+		const renderEvidenceId = renderEvidenceByLocation.get(
+			`${site.fromPath}:${site.span?.start.line}:${site.span?.start.column}`,
+		);
+		pushNode({
+			id: site.id,
+			kind: "renderSite",
+			fromPath: site.fromPath,
+			targetName: site.targetName,
+			invocationKind: site.invocationKind,
+		});
+		pushEdge({
+			id: `edge:invokes:${fileId(site.fromPath)}->${site.id}`,
+			kind: "invokes",
+			from: fileId(site.fromPath),
+			to: site.id,
+			evidenceIds: renderEvidenceId ? [renderEvidenceId] : undefined,
+		});
+		const target =
+			site.resolvedDeclarationId ??
+			`unresolved:snippet:${site.targetName ?? site.id}`;
+		if (!site.resolvedDeclarationId) {
+			pushNode({
+				id: target,
+				kind: "unresolved",
+				targetKind: "snippet",
+				name: site.targetName,
+			});
+		}
+		pushEdge({
+			id: `edge:resolvesRenderTarget:${site.id}->${target}`,
+			kind: "resolvesRenderTarget",
+			from: site.id,
+			to: target,
+			evidenceIds: renderEvidenceId ? [renderEvidenceId] : undefined,
+		});
+		for (const argumentId of site.argumentIds) {
+			pushEdge({
+				id: `edge:hasArgument:${site.id}->${argumentId}`,
+				kind: "hasArgument",
+				from: site.id,
+				to: argumentId,
+				evidenceIds: [argumentId],
+			});
+			const argument = renderArgumentById.get(argumentId);
+			const targetPath = site.resolvedDeclarationId
+				? declarationById.get(site.resolvedDeclarationId)?.path
+				: undefined;
+			const input =
+				argument && targetPath
+					? expectedInputByPathAndName.get(
+							`${targetPath}:${argument.argumentName}`,
+						)
+					: undefined;
+			if (input) {
+				pushEdge({
+					id: `edge:satisfiesInput:${argumentId}->${input.id}`,
+					kind: "satisfiesInput",
+					from: argumentId,
+					to: input.id,
+					evidenceIds: [argumentId, ...input.evidenceIds],
+				});
+			}
+		}
 	}
 	for (const argument of model.renderArguments) {
 		pushNode({
@@ -324,7 +505,46 @@ export function themeGraphFromModel(
 			to: argument.id,
 			argumentName: argument.argumentName,
 			valueExpression: argument.valueExpression,
+			evidenceIds: [argument.id],
 		});
+		if (argument.sourceObject?.endsWith(".settings") && argument.sourcePath) {
+			const sourceKind = argument.sourceObject.split(".")[0];
+			const targets =
+				sourceKind === "section"
+					? model.settings
+							.filter(
+								(setting) =>
+									setting.path === argument.fromPath &&
+									setting.settingId === argument.sourcePath,
+							)
+							.map((setting) => setting.id)
+					: model.blockSettings
+							.filter(
+								(setting) =>
+									setting.path === argument.fromPath &&
+									setting.settingId === argument.sourcePath,
+							)
+							.map((setting) => setting.id);
+			if (targets.length === 0) {
+				const unresolved = `unresolved:setting:${argument.sourceObject}:${argument.sourcePath}`;
+				pushNode({
+					id: unresolved,
+					kind: "unresolved",
+					targetKind: "setting",
+					name: `${argument.sourceObject}.${argument.sourcePath}`,
+				});
+				targets.push(unresolved);
+			}
+			for (const target of targets) {
+				pushEdge({
+					id: `edge:argumentReadsSetting:${argument.id}->${target}`,
+					kind: "argumentReadsSetting",
+					from: argument.id,
+					to: target,
+					evidenceIds: [argument.id],
+				});
+			}
+		}
 		if (argument.sourceObject && !argument.sourceObject.endsWith(".settings")) {
 			const objectId = dataObjectId(argument.sourceObject);
 			pushNode({
@@ -365,6 +585,9 @@ export function themeGraphFromModel(
 			path: input.path,
 			name: input.name,
 			required: input.required,
+			requirement: input.requirement,
+			origin: input.origin,
+			propertyPaths: input.propertyPaths,
 			evidenceIds: input.evidenceIds,
 		});
 		pushEdge({
@@ -422,6 +645,7 @@ export function themeGraphFromModel(
 				from: fileId(reference.fromPath),
 				to,
 				targetName: reference.targetName,
+				evidenceIds: [reference.id],
 			});
 		}
 		if (reference.kind === "containsSection") {
@@ -431,6 +655,27 @@ export function themeGraphFromModel(
 				from: fileId(reference.fromPath),
 				to,
 				targetName: reference.targetName,
+				evidenceIds: [reference.id],
+			});
+		}
+		if (reference.kind === "containsSectionGroup") {
+			pushEdge({
+				id: `edge:containsSectionGroup:${reference.id}`,
+				kind: "containsSectionGroup",
+				from: fileId(reference.fromPath),
+				to,
+				targetName: reference.targetName,
+				evidenceIds: [reference.id],
+			});
+		}
+		if (reference.kind === "usesLayout") {
+			pushEdge({
+				id: `edge:usesLayout:${reference.id}`,
+				kind: "usesLayout",
+				from: fileId(reference.fromPath),
+				to,
+				targetName: reference.targetName,
+				evidenceIds: [reference.id],
 			});
 		}
 		if (reference.kind === "referencesAsset") {
@@ -440,6 +685,7 @@ export function themeGraphFromModel(
 				from: fileId(reference.fromPath),
 				to,
 				targetName: reference.targetName,
+				evidenceIds: [reference.id],
 			});
 		}
 		if (reference.kind === "importsComponent") {
@@ -449,6 +695,7 @@ export function themeGraphFromModel(
 				from: fileId(reference.fromPath),
 				to,
 				specifier: reference.targetPath ?? reference.targetName ?? "",
+				evidenceIds: [reference.id],
 			});
 		}
 	}
@@ -456,9 +703,9 @@ export function themeGraphFromModel(
 	const sortedNodes = nodes.sort((a, b) => a.id.localeCompare(b.id));
 	const sortedEdges = edges.sort((a, b) => a.id.localeCompare(b.id));
 	const views = graphViews(sortedNodes, sortedEdges);
-	assertGraphIntegrity(sortedNodes, sortedEdges, views);
+	assertGraphIntegrity(sortedNodes, sortedEdges, views, model.evidence);
 	return {
-		version: 1,
+		version: 2,
 		root: model.root,
 		nodes: sortedNodes,
 		edges: sortedEdges,
@@ -473,8 +720,10 @@ function assertGraphIntegrity(
 	nodes: SemanticThemeGraphNode[],
 	edges: SemanticThemeGraphEdge[],
 	views: ThemeGraphViews,
+	evidence: ThemeSemanticModel["evidence"],
 ): void {
 	const nodeIds = new Set(nodes.map((node) => node.id));
+	const evidenceIds = new Set(evidence.map((record) => record.id));
 	const edgeById = new Map(edges.map((edge) => [edge.id, edge]));
 	for (const edge of edges) {
 		if (!nodeIds.has(edge.from)) {
@@ -486,6 +735,13 @@ function assertGraphIntegrity(
 			throw new Error(
 				`Semantic theme graph edge ${edge.id} missing to ${edge.to}`,
 			);
+		}
+		for (const evidenceId of edge.evidenceIds ?? []) {
+			if (!evidenceIds.has(evidenceId)) {
+				throw new Error(
+					`Semantic theme graph edge ${edge.id} points to missing evidence ${evidenceId}`,
+				);
+			}
 		}
 	}
 	for (const [viewName, view] of Object.entries(views)) {
@@ -547,20 +803,34 @@ function graphViews(
 				"file",
 				"template",
 				"section",
+				"sectionGroup",
 				"sectionInstance",
+				"blockInstance",
+				"themeBlock",
 				"snippet",
+				"renderSite",
 				"component",
 				"asset",
 				"layout",
 			]),
 			new Set([
 				"declares",
+				"implementedBy",
 				"renders",
+				"invokes",
+				"resolvesRenderTarget",
+				"hasArgument",
+				"satisfiesInput",
 				"imports",
 				"referencesAsset",
+				"containsSectionGroup",
+				"usesLayout",
 				"templateContainsSection",
 				"templateContainsSectionInstance",
 				"instanceOf",
+				"sectionInstanceContainsBlockInstance",
+				"blockInstanceContainsBlockInstance",
+				"instanceOfBlock",
 			]),
 		),
 		shopifyData: view(
@@ -572,16 +842,25 @@ function graphViews(
 				"page",
 				"template",
 				"sectionInstance",
+				"blockInstance",
 				"section",
+				"themeBlock",
 				"snippet",
+				"renderSite",
 				"capability",
 				"classification",
 			]),
 			new Set([
 				"pageUsesTemplate",
+				"pageContainsSectionInstance",
 				"templateContainsSectionInstance",
 				"instanceOf",
+				"sectionInstanceContainsBlockInstance",
+				"blockInstanceContainsBlockInstance",
+				"instanceOfBlock",
 				"renders",
+				"invokes",
+				"resolvesRenderTarget",
 				"hasCapability",
 				"classifiedAs",
 			]),
@@ -602,6 +881,7 @@ function graphViews(
 				"definesBlock",
 				"definesBlockSetting",
 				"readsSetting",
+				"argumentReadsSetting",
 				"referencesLocaleKey",
 			]),
 		),
@@ -638,6 +918,14 @@ function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
 			instance.templatePath,
 			instance.resolvedDeclarationId
 				? declarationPathById.get(instance.resolvedDeclarationId)
+				: undefined,
+		);
+	}
+	for (const instance of model.blockInstances) {
+		add(
+			instance.ownerPath,
+			instance.resolvedBlockId
+				? declarationPathById.get(instance.resolvedBlockId)
 				: undefined,
 		);
 	}
@@ -684,6 +972,7 @@ function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
 				(declaration) =>
 					declaration.kind === "section" ||
 					declaration.kind === "snippet" ||
+					declaration.kind === "themeBlock" ||
 					declaration.kind === "component",
 			)
 			.filter(
