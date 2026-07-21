@@ -175,6 +175,8 @@ export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
 	inspectNazareTheme,
+	THEME_ANALYSIS_DEFAULTS,
+	THEME_BUILD_DEFAULTS,
 } from "./theme-workspace.js";
 export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 

@@ -136,7 +136,8 @@ Analyzes workspace files and emits Shopify theme files for the selected scope.
 Scopes:
 
 - `{ kind: "workspace" }` — emit all buildable `.nz.liquid` artifacts.
-- `{ kind: "file", path }` — analyze and emit one artifact, while still using workspace files as dependency read context.
+- `{ kind: "closure", path }` — analyze and emit an entry plus its transitive component-import closure.
+- `{ kind: "file", path }` — analyze the import closure but emit only the entry artifact, while using workspace files as dependency read context.
 
 Adds:
 
@@ -144,7 +145,7 @@ Adds:
 - emitted Liquid/CSS/JS/runtime files;
 - `emittedOnError`, showing whether emit ran despite errors.
 
-By default `emitOnError` is `false`, so build pipelines skip output when errors exist. Tooling previews that need best-effort output must pass `emitOnError: true` explicitly.
+Workspace builds use exported `THEME_BUILD_DEFAULTS`: strict checking, strict plain-Liquid parsing, workspace scope, and `emitOnError: false`. Build pipelines expose no output when errors exist. Tooling previews that need best-effort output must pass `emitOnError: true` explicitly. Analysis/inspect uses exported `THEME_ANALYSIS_DEFAULTS`, including tolerant plain-Liquid parsing for incomplete editor documents.
 
 ## Minimal compile
 
