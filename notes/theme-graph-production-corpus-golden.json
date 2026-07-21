@@ -20,7 +20,7 @@
       "impact": [
         { "artifact": "snippets/c-bundle-card.liquid", "dependent": "sections/s-bundle-gallery.liquid", "affectedPage": "templates/product.product-bundle.json" }
       ],
-      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 10 }
+      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 10, "THEME_RENDER_ARGUMENT_MISSING": 10 }
     },
     "alkamind-old": {
       "rootEnv": "NAZARE_CORPUS_ALKAMIND_OLD",
@@ -41,7 +41,7 @@
       "impact": [
         { "artifact": "snippets/card-product.liquid", "dependent": "sections/featured-collection.liquid", "affectedPage": "templates/collection.json" }
       ],
-      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 20 }
+      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 20, "THEME_RENDER_ARGUMENT_MISSING": 0 }
     },
     "climatic-health": {
       "rootEnv": "NAZARE_CORPUS_CLIMATIC_HEALTH",
@@ -62,7 +62,7 @@
       "impact": [
         { "artifact": "sections/collection-content.liquid", "dependent": "templates/collection.liquid", "affectedPage": "templates/collection.liquid" }
       ],
-      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 10 }
+      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 10, "THEME_RENDER_ARGUMENT_MISSING": 40 }
     },
     "ucan": {
       "rootEnv": "NAZARE_CORPUS_UCAN",
@@ -84,7 +84,7 @@
       "impact": [
         { "artifact": "snippets/product-card.liquid", "dependent": "sections/main-search.liquid", "affectedPage": "templates/product.json" }
       ],
-      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 20 }
+      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 20, "THEME_RENDER_ARGUMENT_MISSING": 0 }
     }
   }
 }
