@@ -1,0 +1,159 @@
+---
+import "../styles/global.css";
+
+// biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
+import Button from "../components/Button.astro";
+// biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
+import CodeBlock from "../components/CodeBlock.astro";
+// biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
+import Footer from "../components/Footer.astro";
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const installCommand = [
+	"curl -fsSLO https://nazare.engineering/install",
+	"less install",
+	"sh install",
+].join("\n");
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const initCommand = [
+	"cd path/to/current-shopify-theme",
+	"nazare init",
+	"# Source directory: src",
+	"# Output directory: theme",
+].join("\n");
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const inspectCommand = [
+	"nazare validate snippets/product-card.liquid",
+	"nazare graph sections/featured-products.liquid",
+	"nazare dump sections/featured-products.liquid",
+].join("\n");
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const componentExample = [
+	'{% import ProductCard from "./product-card.nz.liquid" %}',
+	"{% props {",
+	"  product: ShopifyProduct.required(),",
+	"} %}",
+	"",
+	"{% render ProductCard { product: props.product } %}",
+].join("\n");
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const buildCommand = ["nazare build", "shopify theme dev"].join("\n");
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="generator" content={Astro.generator} />
+		<script is:inline>
+			(() => {
+				try {
+					const theme = localStorage.getItem("theme");
+					if (theme === "dark" || theme === "light") {
+						document.documentElement.dataset.theme = theme;
+					}
+				} catch {}
+			})();
+		</script>
+		<title>Nazare</title>
+		<meta
+			name="description"
+			content="Nazare is an open-source toolkit for evolving native Shopify Liquid themes with explicit interfaces, dependencies, and reusable architecture."
+		/>
+	</head>
+	<body>
+		<header class="site-header">
+			<a href="/" aria-label="Nazare home" style="display: block; text-decoration: none; font-size:20px; font-weight: 600;">
+				Nazare
+			</a>
+			<nav aria-label="Primary navigation">
+				<a href="/language">Language</a>
+				<a href="/archive">Archive</a>
+				<a href="https://github.com/fedorivanenko/nazare">GitHub</a>
+			</nav>
+		</header>
+		<main class="site-shell stack">
+			<section class="stack">
+				<h1 class="heading--title capitalize">
+					Reduce the cost of<br/>
+					changing Shopify themes
+				</h1>
+				<p>
+					Nazare is an open-source toolkit that brings modern software engineering to native Shopify themes, making them easier to build, maintain, and evolve.
+				</p>
+				<p>
+					It introduces explicit interfaces, dependencies, and reusable abstractions, replacing implicit conventions with verifiable architecture that is easier for humans and AI to understand, change, and automate.
+				</p>
+				<p>
+					Build with type-safe components, editable registries, and structured project architecture—without leaving Shopify's native theme ecosystem.
+				</p>
+				<p>
+					Nazare does not require a rewrite.<br />Start by installing Nazare CLI and adopt incrementally.
+				</p>
+				<div class="code-block-group">
+					<div class="code-block-group__header">
+						<h3 class="heading--small">Install Nazare CLI</h3>
+						<a
+						    class="muted"
+							href="https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh"
+							style="font-size:0.85em"
+						>
+							View install script
+						</a>
+					</div>
+					<CodeBlock code={installCommand} language="bash" />
+					<p class="sub">
+					    Nazare relies on a compiler to inspect and transpile your code, similar to how TypeScript works. For now, this requires a local installation.
+                        <code class="code--inline">npm</code> packages are coming soon.</p>
+				</div>
+			</section>
+
+			<section class="stack">
+				<h2 class="heading--subtitle">Inspect your current theme</h2>
+				<p>Run non-invasive checks first. Map one existing section or snippet before changing source files.</p>
+				<CodeBlock code={inspectCommand} language="bash" />
+			</section>
+
+			<section class="stack">
+				<h2 class="heading--subtitle">
+				Start from your current Shopify Liquid theme.
+				</h2>
+				<p>Run Nazare in the existing theme repository and choose where enhanced source files live and where Shopify output is written.</p>
+				<CodeBlock code={initCommand} language="bash" />
+			</section>
+
+
+
+			<section class="stack">
+				<h2 class="heading--subtitle">3. Pick one Liquid boundary</h2>
+				<p>Start with one snippet or section that changes often. Convert only that boundary to a typed Nazare component.</p>
+				<CodeBlock code={componentExample} language="nz.liquid" />
+			</section>
+
+			<section class="stack">
+				<h2 class="heading--subtitle">4. Keep the rest of the theme unchanged</h2>
+				<p>Your existing templates, assets, settings, and Shopify workflow stay in place while Nazare checks the new boundary.</p>
+			</section>
+
+			<section class="stack">
+				<h2 class="heading--subtitle">5. Build native Shopify output</h2>
+				<p>Compile enhanced source files back to standard Liquid, then preview the theme with Shopify CLI.</p>
+				<CodeBlock code={buildCommand} language="bash" />
+			</section>
+
+			<section class="stack">
+				<h2 class="heading--subtitle">6. Expand section by section</h2>
+				<p>Move more Liquid into typed components only when it pays off. Add registry components and shared packages later.</p>
+				<div class="button-row">
+					<Button href="/language">Read language spec</Button>
+					<Button href="/docs" variant="secondary">Open docs</Button>
+				</div>
+			</section>
+		</main>
+		<Footer />
+	</body>
+</html>
