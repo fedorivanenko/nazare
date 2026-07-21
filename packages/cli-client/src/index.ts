@@ -398,10 +398,12 @@ function isInspectThemeFile(path: string): boolean {
 function shouldReadInspectContents(path: string): boolean {
 	return (
 		path.endsWith(".nz.liquid") ||
-		/^sections\/[^/]+\.liquid$/.test(path) ||
+		/^sections\/[^/]+\.(json|liquid)$/.test(path) ||
 		/^snippets\/[^/]+\.liquid$/.test(path) ||
+		/^blocks\/[^/]+\.liquid$/.test(path) ||
 		/^templates\/.+\.(json|liquid)$/.test(path) ||
 		/^layout\/[^/]+\.liquid$/.test(path) ||
+		/^locales\/[^/]+\.json$/.test(path) ||
 		path === "config/settings_schema.json" ||
 		path === "config/settings_data.json"
 	);
