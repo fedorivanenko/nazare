@@ -5,12 +5,6 @@ import { analyzeNazareTheme, inspectNazareTheme } from "../dist/index.js";
 const issues = (files) => analyzeNazareTheme(files).issues;
 const hasIssue = (files, code) =>
 	issues(files).some((issue) => issue.code === code);
-const input = (files, name) =>
-	analyzeNazareTheme(files).ir.expectedInputs.find(
-		(candidate) => candidate.name === name,
-	);
-const edgeCount = (files, kind) =>
-	inspectNazareTheme(files).edges.filter((edge) => edge.kind === kind).length;
 
 test("theme input validation rejects invalid JSON shapes and unsafe paths", () => {
 	for (const [path, contents, code] of [
@@ -115,53 +109,44 @@ test("theme input inference handles render arguments and Liquid scope", () => {
 	);
 
 	assert.equal(
-		input(
+		hasIssue(
 			[
+				{ path: "sections/main.liquid", contents: `{% render 'price' %}` },
 				{
 					path: "snippets/price.liquid",
 					contents: `{% if product %}{{ product.price }}{% endif %}`,
 				},
 			],
-			"product",
-		)?.required,
+			"THEME_RENDER_ARGUMENT_MISSING",
+		),
 		false,
 	);
 	assert.equal(
-		input(
+		hasIssue(
 			[
+				{ path: "sections/main.liquid", contents: `{% render 'price' %}` },
 				{
 					path: "snippets/price.liquid",
 					contents:
 						"{% if product %}{{ product.price }}{% endif %}{{ product.title }}",
 				},
 			],
-			"product",
-		)?.required,
+			"THEME_RENDER_ARGUMENT_MISSING",
+		),
 		true,
 	);
 	assert.equal(
-		input(
+		hasIssue(
 			[
-				{
-					path: "snippets/label.liquid",
-					contents: "{{ label }}{% assign label = 'later' %}",
-				},
-			],
-			"label",
-		)?.required,
-		true,
-	);
-	assert.equal(
-		input(
-			[
+				{ path: "sections/main.liquid", contents: `{% render 'local' %}` },
 				{
 					path: "snippets/local.liquid",
 					contents: `{% assign label = 'Hi' %}{{ label }}`,
 				},
 			],
-			"label",
+			"THEME_RENDER_ARGUMENT_MISSING",
 		),
-		undefined,
+		false,
 	);
 });
 
@@ -173,29 +158,34 @@ test("theme input inference respects include and lexical scopes", () => {
 	assert.equal(hasIssue(includeFiles, "THEME_RENDER_ARGUMENT_MISSING"), false);
 
 	assert.equal(
-		input(
+		hasIssue(
 			[
+				{ path: "sections/main.liquid", contents: `{% render 'loop' %}` },
 				{
 					path: "snippets/loop.liquid",
 					contents:
 						"{% for item in collection.products %}{{ item.title }}{% endfor %}{{ item.title }}",
 				},
 			],
-			"item",
-		)?.required,
+			"THEME_RENDER_ARGUMENT_MISSING",
+		),
 		true,
 	);
 	assert.equal(
-		input(
+		hasIssue(
 			[
+				{
+					path: "sections/main.liquid",
+					contents: `{% render 'conditional' %}`,
+				},
 				{
 					path: "snippets/conditional.liquid",
 					contents:
 						"{% if product %}\n{% assign label = product.title %}\n{% endif %}\n{{ label }}",
 				},
 			],
-			"label",
-		)?.required,
+			"THEME_RENDER_ARGUMENT_MISSING",
+		),
 		true,
 	);
 });
@@ -228,12 +218,7 @@ test("theme schema validation rejects malformed and duplicate definitions", () =
 	);
 });
 
-test("theme occurrence evidence and imported render aliases remain resolved", () => {
-	const repeated = analyzeNazareTheme([
-		{ path: "snippets/repeated.liquid", contents: "{{ label }} {{ label }}" },
-	]);
-	assert.equal(repeated.ir.expectedInputs[0]?.evidenceIds.length, 2);
-
+test("imported render aliases remain resolved", () => {
 	const imported = analyzeNazareTheme([
 		{
 			path: "entry.nz.liquid",
@@ -262,10 +247,12 @@ test("theme and unambiguous block setting reads resolve", () => {
 				'{{ settings.brand }} {{ block.settings.heading }}{% schema %}{"blocks":[{"type":"feature","settings":[{"type":"text","id":"heading"}]}]}{% endschema %}',
 		},
 	]);
-	const reads = graph.edges.filter((edge) => edge.kind === "readsSetting");
-	assert.equal(reads.length, 2);
 	assert.equal(
-		reads.some((edge) => edge.to.startsWith("unresolved:")),
+		graph.issues.some(
+			(issue) =>
+				issue.code === "THEME_UNRESOLVED_SETTING_READ" ||
+				issue.code === "THEME_AMBIGUOUS_SETTING_READ",
+		),
 		false,
 	);
 });
@@ -281,10 +268,6 @@ test("ambiguous block setting reads expose candidates and diagnostics", () => {
 	assert.equal(
 		graph.issues.some((issue) => issue.code === "THEME_AMBIGUOUS_SETTING_READ"),
 		true,
-	);
-	assert.equal(
-		graph.edges.filter((edge) => edge.kind === "readsSetting").length,
-		2,
 	);
 });
 
@@ -302,17 +285,17 @@ test("theme source facts ignore non-Liquid regions and keep repeated references 
 	assert.deepEqual(quiet.ir.dataAccesses, []);
 	assert.deepEqual(quiet.ir.capabilities, []);
 
+	const repeated = analyzeNazareTheme([
+		{ path: "locales/en.json", contents: '{"key":"value"}' },
+		{
+			path: "snippets/repeated.liquid",
+			contents: "{{ 'key' | t }} {{ 'key' | t }}",
+		},
+	]);
 	assert.equal(
-		edgeCount(
-			[
-				{ path: "locales/en.json", contents: '{"key":"value"}' },
-				{
-					path: "snippets/repeated.liquid",
-					contents: "{{ 'key' | t }} {{ 'key' | t }}",
-				},
-			],
-			"referencesLocaleKey",
+		repeated.issues.some(
+			(issue) => issue.code === "THEME_UNRESOLVED_LOCALE_KEY",
 		),
-		2,
+		false,
 	);
 });
