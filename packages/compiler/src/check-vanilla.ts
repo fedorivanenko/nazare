@@ -30,8 +30,9 @@ export function checkVanillaSchema(ast: NazareAst): Diagnostic[] {
 	}
 
 	const issues: Diagnostic[] = [];
+	const settings = Array.isArray(parsed.settings) ? parsed.settings : [];
 	const sectionIds = new Set(
-		(parsed.settings ?? [])
+		settings
 			.map((setting) => setting.id)
 			.filter((id): id is string => typeof id === "string"),
 	);
@@ -40,7 +41,7 @@ export function checkVanillaSchema(ast: NazareAst): Diagnostic[] {
 	// block — one "@theme"/"@app" entry brings settings declared in other
 	// files, so the full id set is unknowable here. A classic block without a
 	// settings array still counts (it simply declares no ids).
-	const blocks = parsed.blocks ?? [];
+	const blocks = Array.isArray(parsed.blocks) ? parsed.blocks : [];
 	const classicBlocks =
 		blocks.length > 0 &&
 		blocks.every((block) => block.type !== "@theme" && block.type !== "@app");
@@ -56,7 +57,7 @@ export function checkVanillaSchema(ast: NazareAst): Diagnostic[] {
 		if (read.object === "section") {
 			if (sectionIds.has(read.name)) continue;
 			issues.push(unknownSettingRead("section", read.name, read.span));
-		} else {
+		} else if (read.object === "block") {
 			if (!classicBlocks || blockIds.has(read.name)) continue;
 			issues.push(unknownSettingRead("block", read.name, read.span));
 		}

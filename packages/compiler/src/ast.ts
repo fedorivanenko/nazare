@@ -169,9 +169,9 @@ export type NazareNode =
 	| NazareBlocksNode
 	| NazareAssetImportNode;
 
-/** A literal section.settings.x / block.settings.x read anywhere in the file. */
+/** A literal settings.x / section.settings.x / block.settings.x read. */
 export type SettingsRead = {
-	object: "section" | "block";
+	object: "settings" | "section" | "block";
 	name: string;
 	span: SourceSpan;
 };
