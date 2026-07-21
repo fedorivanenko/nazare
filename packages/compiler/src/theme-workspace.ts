@@ -1,7 +1,11 @@
 import type { Diagnostic } from "@nazare/core";
 import { type EmitResult, emitTheme } from "./emit.js";
 import { parseNazareLiquid } from "./parser.js";
-import { checkDependencies } from "./resolver.js";
+import {
+	checkDependencies,
+	createDependencyResolver,
+	type DependencyResolver,
+} from "./resolver.js";
 
 import type {
 	AnalyzeNazareThemeOptions,
@@ -24,7 +28,6 @@ import { collectJsonThemeFacts } from "./theme-json-facts.js";
 import { collectPlainLiquidThemeFacts } from "./theme-liquid-facts.js";
 import { buildThemeSemanticModel } from "./theme-model.js";
 import { collectNazareThemeFacts } from "./theme-nazare-facts.js";
-import { collectSourceThemeFacts } from "./theme-source-facts.js";
 
 export function analyzeNazareTheme(
 	files: ThemeInputFile[],
@@ -67,32 +70,41 @@ export function buildNazareThemeWorkspace(
 	);
 	const readFile = (path: string): string | undefined =>
 		normalized.byPath.get(normalizeThemePath(path));
+	// One resolver for every artifact's dependency check: the workspace's
+	// components import each other, so the parse/contract caches are shared.
+	const dependencyResolver = createDependencyResolver(readFile);
 	const selected = buildScopeArtifacts(analysis.artifacts, options.scope);
 	const allIssues: Diagnostic[] = [...analysis.issues];
 	const emitted: EmitResult = { files: [], issues: [] };
 	const artifacts: ThemeBuildResult["artifacts"] = [];
 
+	const scopedName =
+		options.scope?.kind === "file" ? options.name : undefined;
 	for (const artifact of selected) {
-		artifacts.push(artifact);
 		const dependencyIssues = checkDependencies(artifact.ast, readFile, {
 			mode: options.strictness,
+			resolver: dependencyResolver,
 		});
 		pushUniqueDiagnostics(allIssues, dependencyIssues);
 		const canEmit =
 			(artifact.canEmit && !hasErrors(dependencyIssues)) ||
 			options.emitOnError === true;
-		if (!canEmit) continue;
+		if (!canEmit) {
+			artifacts.push(artifact);
+			continue;
+		}
 		const result = emitTheme(
 			artifact.source,
 			{ ast: artifact.ast, ir: artifact.ir, contracts: artifact.contracts },
 			{
-				name: options.name ?? themeNameFromPath(artifact.path),
+				name: scopedName ?? themeNameFromPath(artifact.path),
 				readFile,
 			},
 		);
 		emitted.files.push(...result.files);
 		emitted.issues.push(...result.issues);
 		pushUniqueDiagnostics(allIssues, result.issues);
+		artifacts.push({ ...artifact, emitted: result });
 	}
 	return {
 		analysis,
@@ -115,20 +127,22 @@ function analyzeNormalizedThemeFiles(
 	const issues: Diagnostic[] = [...(options.initialIssues ?? [])];
 	const readFile = (path: string): string | undefined =>
 		byPath.get(normalizeThemePath(path));
+	// Shared across every component in the workspace: without it each
+	// component re-parses its whole import closure from scratch.
+	const dependencyResolver: DependencyResolver =
+		createDependencyResolver(readFile);
 
 	for (const file of files) {
 		const fileKind = classifyThemeFile(file.path);
 		facts.push({ kind: "file", path: file.path, fileKind });
-		if (file.path.endsWith(".liquid")) {
-			facts.push(...collectSourceThemeFacts(file.path, file.contents));
-		}
 		if (fileKind === "asset") {
+			// One declaration per asset; the model additionally indexes assets by
+			// path, so references by filename or by full path both resolve to it.
 			facts.push({
 				kind: "declaresAsset",
 				path: file.path,
 				name: themeNameFromPath(file.path),
 			});
-			facts.push({ kind: "declaresAsset", path: file.path, name: file.path });
 			continue;
 		}
 		if (fileKind === "layout") {
@@ -148,6 +162,7 @@ function analyzeNormalizedThemeFiles(
 		if (fileKind === "nazareComponent") {
 			const result = collectNazareThemeFacts(file.path, file.contents, {
 				readFile,
+				dependencyResolver,
 				strictness: options.strictness,
 			});
 			facts.push(...result.facts);

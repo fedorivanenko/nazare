@@ -454,3 +454,140 @@ test("buildNazareThemeWorkspace builds a file scope without unrelated diagnostic
 		1,
 	);
 });
+
+test("comments and script bodies never produce data facts", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "snippets/quiet.liquid",
+			contents: `{% comment %}{{ product.price }}{% endcomment %}\n<!-- cart.items -->\nplain text mentioning product.title`,
+		},
+		{
+			path: "components/widget.nz.liquid",
+			contents: `<div ref="root"></div>\n{% script %}\nconst n = cart.items.length;\nexport default island(() => {});\n{% endscript %}`,
+		},
+	]);
+
+	assert.deepEqual(analysis.ir.dataAccesses, []);
+	assert.deepEqual(analysis.ir.capabilities, []);
+});
+
+test("two renders of one snippet keep separate argument sets", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "sections/main.liquid",
+			contents: `{% render 'price', product: product %}\n{% render 'price' %}`,
+		},
+		{ path: "snippets/price.liquid", contents: `{{ product.price }}` },
+	]);
+
+	const sites = analysis.ir.renderSites.filter(
+		(site) => site.targetName === "price",
+	);
+	assert.equal(sites.length, 2);
+	const argumentCounts = sites
+		.map((site) => site.argumentIds.length)
+		.sort((a, b) => a - b);
+	assert.deepEqual(argumentCounts, [0, 1]);
+	// The bare call misses the input; the argument-passing call does not.
+	assert.equal(
+		analysis.issues.filter(
+			(issue) => issue.code === "THEME_RENDER_ARGUMENT_MISSING",
+		).length,
+		1,
+	);
+	assert.ok(
+		analysis.issues.some(
+			(issue) => issue.code === "THEME_RENDER_ARGUMENT_INCONSISTENT",
+		),
+	);
+});
+
+test("guarded object reads make the inferred input optional", () => {
+	const analysis = analyzeNazareTheme([
+		{ path: "sections/main.liquid", contents: `{% render 'price' %}` },
+		{
+			path: "snippets/price.liquid",
+			contents: `{% if product %}{{ product.price }}{% endif %}`,
+		},
+	]);
+
+	const input = analysis.ir.expectedInputs.find(
+		(candidate) => candidate.name === "product",
+	);
+	assert.ok(input);
+	assert.equal(input.required, false);
+	assert.ok(
+		!analysis.issues.some(
+			(issue) => issue.code === "THEME_RENDER_ARGUMENT_MISSING",
+		),
+	);
+});
+
+test("free variable reads in a snippet are inferred inputs", () => {
+	const missing = analyzeNazareTheme([
+		{ path: "sections/main.liquid", contents: `{% render 'badge' %}` },
+		{ path: "snippets/badge.liquid", contents: `<span>{{ text }}</span>` },
+	]);
+	assert.ok(
+		missing.ir.expectedInputs.some(
+			(input) => input.name === "text" && input.required,
+		),
+	);
+	assert.ok(
+		missing.issues.some(
+			(issue) => issue.code === "THEME_RENDER_ARGUMENT_MISSING",
+		),
+	);
+
+	// Passing the free variable satisfies it — and is not flagged unknown.
+	const passed = analyzeNazareTheme([
+		{
+			path: "sections/main.liquid",
+			contents: `{% render 'badge', text: product.title %}`,
+		},
+		{ path: "snippets/badge.liquid", contents: `<span>{{ text }}</span>` },
+	]);
+	assert.ok(
+		!passed.issues.some(
+			(issue) =>
+				issue.code === "THEME_RENDER_ARGUMENT_MISSING" ||
+				issue.code === "THEME_RENDER_ARGUMENT_UNKNOWN",
+		),
+	);
+
+	// Assigned names are not inputs.
+	const assigned = analyzeNazareTheme([
+		{
+			path: "snippets/local.liquid",
+			contents: `{% assign label = 'Hi' %}{{ label }}`,
+		},
+	]);
+	assert.ok(
+		!assigned.ir.expectedInputs.some((input) => input.name === "label"),
+	);
+});
+
+test("invalid schema JSON in analysis is a diagnostic, not silence", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "sections/broken.liquid",
+			contents: `{% schema %}{ not json }{% endschema %}`,
+		},
+	]);
+
+	assert.ok(
+		analysis.issues.some((issue) => issue.code === "THEME_SCHEMA_JSON_INVALID"),
+	);
+});
+
+test("config files are Shopify-consumed entries, never unused", () => {
+	const graph = inspectNazareTheme([
+		{ path: "config/settings_schema.json", contents: "[]" },
+		{ path: "config/settings_data.json", contents: "{}" },
+		{ path: "snippets/unused.liquid", contents: "Unused" },
+	]);
+
+	assert.ok(!graph.impact.unusedFiles.includes("config/settings_schema.json"));
+	assert.ok(!graph.impact.unusedFiles.includes("config/settings_data.json"));
+	assert.ok(graph.impact.unusedFiles.includes("snippets/unused.liquid"));
+});
