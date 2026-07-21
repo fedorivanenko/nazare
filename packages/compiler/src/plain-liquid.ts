@@ -106,7 +106,7 @@ export function parsePlainLiquid(
 	let ast: DocumentNode;
 	let factsCollected = true;
 	try {
-		ast = toLiquidHtmlAST(source, {
+		ast = toLiquidHtmlAST(sourceForLiquidAnalysis(source), {
 			mode: parseMode,
 			allowUnclosedDocumentNode: parseMode === "tolerant",
 		});
@@ -143,6 +143,39 @@ export function parsePlainLiquid(
 		factsCollected,
 		parseMode,
 	};
+}
+
+/**
+ * HTML script/style bodies from page builders can contain megabytes of
+ * generated CSS/JavaScript. LiquidHTML parsing that syntax as raw text is
+ * needlessly expensive. Blank non-Liquid body text while preserving length,
+ * newlines, tags, and Liquid expressions, so all source offsets remain exact.
+ */
+function sourceForLiquidAnalysis(source: string): string {
+	return source.replace(
+		/<(style|script)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+		(block) => {
+			const bodyStart = block.indexOf(">");
+			const bodyEnd = block.lastIndexOf("</");
+			if (bodyStart < 0 || bodyEnd <= bodyStart) return block;
+			const start = block.slice(0, bodyStart + 1);
+			const body = block.slice(bodyStart + 1, bodyEnd);
+			const end = block.slice(bodyEnd);
+			return `${start}${blankNonLiquidCharacters(body)}${end}`;
+		},
+	);
+}
+
+function blankNonLiquidCharacters(source: string): string {
+	let result = "";
+	let offset = 0;
+	for (const match of source.matchAll(/{{-?[\s\S]*?-?}}|{%-?[\s\S]*?-?%}/g)) {
+		const index = match.index ?? offset;
+		result += source.slice(offset, index).replace(/[^\n\r]/g, " ");
+		result += match[0];
+		offset = index + match[0].length;
+	}
+	return result + source.slice(offset).replace(/[^\n\r]/g, " ");
 }
 
 function plainLiquidFactsSkipped(file: string): Diagnostic {
