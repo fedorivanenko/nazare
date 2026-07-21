@@ -213,6 +213,7 @@ export type ThemeFact =
 			name: string;
 			propertyPath?: string;
 			expression: string;
+			usage: "expression" | "renderArgument";
 			span?: SourceSpan;
 	  }
 	| {
@@ -401,6 +402,7 @@ export type ThemeVariableReadRecord = {
 	name: string;
 	propertyPath?: string;
 	expression: string;
+	usage: "expression" | "renderArgument";
 	span?: SourceSpan;
 };
 
