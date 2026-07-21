@@ -17,7 +17,7 @@ export function collectJsonThemeFacts(
 	}
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(contents);
+		parsed = JSON.parse(stripShopifyJsonPreamble(contents));
 	} catch (error) {
 		return {
 			facts,
@@ -62,6 +62,30 @@ export function collectJsonThemeFacts(
 		);
 	}
 	return { facts, issues };
+}
+
+/** Shopify-generated JSON files commonly start with an IMPORTANT block
+ * comment. JSON itself has no comments, but Shopify accepts this exact
+ * preamble. Strip only leading comments; never rewrite JSON content. */
+function stripShopifyJsonPreamble(contents: string): string {
+	let offset = contents.charCodeAt(0) === 0xfeff ? 1 : 0;
+	while (offset < contents.length) {
+		while (/\s/.test(contents[offset] ?? "")) offset += 1;
+		if (contents.startsWith("/*", offset)) {
+			const end = contents.indexOf("*/", offset + 2);
+			if (end < 0) return contents.slice(offset);
+			offset = end + 2;
+			continue;
+		}
+		if (contents.startsWith("//", offset)) {
+			const end = contents.indexOf("\n", offset + 2);
+			if (end < 0) return "";
+			offset = end + 1;
+			continue;
+		}
+		break;
+	}
+	return contents.slice(offset);
 }
 
 function collectTemplateFacts(
