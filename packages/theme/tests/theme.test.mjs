@@ -395,7 +395,11 @@ test("buildTheme reports invalid JSON", async () => {
 		{ "nazare/templates/product.json": "{ nope" },
 		async (projectRoot) => {
 			const result = await build(projectRoot);
-			assert.equal(result.issues[0].code, "THEME_INVALID_JSON");
+			assert.ok(
+				result.issues.some(
+					(issue) => issue.code === "THEME_JSON_PARSE_ERROR",
+				),
+			);
 		},
 	);
 });

@@ -22,9 +22,12 @@ import type {
 	NazareExtensionRegistration,
 } from "@nazare/compiler";
 import {
+	baseNameOf,
 	buildNazareThemeWorkspace,
 	checkComponentScripts,
+	importSpecifiers,
 	parseNazareLiquid,
+	resolveImportPath,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
 import type { Diagnostic } from "@nazare/core";
@@ -144,11 +147,36 @@ export async function buildTheme(
 			return undefined;
 		}
 	};
+	// The workspace reads only the files it is given; imports resolve against
+	// that set, never the filesystem. A single-file build therefore needs the
+	// entry's transitive import closure in the workspace, or every import
+	// would diagnose as unreadable.
+	const workspaceSourceFiles = rootStat.isFile()
+		? nazareImportClosure(sourceFiles[0], readProjectFile)
+		: sourceFiles;
 	const workspaceFiles = await Promise.all(
-		sourceFiles.map(async (path) => ({
+		workspaceSourceFiles.map(async (path) => ({
 			path,
 			contents: await readFile(join(projectRoot, path), "utf8"),
 		})),
+	);
+
+	// One workspace build for the whole theme: every component compiles,
+	// checks its dependencies, and emits in a single pass over shared caches —
+	// never one workspace analysis per component.
+	const workspaceBuild = rootStat.isFile()
+		? buildNazareThemeWorkspace(workspaceFiles, {
+				scope: { kind: "file", path: sourceFiles[0] },
+				name: artifactBaseName(sourceFiles[0]),
+				strictness: options.strictness,
+				emitOnError: false,
+			})
+		: buildNazareThemeWorkspace(workspaceFiles, {
+				strictness: options.strictness,
+				emitOnError: false,
+			});
+	const artifactsByPath = new Map(
+		workspaceBuild.artifacts.map((artifact) => [artifact.path, artifact]),
 	);
 
 	const planned = new Map<string, PlannedFile>();
@@ -161,7 +189,7 @@ export async function buildTheme(
 	// merged field-by-field with the merchant's edits rather than copied over.
 	const sourceLocales = new Map<string, PlannedFile>();
 	const conflicts: string[] = [];
-	const issues: Diagnostic[] = [];
+	const issues: Diagnostic[] = [...workspaceBuild.issues];
 	const notes: Diagnostic[] = [];
 	const compiled: string[] = [];
 	const components: NazareComponent[] = [];
@@ -174,15 +202,7 @@ export async function buildTheme(
 
 		if (file.endsWith(".nz.liquid")) {
 			compiled.push(file);
-			const built = buildNazareThemeWorkspace(workspaceFiles, {
-				scope: { kind: "file", path: file },
-				name: artifactBaseName(file),
-				strictness: options.strictness,
-				emitOnError: false,
-			});
-			const artifact = built.artifacts.find(
-				(candidate) => candidate.path === file,
-			);
+			const artifact = artifactsByPath.get(file);
 			if (artifact) {
 				components.push({
 					file,
@@ -194,19 +214,17 @@ export async function buildTheme(
 					canEmit: artifact.canEmit,
 				});
 				issues.push(
-					...built.issues,
 					...checkComponentScripts(artifact.ir, { readFile: readProjectFile }),
 				);
 				notes.push(...artifact.notes);
-			} else {
-				issues.push(...built.issues);
 			}
-			for (const themeFile of built.emitted.files) {
+			const emittedFiles = artifact?.emitted?.files ?? [];
+			for (const themeFile of emittedFiles) {
 				planFile(planned, conflicts, themeFile.path, themeFile.contents, file);
 			}
 			// Fingerprint the generated schema for sections and blocks (the only
 			// kinds that carry one) so drift against saved merchant data is visible.
-			const schemaBearing = built.emitted.files.find(
+			const schemaBearing = emittedFiles.find(
 				(themeFile) =>
 					(themeFile.path.startsWith("sections/") ||
 						themeFile.path.startsWith("blocks/")) &&
@@ -241,11 +259,6 @@ export async function buildTheme(
 			notes.push(
 				...parsed.notes.map((note) => ({ ...note, phase: "parse" as const })),
 			);
-		}
-
-		if (file.endsWith(".json")) {
-			const invalid = validateJson(contents, file);
-			if (invalid) issues.push(invalid);
 		}
 
 		const outputPath = outputPathForSource(sourceRelative);
@@ -968,20 +981,6 @@ function planFile(
 	planned.set(path, { contents, from });
 }
 
-function validateJson(contents: string, file: string): Diagnostic | undefined {
-	try {
-		JSON.parse(contents);
-		return undefined;
-	} catch (error) {
-		return {
-			severity: "error",
-			phase: "parse",
-			code: "THEME_INVALID_JSON",
-			message: `${file} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
-		};
-	}
-}
-
 function toRootRelativePosix(projectRoot: string, abs: string): string {
 	const rel = relative(projectRoot, abs).split(sep).join("/");
 	if (rel.startsWith("..")) {
@@ -990,8 +989,45 @@ function toRootRelativePosix(projectRoot: string, abs: string): string {
 	return rel;
 }
 
+/** The emitted name of a component: its basename, known extensions stripped. */
 function artifactBaseName(entryFile: string): string {
-	let name = basename(entryFile);
-	while (extname(name)) name = basename(name, extname(name));
-	return name;
+	return baseNameOf(entryFile);
+}
+
+/**
+ * The entry file plus everything it transitively imports: component imports
+ * and asset imports from .nz.liquid files, and relative module imports from
+ * .ts/.js behaviors (paths are project-relative, as the parser resolves
+ * them). Unreadable imports are skipped here; the workspace build reports
+ * them as IMPORT_NOT_FOUND with a span.
+ */
+function nazareImportClosure(
+	entry: string,
+	read: (path: string) => string | undefined,
+): string[] {
+	const visited = new Set<string>();
+	const pending = [entry];
+	while (pending.length > 0) {
+		const path = pending.pop();
+		if (path === undefined || visited.has(path)) continue;
+		const contents = read(path);
+		if (contents === undefined) continue;
+		visited.add(path);
+		if (path.endsWith(".nz.liquid")) {
+			const ast = parseNazareLiquid(contents, path);
+			for (const node of ast.nodes) {
+				if (node.type === "NazareImport" || node.type === "NazareAssetImport") {
+					pending.push(node.path);
+				}
+			}
+			continue;
+		}
+		if (/\.(ts|js)$/.test(path)) {
+			for (const specifier of importSpecifiers(contents)) {
+				const resolved = resolveImportPath(path, specifier);
+				if (resolved !== undefined) pending.push(resolved);
+			}
+		}
+	}
+	return [...visited].sort((a, b) => a.localeCompare(b));
 }
