@@ -6,6 +6,33 @@ const issues = (files) => analyzeNazareTheme(files).issues;
 const hasIssue = (files, code) =>
 	issues(files).some((issue) => issue.code === code);
 
+test("theme analysis cache reuses unchanged files and invalidates edits", () => {
+	const cache = { version: 1, entries: {} };
+	const files = [
+		{ path: "snippets/card.liquid", contents: "{{ product.title }}" },
+		{ path: "locales/en.json", contents: '{"card":{"title":"Card"}}' },
+	];
+	const first = analyzeNazareTheme(files, { cache });
+	const cachedSnippet = cache.entries["snippets/card.liquid"];
+	const cachedLocale = cache.entries["locales/en.json"];
+	assert.ok(cachedSnippet);
+	assert.ok(cachedLocale);
+
+	const second = analyzeNazareTheme(
+		[
+			files[0],
+			{ path: "locales/en.json", contents: '{"card":{"title":"Tile"}}' },
+		],
+		{ cache },
+	);
+	assert.strictEqual(cache.entries["snippets/card.liquid"], cachedSnippet);
+	assert.notStrictEqual(cache.entries["locales/en.json"], cachedLocale);
+	assert.deepEqual(second.ir.variableReads, first.ir.variableReads);
+
+	analyzeNazareTheme([files[0]], { cache });
+	assert.equal(cache.entries["locales/en.json"], undefined);
+});
+
 test("theme input validation rejects invalid JSON shapes and unsafe paths", () => {
 	for (const [path, contents, code] of [
 		["config/settings_schema.json", "{}", "THEME_SETTINGS_SCHEMA_INVALID_ROOT"],
