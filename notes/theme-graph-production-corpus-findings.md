@@ -302,6 +302,19 @@ Latest missing-argument changes:
 
 Remaining warnings now concentrate in direct unguarded reads, large generated Zipify interfaces, and parameters that Liquid tolerates as `nil` but source does not explicitly default.
 
+### Call-site-corroborated missing arguments
+
+A free-variable read is useful graph evidence, but Liquid accepting `nil` means it does not alone prove that every caller must pass an argument. Missing-argument diagnostics now require corpus corroboration: the target reads the inferred input without a source default, and a strict majority of resolved `render` calls pass it. Expected-input nodes remain in the graph even when call-site evidence is insufficient for a warning.
+
+| Theme | Missing warnings after source inference | After call-site corroboration |
+|---|---:|---:|
+| alkamind-nazare | 218 | 8 |
+| alkamind-old | 501 | 0 |
+| climatic-health | 386 | 35 |
+| ucan | 197 | 0 |
+
+This removes warnings for dominant optional conventions such as `icon.class`, `lazy-image.alt`, `lazy-image.crop`, `c-button.attributes`, and `c-img-srcset.responsive_image`. The remaining warnings identify minority call sites that differ from the target's dominant calling convention; they are inferred inconsistencies, not explicit Liquid contracts.
+
 ### Expression walker coverage
 
 Implemented expected handling for nested Liquid tags/branches, raw tags, and logical expressions without double-walking nested tags.
@@ -358,8 +371,8 @@ Latest diagnostic changes:
 
 | Theme | Baseline issues | Latest issues | Baseline unscanned | Latest unscanned | Baseline missing arguments | Latest missing arguments |
 |---|---:|---:|---:|---:|---:|---:|
-| alkamind-old | 2,325 | 1,215 | 958 | 11 | 653 | 501 |
-| ucan | 985 | 343 | 369 | 11 | 410 | 197 |
+| alkamind-old | 2,325 | 714 | 958 | 11 | 653 | 0 |
+| ucan | 985 | 146 | 369 | 11 | 410 | 0 |
 
 Recovered Zipify facts expose additional interface candidates that were previously absent rather than proven correct. Remaining missing-argument warnings still require precision sampling.
 
@@ -402,10 +415,10 @@ Current live-theme run:
 
 | Theme | Nodes | Edges | Issues | Golden result |
 |---|---:|---:|---:|---|
-| alkamind-nazare | 2,666 | 6,040 | 300 | pass |
-| alkamind-old | 9,382 | 20,086 | 1,215 | pass |
-| climatic-health | 2,561 | 5,747 | 498 | pass |
-| ucan | 4,258 | 8,790 | 343 | pass |
+| alkamind-nazare | 2,666 | 6,040 | 90 | pass |
+| alkamind-old | 9,382 | 20,086 | 714 | pass |
+| climatic-health | 2,561 | 5,747 | 147 | pass |
+| ucan | 4,258 | 8,790 | 146 | pass |
 
 Corpus roots can be supplied through `NAZARE_CORPUS_*` variables, `--project theme=path`, or precomputed graphs through `--graph theme=path`.
 
@@ -416,7 +429,7 @@ Corpus roots can be supplied through `NAZARE_CORPUS_*` variables, `--project the
 - Biome checks pass;
 - canonical input-order test remains green.
 
-Worker-based cold parser parallelism and missing-input precision scoring remain unimplemented.
+Worker-based cold parser parallelism and manual precision scoring of the 43 remaining call-site-corroborated missing-input warnings remain unimplemented.
 
 ## Acceptance target
 

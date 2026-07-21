@@ -126,7 +126,7 @@ test("theme input inference handles render arguments and Liquid scope", () => {
 			],
 			"THEME_RENDER_ARGUMENT_MISSING",
 		),
-		true,
+		false,
 	);
 	assert.equal(
 		hasIssue(
@@ -149,7 +149,7 @@ test("theme input inference handles render arguments and Liquid scope", () => {
 			[
 				{
 					path: "sections/main.liquid",
-					contents: `{% render 'price', card_product: product %}\n{% render 'price' %}`,
+					contents: `{% render 'price', card_product: product %}\n{% render 'price', card_product: featured_product %}\n{% render 'price' %}`,
 				},
 				{
 					path: "snippets/price.liquid",
@@ -157,6 +157,22 @@ test("theme input inference handles render arguments and Liquid scope", () => {
 				},
 			],
 			"THEME_RENDER_ARGUMENT_INCONSISTENT",
+		),
+		true,
+	);
+	assert.equal(
+		hasIssue(
+			[
+				{
+					path: "sections/main.liquid",
+					contents: `{% render 'price', card_product: product %}\n{% render 'price', card_product: featured_product %}\n{% render 'price' %}`,
+				},
+				{
+					path: "snippets/price.liquid",
+					contents: `{{ card_product.price }}`,
+				},
+			],
+			"THEME_RENDER_ARGUMENT_MISSING",
 		),
 		true,
 	);
@@ -186,7 +202,7 @@ test("theme input inference handles render arguments and Liquid scope", () => {
 			],
 			"THEME_RENDER_ARGUMENT_MISSING",
 		),
-		true,
+		false,
 	);
 	assert.equal(
 		hasIssue(
@@ -283,34 +299,34 @@ test("theme input inference respects include and lexical scopes", () => {
 	];
 	assert.equal(hasIssue(includeFiles, "THEME_RENDER_ARGUMENT_MISSING"), false);
 
+	const loopAnalysis = analyzeNazareTheme([
+		{ path: "sections/main.liquid", contents: `{% render 'loop' %}` },
+		{
+			path: "snippets/loop.liquid",
+			contents:
+				"{% for item in collection.products %}{{ item.title }}{% endfor %}{{ item.title }}",
+		},
+	]);
 	assert.equal(
-		hasIssue(
-			[
-				{ path: "sections/main.liquid", contents: `{% render 'loop' %}` },
-				{
-					path: "snippets/loop.liquid",
-					contents:
-						"{% for item in collection.products %}{{ item.title }}{% endfor %}{{ item.title }}",
-				},
-			],
-			"THEME_RENDER_ARGUMENT_MISSING",
+		loopAnalysis.ir.expectedInputs.some(
+			(input) => input.name === "item" && input.required,
 		),
 		true,
 	);
+	const conditionalAnalysis = analyzeNazareTheme([
+		{
+			path: "sections/main.liquid",
+			contents: `{% render 'conditional' %}`,
+		},
+		{
+			path: "snippets/conditional.liquid",
+			contents:
+				"{% if product %}\n{% assign label = product.title %}\n{% endif %}\n{{ label }}",
+		},
+	]);
 	assert.equal(
-		hasIssue(
-			[
-				{
-					path: "sections/main.liquid",
-					contents: `{% render 'conditional' %}`,
-				},
-				{
-					path: "snippets/conditional.liquid",
-					contents:
-						"{% if product %}\n{% assign label = product.title %}\n{% endif %}\n{{ label }}",
-				},
-			],
-			"THEME_RENDER_ARGUMENT_MISSING",
+		conditionalAnalysis.ir.expectedInputs.some(
+			(input) => input.name === "label" && input.required,
 		),
 		true,
 	);
