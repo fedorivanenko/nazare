@@ -2,7 +2,7 @@
 // Liquid frontends: raw tag markup, the authored {% schema %} block, parse
 // crash reporting, and the untyped expression-node guards. One definition
 // each — the two frontends must not drift on these.
-import type { Diagnostic, SourceSpan } from "@nazare/core";
+import type { Diagnostic } from "@nazare/core";
 import { NodeTypes, type toLiquidHtmlAST } from "@shopify/liquid-html-parser";
 import type { AuthoredSchema } from "./ast.js";
 import { parseLiquidCrash } from "./diagnostics.js";
