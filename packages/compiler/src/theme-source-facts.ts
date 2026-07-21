@@ -187,6 +187,7 @@ export function collectSourceThemeFacts(
 		propertyPath?: string;
 		expression: string;
 		offset: number;
+		usage: "expression" | "renderArgument";
 		span?: SourceSpan;
 	}[] = [];
 
@@ -292,6 +293,32 @@ export function collectSourceThemeFacts(
 					),
 				});
 			}
+			const firstBranch = (
+				tag as { children?: { type?: unknown; children?: unknown[] }[] }
+			).children?.find((child) => child.type === NodeTypes.LiquidBranch);
+			const conditionSource = sliceRange(
+				source,
+				(tag.markup as { position?: SourceRange } | undefined)?.position,
+			);
+			if (firstBranch && conditionSource) {
+				for (const name of definitelyAssignedInSequence(
+					firstBranch.children ?? [],
+				)) {
+					const absenceOperator = tag.name === "unless" ? "!=" : "==";
+					const checksAbsence = new RegExp(
+						`\\b${name}\\s*${absenceOperator}\\s*(?:blank|null|empty)\\b`,
+					).test(conditionSource);
+					if (!checksAbsence) continue;
+					const binding = (aliasBindings.get(name) ?? [])
+						.filter((candidate) => candidate.offset <= tag.position.start)
+						.at(-1);
+					if (!binding) continue;
+					defaultedNames.add(
+						resolveAliasedLookup(binding.lookup, binding.offset, aliasBindings)
+							.object,
+					);
+				}
+			}
 		}
 	});
 	for (const definitions of localDefinitions.values()) {
@@ -318,6 +345,7 @@ export function collectSourceThemeFacts(
 	const handleLookup = (
 		lookup: PositionedLookup,
 		inCondition: boolean,
+		usage: "expression" | "renderArgument",
 	): void => {
 		const position = lookup.position;
 		const resolved = resolveAliasedLookup(
@@ -353,6 +381,7 @@ export function collectSourceThemeFacts(
 				propertyPath: propertyPath || undefined,
 				expression: propertyPath ? `${object}.${propertyPath}` : object,
 				offset: position?.start ?? Number.POSITIVE_INFINITY,
+				usage,
 				span,
 			});
 		}
@@ -382,6 +411,7 @@ export function collectSourceThemeFacts(
 		const inCondition =
 			tagName === "if" ||
 			tagName === "unless" ||
+			tagName === "case" ||
 			(node.type === NodeTypes.LiquidBranch && tag.markup !== undefined);
 
 		if (
@@ -397,9 +427,29 @@ export function collectSourceThemeFacts(
 		if (tagName === "capture") return;
 
 		visitLiquidExpressions(tag.markup, {
-			onLookup: (lookup) => handleLookup(lookup, inCondition),
+			onLookup: (lookup) =>
+				handleLookup(
+					lookup,
+					inCondition,
+					tagName === "render" || tagName === "include"
+						? "renderArgument"
+						: "expression",
+				),
 			onVariable: (variable) => {
 				const filterNames = namesOfFilters(variable.filters);
+				const expression = variable.expression as PositionedLookup;
+				if (
+					filterNames.includes("default") &&
+					expression?.type === "VariableLookup"
+				) {
+					defaultedNames.add(
+						resolveAliasedLookup(
+							expression,
+							expression.position?.start ?? Number.POSITIVE_INFINITY,
+							aliasBindings,
+						).object,
+					);
+				}
 				if (!isLiquidString(variable.expression)) return;
 				const span = rangeSpan(path, source, variable.position);
 				if (filterNames.some((name) => ASSET_FILTER_NAMES.has(name))) {
@@ -442,6 +492,7 @@ export function collectSourceThemeFacts(
 			name: read.name,
 			propertyPath: read.propertyPath,
 			expression: read.expression,
+			usage: read.usage,
 			span: read.span,
 		});
 	}

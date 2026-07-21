@@ -195,6 +195,7 @@ export function buildThemeSemanticModel(
 				name: fact.name,
 				propertyPath: fact.propertyPath,
 				expression: fact.expression,
+				usage: fact.usage,
 				span: fact.span,
 			});
 		}
@@ -865,8 +866,9 @@ function evidenceRecords(records: {
  * What a snippet expects its caller to pass: reads of page-context objects
  * ({% render %} isolates scope, so product/collection/... must be passed)
  * plus free variable reads (bare names that are neither Liquid globals nor
- * assigned in the file). An input is required unless the file guards the
- * name in a condition — a guarded read tolerates absence.
+ * assigned in the file). A guarded input is optional. An input used only to
+ * forward a render argument remains unknown because forwarding alone does not
+ * prove the downstream snippet requires it.
  */
 function expectedInputRecords(
 	declarations: ThemeDeclaration[],
@@ -883,6 +885,20 @@ function expectedInputRecords(
 			.map((declaration) => declaration.path),
 	);
 	const byId = new Map<string, ThemeExpectedInputRecord>();
+	const directlyReadInputs = new Set(
+		variableReads
+			.filter((read) => read.usage !== "renderArgument")
+			.map((read) => `${read.fromPath}:${read.name}`),
+	);
+	const inferredRequirement = (
+		path: string,
+		name: string,
+		origin: ThemeExpectedInputRecord["origin"],
+	): ThemeExpectedInputRecord["requirement"] => {
+		if (origin === "ambientShopifyContext") return "unknown";
+		if (guardedObjects.has(`${path}:${name}`)) return "optional";
+		return directlyReadInputs.has(`${path}:${name}`) ? "required" : "unknown";
+	};
 	const addInput = (
 		path: string,
 		name: string,
@@ -905,19 +921,12 @@ function expectedInputRecords(
 			// A free-variable read is stronger evidence than ambient context.
 			if (origin === "freeVariable") {
 				existing.origin = origin;
-				existing.requirement = guardedObjects.has(`${path}:${name}`)
-					? "optional"
-					: "required";
+				existing.requirement = inferredRequirement(path, name, origin);
 				existing.required = existing.requirement === "required";
 			}
 			return;
 		}
-		const requirement =
-			origin === "ambientShopifyContext"
-				? "unknown"
-				: guardedObjects.has(`${path}:${name}`)
-					? "optional"
-					: "required";
+		const requirement = inferredRequirement(path, name, origin);
 		byId.set(id, {
 			id,
 			path,

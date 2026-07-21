@@ -395,16 +395,49 @@ test("default filters and guarded aliases infer optional inputs", () => {
 		{
 			path: "snippets/defaults.liquid",
 			contents:
-				"{% assign guarded_local = guarded %}{% if guarded_local != blank %}{{ guarded_local }}{% endif %}{% assign default_local = defaulted | default: 'value' %}{{ default_local }}{% assign required_local = required %}{{ required_local }}",
+				"{% assign guarded_local = guarded %}{% if guarded_local != blank %}{{ guarded_local }}{% endif %}{% assign default_local = defaulted | default: 'value' %}{{ default_local }}{% assign fallback_local = fallback %}{% if fallback_local == blank %}{% assign fallback_local = 'value' %}{% endif %}{{ fallback_local }}{% case color %}{% when 'blue' %}blue{% endcase %}{{ output_default | default: 'value' }}{% assign required_local = required %}{{ required_local }}",
 		},
 	]);
 	assert.deepEqual(
 		analysis.ir.expectedInputs.map((input) => [input.name, input.requirement]),
 		[
+			["color", "optional"],
 			["defaulted", "optional"],
+			["fallback", "optional"],
 			["guarded", "optional"],
+			["output_default", "optional"],
 			["required", "required"],
 		],
+	);
+});
+
+test("forwarding-only inputs remain unknown without a downstream contract", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "sections/main.liquid",
+			contents: `{% render 'media' %}`,
+		},
+		{
+			path: "snippets/media.liquid",
+			contents: `{% render 'image', priority: priority %}`,
+		},
+		{
+			path: "snippets/image.liquid",
+			contents: `{{ priority }}`,
+		},
+	]);
+	assert.deepEqual(
+		analysis.ir.expectedInputs.find(
+			(input) =>
+				input.path === "snippets/media.liquid" && input.name === "priority",
+		)?.requirement,
+		"unknown",
+	);
+	assert.equal(
+		analysis.issues.some(
+			(issue) => issue.code === "THEME_RENDER_ARGUMENT_MISSING",
+		),
+		false,
 	);
 });
 

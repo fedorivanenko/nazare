@@ -20,7 +20,7 @@
       "impact": [
         { "artifact": "snippets/c-bundle-card.liquid", "dependent": "sections/s-bundle-gallery.liquid", "affectedPage": "templates/product.product-bundle.json" }
       ],
-      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 10, "THEME_RENDER_ARGUMENT_MISSING": 10 }
+      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 10, "THEME_RENDER_ARGUMENT_MISSING": 0 }
     },
     "alkamind-old": {
       "rootEnv": "NAZARE_CORPUS_ALKAMIND_OLD",
@@ -62,7 +62,7 @@
       "impact": [
         { "artifact": "sections/collection-content.liquid", "dependent": "templates/collection.liquid", "affectedPage": "templates/collection.liquid" }
       ],
-      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 10, "THEME_RENDER_ARGUMENT_MISSING": 40 }
+      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 10, "THEME_RENDER_ARGUMENT_MISSING": 0 }
     },
     "ucan": {
       "rootEnv": "NAZARE_CORPUS_UCAN",
