@@ -6,8 +6,8 @@ import { visitLiquidExpressions } from "./liquid-expressions.js";
 import { spanFromOffsets } from "./source.js";
 
 /**
- * Locates every literal section.settings.x / block.settings.x read in the
- * file's Liquid expression regions. Also the sole reporter of unscannable
+ * Locates every literal settings.x / section.settings.x / block.settings.x
+ * read in the file's Liquid expression regions. Also the sole reporter of unscannable
  * expression shapes (LIQUID_UNSCANNED_SETTINGS_EXPRESSION) — other extractors
  * walking the same regions rely on this warning instead of re-reporting.
  */
@@ -46,6 +46,15 @@ function settingsReadFromLookup(
 	source: string,
 	file: string,
 ): SettingsRead | undefined {
+	if (lookup.name === "settings") {
+		const [name] = lookup.lookups ?? [];
+		if (!isLiquidString(name)) return undefined;
+		return {
+			object: "settings",
+			name: name.value,
+			span: spanFromOffsets(source, file, name.position),
+		};
+	}
 	if (lookup.name !== "section" && lookup.name !== "block") return undefined;
 	const [settings, name] = lookup.lookups ?? [];
 	if (!isLiquidString(settings) || settings.value !== "settings") {

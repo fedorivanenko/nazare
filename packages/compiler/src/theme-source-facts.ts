@@ -38,19 +38,6 @@ export const SHOPIFY_DATA_OBJECTS = new Set([
 	"metaobjects",
 ]);
 
-/**
- * Objects a snippet cannot see unless the caller passes them: {% render %}
- * isolates scope, and these are page-context objects, not globals. Reads of
- * these inside a snippet are expected render inputs.
- */
-export const CONTEXT_INPUT_OBJECTS = new Set([
-	"product",
-	"variant",
-	"collection",
-	"search",
-	"recommendations",
-]);
-
 // Names visible in every Liquid scope (globals, tag-scoped loop objects, and
 // the theme-context objects Shopify injects everywhere). A bare read of any
 // other unassigned name inside a snippet is a render input.
@@ -137,8 +124,7 @@ const lookupCapabilityRules: LookupCapabilityRule[] = [
 		confidence: 0.8,
 		matches: (object, path) =>
 			(object === "collection" && /(^|\.)filters($|\.)/.test(path)) ||
-			(object === "filter" &&
-				(path === "active_values" || path === "values")),
+			(object === "filter" && (path === "active_values" || path === "values")),
 	},
 ];
 
@@ -169,28 +155,55 @@ const textCapabilityRules: Array<{
 	},
 ];
 
-const conditionTagNames = new Set(["if", "unless", "elsif", "case", "when"]);
-
 export function collectSourceThemeFacts(
 	path: string,
 	source: string,
 	ast: ReturnType<typeof toLiquidHtmlAST>,
 ): ThemeFact[] {
 	const facts: ThemeFact[] = [];
-	const assignedNames = new Set<string>();
+	const firstAssignmentOffsetByName = new Map<string, number>();
 	const guardedNames = new Set<string>();
-	const freeReads: { name: string; span?: SourceSpan }[] = [];
-	const capabilitySeen = new Set<string>();
+	const unguardedNames = new Set<string>();
+	const guardRangesByName = new Map<string, SourceRange[]>();
+	const localBindingRangesByName = new Map<string, SourceRange[]>();
+	const conditionalAssignmentRanges: SourceRange[] = [];
+	const freeReads: { name: string; offset: number; span?: SourceSpan }[] = [];
+
+	walk(ast, (node) => {
+		if (node.type !== NodeTypes.LiquidTag) return;
+		const tag = node as LiquidHtmlNode & {
+			name?: unknown;
+			markup?: unknown;
+			position?: SourceRange;
+		};
+		if (tag.name === "if") registerIfGuardRanges(tag, guardRangesByName);
+		if (
+			tag.position &&
+			(tag.name === "if" ||
+				tag.name === "unless" ||
+				tag.name === "case" ||
+				tag.name === "for" ||
+				tag.name === "tablerow")
+		) {
+			conditionalAssignmentRanges.push(tag.position);
+		}
+		if ((tag.name === "for" || tag.name === "tablerow") && tag.position) {
+			registerLoopBindingRange(tag, tag.position, localBindingRangesByName);
+		}
+	});
 
 	const pushCapability = (
 		capability: string,
 		confidence: number,
 		span?: SourceSpan,
 	): void => {
-		const key = `${capability}`;
-		if (capabilitySeen.has(key)) return;
-		capabilitySeen.add(key);
-		facts.push({ kind: "detectsCapability", path, capability, confidence, span });
+		facts.push({
+			kind: "detectsCapability",
+			path,
+			capability,
+			confidence,
+			span,
+		});
 	};
 
 	const handleLookup = (
@@ -198,8 +211,16 @@ export function collectSourceThemeFacts(
 		inCondition: boolean,
 	): void => {
 		const propertyPath = stringLookupPath(lookup);
-		const span = rangeSpan(path, source, lookup.position);
-		if (inCondition) guardedNames.add(lookup.name);
+		const position = lookup.position;
+		const span = rangeSpan(path, source, position);
+		const guarded =
+			inCondition ||
+			(position !== undefined &&
+				(guardRangesByName.get(lookup.name) ?? []).some(
+					(range) => position.start >= range.start && position.end <= range.end,
+				));
+		if (guarded) guardedNames.add(lookup.name);
+		else unguardedNames.add(lookup.name);
 		if (SHOPIFY_DATA_OBJECTS.has(lookup.name)) {
 			facts.push({
 				kind: "readsShopifyData",
@@ -212,7 +233,11 @@ export function collectSourceThemeFacts(
 				span,
 			});
 		} else if (!LIQUID_GLOBAL_NAMES.has(lookup.name)) {
-			freeReads.push({ name: lookup.name, span });
+			freeReads.push({
+				name: lookup.name,
+				offset: position?.start ?? Number.POSITIVE_INFINITY,
+				span,
+			});
 		}
 		for (const rule of lookupCapabilityRules) {
 			if (rule.matches(lookup.name, propertyPath)) {
@@ -237,8 +262,7 @@ export function collectSourceThemeFacts(
 			position: SourceRange;
 		};
 		const tagName = typeof tag.name === "string" ? tag.name : undefined;
-		const inCondition =
-			tagName !== undefined && conditionTagNames.has(tagName);
+		const inCondition = tagName === "if";
 
 		if (
 			(tagName === "render" || tagName === "include") &&
@@ -274,17 +298,28 @@ export function collectSourceThemeFacts(
 					});
 				}
 			},
-			onAssign: (markup) => assignedNames.add(markup.name),
-			onFor: (markup) => {
-				if (markup.variableName) assignedNames.add(markup.variableName);
+			onAssign: (markup) => {
+				const offset = expressionStart(markup);
+				if (isOffsetWithinRanges(offset, conditionalAssignmentRanges)) return;
+				const previous = firstAssignmentOffsetByName.get(markup.name);
+				if (previous === undefined || offset < previous) {
+					firstAssignmentOffsetByName.set(markup.name, offset);
+				}
 			},
 		});
 	});
 
-	// Free reads filter against every assigned name in the file (position-
-	// insensitive: a read before its assign is broken Liquid, not an input).
 	for (const read of freeReads) {
-		if (assignedNames.has(read.name)) continue;
+		if (
+			isOffsetWithinRanges(
+				read.offset,
+				localBindingRangesByName.get(read.name) ?? [],
+			)
+		)
+			continue;
+		const assignmentOffset = firstAssignmentOffsetByName.get(read.name);
+		if (assignmentOffset !== undefined && assignmentOffset <= read.offset)
+			continue;
 		facts.push({
 			kind: "readsFreeVariable",
 			fromPath: path,
@@ -293,6 +328,7 @@ export function collectSourceThemeFacts(
 		});
 	}
 	for (const name of guardedNames) {
+		if (unguardedNames.has(name)) continue;
 		facts.push({ kind: "guardsObject", fromPath: path, name });
 	}
 
@@ -312,6 +348,55 @@ export function collectSourceThemeFacts(
 	}
 
 	return facts;
+}
+
+function expressionStart(value: unknown): number {
+	const start = (value as { position?: { start?: unknown } } | undefined)
+		?.position?.start;
+	return typeof start === "number" ? start : Number.POSITIVE_INFINITY;
+}
+
+function isOffsetWithinRanges(offset: number, ranges: SourceRange[]): boolean {
+	return ranges.some((range) => offset >= range.start && offset <= range.end);
+}
+
+function registerLoopBindingRange(
+	tag: LiquidHtmlNode & { markup?: unknown },
+	range: SourceRange,
+	localBindingRangesByName: Map<string, SourceRange[]>,
+): void {
+	visitLiquidExpressions(tag.markup, {
+		onFor: (markup) => {
+			if (!markup.variableName) return;
+			localBindingRangesByName.set(markup.variableName, [
+				...(localBindingRangesByName.get(markup.variableName) ?? []),
+				range,
+			]);
+		},
+	});
+}
+
+function registerIfGuardRanges(
+	tag: LiquidHtmlNode & { markup?: unknown },
+	guardRangesByName: Map<string, SourceRange[]>,
+): void {
+	const names = new Set<string>();
+	visitLiquidExpressions(tag.markup, {
+		onLookup: (lookup) => names.add(lookup.name),
+	});
+	const firstBranch = (tag as { children?: unknown[] }).children?.find(
+		(child) =>
+			!!child &&
+			(child as { type?: unknown }).type === NodeTypes.LiquidBranch &&
+			(child as { name?: unknown }).name === null,
+	) as { position?: SourceRange } | undefined;
+	if (!firstBranch?.position) return;
+	for (const name of names) {
+		guardRangesByName.set(name, [
+			...(guardRangesByName.get(name) ?? []),
+			firstBranch.position,
+		]);
+	}
 }
 
 function renderArgumentFacts(

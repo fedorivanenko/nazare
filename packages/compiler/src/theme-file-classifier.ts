@@ -23,11 +23,17 @@ export function normalizeThemePath(path: string): string {
 
 export function isUnsafeThemePath(path: string): boolean {
 	const normalized = normalizeThemePath(path);
+	const segments = normalized.split("/");
 	return (
+		normalized.length === 0 ||
 		normalized.startsWith("/") ||
-		normalized === ".." ||
-		normalized.startsWith("../") ||
-		normalized.includes("/../")
+		/^[A-Za-z]:\//.test(normalized) ||
+		normalized.endsWith("/") ||
+		[...normalized].some((character) => {
+			const code = character.charCodeAt(0);
+			return code <= 31 || code === 127;
+		}) ||
+		segments.some((segment) => segment === "." || segment === "..")
 	);
 }
 

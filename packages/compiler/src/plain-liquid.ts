@@ -40,6 +40,7 @@ export type PlainLiquidDependencyKind =
 
 export type PlainLiquidDependency = {
 	kind: PlainLiquidDependencyKind;
+	invocationKind?: "render" | "include";
 	/** Shopify theme-relative path when statically known and valid. */
 	path?: string;
 	/** Static dependency name. `layout none` intentionally has no path. */
@@ -217,6 +218,10 @@ function collectDependencies(
 		}
 		dependencies.push({
 			kind,
+			invocationKind:
+				node.name === "render" || node.name === "include"
+					? node.name
+					: undefined,
 			name,
 			path: name && validation.valid ? dependencyPath(kind, name) : undefined,
 			source: liquidTagMarkup(source, node.position, node.name),

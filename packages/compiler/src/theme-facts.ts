@@ -16,14 +16,14 @@ export interface ThemeInputFile {
 export interface AnalyzeNazareThemeOptions {
 	root?: string;
 	strictness?: "strict" | "loose";
+	plainLiquidParseMode?: "strict" | "tolerant";
 }
 
-export interface InspectNazareThemeOptions extends AnalyzeNazareThemeOptions {
-	format?: "json";
-}
+export type InspectNazareThemeOptions = AnalyzeNazareThemeOptions;
 
 export type BuildThemeScope =
 	| { kind: "workspace" }
+	| { kind: "closure"; path: string }
 	| { kind: "file"; path: string };
 
 export interface BuildNazareThemeWorkspaceOptions
@@ -31,9 +31,8 @@ export interface BuildNazareThemeWorkspaceOptions
 	scope?: BuildThemeScope;
 	emitOnError?: boolean;
 	/**
-	 * Emit name for the scoped artifact; only honored for a file scope — a
-	 * workspace build names each artifact by its own file basename, since one
-	 * name cannot apply to many artifacts.
+	 * Emit name for the scoped entry artifact. Closure dependencies and
+	 * workspace artifacts use their own file basenames.
 	 */
 	name?: string;
 }
@@ -43,11 +42,7 @@ export interface BuildNazareThemeWorkspaceOptions
  * position. Every extractor derives it the same way, so arguments and sites
  * collected by different extractors join on it.
  */
-export function renderSiteKey(
-	fromPath: string,
-	span: SourceSpan | undefined,
-): string {
-	if (!span) return `${fromPath}@unknown`;
+export function renderSiteKey(fromPath: string, span: SourceSpan): string {
 	return `${fromPath}@${span.start.line}:${span.start.column}`;
 }
 
@@ -71,6 +66,7 @@ export type ThemeFact =
 			targetName?: string;
 			/** Stable per-call-site key (path@line:column); joins arguments to sites. */
 			siteId: string;
+			invocationKind: "render" | "include";
 			static: boolean;
 			span?: SourceSpan;
 	  }
@@ -147,7 +143,7 @@ export type ThemeFact =
 	| {
 			kind: "readsSetting";
 			fromPath: string;
-			settingObject: "section" | "block";
+			settingObject: "settings" | "section" | "block";
 			settingId: string;
 			span?: SourceSpan;
 	  }
@@ -300,9 +296,10 @@ export type ThemeLocaleReferenceRecord = {
 export type ThemeSettingReadRecord = {
 	id: string;
 	fromPath: string;
-	settingObject: "section" | "block";
+	settingObject: "settings" | "section" | "block";
 	settingId: string;
 	resolvedSettingId?: string;
+	candidateSettingIds?: string[];
 	span?: SourceSpan;
 };
 
@@ -388,6 +385,7 @@ export type ThemeRenderSiteRecord = {
 	fromPath: string;
 	targetName?: string;
 	resolvedDeclarationId?: string;
+	invocationKind: "render" | "include";
 	argumentIds: string[];
 	span?: SourceSpan;
 };
