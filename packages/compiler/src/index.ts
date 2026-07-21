@@ -62,6 +62,7 @@ export type {
 	NazareRootMarkerNode,
 	ParseDiagnostic,
 } from "./ast.js";
+export { importSpecifiers } from "./bundle.js";
 export {
 	CHECK_RULES,
 	type CheckArtifactIROptions,
@@ -106,10 +107,9 @@ export {
 } from "./frontends/plain-liquid.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
-export { importSpecifiers } from "./bundle.js";
-export { baseNameOf, resolveImportPath } from "./paths.js";
 export { mergeArtifactIR } from "./merge.js";
 export { parseNazareLiquid } from "./parser.js";
+export { baseNameOf, resolveImportPath } from "./paths.js";
 export {
 	type BuildPlainLiquidOptions,
 	type BuildPlainLiquidResult,
@@ -175,6 +175,8 @@ export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
 	inspectNazareTheme,
+	THEME_ANALYSIS_DEFAULTS,
+	THEME_BUILD_DEFAULTS,
 } from "./theme-workspace.js";
 export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 
