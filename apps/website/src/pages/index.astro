@@ -1,0 +1,58 @@
+---
+import "../styles/global.css";
+
+// biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
+import Footer from "../components/Footer.astro";
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="generator" content={Astro.generator} />
+		<script is:inline>
+			(() => {
+				try {
+					const theme = localStorage.getItem("theme");
+					if (theme === "dark" || theme === "light") {
+						document.documentElement.dataset.theme = theme;
+					}
+				} catch {}
+			})();
+		</script>
+		<title>Nazare</title>
+		<meta
+			name="description"
+			content="Nazare is an open-source toolkit for evolving native Shopify Liquid themes with explicit interfaces, dependencies, and reusable architecture."
+		/>
+	</head>
+	<body>
+		<header class="site-header">
+			<a href="/" aria-label="Nazare home" style="display: block; text-decoration: none; font-size:20px; font-weight: 600;">
+				Nazare
+			</a>
+			<nav aria-label="Primary navigation">
+				<a href="https://github.com/fedorivanenko/nazare">GitHub</a>
+			</nav>
+		</header>
+		<main class="site-shell stack">
+			<section class="stack">
+				<h1 class="heading--title capitalize">
+					Reduce the cost of<br/>
+					changing Shopify themes
+				</h1>
+				<p>
+					Nazare is an open-source toolkit that brings modern software engineering to native Shopify themes, making them easier to build, maintain, and evolve.
+				</p>
+				<p>
+					It introduces explicit interfaces, dependencies, and reusable abstractions, replacing implicit conventions with verifiable architecture that is easier for humans and AI to understand, change, and automate.
+				</p>
+				<p>
+					Build with type-safe components, editable registries, and structured project architecture—without leaving Shopify's native theme ecosystem.
+				</p>
+				<p>Coming Soon</p>
+			</section>
+		</main>
+		<Footer />
+	</body>
+</html>
