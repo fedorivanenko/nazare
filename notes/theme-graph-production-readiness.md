@@ -1,0 +1,82 @@
+# Semantic Theme Graph Production Readiness
+
+## Verdict
+
+Nazare Inspect now meets the functional requirements in `theme-graph-reqs.md` as a deterministic semantic architecture browser for ordinary Shopify themes.
+
+It is production-ready for:
+
+- architecture navigation;
+- source-backed dependency and impact queries;
+- Shopify data, setting, locale, render, and page-composition discovery;
+- conservative component-interface inference;
+- agent and developer exploration of unfamiliar themes.
+
+It is not an authoritative Liquid correctness oracle. Dynamic Liquid, incomplete themes, and inferred plain-Liquid interfaces remain explicitly unresolved, ambiguous, optional, or unknown when source evidence is insufficient.
+
+## Final production corpus benchmark
+
+Measured with the current CLI on the four production themes. The persistent fact-cache file was removed for each cold run, then reused for its warm run. Filesystem and operating-system caches were not flushed. Values are one-run observations, not statistical percentiles.
+
+| Theme | Baseline cold | Final cold | Final warm | Output | Fact cache | Nodes | Edges | Issues |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| alkamind-nazare | 37s | 5.84s | 1.54s | 7.0MB | 1.1MB | 2,666 | 6,040 | 82 |
+| alkamind-old | 100s | 43.29s | 2.58s | 29.3MB | 7.8MB | 9,382 | 20,086 | 714 |
+| climatic-health | 36s | 6.67s | 1.66s | 6.9MB | 1.0MB | 2,561 | 5,747 | 112 |
+| ucan | 219s | 47.79s | 1.95s | 11.9MB | 1.9MB | 4,258 | 8,790 | 146 |
+
+All four themes pass the structural, data, setting, locale, evidence, impact, canonical-order, and view queries in `notes/theme-graph-production-corpus-golden.json`.
+
+## Component-input diagnostic recall
+
+Two positive paths remain covered:
+
+- explicit Nazare contracts report `CONSTRAINT_REQUIRED_PROP_MISSING` when a required prop is absent;
+- plain Liquid reports `THEME_RENDER_ARGUMENT_MISSING` when a target directly uses an inferred required input and a strict majority of its resolved render sites pass that input while a minority omit it.
+
+Optional/default/unknown paths are separately covered for guards, `default` filters, fallback aliases, `case` selectors, forwarding-only inputs, ambient Shopify objects, and branch/loop scope.
+
+The production corpus currently has zero `THEME_RENDER_ARGUMENT_MISSING` warnings. This means no production call site has enough deterministic evidence under the conservative policy; it does not prove that the themes contain no missing arguments. Positive recall is guaranteed by synthetic fixtures, not measured against a labeled production defect corpus.
+
+## Requirements audit
+
+| Requirement | Status | Evidence / limitation |
+|---|---|---|
+| Theme structure | Supported | Templates, layouts, sections, section groups, snippets, blocks, settings, assets, and locales have canonical nodes and relationships. |
+| Shopify data usage | Supported | Object/property accesses are indexed; dynamic or ambiguous accesses remain unresolved. |
+| Component inputs | Supported, conservative | Render sites, arguments, origins, expected inputs, requirement state, and inconsistent signatures are represented. Plain-Liquid requiredness remains inference. |
+| Configuration | Supported | Schema definitions, reads, selected resource types, influence, ambiguity, and unresolved reads are represented. |
+| Pages as compositions | Supported | Page, layout, section-group, section-instance, and reusable section/component concepts are distinct. |
+| Storefront concepts | Supported, heuristic | Classifications include confidence, evidence, and uncertainty; coverage is intentionally non-exhaustive. |
+| Capabilities | Supported, heuristic | Source signals produce evidence-backed capability records independent of filenames. |
+| Impact analysis | Supported | Dependencies, dependents, affected pages, Shopify-object consumers, and unused-file candidates are queryable. |
+| Evidence | Supported | Important semantic edges and classifications retain source evidence and spans. |
+| Uncertainty | Supported | Dynamic, ambiguous, conflicting, incomplete, optional, and unknown states are retained rather than guessed. |
+| Plain Shopify themes | Supported | All four ordinary production themes inspect without AI, annotations, or theme configuration changes. |
+| Stable canonical graph | Supported | Canonical input-order tests, stable IDs, sorting checks, endpoint checks, and duplicate checks pass. |
+| Multiple views | Supported | Theme structure, Shopify data, storefront architecture, configuration, and change-impact views are emitted. |
+
+## Core-query coverage
+
+The production golden suite exercises:
+
+- renderers and dependencies;
+- dependent and affected pages;
+- Shopify property consumers;
+- settings and setting reads;
+- expected inputs and render arguments;
+- inconsistent render signatures;
+- classifications with evidence;
+- change-impact paths;
+- unused-file projection;
+- all five required views.
+
+## Remaining engineering work
+
+These are improvements, not blockers for architecture inspection:
+
+1. Run repeated benchmark samples and publish median/p95 values.
+2. Profile alkamind-old and ucan cold runs before considering parser workers.
+3. Add labeled real-world missing-argument defects to measure production recall.
+4. Expand classification and capability rules when product queries require broader recall.
+5. Improve dynamic Liquid resolution only where deterministic evidence permits it.

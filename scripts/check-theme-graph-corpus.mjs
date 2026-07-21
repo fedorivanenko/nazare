@@ -197,6 +197,15 @@ function checkGraph(slug, graph, expected) {
 			);
 		}
 	}
+	assert(
+		Array.isArray(graph.impact.unusedFiles),
+		"missing impact.unusedFiles array",
+	);
+	assertIncludes(
+		graph.impact.unusedFiles,
+		expected.requiredUnusedFile,
+		"unused-file projection",
+	);
 	for (const [code, maximum] of Object.entries(expected.issueMaximums)) {
 		const count = graph.issues.filter((issue) => issue.code === code).length;
 		assert(count <= maximum, `${code} count ${count} exceeds ${maximum}`);
