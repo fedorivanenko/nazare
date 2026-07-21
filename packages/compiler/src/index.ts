@@ -165,6 +165,7 @@ export type {
 	ThemeInputFile,
 	ThemeLocaleKeyRecord,
 	ThemeLocaleReferenceRecord,
+	ThemeLocaleTranslationRecord,
 	ThemePageRecord,
 	ThemeRenderArgumentRecord,
 	ThemeRenderSiteRecord,

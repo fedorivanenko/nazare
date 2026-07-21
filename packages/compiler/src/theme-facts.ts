@@ -327,8 +327,14 @@ export type ThemeBlockSettingRecord = {
 
 export type ThemeLocaleKeyRecord = {
 	id: string;
+	key: string;
+};
+
+export type ThemeLocaleTranslationRecord = {
+	id: string;
 	path: string;
 	key: string;
+	localeKeyId: string;
 	span?: SourceSpan;
 };
 
@@ -462,6 +468,7 @@ export interface ThemeSemanticModel {
 	blockInstances: ThemeBlockInstanceRecord[];
 	pages: ThemePageRecord[];
 	localeKeys: ThemeLocaleKeyRecord[];
+	localeTranslations: ThemeLocaleTranslationRecord[];
 	localeReferences: ThemeLocaleReferenceRecord[];
 	settingReads: ThemeSettingReadRecord[];
 	dataAccesses: ThemeDataAccessRecord[];
@@ -511,7 +518,7 @@ export type SemanticThemeGraphNode =
 	| { id: string; kind: "page"; name: string; path: string; pageType: string }
 	| { id: string; kind: "layout"; name: string; path: string }
 	| { id: string; kind: "locale"; name: string; path: string }
-	| { id: string; kind: "localeKey"; path: string; key: string }
+	| { id: string; kind: "localeKey"; key: string; translationPaths: string[] }
 	| { id: string; kind: "asset"; name: string; path: string }
 	| { id: string; kind: "sectionGroup"; name: string; path: string }
 	| { id: string; kind: "themeBlock"; name: string; path: string }

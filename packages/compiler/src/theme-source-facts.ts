@@ -173,12 +173,12 @@ export function collectSourceThemeFacts(
 	ast: ReturnType<typeof toLiquidHtmlAST>,
 ): ThemeFact[] {
 	const facts: ThemeFact[] = [];
-	const firstAssignmentOffsetByName = new Map<string, number>();
+	const localDefinitions = new Map<string, LocalDefinition[]>();
 	const guardedNames = new Set<string>();
 	const unguardedNames = new Set<string>();
 	const guardRangesByName = new Map<string, SourceRange[]>();
 	const localBindingRangesByName = new Map<string, SourceRange[]>();
-	const conditionalAssignmentRanges: SourceRange[] = [];
+	const lexicalScopeRanges: SourceRange[] = [];
 	const aliasBindings = new Map<string, AliasBinding[]>();
 	const freeReads: {
 		name: string;
@@ -189,6 +189,11 @@ export function collectSourceThemeFacts(
 	}[] = [];
 
 	walk(ast, (node) => {
+		if (node.type === NodeTypes.LiquidBranch) {
+			const range = (node as { position?: SourceRange }).position;
+			if (range) lexicalScopeRanges.push(range);
+			return;
+		}
 		if (node.type !== NodeTypes.LiquidTag) return;
 		const tag = node as LiquidHtmlNode & {
 			name?: unknown;
@@ -196,31 +201,43 @@ export function collectSourceThemeFacts(
 			position?: SourceRange;
 		};
 		if (tag.name === "if") registerIfGuardRanges(tag, guardRangesByName);
-		if (
-			tag.position &&
-			(tag.name === "if" ||
-				tag.name === "unless" ||
-				tag.name === "case" ||
-				tag.name === "for" ||
-				tag.name === "tablerow")
-		) {
-			conditionalAssignmentRanges.push(tag.position);
-		}
-		if ((tag.name === "for" || tag.name === "tablerow") && tag.position) {
-			registerLoopBindingRange(tag, tag.position, localBindingRangesByName);
+		if (tag.name === "for" || tag.name === "tablerow") {
+			registerLoopBindingRange(tag, localBindingRangesByName);
 		}
 	});
 
-	// Collect unconditional lookup aliases before reading expressions. This
-	// preserves property provenance through common `assign alias = product`
-	// patterns without guessing across conditional assignments.
+	// Collect definitions before reading expressions. A conditional definition
+	// is visible only after the definition and inside its exact branch range.
+	// This preserves local-variable and alias facts without pretending a value
+	// assigned in one branch exists in its siblings or after the block.
 	walk(ast, (node) => {
 		if (node.type !== NodeTypes.LiquidTag) return;
-		const tag = node as LiquidHtmlNode & { markup?: unknown };
+		const tag = node as LiquidHtmlNode & {
+			name?: unknown;
+			markup?: unknown;
+			position?: SourceRange;
+		};
+		if (tag.name === "capture" && tag.position) {
+			const capturedName = (tag.markup as PositionedLookup | undefined)?.name;
+			if (capturedName) {
+				addLocalDefinition(localDefinitions, capturedName, {
+					offset: tag.position.end,
+					range: innermostContainingRange(
+						tag.position.start,
+						lexicalScopeRanges,
+					),
+				});
+			}
+		}
 		visitLiquidExpressions(tag.markup, {
 			onAssign: (markup) => {
-				const offset = expressionStart(markup);
-				if (isOffsetWithinRanges(offset, conditionalAssignmentRanges)) return;
+				const assignmentStart = expressionStart(markup);
+				const offset = markup.position?.end ?? assignmentStart;
+				const range = innermostContainingRange(
+					assignmentStart,
+					lexicalScopeRanges,
+				);
+				addLocalDefinition(localDefinitions, markup.name, { offset, range });
 				const rawValue = markup.value as
 					| PositionedLookup
 					| { expression?: unknown }
@@ -234,11 +251,14 @@ export function collectSourceThemeFacts(
 				if (!value || value.type !== "VariableLookup") return;
 				aliasBindings.set(markup.name, [
 					...(aliasBindings.get(markup.name) ?? []),
-					{ offset, lookup: value },
+					{ offset, lookup: value, range },
 				]);
 			},
 		});
 	});
+	for (const definitions of localDefinitions.values()) {
+		definitions.sort((a, b) => a.offset - b.offset);
+	}
 	for (const bindings of aliasBindings.values()) {
 		bindings.sort((a, b) => a.offset - b.offset);
 	}
@@ -329,6 +349,9 @@ export function collectSourceThemeFacts(
 				...renderArgumentFacts(path, source, tag.markup, tag.position),
 			);
 		}
+		// Capture markup declares its destination; it is not a variable read.
+		// Child outputs are separate AST nodes and remain visited by walk().
+		if (tagName === "capture") return;
 
 		visitLiquidExpressions(tag.markup, {
 			onLookup: (lookup) => handleLookup(lookup, inCondition),
@@ -355,14 +378,6 @@ export function collectSourceThemeFacts(
 					});
 				}
 			},
-			onAssign: (markup) => {
-				const offset = expressionStart(markup);
-				if (isOffsetWithinRanges(offset, conditionalAssignmentRanges)) return;
-				const previous = firstAssignmentOffsetByName.get(markup.name);
-				if (previous === undefined || offset < previous) {
-					firstAssignmentOffsetByName.set(markup.name, offset);
-				}
-			},
 		});
 	});
 
@@ -374,8 +389,9 @@ export function collectSourceThemeFacts(
 			)
 		)
 			continue;
-		const assignmentOffset = firstAssignmentOffsetByName.get(read.name);
-		if (assignmentOffset !== undefined && assignmentOffset <= read.offset)
+		if (
+			hasVisibleDefinition(read.offset, localDefinitions.get(read.name) ?? [])
+		)
 			continue;
 		facts.push({
 			kind: "readsFreeVariable",
@@ -409,7 +425,8 @@ export function collectSourceThemeFacts(
 	return facts;
 }
 
-type AliasBinding = { offset: number; lookup: PositionedLookup };
+type LocalDefinition = { offset: number; range?: SourceRange };
+type AliasBinding = LocalDefinition & { lookup: PositionedLookup };
 
 function resolveAliasedLookup(
 	lookup: PositionedLookup,
@@ -421,7 +438,9 @@ function resolveAliasedLookup(
 	if (seen.has(lookup.name))
 		return { object: lookup.name, propertyPath: ownPath };
 	const candidates = (bindingsByName.get(lookup.name) ?? []).filter(
-		(binding) => binding.offset <= offset,
+		(binding) =>
+			binding.offset <= offset &&
+			(!binding.range || isOffsetWithinRange(offset, binding.range)),
 	);
 	const binding = candidates.at(-1);
 	if (!binding) return { object: lookup.name, propertyPath: ownPath };
@@ -444,21 +463,64 @@ function expressionStart(value: unknown): number {
 	return typeof start === "number" ? start : Number.POSITIVE_INFINITY;
 }
 
+function isOffsetWithinRange(offset: number, range: SourceRange): boolean {
+	return offset >= range.start && offset <= range.end;
+}
+
 function isOffsetWithinRanges(offset: number, ranges: SourceRange[]): boolean {
-	return ranges.some((range) => offset >= range.start && offset <= range.end);
+	return ranges.some((range) => isOffsetWithinRange(offset, range));
+}
+
+function innermostContainingRange(
+	offset: number,
+	ranges: SourceRange[],
+): SourceRange | undefined {
+	return ranges
+		.filter((range) => isOffsetWithinRange(offset, range))
+		.sort((a, b) => a.end - a.start - (b.end - b.start))[0];
+}
+
+function addLocalDefinition(
+	definitionsByName: Map<string, LocalDefinition[]>,
+	name: string,
+	definition: LocalDefinition,
+): void {
+	definitionsByName.set(name, [
+		...(definitionsByName.get(name) ?? []),
+		definition,
+	]);
+}
+
+function hasVisibleDefinition(
+	offset: number,
+	definitions: LocalDefinition[],
+): boolean {
+	return definitions.some(
+		(definition) =>
+			definition.offset <= offset &&
+			(!definition.range || isOffsetWithinRange(offset, definition.range)),
+	);
 }
 
 function registerLoopBindingRange(
-	tag: LiquidHtmlNode & { markup?: unknown },
-	range: SourceRange,
+	tag: LiquidHtmlNode & { markup?: unknown; children?: unknown[] },
 	localBindingRangesByName: Map<string, SourceRange[]>,
 ): void {
+	const bodyRange = tag.children
+		?.map(
+			(child) =>
+				child as { type?: unknown; name?: unknown; position?: SourceRange },
+		)
+		.find(
+			(child) => child.type === NodeTypes.LiquidBranch && child.name === null,
+		)?.position;
+	if (!bodyRange) return;
 	visitLiquidExpressions(tag.markup, {
 		onFor: (markup) => {
 			if (!markup.variableName) return;
 			localBindingRangesByName.set(markup.variableName, [
 				...(localBindingRangesByName.get(markup.variableName) ?? []),
-				range,
+				bodyRange,
 			]);
 		},
 	});

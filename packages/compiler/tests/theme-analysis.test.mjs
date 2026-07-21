@@ -289,6 +289,52 @@ test("theme input inference respects include and lexical scopes", () => {
 	);
 });
 
+test("branch-local assignments and captures are not inferred as inputs", () => {
+	const sameBranch = analyzeNazareTheme([
+		{
+			path: "snippets/image.liquid",
+			contents:
+				"{% if image %}{% assign width = image.width %}{% capture srcset %}{{ image | image_url }}{% endcapture %}{{ width }}{{ srcset }}{% endif %}",
+		},
+	]);
+	assert.deepEqual(
+		sameBranch.ir.expectedInputs.map((input) => input.name),
+		["image"],
+	);
+
+	const siblingBranch = analyzeNazareTheme([
+		{
+			path: "snippets/image.liquid",
+			contents:
+				"{% if image %}{% assign width = image.width %}{% else %}{{ width }}{% endif %}",
+		},
+	]);
+	assert.ok(
+		siblingBranch.ir.expectedInputs.some((input) => input.name === "width"),
+	);
+});
+
+test("conditional aliases preserve property flow only inside their branch", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "sections/main.liquid",
+			contents: `{% render 'price', card_product: product %}`,
+		},
+		{
+			path: "snippets/price.liquid",
+			contents:
+				"{% if card_product %}{% assign displayed = card_product %}{{ displayed.price }}{% endif %}",
+		},
+	]);
+	assert.ok(
+		analysis.ir.dataAccesses.some(
+			(access) =>
+				access.fromPath === "snippets/price.liquid" &&
+				access.expression === "product.price",
+		),
+	);
+});
+
 test("theme schema validation rejects malformed and duplicate definitions", () => {
 	assert.equal(
 		hasIssue(
@@ -400,6 +446,7 @@ test("theme source facts ignore non-Liquid regions and keep repeated references 
 
 	const repeated = analyzeNazareTheme([
 		{ path: "locales/en.json", contents: '{"key":"value"}' },
+		{ path: "locales/fr.json", contents: '{"key":"valeur"}' },
 		{
 			path: "snippets/repeated.liquid",
 			contents: "{{ 'key' | t }} {{ 'key' | t }}",
@@ -410,5 +457,13 @@ test("theme source facts ignore non-Liquid regions and keep repeated references 
 			(issue) => issue.code === "THEME_UNRESOLVED_LOCALE_KEY",
 		),
 		false,
+	);
+	assert.equal(repeated.ir.localeKeys.length, 1);
+	assert.equal(repeated.ir.localeTranslations.length, 2);
+	assert.deepEqual(
+		repeated.ir.localeReferences.map(
+			(reference) => reference.resolvedLocaleKeyIds,
+		),
+		[["locale-key:key"], ["locale-key:key"]],
 	);
 });
