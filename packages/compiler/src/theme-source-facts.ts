@@ -205,6 +205,7 @@ export function collectSourceThemeFacts(
 			registerLoopBindingRange(tag, localBindingRangesByName);
 		}
 	});
+	const lexicalScopeIndex = buildLexicalScopeIndex(lexicalScopeRanges);
 
 	// Collect definitions before reading expressions. A conditional definition
 	// is visible only after the definition and inside its exact branch range.
@@ -224,7 +225,7 @@ export function collectSourceThemeFacts(
 					offset: tag.position.end,
 					range: innermostContainingRange(
 						tag.position.start,
-						lexicalScopeRanges,
+						lexicalScopeIndex,
 					),
 				});
 			}
@@ -235,7 +236,7 @@ export function collectSourceThemeFacts(
 				const offset = markup.position?.end ?? assignmentStart;
 				const range = innermostContainingRange(
 					assignmentStart,
-					lexicalScopeRanges,
+					lexicalScopeIndex,
 				);
 				addLocalDefinition(localDefinitions, markup.name, { offset, range });
 				const rawValue = markup.value as
@@ -471,13 +472,56 @@ function isOffsetWithinRanges(offset: number, ranges: SourceRange[]): boolean {
 	return ranges.some((range) => isOffsetWithinRange(offset, range));
 }
 
+type LexicalScopeIndexEntry = {
+	range: SourceRange;
+	parentIndex?: number;
+};
+
+function buildLexicalScopeIndex(
+	ranges: SourceRange[],
+): LexicalScopeIndexEntry[] {
+	const entries = ranges
+		.map((range) => ({ range }))
+		.sort(
+			(a, b) => a.range.start - b.range.start || b.range.end - a.range.end,
+		) as LexicalScopeIndexEntry[];
+	const stack: number[] = [];
+	for (let index = 0; index < entries.length; index += 1) {
+		const range = entries[index]?.range;
+		if (!range) continue;
+		while (stack.length > 0) {
+			const parent = entries[stack.at(-1) ?? -1]?.range;
+			if (parent && range.end <= parent.end) break;
+			stack.pop();
+		}
+		if (stack.length > 0) entries[index].parentIndex = stack.at(-1);
+		stack.push(index);
+	}
+	return entries;
+}
+
 function innermostContainingRange(
 	offset: number,
-	ranges: SourceRange[],
+	index: LexicalScopeIndexEntry[],
 ): SourceRange | undefined {
-	return ranges
-		.filter((range) => isOffsetWithinRange(offset, range))
-		.sort((a, b) => a.end - a.start - (b.end - b.start))[0];
+	let low = 0;
+	let high = index.length;
+	while (low < high) {
+		const middle = Math.floor((low + high) / 2);
+		if ((index[middle]?.range.start ?? Number.POSITIVE_INFINITY) <= offset) {
+			low = middle + 1;
+		} else {
+			high = middle;
+		}
+	}
+	let candidateIndex = low - 1;
+	while (candidateIndex >= 0) {
+		const candidate = index[candidateIndex];
+		if (!candidate) return undefined;
+		if (isOffsetWithinRange(offset, candidate.range)) return candidate.range;
+		candidateIndex = candidate.parentIndex ?? -1;
+	}
+	return undefined;
 }
 
 function addLocalDefinition(
