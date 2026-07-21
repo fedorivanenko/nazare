@@ -374,6 +374,24 @@ test("branch-local assignments and captures are not inferred as inputs", () => {
 	);
 });
 
+test("default filters and guarded aliases infer optional inputs", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "snippets/defaults.liquid",
+			contents:
+				"{% assign guarded_local = guarded %}{% if guarded_local != blank %}{{ guarded_local }}{% endif %}{% assign default_local = defaulted | default: 'value' %}{{ default_local }}{% assign required_local = required %}{{ required_local }}",
+		},
+	]);
+	assert.deepEqual(
+		analysis.ir.expectedInputs.map((input) => [input.name, input.requirement]),
+		[
+			["defaulted", "optional"],
+			["guarded", "optional"],
+			["required", "required"],
+		],
+	);
+});
+
 test("conditional aliases preserve property flow only inside their branch", () => {
 	const analysis = analyzeNazareTheme([
 		{

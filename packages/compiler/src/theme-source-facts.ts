@@ -175,7 +175,9 @@ export function collectSourceThemeFacts(
 	const facts: ThemeFact[] = [];
 	const localDefinitions = new Map<string, LocalDefinition[]>();
 	const guardedNames = new Set<string>();
+	const defaultedNames = new Set<string>();
 	const unguardedNames = new Set<string>();
+	const safeInitializationOffsets = new Set<number>();
 	const guardRangesByName = new Map<string, SourceRange[]>();
 	const localBindingRangesByName = new Map<string, SourceRange[]>();
 	const lexicalScopeRanges: SourceRange[] = [];
@@ -258,10 +260,21 @@ export function collectSourceThemeFacts(
 								| PositionedLookup
 								| undefined);
 				if (!value || value.type !== "VariableLookup") return;
-				aliasBindings.set(markup.name, [
-					...(aliasBindings.get(markup.name) ?? []),
-					{ offset, lookup: value, range },
-				]);
+				if (value.position) safeInitializationOffsets.add(value.position.start);
+				const filters =
+					rawValue && (rawValue as { type?: unknown }).type === "LiquidVariable"
+						? ((rawValue as { filters?: unknown[] }).filters ?? [])
+						: [];
+				if (namesOfFilters(filters).includes("default")) {
+					defaultedNames.add(value.name);
+				}
+				// Filters transform the value; only a bare assignment is an alias.
+				if (filters.length === 0) {
+					aliasBindings.set(markup.name, [
+						...(aliasBindings.get(markup.name) ?? []),
+						{ offset, lookup: value, range },
+					]);
+				}
 			},
 		});
 		if (
@@ -321,8 +334,10 @@ export function collectSourceThemeFacts(
 				(guardRangesByName.get(lookup.name) ?? []).some(
 					(range) => position.start >= range.start && position.end <= range.end,
 				));
-		if (guarded) guardedNames.add(lookup.name);
-		else unguardedNames.add(lookup.name);
+		if (!position || !safeInitializationOffsets.has(position.start)) {
+			if (guarded) guardedNames.add(object);
+			else unguardedNames.add(object);
+		}
 		if (SHOPIFY_DATA_OBJECTS.has(object)) {
 			facts.push({
 				kind: "readsShopifyData",
@@ -430,8 +445,8 @@ export function collectSourceThemeFacts(
 			span: read.span,
 		});
 	}
-	for (const name of guardedNames) {
-		if (unguardedNames.has(name)) continue;
+	for (const name of new Set([...guardedNames, ...defaultedNames])) {
+		if (unguardedNames.has(name) && !defaultedNames.has(name)) continue;
 		facts.push({ kind: "guardsObject", fromPath: path, name });
 	}
 

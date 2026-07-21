@@ -307,7 +307,7 @@ function analyzeNormalizedThemeFiles(
 	return { ir, artifacts, issues: ir.issues };
 }
 
-const THEME_FACT_CACHE_REVISION = "theme-facts-v1";
+const THEME_FACT_CACHE_REVISION = "theme-facts-v2";
 
 function themeFileFingerprint(
 	file: ThemeInputFile,
