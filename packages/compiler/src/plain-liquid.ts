@@ -108,32 +108,26 @@ export function parsePlainLiquid(
 	let factsCollected = true;
 	const analysisSource = sourceForLiquidAnalysis(source);
 	try {
-		ast = toLiquidHtmlAST(analysisSource, {
-			mode: parseMode,
-			allowUnclosedDocumentNode: parseMode === "tolerant",
-		});
-	} catch (htmlError) {
-		try {
-			if (parseMode !== "tolerant" || analysisSource.length > 16_384) {
-				throw htmlError;
-			}
-			// Shopify themes commonly interleave HTML start/end tags across Liquid
-			// branches. Valid rendered HTML can therefore be invalid as one static
-			// HTML tree. Liquid-only fallback preserves tags, expressions, and exact
-			// offsets while intentionally dropping unreliable HTML structure. Cap
-			// fallback size: generated files make Liquid-only recovery disproportionately
-			// expensive and should use a future streaming extractor instead.
-			ast = toLiquidAST(analysisSource, {
+		if (parseMode === "tolerant") {
+			// Inspect needs Liquid semantics, not one hypothetical static HTML tree.
+			// Shopify themes commonly balance HTML across Liquid branches. Masking
+			// non-Liquid source avoids false HTML failures and makes parser work scale
+			// with Liquid syntax while preserving every source offset.
+			ast = toLiquidAST(sourceForLiquidOnlyAnalysis(analysisSource), {
 				mode: "tolerant",
 				allowUnclosedDocumentNode: true,
 			});
-			diagnostics.push(htmlStructureIgnored(file, htmlError));
-		} catch (error) {
-			factsCollected = false;
-			diagnostics.push(parseLiquidError(error, file));
-			diagnostics.push(plainLiquidFactsSkipped(file));
-			ast = emptyAst();
+		} else {
+			ast = toLiquidHtmlAST(analysisSource, {
+				mode: "strict",
+				allowUnclosedDocumentNode: false,
+			});
 		}
+	} catch (error) {
+		factsCollected = false;
+		diagnostics.push(parseLiquidError(error, file));
+		diagnostics.push(plainLiquidFactsSkipped(file));
+		ast = emptyAst();
 	}
 
 	const schema = factsCollected
@@ -185,6 +179,17 @@ function sourceForLiquidAnalysis(source: string): string {
 	);
 }
 
+function sourceForLiquidOnlyAnalysis(source: string): string {
+	let masked = blankNonLiquidCharacters(source);
+	for (const match of source.matchAll(
+		/{%-?\s*schema\s*-?%}[\s\S]*?{%-?\s*endschema\s*-?%}/gi,
+	)) {
+		const start = match.index ?? 0;
+		masked = `${masked.slice(0, start)}${match[0]}${masked.slice(start + match[0].length)}`;
+	}
+	return masked;
+}
+
 function blankNonLiquidCharacters(source: string): string {
 	let result = "";
 	let offset = 0;
@@ -195,17 +200,6 @@ function blankNonLiquidCharacters(source: string): string {
 		offset = index + match[0].length;
 	}
 	return result + source.slice(offset).replace(/[^\n\r]/g, " ");
-}
-
-function htmlStructureIgnored(file: string, error: unknown): Diagnostic {
-	const parsed = parseLiquidError(error, file);
-	return {
-		severity: "warning",
-		code: "PLAIN_LIQUID_HTML_STRUCTURE_IGNORED",
-		message: `${parsed.message}; recovered with Liquid-only parsing`,
-		phase: "parse",
-		span: parsed.span,
-	};
 }
 
 function plainLiquidFactsSkipped(file: string): Diagnostic {
