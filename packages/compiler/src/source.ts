@@ -46,7 +46,10 @@ export function offsetFromPosition(
 	const starts = lineStartsOf(source);
 	if (position.line < 1) return 0;
 	if (position.line > starts.length) return source.length;
-	return Math.min(starts[position.line - 1] + position.column - 1, source.length);
+	return Math.min(
+		starts[position.line - 1] + position.column - 1,
+		source.length,
+	);
 }
 
 export function lineColumnFromOffset(source: string, offset: number) {
