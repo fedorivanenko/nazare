@@ -304,16 +304,23 @@ Remaining warnings now concentrate in direct unguarded reads, large generated Zi
 
 ### Call-site-corroborated missing arguments
 
-A free-variable read is useful graph evidence, but Liquid accepting `nil` means it does not alone prove that every caller must pass an argument. Missing-argument diagnostics now require corpus corroboration: the target reads the inferred input without a source default, and a strict majority of resolved `render` calls pass it. Expected-input nodes remain in the graph even when call-site evidence is insufficient for a warning.
+A free-variable read is useful graph evidence, but Liquid accepting `nil` means it does not alone prove that every caller must pass an argument. Missing-argument diagnostics require corpus corroboration: the target directly reads the inferred input without an absence guard or fallback, and a strict majority of resolved `render` calls pass it. Expected-input nodes remain in the graph even when call-site evidence is insufficient for a warning.
 
-| Theme | Missing warnings after source inference | After call-site corroboration |
+Further precision rules now cover:
+
+- inputs used only to forward render arguments remain `unknown` without a downstream contract;
+- `case` selectors are guarded because `nil` safely reaches the fallback path;
+- `default` filters in outputs and arguments make their source optional;
+- aliases conditionally replaced when blank/null/empty are optional fallbacks.
+
+| Theme | Missing warnings after source inference | After corroboration and fallback analysis |
 |---|---:|---:|
-| alkamind-nazare | 218 | 8 |
+| alkamind-nazare | 218 | 0 |
 | alkamind-old | 501 | 0 |
-| climatic-health | 386 | 35 |
+| climatic-health | 386 | 0 |
 | ucan | 197 | 0 |
 
-This removes warnings for dominant optional conventions such as `icon.class`, `lazy-image.alt`, `lazy-image.crop`, `c-button.attributes`, and `c-img-srcset.responsive_image`. The remaining warnings identify minority call sites that differ from the target's dominant calling convention; they are inferred inconsistencies, not explicit Liquid contracts.
+This removes warnings for optional conventions such as `icon.class`, `lazy-image.alt`, `lazy-image.crop`, `c-button.attributes`, `c-img-srcset.responsive_image`, forwarded `c-media` controls, and fallback-backed `c-bg-video.poster_alt`. Inferred expected inputs and their evidence remain queryable; no production-corpus call site currently has enough deterministic evidence for a missing-input diagnostic.
 
 ### Expression walker coverage
 
@@ -415,21 +422,21 @@ Current live-theme run:
 
 | Theme | Nodes | Edges | Issues | Golden result |
 |---|---:|---:|---:|---|
-| alkamind-nazare | 2,666 | 6,040 | 90 | pass |
+| alkamind-nazare | 2,666 | 6,040 | 82 | pass |
 | alkamind-old | 9,382 | 20,086 | 714 | pass |
-| climatic-health | 2,561 | 5,747 | 147 | pass |
+| climatic-health | 2,561 | 5,747 | 112 | pass |
 | ucan | 4,258 | 8,790 | 146 | pass |
 
 Corpus roots can be supplied through `NAZARE_CORPUS_*` variables, `--project theme=path`, or precomputed graphs through `--graph theme=path`.
 
 ### Validation
 
-- 205 compiler tests pass;
+- 206 compiler tests pass;
 - all four production corpus golden checks pass;
 - Biome checks pass;
 - canonical input-order test remains green.
 
-Worker-based cold parser parallelism and manual precision scoring of the 43 remaining call-site-corroborated missing-input warnings remain unimplemented.
+Worker-based cold parser parallelism remains unimplemented. Missing-input corpus noise is eliminated; future positive diagnostics need explicit-contract or corpus fixtures to measure recall without weakening precision.
 
 ## Acceptance target
 
