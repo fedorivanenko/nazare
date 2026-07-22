@@ -12,6 +12,10 @@ import {
 	type DependencyResolver,
 } from "./resolver.js";
 import {
+	filterThemeCheckIssues,
+	parseThemeCheckPolicy,
+} from "./theme-check-policy.js";
+import {
 	partitionExcludedThemeFiles,
 	themeExclusionIssues,
 } from "./theme-exclusions.js";
@@ -319,7 +323,14 @@ function analyzeNormalizedThemeFiles(
 		root: options.root,
 		metafields: options.metafields,
 	});
-	return { ir, artifacts, issues: ir.issues };
+	const themeCheckPolicy = parseThemeCheckPolicy(options.themeCheck);
+	const policyIssues = themeCheckPolicy.issues;
+	const filteredIssues = filterThemeCheckIssues(
+		[...ir.issues, ...policyIssues],
+		themeCheckPolicy,
+	);
+	ir.issues = filteredIssues;
+	return { ir, artifacts, issues: filteredIssues };
 }
 
 function themeFileFingerprint(

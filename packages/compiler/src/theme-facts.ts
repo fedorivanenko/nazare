@@ -6,6 +6,7 @@ import type {
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
 import type { EmitResult } from "./emit.js";
+import type { ThemeCheckPolicyInput } from "./theme-check-policy.js";
 import type { ThemeFileKind } from "./theme-file-classifier.js";
 import type { ThemeMetafieldSnapshot } from "./theme-metafields.js";
 
@@ -39,6 +40,8 @@ export interface AnalyzeNazareThemeOptions {
 	exclude?: string[];
 	/** Store schema snapshot from Shopify CLI. Missing snapshot means unknown. */
 	metafields?: ThemeMetafieldSnapshot;
+	/** Shopify Theme Check configuration. */
+	themeCheck?: ThemeCheckPolicyInput;
 }
 
 export type InspectNazareThemeOptions = AnalyzeNazareThemeOptions;
