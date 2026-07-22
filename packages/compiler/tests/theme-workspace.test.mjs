@@ -211,6 +211,51 @@ test("metafield definitions inherit affected pages through theme dependencies", 
 	);
 });
 
+test("metafield parser does not infer arbitrary nested objects", () => {
+	const graph = inspectNazareTheme(
+		[
+			{
+				path: "snippets/card.liquid",
+				contents: "{{ product.metafields.custom.subtitle }}",
+			},
+		],
+		{
+			metafields: {
+				contents: JSON.stringify({
+					settings: { custom: { subtitle: { enabled: true } } },
+				}),
+			},
+		},
+	);
+	assert.equal(graph.metafields.consumedDefinitionIds.length, 0);
+	assert.equal(graph.metafields.brokenReadIds.length, 1);
+});
+
+test("global metafield reads keep owner unknown", () => {
+	const graph = inspectNazareTheme(
+		[
+			{
+				path: "snippets/card.liquid",
+				contents: "{{ metafields.custom.subtitle }}",
+			},
+		],
+		{
+			metafields: {
+				contents: JSON.stringify([
+					{ owner: "product", namespace: "custom", key: "subtitle" },
+				]),
+			},
+		},
+	);
+	assert.equal(graph.metafields.consumedDefinitionIds.length, 0);
+	assert.equal(
+		graph.nodes.some(
+			(node) => node.kind === "metafieldRead" && node.owner === "unknown",
+		),
+		true,
+	);
+});
+
 test("metafield parser accepts nested owner maps and normalizes owner types", () => {
 	const graph = inspectNazareTheme(
 		[

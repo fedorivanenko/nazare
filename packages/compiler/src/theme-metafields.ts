@@ -88,21 +88,24 @@ export function analyzeMetafields(
 			definition,
 		]),
 	);
-	const reads: ThemeMetafieldReadRecord[] = [];
+	const readsById = new Map<string, ThemeMetafieldReadRecord>();
 	for (const access of dataAccesses) {
 		const match = metafieldPath(access);
 		if (!match) continue;
-		const definition = byKey.get(
-			definitionKey(match.owner, match.namespace, match.key),
-		);
-		reads.push({
+		const definition =
+			match.owner === "unknown"
+				? undefined
+				: byKey.get(definitionKey(match.owner, match.namespace, match.key));
+		const read = {
 			id: `metafield-read:${access.id}`,
 			fromPath: access.fromPath,
 			...match,
 			definitionId: definition?.id,
 			dataAccessId: access.id,
-		});
+		};
+		readsById.set(read.id, read);
 	}
+	const reads = [...readsById.values()];
 	const issues: Diagnostic[] = reads
 		.filter((read) => snapshot && !read.definitionId)
 		.map((read) => ({
@@ -134,35 +137,79 @@ function metafieldPath(
 ): { owner: string; namespace: string; key: string } | undefined {
 	if (!access.propertyPath) return undefined;
 	const parts = access.propertyPath.split(".");
-	if (parts[0] !== "metafields" || !parts[1] || !parts[2]) return undefined;
-	return { owner: access.object, namespace: parts[1], key: parts[2] };
+	const offset = access.object === "metafields" ? 0 : 1;
+	if (access.object !== "metafields" && parts[0] !== "metafields")
+		return undefined;
+	if (!parts[offset] || !parts[offset + 1]) return undefined;
+	return {
+		owner: access.object === "metafields" ? "unknown" : access.object,
+		namespace: parts[offset],
+		key: parts[offset + 1],
+	};
 }
 
+const METAFIELD_CONTAINER_KEYS = new Set([
+	"data",
+	"definitions",
+	"metafieldDefinitions",
+	"metafields",
+]);
+const METAFIELD_OWNER_NAMES = new Set([
+	"article",
+	"blog",
+	"cart",
+	"collection",
+	"company",
+	"company_location",
+	"customer",
+	"draft_order",
+	"fulfillment_service",
+	"location",
+	"market",
+	"order",
+	"page",
+	"product",
+	"product_variant",
+	"shop",
+	"variant",
+]);
+
 function findDefinitionCandidates(value: unknown): Record<string, unknown>[] {
-	if (Array.isArray(value)) return value.filter(isRecord);
-	if (!isRecord(value)) return [];
-	for (const key of [
-		"definitions",
-		"metafields",
-		"metafieldDefinitions",
-		"data",
-	]) {
-		if (Array.isArray(value[key])) return value[key].filter(isRecord);
+	if (Array.isArray(value)) {
+		return value.flatMap((item) =>
+			isRecord(item) ? findDefinitionCandidates(item) : [],
+		);
 	}
-	const nested: Record<string, unknown>[] = [];
-	for (const [owner, namespaces] of Object.entries(value)) {
-		if (!isRecord(namespaces)) continue;
-		for (const [namespace, keys] of Object.entries(namespaces)) {
+	if (!isRecord(value)) return [];
+	if (
+		stringValue(value.namespace) &&
+		stringValue(value.key) &&
+		(value.owner || value.ownerType || value.resourceType)
+	) {
+		return [value];
+	}
+	const candidates: Record<string, unknown>[] = [];
+	for (const [key, child] of Object.entries(value)) {
+		if (METAFIELD_CONTAINER_KEYS.has(key)) {
+			candidates.push(...findDefinitionCandidates(child));
+			continue;
+		}
+		if (!METAFIELD_OWNER_NAMES.has(key.toLowerCase()) || !isRecord(child))
+			continue;
+		for (const [namespace, keys] of Object.entries(child)) {
 			if (!isRecord(keys)) continue;
-			for (const [key, definition] of Object.entries(keys)) {
+			for (const [metafieldKey, definition] of Object.entries(keys)) {
 				if (!isRecord(definition)) continue;
-				nested.push({ owner, namespace, key, ...definition });
+				candidates.push({
+					owner: key,
+					namespace,
+					key: metafieldKey,
+					...definition,
+				});
 			}
 		}
 	}
-	return nested.length > 0
-		? nested
-		: Object.values(value).flatMap((child) => findDefinitionCandidates(child));
+	return candidates;
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === "object" && !Array.isArray(value);
