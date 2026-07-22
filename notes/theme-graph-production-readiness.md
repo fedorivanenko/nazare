@@ -75,6 +75,33 @@ Optional/default/unknown paths are separately covered for guards, `default` filt
 
 The production corpus currently has zero `THEME_RENDER_ARGUMENT_MISSING` warnings. This means no production call site has enough deterministic evidence under the conservative policy; it does not prove that the themes contain no missing arguments. Positive recall is guaranteed by synthetic fixtures, not measured against a labeled production defect corpus.
 
+### Why zero, measured
+
+Re-running the corpus with the majority rule relaxed to "at least one sibling
+call passes the input" produced 570 warnings across the four themes, which
+collapse to 25 distinct (snippet, input) pairs — the count is inflated because
+the warning fires per call site, and one snippet alone (`icon` / `class` in
+alkamind-old) accounted for 324. Every root cause inspected was a false
+positive, in three families:
+
+1. a guard stored in a derived boolean (`if x != blank` → `assign flag = true`,
+   later `if flag`), which left the input inferred required;
+2. an input defaulted by `unless x != blank` → `assign x = fallback` rather
+   than by the `default` filter;
+3. genuinely optional decoration inputs read unguarded (`class`, `attributes`,
+   `padding`), where the source carries no evidence of optionality at all.
+
+Families 1 and 2 were inference defects and are fixed. Re-running the relaxed
+policy afterwards drops climatic-health from 46 warnings to 5 and ucan from 127
+to 70, while alkamind-nazare and alkamind-old are unchanged because their
+causes are all family 3. Corpus node, edge, and issue counts are unchanged; 25
+inputs moved from required to optional (579 to 554 across the corpus).
+
+The conclusion is that zero was not the majority rule being too strict. The
+majority rule was masking over-eager requiredness inference, and family 3 is
+irreducible from source evidence — it is the case explicit contracts exist to
+resolve. Relaxing the detection policy is therefore still the wrong trade.
+
 ## Requirements audit
 
 | Requirement | Status | Evidence / limitation |

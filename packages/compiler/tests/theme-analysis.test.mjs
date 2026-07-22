@@ -685,3 +685,67 @@ test("theme exclusion globs match segments, wildcards, and single characters", a
 	assert.equal(matchesThemeGlob("./snippets/a.liquid", "snippets/a.liquid"), true);
 	assert.equal(matchesThemeGlob("snippets/axliquid", "snippets/a.liquid"), false);
 });
+
+test("a guard stored in a derived boolean keeps the guarded input optional", () => {
+	// Themes test a value once and branch on the boolean afterwards. The later
+	// reads are guarded just as directly as `{% if image != blank %}` would be.
+	const contents = [
+		"{%- if responsive_image != blank -%}",
+		"{% assign has_image = true %}",
+		"{%- else -%}",
+		"{% assign has_image = false %}",
+		"{%- endif -%}",
+		"{%- if has_image == true -%}<img src=\"{{ responsive_image }}\">{%- endif -%}",
+	].join("");
+	const analysis = analyzeNazareTheme([
+		{ path: "snippets/c-img.liquid", contents },
+	]);
+	const input = analysis.ir.expectedInputs.find(
+		(candidate) => candidate.name === "responsive_image",
+	);
+
+	assert.equal(input?.requirement, "optional");
+});
+
+test("only boolean literals become guard proxies", () => {
+	// An ordinary assignment inside a conditional must never turn a later
+	// condition into a guard, or any assignment would launder a required input.
+	const contents = [
+		"{%- if img != blank -%}{% assign label = img.alt %}{%- endif -%}",
+		"{%- if label -%}<i>{{ img }}</i>{%- endif -%}",
+	].join("");
+	const analysis = analyzeNazareTheme([
+		{ path: "snippets/c-label.liquid", contents },
+	]);
+	const input = analysis.ir.expectedInputs.find(
+		(candidate) => candidate.name === "img",
+	);
+
+	assert.equal(input?.requirement, "required");
+});
+
+test("an input defaulted by unless-assign is optional without a prior alias", () => {
+	// `{% unless x != blank %}{% assign x = fallback %}{% endunless %}` states
+	// that the caller may omit x, exactly like the `default` filter does.
+	const contents =
+		'{%- unless alt != blank -%}{% assign alt = image.alt %}{%- endunless -%}<img alt="{{ alt }}">';
+	const analysis = analyzeNazareTheme([
+		{ path: "snippets/lazy-image.liquid", contents },
+	]);
+	const input = analysis.ir.expectedInputs.find(
+		(candidate) => candidate.name === "alt",
+	);
+
+	assert.equal(input?.requirement, "optional");
+});
+
+test("an unguarded, undefaulted input stays required", () => {
+	const analysis = analyzeNazareTheme([
+		{ path: "snippets/c-plain.liquid", contents: "<i>{{ card_title }}</i>" },
+	]);
+	const input = analysis.ir.expectedInputs.find(
+		(candidate) => candidate.name === "card_title",
+	);
+
+	assert.equal(input?.requirement, "required");
+});

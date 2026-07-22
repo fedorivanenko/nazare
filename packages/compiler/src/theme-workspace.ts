@@ -316,7 +316,13 @@ function analyzeNormalizedThemeFiles(
 	return { ir, artifacts, issues: ir.issues };
 }
 
-const THEME_FACT_CACHE_REVISION = "theme-facts-v6";
+/**
+ * Bump on every change to how facts are derived, not just to their shape. The
+ * cache keys on file contents, so an unbumped revision silently serves facts
+ * built by the previous compiler and a fix appears to do nothing on any theme
+ * with a warm cache.
+ */
+const THEME_FACT_CACHE_REVISION = "theme-facts-v7";
 
 function themeFileFingerprint(
 	file: ThemeInputFile,
