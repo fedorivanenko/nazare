@@ -536,3 +536,53 @@ test("cli: registry add/use stores project registry and add reads it", async () 
 		},
 	);
 });
+
+test("cli: inspect honors inspect.exclude and reports every excluded file", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+				inspect: { exclude: ["snippets/reploChunk.*.liquid"] },
+			}),
+			"sections/main.liquid": "{% render 'card' %}",
+			"snippets/card.liquid": "{{ product.title }}",
+			"snippets/reploChunk.abc.0.liquid": "<div>generated</div>",
+		},
+		async (cwd) => {
+			const result = await runCli(cwd, "inspect", "theme", ".", "--format", "json");
+			assert.equal(result.status, 0);
+			const graph = JSON.parse(result.stdout);
+
+			const excluded = graph.issues.filter(
+				(issue) => issue.code === "THEME_FILE_EXCLUDED",
+			);
+			assert.equal(excluded.length, 1);
+			assert.equal(excluded[0].span.file, "snippets/reploChunk.abc.0.liquid");
+			assert.equal(
+				graph.nodes.some((node) => node.id.includes("reploChunk")),
+				false,
+			);
+			assert.equal(
+				graph.nodes.some((node) => node.id.includes("snippets/card.liquid")),
+				true,
+			);
+		},
+	);
+});
+
+test("cli: inspect rejects a malformed inspect.exclude instead of ignoring it", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+				inspect: { exclude: "snippets/*.liquid" },
+			}),
+			"snippets/card.liquid": "{{ product.title }}",
+		},
+		async (cwd) => {
+			const result = await runCli(cwd, "inspect", "theme", ".", "--format", "json");
+			assert.equal(result.status, 1);
+			assert.match(result.stderr, /inspect\.exclude/);
+		},
+	);
+});

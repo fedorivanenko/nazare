@@ -19,6 +19,10 @@ import type {
 	ThemeInputFile,
 } from "./theme-facts.js";
 import {
+	partitionExcludedThemeFiles,
+	themeExclusionIssues,
+} from "./theme-exclusions.js";
+import {
 	classifyThemeFile,
 	isUnsafeThemePath,
 	normalizeThemePath,
@@ -49,10 +53,15 @@ export function analyzeNazareTheme(
 	options: AnalyzeNazareThemeOptions = {},
 ): ThemeAnalysis {
 	const normalized = normalizeInputFiles(files);
-	return analyzeNormalizedThemeFiles(normalized.files, normalized.byPath, {
+	const { analyzed, excluded } = partitionExcludedThemeFiles(
+		normalized.files,
+		options.exclude,
+	);
+	for (const exclusion of excluded) normalized.byPath.delete(exclusion.path);
+	return analyzeNormalizedThemeFiles(analyzed, normalized.byPath, {
 		...THEME_ANALYSIS_DEFAULTS,
 		...options,
-		initialIssues: normalized.issues,
+		initialIssues: [...normalized.issues, ...themeExclusionIssues(excluded)],
 	});
 }
 

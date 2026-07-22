@@ -594,3 +594,94 @@ test("theme source facts ignore non-Liquid regions and keep repeated references 
 		[["locale-key:key"], ["locale-key:key"]],
 	);
 });
+
+test("theme analysis excludes configured globs and reports every excluded file", () => {
+	const files = [
+		{ path: "snippets/card.liquid", contents: "{{ product.title }}" },
+		{
+			path: "snippets/reploChunk.abc.0.liquid",
+			contents: "<div>generated</div>",
+		},
+		{
+			path: "snippets/reploChunk.abc.1.liquid",
+			contents: "{{ product.price }}",
+		},
+	];
+
+	const analysis = analyzeNazareTheme(files, {
+		exclude: ["snippets/reploChunk.*.liquid"],
+	});
+	const excluded = analysis.issues.filter(
+		(issue) => issue.code === "THEME_FILE_EXCLUDED",
+	);
+
+	assert.equal(excluded.length, 2);
+	assert.deepEqual(
+		excluded.map((issue) => issue.span.file).sort(),
+		["snippets/reploChunk.abc.0.liquid", "snippets/reploChunk.abc.1.liquid"],
+	);
+	assert.equal(
+		excluded.every((issue) => issue.severity === "info"),
+		true,
+	);
+	assert.equal(
+		analysis.issues.some((issue) => issue.span?.file === "snippets/card.liquid" && issue.code === "THEME_FILE_EXCLUDED"),
+		false,
+	);
+});
+
+test("theme analysis keeps every file when no exclusions are configured", () => {
+	const files = [
+		{ path: "snippets/card.liquid", contents: "{{ product.title }}" },
+	];
+
+	assert.equal(hasIssue(files, "THEME_FILE_EXCLUDED"), false);
+	assert.equal(
+		analyzeNazareTheme(files, { exclude: [] }).issues.some(
+			(issue) => issue.code === "THEME_FILE_EXCLUDED",
+		),
+		false,
+	);
+});
+
+test("excluded files leave no nodes in the inspected graph", () => {
+	const files = [
+		{
+			path: "sections/main.liquid",
+			contents: "{% render 'reploChunk.abc.0' %}",
+		},
+		{ path: "snippets/reploChunk.abc.0.liquid", contents: "<div>x</div>" },
+	];
+
+	const graph = inspectNazareTheme(files, {
+		exclude: ["snippets/reploChunk.**"],
+	});
+
+	assert.equal(
+		graph.nodes.some((node) => node.id.includes("reploChunk.abc.0.liquid")),
+		false,
+	);
+	assert.equal(
+		graph.issues.some((issue) => issue.code === "THEME_FILE_EXCLUDED"),
+		true,
+	);
+});
+
+test("theme exclusion globs match segments, wildcards, and single characters", async () => {
+	const { matchesThemeGlob } = await import("../dist/index.js");
+
+	assert.equal(matchesThemeGlob("snippets/a.liquid", "snippets/*.liquid"), true);
+	assert.equal(
+		matchesThemeGlob("snippets/deep/a.liquid", "snippets/*.liquid"),
+		false,
+	);
+	assert.equal(
+		matchesThemeGlob("snippets/deep/a.liquid", "snippets/**/*.liquid"),
+		true,
+	);
+	assert.equal(matchesThemeGlob("snippets/a.liquid", "snippets/**/*.liquid"), true);
+	assert.equal(matchesThemeGlob("snippets/ab.liquid", "snippets/a?.liquid"), true);
+	assert.equal(matchesThemeGlob("snippets/a.liquid", "snippets/a?.liquid"), false);
+	assert.equal(matchesThemeGlob("./snippets/a.liquid", "snippets/a.liquid"), true);
+	assert.equal(matchesThemeGlob("snippets/axliquid", "snippets/a.liquid"), false);
+});

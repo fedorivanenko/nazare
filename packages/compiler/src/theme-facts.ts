@@ -30,6 +30,12 @@ export interface AnalyzeNazareThemeOptions {
 	plainLiquidParseMode?: "strict" | "tolerant";
 	/** Mutable per-file fact cache. Nazare components remain uncached. */
 	cache?: ThemeAnalysisCache;
+	/**
+	 * Theme-relative globs whose files are skipped entirely. Exclusion is a user
+	 * policy and is never inferred; every excluded file is reported as
+	 * THEME_FILE_EXCLUDED so the graph never omits a file silently.
+	 */
+	exclude?: string[];
 }
 
 export type InspectNazareThemeOptions = AnalyzeNazareThemeOptions;
