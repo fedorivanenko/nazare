@@ -18,6 +18,10 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Must precede any build: building regenerates the revision, which would
+      # hide a stale committed one.
+      - name: fact cache revision matches compiler source
+        run: pnpm -s check:fact-cache-revision
       - run: pnpm -s typecheck
       - run: pnpm dlx @biomejs/biome@2.4.14 check .
       - run: pnpm -s test:all

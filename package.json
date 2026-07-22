@@ -6,6 +6,7 @@
 	"packageManager": "pnpm@10.0.0",
 	"scripts": {
 		"typecheck": "tsc -b",
+		"check:fact-cache-revision": "node scripts/generate-fact-cache-revision.mjs --check",
 		"check:no-dist": "test -z \"$(git ls-files '*/dist/*')\"",
 		"test:compiler": "pnpm -s build && node --test --test-concurrency=32 packages/compiler/tests/*.test.mjs",
 		"test:corpus": "pnpm -s build && node scripts/check-theme-graph-corpus.mjs",
@@ -23,7 +24,7 @@
 		"test:cli:smoke": "pnpm -s build && node --test --test-concurrency=32 packages/cli-client/tests/cli.test.mjs",
 		"format": "biome format --write .",
 		"lint": "biome check .",
-		"build": "tsc -b"
+		"build": "node scripts/generate-fact-cache-revision.mjs && tsc -b"
 	},
 	"devDependencies": {
 		"@types/node": "^26.1.1",
