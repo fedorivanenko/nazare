@@ -324,6 +324,10 @@ function analyzeNormalizedThemeFiles(
 		metafields: options.metafields,
 	});
 	const themeCheckPolicy = parseThemeCheckPolicy(options.themeCheck);
+	ir.themeCheck = {
+		path: themeCheckPolicy.path,
+		ignoredChecks: themeCheckPolicy.ignoredChecks,
+	};
 	const policyIssues = themeCheckPolicy.issues;
 	const filteredIssues = filterThemeCheckIssues(
 		[...ir.issues, ...policyIssues],
