@@ -42,6 +42,10 @@ export interface InspectNazareThemeResult {
 	evidence: ThemeEvidenceRecord[];
 	impact: ThemeImpactSummary;
 	metafields: ThemeMetafieldQueries;
+	themeCheck: {
+		path: string;
+		ignoredChecks: string[];
+	};
 	views: ThemeGraphViews;
 	issues: Diagnostic[];
 }

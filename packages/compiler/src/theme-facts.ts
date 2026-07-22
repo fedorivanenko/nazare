@@ -543,6 +543,10 @@ export interface ThemeSemanticModel {
 		path: string;
 		pulledAt?: string;
 	};
+	themeCheck: {
+		path: string;
+		ignoredChecks: string[];
+	};
 	variableReads: ThemeVariableReadRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
 	expectedInputs: ThemeExpectedInputRecord[];

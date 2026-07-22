@@ -780,6 +780,7 @@ export function themeGraphFromModel(
 		evidence: model.evidence,
 		impact: impactSummary(model),
 		metafields: metafieldQueries(model),
+		themeCheck: model.themeCheck,
 		views,
 		issues: model.issues,
 	};
