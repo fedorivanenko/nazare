@@ -202,6 +202,10 @@ export {
 	type ThemeGraphSummary,
 } from "./theme-queries.js";
 export {
+	type ThemeGraphUpdate,
+	ThemeWorkspaceSession,
+} from "./theme-session.js";
+export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
 	inspectNazareTheme,
