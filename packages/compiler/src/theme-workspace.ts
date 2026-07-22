@@ -315,7 +315,10 @@ function analyzeNormalizedThemeFiles(
 		saveCacheEntry();
 	}
 
-	const ir = buildThemeSemanticModel(facts, issues, { root: options.root });
+	const ir = buildThemeSemanticModel(facts, issues, {
+		root: options.root,
+		metafields: options.metafields,
+	});
 	return { ir, artifacts, issues: ir.issues };
 }
 

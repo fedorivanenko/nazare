@@ -26,11 +26,15 @@ import type {
 } from "./theme-facts.js";
 import { inferCapabilities, inferClassifications } from "./theme-inference.js";
 import { CONTEXT_INPUT_OBJECTS } from "./theme-input-policy.js";
+import { analyzeMetafields } from "./theme-metafields.js";
 
 export function buildThemeSemanticModel(
 	facts: ThemeFact[],
 	issues: Diagnostic[],
-	options: { root?: string } = {},
+	options: {
+		root?: string;
+		metafields?: import("./theme-metafields.js").ThemeMetafieldSnapshot;
+	} = {},
 ): ThemeSemanticModel {
 	const files = new Map<string, ThemeFileRecord>();
 	const declarations: ThemeDeclaration[] = [];
@@ -451,6 +455,8 @@ export function buildThemeSemanticModel(
 			variableReads,
 		),
 	);
+	const metafields = analyzeMetafields(options.metafields, dataAccesses);
+	modelIssues.push(...metafields.issues);
 	const capabilities = inferCapabilities(dataAccesses, capabilitySignals);
 	const classifications = inferClassifications(capabilities, dataAccesses);
 	const evidence = evidenceRecords({
@@ -606,6 +612,13 @@ export function buildThemeSemanticModel(
 		dataAccesses: dedupeById(dataAccesses).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
+		metafieldDefinitions: metafields.definitions,
+		metafieldReads: metafields.reads,
+		metafieldSchema: {
+			state: options.metafields ? metafields.state : "unknown",
+			path: metafields.path,
+			pulledAt: metafields.pulledAt,
+		},
 		variableReads: dedupeById(variableReads).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),

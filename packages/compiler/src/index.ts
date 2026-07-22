@@ -169,6 +169,8 @@ export type {
 	ThemeLocaleKeyRecord,
 	ThemeLocaleReferenceRecord,
 	ThemeLocaleTranslationRecord,
+	ThemeMetafieldDefinitionRecord,
+	ThemeMetafieldReadRecord,
 	ThemePageRecord,
 	ThemeRenderArgumentRecord,
 	ThemeRenderSiteRecord,
@@ -176,6 +178,12 @@ export type {
 	ThemeSemanticModel,
 	ThemeSettingReadRecord,
 } from "./theme-facts.js";
+export {
+	analyzeMetafields,
+	metafieldDefinitionId,
+	type ThemeMetafieldAnalysis,
+	type ThemeMetafieldSnapshot,
+} from "./theme-metafields.js";
 export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
