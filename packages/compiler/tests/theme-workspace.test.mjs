@@ -7,10 +7,30 @@ import {
 	getThemeNode,
 	inspectNazareTheme,
 	summarizeThemeGraph,
+	ThemeWorkspaceSession,
 } from "../dist/index.js";
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("workspace session updates graph with stable revisions and deltas", () => {
+	const session = new ThemeWorkspaceSession([
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const first = session.updateFile({
+		path: "snippets/card.liquid",
+		contents: "Updated card",
+	});
+	assert.equal(first.revision, 1);
+	assert.deepEqual(first.changedPaths, ["snippets/card.liquid"]);
+	assert.deepEqual(first.addedNodeIds, []);
+	assert.deepEqual(first.removedNodeIds, []);
+	assert.deepEqual(first.changedNodeIds, []);
+	assert.deepEqual(first.changedEdgeIds, []);
+	const removed = session.removeFile("snippets/card.liquid");
+	assert.equal(removed.revision, 2);
+	assert.ok(removed.removedNodeIds.includes("file:snippets/card.liquid"));
+});
 
 test("theme query API reads canonical graph and impact indexes", () => {
 	const graph = inspectNazareTheme([
