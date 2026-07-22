@@ -149,6 +149,9 @@ test("metafield snapshot resolves reads and reports missing definitions", () => 
 		graph.edges.some((edge) => edge.kind === "missingMetafieldDefinition"),
 		true,
 	);
+	assert.equal(graph.metafields.consumedDefinitionIds.length, 1);
+	assert.equal(graph.metafields.brokenReadIds.length, 1);
+	assert.equal(graph.metafields.unconsumedDefinitionIds.length, 0);
 });
 
 test("missing metafield snapshot keeps schema state unknown", () => {
@@ -168,6 +171,8 @@ test("missing metafield snapshot keeps schema state unknown", () => {
 		),
 		true,
 	);
+	assert.equal(graph.metafields.state, "unknown");
+	assert.deepEqual(graph.metafields.unconsumedDefinitionIds, []);
 });
 
 test("buildNazareThemeWorkspace reports invalid file scopes", () => {
