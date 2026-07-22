@@ -334,21 +334,38 @@ function analyzeNormalizedThemeFiles(
 		saveCacheEntry();
 	}
 
+	const themeCheckPolicy = parseThemeCheckPolicy(options.themeCheck);
+	const modelFingerprint = JSON.stringify({
+		root: options.root,
+		facts,
+		issues,
+		metafields: options.metafields,
+		themeCheck: themeCheckPolicy,
+	});
+	if (options.memo?.fingerprint === modelFingerprint) {
+		return {
+			ir: options.memo.model,
+			artifacts,
+			issues: options.memo.model.issues,
+		};
+	}
 	const ir = buildThemeSemanticModel(facts, issues, {
 		root: options.root,
 		metafields: options.metafields,
 	});
-	const themeCheckPolicy = parseThemeCheckPolicy(options.themeCheck);
 	ir.themeCheck = {
 		path: themeCheckPolicy.path,
 		ignoredChecks: themeCheckPolicy.ignoredChecks,
 	};
-	const policyIssues = themeCheckPolicy.issues;
 	const filteredIssues = filterThemeCheckIssues(
-		[...ir.issues, ...policyIssues],
+		[...ir.issues, ...themeCheckPolicy.issues],
 		themeCheckPolicy,
 	);
 	ir.issues = filteredIssues;
+	if (options.memo) {
+		options.memo.fingerprint = modelFingerprint;
+		options.memo.model = ir;
+	}
 	return { ir, artifacts, issues: filteredIssues };
 }
 

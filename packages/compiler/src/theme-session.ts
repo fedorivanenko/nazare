@@ -2,6 +2,7 @@ import type {
 	InspectNazareThemeOptions,
 	InspectNazareThemeResult,
 	ThemeAnalysisCache,
+	ThemeAnalysisMemo,
 	ThemeInputFile,
 } from "./theme-facts.js";
 import { inspectNazareTheme } from "./theme-workspace.js";
@@ -24,6 +25,7 @@ export class ThemeWorkspaceSession {
 	private readonly filesByPath = new Map<string, ThemeInputFile>();
 	private readonly options: InspectNazareThemeOptions;
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
+	private readonly memo = {} as ThemeAnalysisMemo;
 	private graph: InspectNazareThemeResult;
 	private externalFingerprint: string;
 	private revision = 0;
@@ -32,7 +34,7 @@ export class ThemeWorkspaceSession {
 		files: ThemeInputFile[],
 		options: InspectNazareThemeOptions = {},
 	) {
-		this.options = { ...options, cache: this.cache };
+		this.options = { ...options, cache: this.cache, memo: this.memo };
 		for (const file of files) this.filesByPath.set(file.path, file);
 		this.graph = inspectNazareTheme(this.files(), this.options);
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
