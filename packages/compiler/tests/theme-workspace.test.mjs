@@ -121,6 +121,19 @@ test("theme check ignore policy does not suppress unrelated Inspect findings", (
 	);
 });
 
+test("unsupported theme check policy keys are reported", () => {
+	const result = inspectNazareTheme(
+		[{ path: "sections/main.liquid", contents: "{% render 'missing' %}" }],
+		{ themeCheck: { contents: "severity: warning\n" } },
+	);
+	assert.equal(
+		result.issues.some(
+			(issue) => issue.code === "THEME_CHECK_CONFIG_UNSUPPORTED",
+		),
+		true,
+	);
+});
+
 test("malformed theme check policy is reported", () => {
 	const result = inspectNazareTheme(
 		[{ path: "sections/main.liquid", contents: "{% render 'missing' %}" }],
