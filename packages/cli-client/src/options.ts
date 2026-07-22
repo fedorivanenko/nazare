@@ -117,6 +117,7 @@ export function printHelp(output: Output = console): void {
   nazare build [source-root|file]   source root from arg or nazare.theme.json build.sourceRoot
                                     --pull reconciles against a live theme first
   nazare inspect theme [dir]        inspect a theme and print semantic graph JSON (dir defaults to build.sourceRoot)
+  nazare graph-server [dir]         serve graph queries over newline-delimited JSON stdio
   nazare add <@scope/name>          copy a component + deps into the source root
   nazare update [@scope/name]       re-fetch latest; all installed if omitted
   nazare diff <@scope/name>         show registry update vs local installed files
