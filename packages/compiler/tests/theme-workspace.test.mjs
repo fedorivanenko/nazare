@@ -8,12 +8,31 @@ import {
 	getThemeNode,
 	inspectNazareTheme,
 	summarizeThemeGraph,
+	ThemeBuildSession,
 	ThemeWorkspaceSession,
 	themeGraphToDot,
 } from "../dist/index.js";
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("build session reports emitted output deltas", () => {
+	const session = new ThemeBuildSession([
+		{ path: "card.nz.liquid", contents: "<span>Card</span>" },
+	]);
+	const unchanged = session.updateFile({
+		path: "card.nz.liquid",
+		contents: "<span>Card</span>",
+	});
+	assert.equal(unchanged.revision, 0);
+	const changed = session.updateFile({
+		path: "card.nz.liquid",
+		contents: "<span>Updated</span>",
+	});
+	assert.equal(changed.revision, 1);
+	assert.deepEqual(changed.changedPaths, ["card.nz.liquid"]);
+	assert.ok(changed.changedOutputPaths.length > 0);
+});
 
 test("semantic model memo reuses unchanged resolved models", () => {
 	const memo = {};
