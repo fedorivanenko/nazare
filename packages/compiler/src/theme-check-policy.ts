@@ -43,8 +43,33 @@ export function parseThemeCheckPolicy(
 			);
 			continue;
 		}
-		if (/^[A-Za-z][\w-]*\s*:/.test(line) && !/^ignore\s*:/.test(line)) {
-			continue;
+		if (/^ignore\s*:/.test(line)) {
+			return {
+				path,
+				ignoredChecks: [],
+				issues: [
+					{
+						severity: "warning",
+						code: "THEME_CHECK_CONFIG_INVALID",
+						message: `Invalid ${path} ignore value near line ${index + 1}`,
+						phase: "parse",
+					},
+				],
+			};
+		}
+		if (/^[A-Za-z][\w-]*\s*:/.test(line)) {
+			return {
+				path,
+				ignoredChecks: [],
+				issues: [
+					{
+						severity: "warning",
+						code: "THEME_CHECK_CONFIG_UNSUPPORTED",
+						message: `Unsupported ${path} key near line ${index + 1}; only "ignore" is consumed`,
+						phase: "parse",
+					},
+				],
+			};
 		}
 		return {
 			path,
