@@ -9,6 +9,7 @@ import {
 	getThemeDependents,
 	getThemeNode,
 	summarizeThemeGraph,
+	ThemeBuildSession,
 	type ThemeInputFile,
 	ThemeWorkspaceSession,
 } from "@nazare/compiler";
@@ -19,6 +20,7 @@ export async function serveThemeGraph(
 	output: Writable,
 ): Promise<void> {
 	let session = await loadSession(root);
+	let buildSession = await loadBuildSession(root);
 	let stopWatching: (() => void) | undefined;
 	const readline = createInterface({ input, crlfDelay: Infinity });
 	for await (const line of readline) {
@@ -31,6 +33,10 @@ export async function serveThemeGraph(
 				() => session,
 				(next) => {
 					session = next;
+				},
+				() => buildSession,
+				(next) => {
+					buildSession = next;
 				},
 				(next) => {
 					stopWatching?.();
@@ -64,6 +70,8 @@ async function handleRequest(
 	root: string,
 	getSession: () => ThemeWorkspaceSession,
 	setSession: (session: ThemeWorkspaceSession) => void,
+	getBuildSession: () => ThemeBuildSession,
+	setBuildSession: (session: ThemeBuildSession) => void,
 	setWatcher: (stop: () => void) => void,
 	notify: (update: unknown) => void,
 ): Promise<unknown> {
@@ -83,6 +91,8 @@ async function handleRequest(
 			root,
 			getSession,
 			setSession,
+			getBuildSession,
+			setBuildSession,
 			setWatcher,
 			notify,
 		);
@@ -108,23 +118,38 @@ async function handleRequest(
 				"dependencies",
 				"dependents",
 				"affectedPages",
+				"build",
+				"buildUpdate",
 			],
 		};
 	}
 	if (request.method === "reload" || request.method === "inspect") {
 		const session = await loadSession(root);
 		setSession(session);
+		setBuildSession(await loadBuildSession(root));
 		return session.getGraph();
 	}
 	const session = getSession();
+	if (request.method === "build") return getBuildSession().getBuild();
 	if (request.method === "updateFile") {
-		return session.updateFile(requiredFile(request.params));
+		const file = requiredFile(request.params);
+		const graphUpdate = session.updateFile(file);
+		getBuildSession().updateFile(file);
+		return graphUpdate;
+	}
+	if (request.method === "buildUpdate") {
+		const file = requiredFile(request.params);
+		session.updateFile(file);
+		return getBuildSession().updateFile(file);
 	}
 	if (request.method === "removeFile") {
-		return session.removeFile(requiredString(request.params, "path"));
+		const path = requiredString(request.params, "path");
+		const graphUpdate = session.removeFile(path);
+		getBuildSession().removeFile(path);
+		return graphUpdate;
 	}
 	if (request.method === "watch") {
-		setWatcher(startWatcher(root, getSession, notify));
+		setWatcher(startWatcher(root, getSession, getBuildSession, notify));
 		return { watching: true };
 	}
 	if (request.method === "unwatch") {
@@ -146,6 +171,7 @@ async function handleRequest(
 function startWatcher(
 	root: string,
 	getSession: () => ThemeWorkspaceSession,
+	getBuildSession: () => ThemeBuildSession,
 	notify: (update: unknown) => void,
 ): () => void {
 	let pending = Promise.resolve();
@@ -161,15 +187,24 @@ function startWatcher(
 					if (isThemeFile(relativePath)) {
 						try {
 							const contents = await readFile(join(root, relativePath), "utf8");
+							const file = { path: relativePath, contents };
 							notify({
 								method: "graph/update",
-								params: session.updateFile({ path: relativePath, contents }),
+								params: session.updateFile(file),
+							});
+							notify({
+								method: "build/update",
+								params: getBuildSession().updateFile(file),
 							});
 						} catch (error) {
 							if (isNotFound(error)) {
 								notify({
 									method: "graph/update",
 									params: session.removeFile(relativePath),
+								});
+								notify({
+									method: "build/update",
+									params: getBuildSession().removeFile(relativePath),
 								});
 								return;
 							}
@@ -215,6 +250,10 @@ async function loadSession(root: string): Promise<ThemeWorkspaceSession> {
 	const metafields = await optionalFile(root, ".shopify/metafields.json");
 	const themeCheck = await optionalFile(root, ".theme-check.yml");
 	return new ThemeWorkspaceSession(files, { metafields, themeCheck });
+}
+
+async function loadBuildSession(root: string): Promise<ThemeBuildSession> {
+	return new ThemeBuildSession(await collectThemeFiles(root));
 }
 
 async function collectThemeFiles(
