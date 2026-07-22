@@ -50,8 +50,18 @@ test("workspace session updates graph with stable revisions and deltas", () => {
 	});
 	assert.equal(external.revision, 1);
 	assert.deepEqual(external.changedPaths, []);
+	const policyAdded = session.updateExternalArtifacts({
+		metafields: undefined,
+		themeCheck: { path: ".theme-check.yml", contents: "ignore: []" },
+	});
+	assert.deepEqual(policyAdded.changedPaths, [".theme-check.yml"]);
+	const policyRemoved = session.updateExternalArtifacts({
+		metafields: undefined,
+		themeCheck: undefined,
+	});
+	assert.deepEqual(policyRemoved.changedPaths, [".theme-check.yml"]);
 	const removed = session.removeFile("snippets/card.liquid");
-	assert.equal(removed.revision, 2);
+	assert.equal(removed.revision, 4);
 	assert.ok(removed.removedNodeIds.includes("file:snippets/card.liquid"));
 });
 
