@@ -13,6 +13,7 @@ import {
 } from "@nazare/compiler";
 import { registryFromEnv } from "@nazare/registry";
 import { runThemeBuild } from "./build-command.js";
+import { serveThemeGraph } from "./graph-server.js";
 import { diffComponent, installComponent, updateAll } from "./install.js";
 import { type CliOptions, parseCliOptions, printHelp } from "./options.js";
 import type { Output } from "./output.js";
@@ -60,6 +61,15 @@ export async function main(
 		// component into one theme output. It runs before the single-file setup
 		// below because it targets a directory (from the arg or nazare.theme.json
 		// build.sourceRoot) rather than one entry file.
+		if (command === "graph-server") {
+			await serveThemeGraph(
+				resolve(projectRoot, file ?? "."),
+				process.stdin,
+				process.stdout,
+			);
+			return 0;
+		}
+
 		if (command === "build") {
 			return await runThemeBuild(projectRoot, file, cliOptions, output);
 		}
