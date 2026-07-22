@@ -11,6 +11,10 @@ import {
 	createDependencyResolver,
 	type DependencyResolver,
 } from "./resolver.js";
+import {
+	partitionExcludedThemeFiles,
+	themeExclusionIssues,
+} from "./theme-exclusions.js";
 import type {
 	AnalyzeNazareThemeOptions,
 	BuildNazareThemeWorkspaceOptions,
@@ -21,10 +25,6 @@ import type {
 	ThemeFact,
 	ThemeInputFile,
 } from "./theme-facts.js";
-import {
-	partitionExcludedThemeFiles,
-	themeExclusionIssues,
-} from "./theme-exclusions.js";
 import {
 	classifyThemeFile,
 	isUnsafeThemePath,
@@ -318,7 +318,6 @@ function analyzeNormalizedThemeFiles(
 	const ir = buildThemeSemanticModel(facts, issues, { root: options.root });
 	return { ir, artifacts, issues: ir.issues };
 }
-
 
 function themeFileFingerprint(
 	file: ThemeInputFile,
