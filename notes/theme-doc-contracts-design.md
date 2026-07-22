@@ -76,9 +76,19 @@ different actionability, so each gets its own code:
 
 | Code | Fires when | Severity | Why it matters |
 |---|---|---|---|
-| `THEME_DOC_PARAM_UNGUARDED` | declared optional, but every read is unguarded and undefaulted | warning | A caller that legitimately omits the input hits a nil read. This is a real runtime-defect class the graph could not previously name. |
-| `THEME_DOC_PARAM_UNDECLARED` | a file with a doc block has an inferred input absent from it | info | Doc incompleteness. 13 instances in the corpus. |
-| `THEME_DOC_PARAM_UNUSED` | a declared param is never read in the file | info | Doc rot, usually a rename. 1 instance in the corpus. |
+| `THEME_DOC_PARAM_UNGUARDED` | declared optional, but no read is guarded or defaulted | info | The declaration and the source describe the interface differently. 16 instances. |
+| `THEME_DOC_PARAM_UNDECLARED` | a file with a doc block has an inferred input absent from it | info | Doc incompleteness. 13 instances. |
+| `THEME_DOC_PARAM_UNUSED` | a declared param is never read in the file | info | Doc rot, usually a rename. 1 instance. |
+
+**Correction.** An earlier draft of this design made
+`THEME_DOC_PARAM_UNGUARDED` a warning, on the reasoning that a caller omitting
+the input would hit a nil read. That was wrong. Liquid renders an absent
+variable as empty and does not raise, so `class='{{ item_class }}'` with
+`item_class` omitted renders `class=''` — which is exactly how an optional
+class hook is meant to be written. Implementing it produced 16 findings on
+alkamind-nazare, all of them correct code. All three codes are therefore
+informational: they report that two descriptions of one interface differ, which
+is worth a human's attention and is not a defect.
 
 Deliberately **not** a diagnostic: declared required while inference says
 optional or unknown. Inference is conservative by design, so its silence is
@@ -101,8 +111,14 @@ output, and would rot unnoticed.
 
 1. **Extract and report.** Parse `@param` into facts, add provenance, let
    declarations win, close the ambient-global case. Ship the three diagnostics.
+   *Done.*
 2. **Harness.** Agreement script plus committed baseline; wire into the corpus
-   check.
+   check. *Done —* `scripts/check-doc-contract-agreement.mjs`, baseline in
+   `notes/doc-contract-agreement.json`, and it runs inside the corpus check.
+   The measured baseline is **81 of 131 (61.8%)**, lower than the 66% quoted
+   above because that earlier figure scored declared-optional-vs-inferred-
+   unknown as agreement; the harness counts it as a disagreement, which is the
+   stricter and more useful reading.
 3. **Types.** `@param {product}`, `{image}`, `{boolean}` and friends feed the
    type layer, so `product.price` inside a snippet resolves as a Shopify data
    access through a declared parameter rather than an ambient guess. The corpus

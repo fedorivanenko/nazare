@@ -237,6 +237,9 @@ test("ambient Shopify context remains unknown rather than required", () => {
 			name: "product",
 			required: false,
 			requirement: "unknown",
+			provenance: "inferred",
+			inferredRequirement: "unknown",
+			declaredType: undefined,
 			origin: "ambientShopifyContext",
 			propertyPaths: ["price"],
 			evidenceIds: ["data-access:snippets/price.liquid:product.price:1:4-1:17"],
@@ -748,4 +751,91 @@ test("an unguarded, undefaulted input stays required", () => {
 	);
 
 	assert.equal(input?.requirement, "required");
+});
+
+const DOCUMENTED_CARD = [
+	"{% doc %}",
+	"  @param {product} product - The product",
+	"  @param {string} [class] - Extra classes",
+	"  @param {string} [ghost] - Never read",
+	"{% enddoc %}",
+	"<div class='{{ class }}'>{{ product.title }}{{ undocumented_input }}</div>",
+].join("\n");
+
+test("a declared @param overrides inferred requiredness and records both", () => {
+	const analysis = analyzeNazareTheme([
+		{ path: "snippets/c-card.liquid", contents: DOCUMENTED_CARD },
+	]);
+	const byName = new Map(
+		analysis.ir.expectedInputs.map((input) => [input.name, input]),
+	);
+
+	// `product` is a Liquid global, so inference can only call it unknown; the
+	// author declaring it a parameter is what makes it required.
+	assert.equal(byName.get("product")?.requirement, "required");
+	assert.equal(byName.get("product")?.provenance, "declared");
+	assert.equal(byName.get("product")?.inferredRequirement, "unknown");
+	assert.equal(byName.get("product")?.declaredType, "product");
+
+	// An unguarded read would infer required; the declaration says otherwise.
+	assert.equal(byName.get("class")?.requirement, "optional");
+	assert.equal(byName.get("class")?.provenance, "declared");
+	assert.equal(byName.get("class")?.inferredRequirement, "required");
+
+	// An undeclared input keeps inferring, and says so.
+	assert.equal(byName.get("undocumented_input")?.provenance, "inferred");
+});
+
+test("a declared param with no read is still part of the interface", () => {
+	const analysis = analyzeNazareTheme([
+		{ path: "snippets/c-card.liquid", contents: DOCUMENTED_CARD },
+	]);
+	const ghost = analysis.ir.expectedInputs.find(
+		(input) => input.name === "ghost",
+	);
+
+	assert.equal(ghost?.origin, "docParam");
+	assert.equal(ghost?.requirement, "optional");
+	assert.ok(ghost?.evidenceIds.length > 0, "declared inputs cite their doc span");
+});
+
+test("doc contract disagreements are reported as information, not defects", () => {
+	const analysis = analyzeNazareTheme([
+		{ path: "snippets/c-card.liquid", contents: DOCUMENTED_CARD },
+	]);
+	const codes = analysis.issues
+		.filter((issue) => issue.code.startsWith("THEME_DOC_"))
+		.map((issue) => `${issue.code}:${issue.severity}`)
+		.sort();
+
+	assert.deepEqual(codes, [
+		"THEME_DOC_PARAM_UNDECLARED:info",
+		"THEME_DOC_PARAM_UNGUARDED:info",
+		"THEME_DOC_PARAM_UNUSED:info",
+	]);
+	// Liquid renders an absent variable as empty rather than raising, so none of
+	// these may be a warning: an unguarded optional read is a valid idiom.
+	assert.equal(
+		analysis.issues.some(
+			(issue) =>
+				issue.code.startsWith("THEME_DOC_") && issue.severity !== "info",
+		),
+		false,
+	);
+});
+
+test("undocumented files are unaffected by doc contracts", () => {
+	const analysis = analyzeNazareTheme([
+		{ path: "snippets/c-plain.liquid", contents: "<i>{{ card_title }}</i>" },
+	]);
+	const input = analysis.ir.expectedInputs.find(
+		(candidate) => candidate.name === "card_title",
+	);
+
+	assert.equal(input?.provenance, "inferred");
+	assert.equal(input?.requirement, "required");
+	assert.equal(
+		analysis.issues.some((issue) => issue.code.startsWith("THEME_DOC_")),
+		false,
+	);
 });

@@ -322,7 +322,7 @@ function analyzeNormalizedThemeFiles(
  * built by the previous compiler and a fix appears to do nothing on any theme
  * with a warm cache.
  */
-const THEME_FACT_CACHE_REVISION = "theme-facts-v7";
+const THEME_FACT_CACHE_REVISION = "theme-facts-v8";
 
 function themeFileFingerprint(
 	file: ThemeInputFile,

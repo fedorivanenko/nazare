@@ -193,6 +193,10 @@ export function collectSourceThemeFacts(
 	}[] = [];
 
 	walk(ast, (node) => {
+		if (node.type === NodeTypes.LiquidDocParamNode) {
+			facts.push(docParamFact(path, source, node));
+			return;
+		}
 		if (node.type === NodeTypes.LiquidBranch) {
 			const branch = node as { markup?: unknown; position?: SourceRange };
 			if (branch.position) {
@@ -727,6 +731,34 @@ function registerLoopBindingRange(
 			]);
 		},
 	});
+}
+
+/**
+ * `@param {type} [name] - description` as parsed by the Liquid parser. The
+ * bracket convention is already resolved into `required`, so nothing here
+ * interprets comment text.
+ */
+function docParamFact(
+	path: string,
+	source: string,
+	node: LiquidHtmlNode,
+): ThemeFact {
+	const param = node as {
+		paramName: { value: string };
+		paramType?: { value?: string } | null;
+		paramDescription?: { value?: string } | null;
+		required?: boolean;
+		position?: SourceRange;
+	};
+	return {
+		kind: "declaresDocParam",
+		path,
+		name: param.paramName.value,
+		required: param.required === true,
+		paramType: param.paramType?.value || undefined,
+		description: param.paramDescription?.value?.trim() || undefined,
+		span: rangeSpan(path, source, param.position),
+	};
 }
 
 function registerBranchGuardRange(
