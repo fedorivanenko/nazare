@@ -7,6 +7,7 @@
 	"scripts": {
 		"typecheck": "tsc -b",
 		"check:fact-cache-revision": "node scripts/generate-fact-cache-revision.mjs --check",
+		"dev:website": "pnpm --filter @nazare/website dev",
 		"check:no-dist": "test -z \"$(git ls-files '*/dist/*')\"",
 		"test:compiler": "pnpm -s build && node --test --test-concurrency=32 packages/compiler/tests/*.test.mjs",
 		"test:corpus": "pnpm -s build && node scripts/check-theme-graph-corpus.mjs",

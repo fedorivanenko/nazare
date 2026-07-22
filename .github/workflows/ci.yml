@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -25,5 +30,15 @@ jobs:
       - run: pnpm -s typecheck
       - run: pnpm dlx @biomejs/biome@2.4.14 check .
       - run: pnpm -s test:all
+      - name: package ephemeral PR artifact
+        if: github.event_name == 'pull_request'
+        run: ./scripts/package-cli.sh "pr-${{ github.event.pull_request.number }}-${{ github.sha }}"
+      - name: upload ephemeral PR artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nazare-cli-pr-${{ github.event.pull_request.number }}-${{ github.sha }}
+          path: .release/nazare-cli-pr-${{ github.event.pull_request.number }}-${{ github.sha }}.tar.gz
+          retention-days: 14
       - name: dist is not committed
         run: test -z "$(git ls-files '*/dist/*')"
