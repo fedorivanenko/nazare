@@ -383,6 +383,7 @@ export function themeGraphFromModel(
 		kind: "storeSchema",
 		path: model.metafieldSchema.path,
 		state: model.metafieldSchema.state,
+		pulledAt: model.metafieldSchema.pulledAt,
 	});
 	for (const definition of model.metafieldDefinitions) {
 		pushNode({
@@ -791,7 +792,9 @@ function metafieldQueries(model: ThemeSemanticModel) {
 		),
 	);
 	return {
+		path: model.metafieldSchema.path,
 		state: model.metafieldSchema.state,
+		pulledAt: model.metafieldSchema.pulledAt,
 		consumedDefinitionIds: [...consumedDefinitionIds].sort(),
 		unconsumedDefinitionIds:
 			model.metafieldSchema.state === "present"
