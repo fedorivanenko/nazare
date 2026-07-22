@@ -1148,21 +1148,6 @@ function docContractIssues(
 			});
 		}
 	}
-	const usedNames = new Set(
-		expectedInputs
-			.filter((input) => input.origin !== "docParam")
-			.map((input) => `${input.path}:${input.name}`),
-	);
-	for (const param of docParams) {
-		if (usedNames.has(`${param.path}:${param.name}`)) continue;
-		issues.push({
-			severity: "info",
-			code: "THEME_DOC_PARAM_UNUSED",
-			message: `@param ${param.name} is declared but never read; the doc block has drifted from the source`,
-			phase: "resolve",
-			span: param.span,
-		});
-	}
 	return issues;
 }
 

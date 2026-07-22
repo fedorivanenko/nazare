@@ -836,7 +836,6 @@ test("doc contract disagreements are reported as information, not defects", () =
 	assert.deepEqual(codes, [
 		"THEME_DOC_PARAM_UNDECLARED:info",
 		"THEME_DOC_PARAM_UNGUARDED:info",
-		"THEME_DOC_PARAM_UNUSED:info",
 	]);
 	// Liquid renders an absent variable as empty rather than raising, so none of
 	// these may be a warning: an unguarded optional read is a valid idiom.
