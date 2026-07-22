@@ -222,7 +222,7 @@ function analyzeNormalizedThemeFiles(
 	const dependencyResolver: DependencyResolver =
 		createDependencyResolver(readFile);
 	const cache = options.cache?.version === 1 ? options.cache : undefined;
-	const componentDependencyFingerprint = fingerprintComponentSources(files);
+	const componentDependencyFingerprints = fingerprintComponentSources(files);
 	if (cache) {
 		const currentPaths = new Set(files.map((file) => file.path));
 		for (const path of Object.keys(cache.entries)) {
@@ -238,7 +238,7 @@ function analyzeNormalizedThemeFiles(
 			fileKind,
 			options,
 			fileKind === "nazareComponent"
-				? componentDependencyFingerprint
+				? componentDependencyFingerprints.get(file.path)
 				: undefined,
 		);
 		const cached = cacheable ? cache?.entries[file.path] : undefined;
@@ -367,12 +367,40 @@ function themeFileFingerprint(
 	return `${input.length}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
-function fingerprintComponentSources(files: ThemeInputFile[]): string {
-	return files
-		.filter((file) => classifyThemeFile(file.path) === "nazareComponent")
-		.map((file) => `${file.path}\0${file.contents}`)
-		.sort()
-		.join("\0");
+function fingerprintComponentSources(
+	files: ThemeInputFile[],
+): Map<string, string> {
+	const sources = new Map(
+		files
+			.filter((file) => classifyThemeFile(file.path) === "nazareComponent")
+			.map((file) => [file.path, file]),
+	);
+	const fingerprints = new Map<string, string>();
+	for (const file of sources.values()) {
+		const closure = new Set<string>();
+		const pending = [file.path];
+		while (pending.length > 0) {
+			const path = pending.pop();
+			if (path === undefined || closure.has(path)) continue;
+			closure.add(path);
+			const source = sources.get(path);
+			if (!source) continue;
+			const ast = parseNazareLiquid(source.contents, source.path);
+			for (const node of ast.nodes) {
+				if (node.type !== "NazareImport") continue;
+				const target = normalizeThemePath(node.path);
+				if (sources.has(target)) pending.push(target);
+			}
+		}
+		fingerprints.set(
+			file.path,
+			[...closure]
+				.sort()
+				.map((path) => `${path}\0${sources.get(path)?.contents ?? ""}`)
+				.join("\0"),
+		);
+	}
+	return fingerprints;
 }
 
 function buildScopeIssues(
