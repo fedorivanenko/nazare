@@ -371,15 +371,19 @@ export function collectSourceThemeFacts(
 		const object = resolved.object;
 		const propertyPath = resolved.propertyPath;
 		const span = rangeSpan(path, source, position);
-		const guarded =
-			inCondition ||
-			(position !== undefined &&
-				(guardRangesByName.get(lookup.name) ?? []).some(
-					(range) => position.start >= range.start && position.end <= range.end,
-				));
+		const withinGuardRange =
+			position !== undefined &&
+			(guardRangesByName.get(lookup.name) ?? []).some(
+				(range) => position.start >= range.start && position.end <= range.end,
+			);
+		const guarded = withinGuardRange || inCondition;
 		if (!position || !safeInitializationOffsets.has(position.start)) {
-			if (guarded) guardedNames.add(object);
-			else unguardedNames.add(object);
+			if (!guarded) unguardedNames.add(object);
+			// Protecting a derived property says nothing about whether the caller
+			// supplied the name it came from: `{% if benefits %}`, where benefits
+			// is `product.metafields…`, shows the file handles missing benefits,
+			// not a missing product. Such reads contribute no evidence either way.
+			else if (!propertyPath) guardedNames.add(object);
 		}
 		if (SHOPIFY_DATA_OBJECTS.has(object)) {
 			facts.push({
@@ -388,6 +392,14 @@ export function collectSourceThemeFacts(
 				object,
 				propertyPath: propertyPath || undefined,
 				expression: propertyPath ? `${object}.${propertyPath}` : object,
+				// A read reached only through a branch does not show the file needs
+				// the value on every render. Dispatcher snippets select a branch by
+				// argument, so their other branches' reads prove nothing about the
+				// calls that take this one.
+				conditional:
+					position !== undefined &&
+					innermostContainingRange(position.start, lexicalScopeIndex) !==
+						undefined,
 				span,
 			});
 		} else if (!LIQUID_GLOBAL_NAMES.has(object)) {
@@ -513,7 +525,16 @@ export function collectSourceThemeFacts(
 	}
 	for (const name of new Set([...guardedNames, ...defaultedNames])) {
 		if (unguardedNames.has(name) && !defaultedNames.has(name)) continue;
-		facts.push({ kind: "guardsObject", fromPath: path, name });
+		// A default supplies a value when the caller omits one, which is proof
+		// the caller may omit it. A guard only proves the file tolerates absence
+		// — authors routinely guard parameters they consider required — so the
+		// two are recorded distinctly rather than both meaning "optional".
+		facts.push({
+			kind: "guardsObject",
+			fromPath: path,
+			name,
+			via: defaultedNames.has(name) ? "default" : "guard",
+		});
 	}
 
 	const blanked = blankNonLiquidText(source);

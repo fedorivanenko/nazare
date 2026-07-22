@@ -197,6 +197,8 @@ export type ThemeFact =
 			object: string;
 			propertyPath?: string;
 			expression: string;
+			/** True when the read is reachable only inside a branch or loop. */
+			conditional?: boolean;
 			span?: SourceSpan;
 	  }
 	| {
@@ -228,6 +230,12 @@ export type ThemeFact =
 			kind: "guardsObject";
 			fromPath: string;
 			name: string;
+			/**
+			 * `default` means a fallback value is supplied when the caller omits
+			 * the input, which proves it may be omitted. `guard` means only that
+			 * reads are protected, which proves tolerance and not optionality.
+			 */
+			via: "guard" | "default";
 	  }
 	| {
 			/** A `@param` in a `{% doc %}` block: the author's own statement of
@@ -397,6 +405,8 @@ export type ThemeDataAccessRecord = {
 	origin?: "direct" | "renderArgument";
 	sourceRenderArgumentId?: string;
 	inputName?: string;
+	/** True when the read is reachable only inside a branch or loop. */
+	conditional?: boolean;
 	span?: SourceSpan;
 };
 

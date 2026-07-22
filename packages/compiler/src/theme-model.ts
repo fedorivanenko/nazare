@@ -47,6 +47,7 @@ export function buildThemeSemanticModel(
 	const dataAccesses: ThemeDataAccessRecord[] = [];
 	const variableReads: ThemeVariableReadRecord[] = [];
 	const guardedObjects = new Set<string>();
+	const defaultedObjects = new Set<string>();
 	const docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[] = [];
 	const renderSiteFacts: Extract<ThemeFact, { kind: "rendersSnippet" }>[] = [];
 	const renderArguments: ThemeRenderArgumentRecord[] = [];
@@ -202,6 +203,9 @@ export function buildThemeSemanticModel(
 		}
 		if (fact.kind === "guardsObject") {
 			guardedObjects.add(`${fact.fromPath}:${fact.name}`);
+			if (fact.via === "default") {
+				defaultedObjects.add(`${fact.fromPath}:${fact.name}`);
+			}
 		}
 		if (fact.kind === "declaresDocParam") {
 			docParams.push(fact);
@@ -213,6 +217,7 @@ export function buildThemeSemanticModel(
 				object: fact.object,
 				propertyPath: fact.propertyPath,
 				expression: fact.expression,
+				conditional: fact.conditional,
 				span: fact.span,
 			});
 		}
@@ -418,9 +423,13 @@ export function buildThemeSemanticModel(
 		dataAccesses,
 		variableReads,
 		guardedObjects,
+		defaultedObjects,
 		docParams,
+		renderArguments,
 	);
-	modelIssues.push(...docContractIssues(expectedInputs, docParams));
+	modelIssues.push(
+		...docContractIssues(expectedInputs, docParams, defaultedObjects),
+	);
 	const renderSites = renderSiteRecords(
 		renderSiteFacts,
 		byKindName,
@@ -890,10 +899,17 @@ function expectedInputRecords(
 	dataAccesses: ThemeDataAccessRecord[],
 	variableReads: ThemeVariableReadRecord[],
 	guardedObjects: Set<string>,
+	defaultedObjects: Set<string>,
 	docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[],
+	renderArguments: ThemeRenderArgumentRecord[],
 ): ThemeExpectedInputRecord[] {
 	const declaredByPathAndName = new Map(
 		docParams.map((param) => [`${param.path}:${param.name}`, param]),
+	);
+	const snippetPathsByName = new Map(
+		declarations
+			.filter((declaration) => declaration.kind === "snippet")
+			.map((declaration) => [declaration.name, declaration.path]),
 	);
 	const componentPaths = new Set(
 		declarations
@@ -909,14 +925,55 @@ function expectedInputRecords(
 			.filter((read) => read.usage !== "renderArgument")
 			.map((read) => `${read.fromPath}:${read.name}`),
 	);
+	// A name that callers pass by name is a parameter of the target, whatever it
+	// looks like from inside the body. Shopify's ambient objects are the case
+	// that matters: a snippet reading `product.title` could be relying on page
+	// context, but once a caller writes `product: featured`, the source has said
+	// which it is. This is evidence, not preference — the argument is only
+	// attributed when the render target resolves statically.
+	const callerSuppliedInputs = new Set(
+		renderArguments.flatMap((argument) => {
+			const target = argument.targetName
+				? snippetPathsByName.get(argument.targetName)
+				: undefined;
+			return target ? [`${target}:${argument.argumentName}`] : [];
+		}),
+	);
+	// Only unconditional reads show the file needs the value on every render.
+	const readsDataDirectly = new Set(
+		dataAccesses
+			.filter((access) => !access.conditional)
+			.map((access) => `${access.fromPath}:${access.object}`),
+	);
+	/**
+	 * Whether the file handles the input being absent. Guards and defaults both
+	 * count: treating a guard as merely "unknown" instead was measured against
+	 * the declared contracts and agreement fell from 68% to 40%, because authors
+	 * overwhelmingly guard the inputs they consider optional.
+	 */
+	const absenceHandled = (key: string): boolean =>
+		defaultedObjects.has(key) || guardedObjects.has(key);
 	const inferredRequirement = (
 		path: string,
 		name: string,
 		origin: ThemeExpectedInputRecord["origin"],
 	): ThemeExpectedInputRecord["requirement"] => {
-		if (origin === "ambientShopifyContext") return "unknown";
-		if (guardedObjects.has(`${path}:${name}`)) return "optional";
-		return directlyReadInputs.has(`${path}:${name}`) ? "required" : "unknown";
+		const key = `${path}:${name}`;
+		if (origin === "ambientShopifyContext") {
+			// Without caller evidence an ambient read stays unknown: page context
+			// and an omitted argument are indistinguishable from inside the file.
+			if (!callerSuppliedInputs.has(key)) return "unknown";
+			// A guard around an ambient object may be protecting against absent
+			// page context rather than an omitted argument, so caller evidence
+			// raises it only as far as "unknown" — never to a claim that the
+			// caller may safely omit it. Measured: calling these optional buys
+			// one more agreement and costs two more inputs wrongly described as
+			// safe to omit, which is the direction that misleads a caller.
+			if (absenceHandled(key)) return "unknown";
+			return readsDataDirectly.has(key) ? "required" : "unknown";
+		}
+		if (absenceHandled(key)) return "optional";
+		return directlyReadInputs.has(key) ? "required" : "unknown";
 	};
 	const addInput = (
 		path: string,
@@ -1040,6 +1097,7 @@ function expectedInputRecords(
 function docContractIssues(
 	expectedInputs: ThemeExpectedInputRecord[],
 	docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[],
+	defaultedObjects: Set<string>,
 ): Diagnostic[] {
 	if (docParams.length === 0) return [];
 	const issues: Diagnostic[] = [];
@@ -1047,8 +1105,27 @@ function docContractIssues(
 	const declaredByPathAndName = new Map(
 		docParams.map((param) => [`${param.path}:${param.name}`, param]),
 	);
+	const defaultedNames = new Set(
+		docParams
+			.filter((param) => defaultedObjects.has(`${param.path}:${param.name}`))
+			.map((param) => `${param.path}:${param.name}`),
+	);
 	for (const input of expectedInputs) {
 		const declared = declaredByPathAndName.get(`${input.path}:${input.name}`);
+		if (declared?.required && input.inferredRequirement === "optional") {
+			const key = `${input.path}:${input.name}`;
+			const how = defaultedNames.has(key)
+				? "a fallback value is supplied when it is absent"
+				: "every read of it is guarded";
+			issues.push({
+				severity: "info",
+				code: "THEME_DOC_PARAM_FALLBACK",
+				message: `@param ${input.name} is declared required, but ${how}; either the contract is stricter than the code or the fallback is unreachable`,
+				phase: "resolve",
+				span: declared.span,
+			});
+			continue;
+		}
 		if (declared && !declared.required) {
 			if (input.inferredRequirement === "required") {
 				issues.push({

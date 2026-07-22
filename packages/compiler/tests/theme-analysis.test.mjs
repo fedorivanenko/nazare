@@ -864,3 +864,139 @@ test("undocumented files are unaffected by doc contracts", () => {
 		false,
 	);
 });
+
+test("an argument a caller passes by name is an input, not ambient context", () => {
+	// From inside the file `product.title` could be page context; the caller
+	// writing `product:` is what says it is a parameter.
+	const analysis = analyzeNazareTheme([
+		{
+			path: "sections/main.liquid",
+			contents: `{% render 'card', product: featured %}`,
+		},
+		{ path: "snippets/card.liquid", contents: "{{ product.title }}" },
+	]);
+	const input = analysis.ir.expectedInputs.find(
+		(candidate) => candidate.name === "product",
+	);
+
+	assert.equal(input?.inferredRequirement, "required");
+});
+
+test("without caller evidence an ambient read stays unknown", () => {
+	const analysis = analyzeNazareTheme([
+		{ path: "sections/main.liquid", contents: `{% render 'card' %}` },
+		{ path: "snippets/card.liquid", contents: "{{ product.title }}" },
+	]);
+	const input = analysis.ir.expectedInputs.find(
+		(candidate) => candidate.name === "product",
+	);
+
+	assert.equal(input?.inferredRequirement, "unknown");
+});
+
+test("a guarded ambient input is never claimed to be safely omitted", () => {
+	// The guard may protect against absent page context rather than an omitted
+	// argument, so caller evidence raises it only to unknown.
+	const analysis = analyzeNazareTheme([
+		{
+			path: "sections/main.liquid",
+			contents: `{% render 'card', product: featured %}`,
+		},
+		{
+			path: "snippets/card.liquid",
+			contents: "{% if product %}{{ product.title }}{% endif %}",
+		},
+	]);
+	const input = analysis.ir.expectedInputs.find(
+		(candidate) => candidate.name === "product",
+	);
+
+	assert.equal(input?.inferredRequirement, "unknown");
+});
+
+test("guarding a derived property does not mark its base name guarded", () => {
+	// `{% if benefits %}` shows the file handles missing benefits, not a missing
+	// product, so product stays required on the strength of its unguarded read.
+	const analysis = analyzeNazareTheme([
+		{
+			path: "sections/main.liquid",
+			contents: `{% render 'benefits', product: featured %}`,
+		},
+		{
+			path: "snippets/benefits.liquid",
+			contents:
+				"{% assign list = product.metafields.custom.benefits.value %}{% if list != blank %}{{ list }}{% endif %}",
+		},
+	]);
+	const input = analysis.ir.expectedInputs.find(
+		(candidate) => candidate.name === "product",
+	);
+
+	assert.equal(input?.inferredRequirement, "required");
+});
+
+test("a declared-required input the source falls back for is reported", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "snippets/c-cta.liquid",
+			contents: [
+				"{% doc %}",
+				"  @param {string} form_id - Unique form id",
+				"  @param {string} title - Heading",
+				"{% enddoc %}",
+				"{% assign id = form_id | default: 'product-form' %}",
+				"{% if title != blank %}<h2>{{ title }}</h2>{% endif %}",
+				"<form id='{{ id }}'></form>",
+			].join("\n"),
+		},
+	]);
+	const fallbacks = analysis.issues.filter(
+		(issue) => issue.code === "THEME_DOC_PARAM_FALLBACK",
+	);
+
+	assert.equal(fallbacks.length, 2);
+	assert.equal(
+		fallbacks.every((issue) => issue.severity === "info"),
+		true,
+	);
+	// The message distinguishes a supplied default from a bare guard.
+	assert.equal(
+		fallbacks.some((issue) => issue.message.includes("fallback value")),
+		true,
+	);
+	assert.equal(
+		fallbacks.some((issue) => issue.message.includes("guarded")),
+		true,
+	);
+});
+
+test("a dispatcher snippet does not require inputs only its other branches read", () => {
+	// The caller selects a branch by argument; reads in the branches it did not
+	// select are no evidence that this call is missing something.
+	const analysis = analyzeNazareTheme([
+		{
+			path: "sections/pdp.liquid",
+			contents: `{% render 'widget', mode: 'stars', product: product %}`,
+		},
+		{
+			path: "layout/theme.liquid",
+			contents: `{% render 'widget', mode: 'script' %}`,
+		},
+		{
+			path: "snippets/widget.liquid",
+			contents:
+				"{% if mode == 'script' %}<script></script>{% elsif mode == 'stars' %}<div>{{ product.id }}</div>{% endif %}",
+		},
+	]);
+	const input = analysis.ir.expectedInputs.find(
+		(candidate) => candidate.name === "product",
+	);
+
+	assert.equal(input?.inferredRequirement, "unknown");
+	assert.equal(
+		analysis.issues.some(
+			(issue) => issue.code === "THEME_RENDER_ARGUMENT_MISSING",
+		),
+		false,
+	);
+});
