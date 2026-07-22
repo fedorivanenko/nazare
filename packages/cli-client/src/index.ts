@@ -219,6 +219,11 @@ type ProjectManifest = {
 	registries?: Record<string, string>;
 	/** Explicit build paths. No hardcoded defaults; unset is an error. */
 	build?: { outDir?: string; sourceRoot?: string };
+	/**
+	 * Inspect policy. `exclude` holds theme-relative globs — typically generated
+	 * page-builder chunks — that are skipped entirely and reported as excluded.
+	 */
+	inspect?: { exclude?: string[] };
 };
 
 /**
@@ -319,8 +324,10 @@ async function runInspect(
 		output.error(`Unsupported inspect format ${format}; expected json`);
 		return 1;
 	}
-	const inspectRoot =
-		dirArg ?? (await readProjectManifest(projectRoot)).build?.sourceRoot;
+	const manifest = await readProjectManifest(projectRoot);
+	const exclude = inspectExcludePatterns(manifest, output);
+	if (!exclude) return 1;
+	const inspectRoot = dirArg ?? manifest.build?.sourceRoot;
 	if (!inspectRoot) {
 		output.error(
 			'Usage: nazare inspect theme [dir] --format json (or set "build.sourceRoot" in nazare.theme.json)',
@@ -339,6 +346,7 @@ async function runInspect(
 		root: relative(projectRoot, root).split(sep).join("/") || ".",
 		strictness: cliOptions.strictness,
 		cache,
+		exclude,
 	});
 	await mkdir(join(projectRoot, ".nazare-out"), { recursive: true });
 	await writeFile(cachePath, JSON.stringify(cache));
@@ -348,6 +356,30 @@ async function runInspect(
 	)
 		? 1
 		: 0;
+}
+
+/**
+ * Reads `inspect.exclude`. A malformed value is an error rather than an ignored
+ * setting: silently inspecting files the user asked to skip, or silently
+ * skipping none, both misrepresent what the graph covers. Returns undefined
+ * only after reporting, so callers can fail.
+ */
+function inspectExcludePatterns(
+	manifest: ProjectManifest,
+	output: Output,
+): string[] | undefined {
+	const configured = manifest.inspect?.exclude;
+	if (configured === undefined) return [];
+	if (
+		!Array.isArray(configured) ||
+		configured.some((pattern) => typeof pattern !== "string" || !pattern)
+	) {
+		output.error(
+			'"inspect.exclude" in nazare.theme.json must be an array of non-empty theme-relative glob strings',
+		);
+		return undefined;
+	}
+	return configured;
 }
 
 function isOutsideRoot(root: string, path: string): boolean {

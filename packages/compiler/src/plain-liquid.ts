@@ -113,10 +113,13 @@ export function parsePlainLiquid(
 			// Shopify themes commonly balance HTML across Liquid branches. Masking
 			// non-Liquid source avoids false HTML failures and makes parser work scale
 			// with Liquid syntax while preserving every source offset.
-			ast = toLiquidAST(sourceForLiquidOnlyAnalysis(analysisSource), {
-				mode: "tolerant",
-				allowUnclosedDocumentNode: true,
-			});
+			const liquidOnlySource = sourceForLiquidOnlyAnalysis(analysisSource);
+			ast = containsLiquidSyntax(liquidOnlySource)
+				? toLiquidAST(liquidOnlySource, {
+						mode: "tolerant",
+						allowUnclosedDocumentNode: true,
+					})
+				: emptyAst();
 		} else {
 			ast = toLiquidHtmlAST(analysisSource, {
 				mode: "strict",
@@ -177,6 +180,19 @@ function sourceForLiquidAnalysis(source: string): string {
 			return `${start}${blankNonLiquidCharacters(body)}${end}`;
 		},
 	);
+}
+
+/**
+ * Page builders publish megabytes of generated markup as `.liquid` files, many
+ * chunks of which hold no Liquid at all. Once masking has run, a source without
+ * `{{` or `{%` can only parse into text nodes, so every AST-derived fact —
+ * schema, settings reads, dependencies, expression facts — is necessarily
+ * empty. Skipping the parse is an optimization, not a policy: no fact that the
+ * parse could have produced is lost. Textual capability heuristics run against
+ * the raw source elsewhere and are unaffected.
+ */
+function containsLiquidSyntax(maskedSource: string): boolean {
+	return maskedSource.includes("{{") || maskedSource.includes("{%");
 }
 
 function sourceForLiquidOnlyAnalysis(source: string): string {

@@ -175,6 +175,7 @@ export type {
 	ThemeSemanticModel,
 	ThemeSettingReadRecord,
 } from "./theme-facts.js";
+export { matchesThemeGlob } from "./theme-exclusions.js";
 export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,

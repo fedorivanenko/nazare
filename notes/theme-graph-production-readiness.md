@@ -27,6 +27,43 @@ Measured with the current CLI on the four production themes. The persistent fact
 
 All four themes pass the structural, data, setting, locale, evidence, impact, canonical-order, and view queries in `notes/theme-graph-production-corpus-golden.json`.
 
+### Generated-chunk parse skip
+
+A CPU profile of a ucan cold run attributed roughly 70% of wall time to the Ohm
+grammar engine inside `@shopify/liquid-html-parser`, and a per-file benchmark
+attributed 74% of parse time to 47 Replo-generated snippets holding 10.6MB of
+the theme's 12.4MB of Liquid. 26 of those files (6.7MB) contain no Liquid
+syntax at all.
+
+Tolerant-mode parsing now skips the parser when the masked source contains
+neither `{{` nor `{%`. Such a source can only parse into text nodes, so no
+AST-derived fact is lost; the textual capability heuristics are unaffected
+because they run against the raw source. Node, edge, and issue counts are
+unchanged on all four corpus themes, which is the evidence that the skip is
+lossless rather than merely cheap.
+
+| Theme | Cold before | Cold after | Liquid-free bytes |
+|---|---:|---:|---:|
+| alkamind-nazare | 5.84s | 5.84s | none |
+| alkamind-old | 43.29s | 47.98s | 0.00MB |
+| climatic-health | 6.67s | 6.74s | none |
+| ucan | 47.79s | 30.01s | 6.7MB |
+
+Only ucan carries Liquid-free generated files, so only ucan improves (-37%).
+The alkamind-old and climatic-health deltas are run-to-run variance on an
+unflushed, thermally unconstrained machine, not regressions. Warm runs are
+unchanged (ucan 2.10s, climatic-health 1.96s).
+
+### Inspect exclusions
+
+`inspect.exclude` in `nazare.theme.json` takes theme-relative globs (`*`, `**`,
+`?`) whose files are skipped entirely — the escape hatch for generated chunks
+that do contain Liquid and therefore cannot be skipped losslessly. Exclusion is
+never inferred: a malformed setting fails the command rather than being
+ignored, and every excluded file is reported as an info `THEME_FILE_EXCLUDED`
+issue, because a graph that dropped a render target silently would misstate the
+theme.
+
 ## Component-input diagnostic recall
 
 Two positive paths remain covered:
@@ -75,8 +112,16 @@ The production golden suite exercises:
 
 These are improvements, not blockers for architecture inspection:
 
-1. Run repeated benchmark samples and publish median/p95 values.
-2. Profile alkamind-old and ucan cold runs before considering parser workers.
-3. Add labeled real-world missing-argument defects to measure production recall.
-4. Expand classification and capability rules when product queries require broader recall.
-5. Improve dynamic Liquid resolution only where deterministic evidence permits it.
+1. Run repeated benchmark samples and publish median/p95 values. Single-run
+   variance is large enough (one ucan benchmark ran 2.3x slower under thermal
+   load) that current numbers cannot support small comparisons.
+2. Parser workers. Cold runs are now dominated by generated chunks that do
+   contain Liquid, which cannot be skipped losslessly. Parsing is per-file and
+   independent, so worker threads are the remaining structural lever.
+3. Collapsing masked blank runs before parsing, with an offset map to restore
+   evidence spans. Measured 2213ms to 832ms on one 210KB generated chunk. It
+   touches every span the graph reports, so it needs the offset remap to be
+   proven before the speedup is worth taking.
+4. Add labeled real-world missing-argument defects to measure production recall.
+5. Expand classification and capability rules when product queries require broader recall.
+6. Improve dynamic Liquid resolution only where deterministic evidence permits it.
