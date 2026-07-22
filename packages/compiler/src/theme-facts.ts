@@ -7,6 +7,7 @@ import type {
 import type { NazareAst } from "./ast.js";
 import type { EmitResult } from "./emit.js";
 import type { ThemeFileKind } from "./theme-file-classifier.js";
+import type { ThemeMetafieldSnapshot } from "./theme-metafields.js";
 
 export interface ThemeInputFile {
 	path: string;
@@ -36,6 +37,8 @@ export interface AnalyzeNazareThemeOptions {
 	 * THEME_FILE_EXCLUDED so the graph never omits a file silently.
 	 */
 	exclude?: string[];
+	/** Store schema snapshot from Shopify CLI. Missing snapshot means unknown. */
+	metafields?: ThemeMetafieldSnapshot;
 }
 
 export type InspectNazareThemeOptions = AnalyzeNazareThemeOptions;
@@ -396,6 +399,24 @@ export type ThemeSettingReadRecord = {
 	span?: SourceSpan;
 };
 
+export type ThemeMetafieldDefinitionRecord = {
+	id: string;
+	owner: string;
+	namespace: string;
+	key: string;
+	type?: string;
+};
+
+export type ThemeMetafieldReadRecord = {
+	id: string;
+	fromPath: string;
+	owner: string;
+	namespace: string;
+	key: string;
+	definitionId?: string;
+	dataAccessId: string;
+};
+
 export type ThemeDataAccessRecord = {
 	id: string;
 	fromPath: string;
@@ -526,6 +547,13 @@ export interface ThemeSemanticModel {
 	localeReferences: ThemeLocaleReferenceRecord[];
 	settingReads: ThemeSettingReadRecord[];
 	dataAccesses: ThemeDataAccessRecord[];
+	metafieldDefinitions: ThemeMetafieldDefinitionRecord[];
+	metafieldReads: ThemeMetafieldReadRecord[];
+	metafieldSchema: {
+		state: "unknown" | "present" | "invalid";
+		path: string;
+		pulledAt?: string;
+	};
 	variableReads: ThemeVariableReadRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
 	expectedInputs: ThemeExpectedInputRecord[];
@@ -639,6 +667,28 @@ export type SemanticThemeGraphNode =
 	  }
 	| {
 			id: string;
+			kind: "metafieldDefinition";
+			owner: string;
+			namespace: string;
+			key: string;
+			type?: string;
+	  }
+	| {
+			id: string;
+			kind: "metafieldRead";
+			fromPath: string;
+			owner: string;
+			namespace: string;
+			key: string;
+	  }
+	| {
+			id: string;
+			kind: "storeSchema";
+			path: string;
+			state: "unknown" | "present" | "invalid";
+	  }
+	| {
+			id: string;
 			kind: "renderArgument";
 			argumentName: string;
 			valueExpression: string;
@@ -686,7 +736,8 @@ export type SemanticThemeGraphNode =
 				| "asset"
 				| "component"
 				| "setting"
-				| "localeKey";
+				| "localeKey"
+				| "metafield";
 			name?: string;
 	  };
 
@@ -774,6 +825,22 @@ export type SemanticThemeGraphEdge = (
 			argumentName: string;
 			valueExpression: string;
 	  }
+	| {
+			id: string;
+			kind: "readsMetafield";
+			from: string;
+			to: string;
+			namespace: string;
+			key: string;
+	  }
+	| {
+			id: string;
+			kind: "resolvesMetafieldDefinition";
+			from: string;
+			to: string;
+	  }
+	| { id: string; kind: "missingMetafieldDefinition"; from: string; to: string }
+	| { id: string; kind: "schemaFor"; from: string; to: string }
 	| { id: string; kind: "hasCapability"; from: string; to: string }
 	| { id: string; kind: "classifiedAs"; from: string; to: string }
 	| { id: string; kind: "expectsInput"; from: string; to: string }

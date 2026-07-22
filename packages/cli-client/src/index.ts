@@ -340,6 +340,7 @@ async function runInspect(
 		return 1;
 	}
 	const files = await collectThemeInputFiles(root, projectRoot);
+	const metafields = await readMetafieldSnapshot(projectRoot);
 	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v1.json");
 	const cache = await readThemeAnalysisCache(cachePath);
 	const inspected = inspectNazareTheme(files, {
@@ -347,6 +348,7 @@ async function runInspect(
 		strictness: cliOptions.strictness,
 		cache,
 		exclude,
+		metafields,
 	});
 	await mkdir(join(projectRoot, ".nazare-out"), { recursive: true });
 	await writeFile(cachePath, JSON.stringify(cache));
@@ -380,6 +382,17 @@ function inspectExcludePatterns(
 		return undefined;
 	}
 	return configured;
+}
+
+async function readMetafieldSnapshot(
+	projectRoot: string,
+): Promise<{ path: string; contents: string } | undefined> {
+	const path = ".shopify/metafields.json";
+	try {
+		return { path, contents: await readFile(join(projectRoot, path), "utf8") };
+	} catch {
+		return undefined;
+	}
 }
 
 function isOutsideRoot(root: string, path: string): boolean {
