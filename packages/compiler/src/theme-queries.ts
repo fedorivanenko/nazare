@@ -4,6 +4,35 @@ import type {
 	SemanticThemeGraphNode,
 } from "./theme-facts.js";
 
+export function themeGraphToDot(graph: InspectNazareThemeResult): string {
+	const lines = ["digraph nazare_theme {", "  rankdir=LR;"];
+	for (const node of graph.nodes) {
+		const label =
+			"name" in node && node.name
+				? `${node.kind}: ${node.name}`
+				: `${node.kind}: ${"path" in node ? node.path : node.id}`;
+		lines.push(`  ${dotId(node.id)} [label="${dotEscape(label)}"];`);
+	}
+	for (const edge of graph.edges) {
+		lines.push(
+			`  ${dotId(edge.from)} -> ${dotId(edge.to)} [label="${dotEscape(edge.kind)}"];`,
+		);
+	}
+	lines.push("}");
+	return lines.join("\\n");
+}
+
+function dotId(value: string): string {
+	return `"${dotEscape(value)}"`;
+}
+
+function dotEscape(value: string): string {
+	return value
+		.replaceAll("\\\\", "\\\\\\\\")
+		.replaceAll('"', '\\"')
+		.replaceAll("\\n", "\\\\n");
+}
+
 export type ThemeGraphSummary = {
 	fileCount: number;
 	pageCount: number;

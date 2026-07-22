@@ -8,10 +8,21 @@ import {
 	inspectNazareTheme,
 	summarizeThemeGraph,
 	ThemeWorkspaceSession,
+	themeGraphToDot,
 } from "../dist/index.js";
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("theme graph DOT projection escapes identifiers and labels", () => {
+	const graph = inspectNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const dot = themeGraphToDot(graph);
+	assert.match(dot, /^digraph nazare_theme/);
+	assert.match(dot, /snippet: card/);
+	assert.match(dot, /file:snippets\/card\.liquid/);
+});
 
 test("workspace session updates graph with stable revisions and deltas", () => {
 	const session = new ThemeWorkspaceSession([

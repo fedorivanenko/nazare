@@ -200,6 +200,7 @@ export {
 	getThemeNode,
 	summarizeThemeGraph,
 	type ThemeGraphSummary,
+	themeGraphToDot,
 } from "./theme-queries.js";
 export {
 	type ThemeGraphUpdate,
