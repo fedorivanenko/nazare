@@ -10,6 +10,8 @@ export type ThemeGraphUpdate = {
 	revision: number;
 	graph: InspectNazareThemeResult;
 	changedPaths: string[];
+	invalidatedNodeIds: string[];
+	affectedPages: string[];
 	addedNodeIds: string[];
 	removedNodeIds: string[];
 	changedNodeIds: string[];
@@ -93,6 +95,8 @@ function diffGraphs(
 		revision,
 		graph: current,
 		changedPaths: [...new Set(changedPaths)].sort(),
+		invalidatedNodeIds: invalidationClosure(current, changedPaths),
+		affectedPages: affectedPages(current, changedPaths),
 		addedNodeIds: addedIds(previousNodes, currentNodes),
 		removedNodeIds: addedIds(currentNodes, previousNodes),
 		changedNodeIds: changedIds(previousNodes, currentNodes),
@@ -100,6 +104,34 @@ function diffGraphs(
 		removedEdgeIds: addedIds(currentEdges, previousEdges),
 		changedEdgeIds: changedIds(previousEdges, currentEdges),
 	};
+}
+
+function invalidationClosure(
+	graph: InspectNazareThemeResult,
+	changedPaths: string[],
+): string[] {
+	const visited = new Set<string>();
+	const pending = [...changedPaths];
+	while (pending.length > 0) {
+		const id = pending.pop();
+		if (id === undefined || visited.has(id)) continue;
+		visited.add(id);
+		for (const dependent of graph.impact.dependents[id] ?? []) {
+			if (!visited.has(dependent)) pending.push(dependent);
+		}
+	}
+	return [...visited].sort((a, b) => a.localeCompare(b));
+}
+
+function affectedPages(
+	graph: InspectNazareThemeResult,
+	changedPaths: string[],
+): string[] {
+	const pages = new Set<string>();
+	for (const id of invalidationClosure(graph, changedPaths)) {
+		for (const page of graph.impact.affectedPages[id] ?? []) pages.add(page);
+	}
+	return [...pages].sort((a, b) => a.localeCompare(b));
 }
 
 function addedIds<T>(
