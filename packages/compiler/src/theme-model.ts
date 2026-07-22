@@ -619,6 +619,10 @@ export function buildThemeSemanticModel(
 			path: metafields.path,
 			pulledAt: metafields.pulledAt,
 		},
+		themeCheck: {
+			path: ".theme-check.yml",
+			ignoredChecks: [],
+		},
 		variableReads: dedupeById(variableReads).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),

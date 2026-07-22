@@ -149,7 +149,7 @@ caller file → render site → target snippet
                                       → Shopify data or setting origin
 ```
 
-Theme analysis uses tolerant plain-Liquid parsing by default. A failed parse emits diagnostics and never fabricates skipped facts. Pass `.shopify/metafields.json` through `options.metafields` to join store definitions with theme reads; missing snapshots remain `unknown`, never proof of absence. Inspect output exposes consumed, unconsumed, broken, and page-impact queries. Pass `.theme-check.yml` through `options.themeCheck` to honor matching ignored diagnostics.
+Theme analysis uses tolerant plain-Liquid parsing by default. A failed parse emits diagnostics and never fabricates skipped facts. Pass `.shopify/metafields.json` through `options.metafields` to join store definitions with theme reads; missing snapshots remain `unknown`, never proof of absence. Inspect output exposes consumed, unconsumed, broken, and page-impact queries. Pass `.theme-check.yml` through `options.themeCheck` to validate and expose the configured ignore list. Shopify rule names are not assumed to match Inspect diagnostics.
 
 ### `buildNazareThemeWorkspace(files, options)`
 
