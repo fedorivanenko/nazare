@@ -8,6 +8,7 @@ import {
 	checkComponentScripts,
 	compileNazareArtifact,
 	inspectNazareTheme,
+	summarizeThemeGraph,
 	type ThemeAnalysisCache,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
@@ -330,8 +331,8 @@ async function runInspect(
 		return 1;
 	}
 	const format = cliOptions.format ?? "json";
-	if (format !== "json") {
-		output.error(`Unsupported inspect format ${format}; expected json`);
+	if (format !== "json" && format !== "text") {
+		output.error(`Unsupported inspect format ${format}; expected json or text`);
 		return 1;
 	}
 	const manifest = await readProjectManifest(projectRoot);
@@ -364,12 +365,39 @@ async function runInspect(
 	});
 	await mkdir(join(projectRoot, ".nazare-out"), { recursive: true });
 	await writeFile(cachePath, JSON.stringify(cache));
-	output.log(JSON.stringify(inspected, null, 2));
+	output.log(
+		format === "text"
+			? renderInspectReport(inspected)
+			: JSON.stringify(inspected, null, 2),
+	);
 	return hasErrors(
 		inspected.issues.filter((issue) => issue.severity === "error"),
 	)
 		? 1
 		: 0;
+}
+
+function renderInspectReport(
+	graph: ReturnType<typeof inspectNazareTheme>,
+): string {
+	const summary = summarizeThemeGraph(graph);
+	const lines = [
+		`Theme graph: ${summary.fileCount} files`,
+		`Pages ${summary.pageCount} · sections ${summary.sectionCount} · snippets ${summary.snippetCount} · components ${summary.componentCount}`,
+		`Unresolved ${summary.unresolvedCount} · metafield reads without definitions ${summary.brokenMetafieldReadCount}`,
+		`Affected pages ${summary.affectedPageCount}`,
+		`Issues ${summary.issueCount} (${summary.errorCount} errors, ${summary.warningCount} warnings)`,
+	];
+	if (graph.issues.length > 0) {
+		lines.push("", "Issues:");
+		for (const issue of graph.issues.slice(0, 10)) {
+			lines.push(`- [${issue.severity}] ${issue.code}: ${issue.message}`);
+		}
+		if (graph.issues.length > 10) {
+			lines.push(`- ... ${graph.issues.length - 10} more`);
+		}
+	}
+	return lines.join("\\n");
 }
 
 /**
