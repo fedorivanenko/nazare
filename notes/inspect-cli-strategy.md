@@ -93,8 +93,11 @@ about. The graph knows which expressions are load-bearing — which metafields
 feed which sections, which reads never resolve. Together: "here are the 12 data
 reads this page depends on, and here is what each returns on the live store."
 
-**Unverified:** the console is interactive; scriptable use depends on a
-non-TTY mode the docs do not mention.
+**Verified against Shopify CLI documentation:** the console is an interactive
+Liquid REPL. Documented flags provide store, URL context, credentials, and
+verbosity, but no expression, stdin, script, or JSON-output flag. Do not build
+console pairing on CLI stdout until a supported non-interactive interface is
+validated.
 
 ## The hole in the lifecycle
 
