@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
 	getThemeAffectedPages,
 	getThemeDependencies,
@@ -13,6 +14,16 @@ import {
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("component artifacts reuse analysis cache entries", () => {
+	const cache = { version: 1, entries: {} };
+	const files = [{ path: "card.nz.liquid", contents: "<span>Card</span>" }];
+	const first = analyzeNazareTheme(files, { cache });
+	const second = analyzeNazareTheme(files, { cache });
+	assert.equal(first.artifacts.length, 1);
+	assert.equal(second.artifacts.length, 1);
+	assert.ok(cache.entries["card.nz.liquid"].artifact);
+});
 
 test("theme graph DOT projection escapes identifiers and labels", () => {
 	const graph = inspectNazareTheme([
