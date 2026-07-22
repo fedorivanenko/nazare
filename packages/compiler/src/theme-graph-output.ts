@@ -1023,6 +1023,9 @@ function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
 				: undefined,
 		);
 	}
+	for (const read of model.metafieldReads) {
+		if (read.definitionId) add(read.fromPath, read.definitionId);
+	}
 	const affectedPages = new Map<string, Set<string>>();
 	for (const page of model.pages) {
 		const visited = new Set<string>();
