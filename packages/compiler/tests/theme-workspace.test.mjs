@@ -110,6 +110,28 @@ test("impact summary follows template dependencies and Shopify-owned entries", (
 	assert.deepEqual(graph.impact.unusedFiles, ["snippets/unused.liquid"]);
 });
 
+test("theme check ignore policy suppresses matching inspect findings", () => {
+	const result = inspectNazareTheme(
+		[{ path: "sections/main.liquid", contents: "{% render 'missing' %}" }],
+		{ themeCheck: { contents: "ignore:\n  - ThemeUnresolvedReference\n" } },
+	);
+	assert.equal(
+		result.issues.some((issue) => issue.code === "THEME_UNRESOLVED_REFERENCE"),
+		false,
+	);
+});
+
+test("malformed theme check policy is reported", () => {
+	const result = inspectNazareTheme(
+		[{ path: "sections/main.liquid", contents: "{% render 'missing' %}" }],
+		{ themeCheck: { contents: "ignore: [" } },
+	);
+	assert.equal(
+		result.issues.some((issue) => issue.code === "THEME_CHECK_CONFIG_INVALID"),
+		true,
+	);
+});
+
 test("metafield snapshot resolves reads and reports missing definitions", () => {
 	const files = [
 		{

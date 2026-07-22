@@ -139,6 +139,12 @@ export {
 	contractFromIR,
 } from "./symbols.js";
 export { syntaxFromAst } from "./syntax.js";
+export {
+	filterThemeCheckIssues,
+	parseThemeCheckPolicy,
+	type ThemeCheckPolicy,
+	type ThemeCheckPolicyInput,
+} from "./theme-check-policy.js";
 export { matchesThemeGlob } from "./theme-exclusions.js";
 export type {
 	AnalyzeNazareThemeOptions,
