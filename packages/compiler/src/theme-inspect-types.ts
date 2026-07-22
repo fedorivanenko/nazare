@@ -21,7 +21,7 @@ export type ThemeGraphViews = {
 export type ThemeMetafieldQueries = {
 	path: string;
 	state: "unknown" | "present" | "invalid";
-	pulledAt?: string;
+	pulledAt: string | null;
 	consumedDefinitionIds: string[];
 	unconsumedDefinitionIds: string[];
 	brokenReadIds: string[];
