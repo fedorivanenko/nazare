@@ -110,14 +110,14 @@ test("impact summary follows template dependencies and Shopify-owned entries", (
 	assert.deepEqual(graph.impact.unusedFiles, ["snippets/unused.liquid"]);
 });
 
-test("theme check ignore policy suppresses matching inspect findings", () => {
+test("theme check ignore policy does not suppress unrelated Inspect findings", () => {
 	const result = inspectNazareTheme(
 		[{ path: "sections/main.liquid", contents: "{% render 'missing' %}" }],
-		{ themeCheck: { contents: "ignore:\n  - ThemeUnresolvedReference\n" } },
+		{ themeCheck: { contents: "ignore:\n  - UnresolvedReference\n" } },
 	);
 	assert.equal(
 		result.issues.some((issue) => issue.code === "THEME_UNRESOLVED_REFERENCE"),
-		false,
+		true,
 	);
 });
 
