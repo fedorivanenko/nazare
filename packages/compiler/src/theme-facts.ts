@@ -879,6 +879,13 @@ export type ThemeGraphViews = {
 	changeImpact: ThemeGraphView;
 };
 
+export type ThemeMetafieldQueries = {
+	state: "unknown" | "present" | "invalid";
+	consumedDefinitionIds: string[];
+	unconsumedDefinitionIds: string[];
+	brokenReadIds: string[];
+};
+
 export type ThemeImpactSummary = {
 	dependencies: Record<string, string[]>;
 	dependents: Record<string, string[]>;
@@ -893,6 +900,7 @@ export interface InspectNazareThemeResult {
 	edges: SemanticThemeGraphEdge[];
 	evidence: ThemeEvidenceRecord[];
 	impact: ThemeImpactSummary;
+	metafields: ThemeMetafieldQueries;
 	views: ThemeGraphViews;
 	issues: Diagnostic[];
 }

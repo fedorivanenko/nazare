@@ -778,8 +778,35 @@ export function themeGraphFromModel(
 		edges: sortedEdges,
 		evidence: model.evidence,
 		impact: impactSummary(model),
+		metafields: metafieldQueries(model),
 		views,
 		issues: model.issues,
+	};
+}
+
+function metafieldQueries(model: ThemeSemanticModel) {
+	const consumedDefinitionIds = new Set(
+		model.metafieldReads.flatMap((read) =>
+			read.definitionId ? [read.definitionId] : [],
+		),
+	);
+	return {
+		state: model.metafieldSchema.state,
+		consumedDefinitionIds: [...consumedDefinitionIds].sort(),
+		unconsumedDefinitionIds:
+			model.metafieldSchema.state === "present"
+				? model.metafieldDefinitions
+						.filter((definition) => !consumedDefinitionIds.has(definition.id))
+						.map((definition) => definition.id)
+						.sort()
+				: [],
+		brokenReadIds:
+			model.metafieldSchema.state === "present"
+				? model.metafieldReads
+						.filter((read) => !read.definitionId)
+						.map((read) => read.id)
+						.sort()
+				: [],
 	};
 }
 

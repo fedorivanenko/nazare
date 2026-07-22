@@ -170,6 +170,7 @@ export type {
 	ThemeLocaleReferenceRecord,
 	ThemeLocaleTranslationRecord,
 	ThemeMetafieldDefinitionRecord,
+	ThemeMetafieldQueries,
 	ThemeMetafieldReadRecord,
 	ThemePageRecord,
 	ThemeRenderArgumentRecord,
