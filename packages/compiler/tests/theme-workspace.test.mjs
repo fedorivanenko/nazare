@@ -38,6 +38,12 @@ test("workspace session updates graph with stable revisions and deltas", () => {
 	assert.deepEqual(first.removedNodeIds, []);
 	assert.deepEqual(first.changedNodeIds, []);
 	assert.deepEqual(first.changedEdgeIds, []);
+	const unchanged = session.updateFile({
+		path: "snippets/card.liquid",
+		contents: "Updated card",
+	});
+	assert.equal(unchanged.revision, 1);
+	assert.deepEqual(unchanged.changedPaths, []);
 	const removed = session.removeFile("snippets/card.liquid");
 	assert.equal(removed.revision, 2);
 	assert.ok(removed.removedNodeIds.includes("file:snippets/card.liquid"));

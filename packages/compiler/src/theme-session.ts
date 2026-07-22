@@ -41,6 +41,10 @@ export class ThemeWorkspaceSession {
 	}
 
 	updateFile(file: ThemeInputFile): ThemeGraphUpdate {
+		const previous = this.filesByPath.get(file.path);
+		if (previous?.contents === file.contents) {
+			return this.emptyUpdate([]);
+		}
 		this.filesByPath.set(file.path, file);
 		return this.rebuild([file.path]);
 	}
