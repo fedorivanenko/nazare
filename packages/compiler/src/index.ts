@@ -140,6 +140,10 @@ export {
 } from "./symbols.js";
 export { syntaxFromAst } from "./syntax.js";
 export {
+	ThemeBuildSession,
+	type ThemeBuildUpdate,
+} from "./theme-build-session.js";
+export {
 	filterThemeCheckIssues,
 	parseThemeCheckPolicy,
 	type ThemeCheckPolicy,
