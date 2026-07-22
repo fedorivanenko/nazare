@@ -176,6 +176,41 @@ test("metafield snapshot resolves reads and reports missing definitions", () => 
 	assert.equal(graph.metafields.unconsumedDefinitionIds.length, 0);
 });
 
+test("metafield definitions inherit affected pages through theme dependencies", () => {
+	const graph = inspectNazareTheme(
+		[
+			{
+				path: "templates/product.json",
+				contents: JSON.stringify({
+					sections: { main: { type: "main-product" } },
+				}),
+			},
+			{
+				path: "sections/main-product.liquid",
+				contents: "{% render 'price' %}",
+			},
+			{
+				path: "snippets/price.liquid",
+				contents: "{{ product.metafields.custom.subtitle }}",
+			},
+		],
+		{
+			metafields: {
+				contents: JSON.stringify([
+					{ owner: "product", namespace: "custom", key: "subtitle" },
+				]),
+			},
+		},
+	);
+	const definitionId = "metafield:product:custom:subtitle";
+	assert.deepEqual(graph.impact.affectedPages[definitionId], [
+		"templates/product.json",
+	]);
+	assert.ok(
+		graph.impact.dependents[definitionId].includes("snippets/price.liquid"),
+	);
+});
+
 test("metafield parser accepts nested owner maps and normalizes owner types", () => {
 	const graph = inspectNazareTheme(
 		[
