@@ -66,13 +66,10 @@ export class ThemeWorkspaceSession {
 		if (nextFingerprint === this.externalFingerprint) {
 			return this.emptyUpdate([]);
 		}
+		const changedPaths = externalChangedPaths(this.options, options);
 		Object.assign(this.options, options);
 		this.externalFingerprint = nextFingerprint;
-		return this.rebuild(
-			[options.metafields?.path, options.themeCheck?.path].filter(
-				(path): path is string => path !== undefined,
-			),
-		);
+		return this.rebuild(changedPaths);
 	}
 
 	private rebuild(changedPaths: string[]): ThemeGraphUpdate {
@@ -125,6 +122,20 @@ function fingerprintExternalArtifacts(
 		metafields: options.metafields,
 		themeCheck: options.themeCheck,
 	});
+}
+
+function externalChangedPaths(
+	previous: Pick<InspectNazareThemeOptions, "metafields" | "themeCheck">,
+	next: Pick<InspectNazareThemeOptions, "metafields" | "themeCheck">,
+): string[] {
+	const paths: string[] = [];
+	if (JSON.stringify(previous.metafields) !== JSON.stringify(next.metafields)) {
+		paths.push(".shopify/metafields.json");
+	}
+	if (JSON.stringify(previous.themeCheck) !== JSON.stringify(next.themeCheck)) {
+		paths.push(".theme-check.yml");
+	}
+	return paths;
 }
 
 function invalidationClosure(
