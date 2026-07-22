@@ -192,6 +192,16 @@ export {
 	type ThemeMetafieldSnapshot,
 } from "./theme-metafields.js";
 export {
+	getThemeAffectedPages,
+	getThemeDependencies,
+	getThemeDependents,
+	getThemeEdgesFrom,
+	getThemeEdgesTo,
+	getThemeNode,
+	summarizeThemeGraph,
+	type ThemeGraphSummary,
+} from "./theme-queries.js";
+export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
 	inspectNazareTheme,
