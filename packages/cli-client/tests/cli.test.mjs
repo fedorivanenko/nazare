@@ -577,6 +577,61 @@ test("cli: inspect honors inspect.exclude and reports every excluded file", asyn
 	);
 });
 
+test("cli: inspect loads metafield snapshot and reports graph queries", {
+	smoke: true,
+}, async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+			}),
+			"snippets/card.liquid": "{{ product.metafields.custom.subtitle }}",
+			".shopify/metafields.json": JSON.stringify([
+				{ owner: "product", namespace: "custom", key: "subtitle" },
+			]),
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 0);
+			const graph = JSON.parse(result.stdout);
+			assert.equal(graph.metafields.state, "present");
+			assert.equal(graph.metafields.consumedDefinitionIds.length, 1);
+		},
+	);
+});
+
+test("cli: inspect treats missing external artifacts as unknown", {
+	smoke: true,
+}, async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+			}),
+			"snippets/card.liquid": "{{ product.metafields.custom.subtitle }}",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 0);
+			assert.equal(JSON.parse(result.stdout).metafields.state, "unknown");
+		},
+	);
+});
+
 test("cli: inspect rejects a malformed inspect.exclude instead of ignoring it", async () => {
 	await withProject(
 		{
