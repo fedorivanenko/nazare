@@ -7,9 +7,9 @@ import {
 	getThemeDependencies,
 	getThemeDependents,
 	getThemeNode,
-	type InspectNazareThemeResult,
-	inspectNazareTheme,
 	summarizeThemeGraph,
+	type ThemeInputFile,
+	ThemeWorkspaceSession,
 } from "@nazare/compiler";
 
 export async function serveThemeGraph(
@@ -17,7 +17,7 @@ export async function serveThemeGraph(
 	input: Readable,
 	output: Writable,
 ): Promise<void> {
-	let graph = await loadGraph(root);
+	let session = await loadSession(root);
 	const readline = createInterface({ input, crlfDelay: Infinity });
 	for await (const line of readline) {
 		if (!line.trim()) continue;
@@ -26,9 +26,9 @@ export async function serveThemeGraph(
 			const result = await handleRequest(
 				request,
 				root,
-				() => graph,
+				() => session,
 				(next) => {
-					graph = next;
+					session = next;
 				},
 			);
 			writeResponse(output, { id: request.id, result });
@@ -53,8 +53,8 @@ type GraphRequest = {
 async function handleRequest(
 	request: GraphRequest,
 	root: string,
-	getGraph: () => InspectNazareThemeResult,
-	setGraph: (graph: InspectNazareThemeResult) => void,
+	getSession: () => ThemeWorkspaceSession,
+	setSession: (session: ThemeWorkspaceSession) => void,
 ): Promise<unknown> {
 	if (request.method === "initialize") {
 		return {
@@ -62,6 +62,8 @@ async function handleRequest(
 			methods: [
 				"inspect",
 				"reload",
+				"updateFile",
+				"removeFile",
 				"summary",
 				"node",
 				"dependencies",
@@ -71,11 +73,18 @@ async function handleRequest(
 		};
 	}
 	if (request.method === "reload" || request.method === "inspect") {
-		const graph = await loadGraph(root);
-		setGraph(graph);
-		return graph;
+		const session = await loadSession(root);
+		setSession(session);
+		return session.getGraph();
 	}
-	const graph = getGraph();
+	const session = getSession();
+	if (request.method === "updateFile") {
+		return session.updateFile(requiredFile(request.params));
+	}
+	if (request.method === "removeFile") {
+		return session.removeFile(requiredString(request.params, "path"));
+	}
+	const graph = session.getGraph();
 	if (request.method === "summary") return summarizeThemeGraph(graph);
 	const nodeId = requiredString(request.params, "nodeId");
 	if (request.method === "node") return getThemeNode(graph, nodeId) ?? null;
@@ -87,11 +96,11 @@ async function handleRequest(
 	throw new Error(`Unknown graph server method ${request.method}`);
 }
 
-async function loadGraph(root: string): Promise<InspectNazareThemeResult> {
+async function loadSession(root: string): Promise<ThemeWorkspaceSession> {
 	const files = await collectThemeFiles(root);
 	const metafields = await optionalFile(root, ".shopify/metafields.json");
 	const themeCheck = await optionalFile(root, ".theme-check.yml");
-	return inspectNazareTheme(files, { metafields, themeCheck });
+	return new ThemeWorkspaceSession(files, { metafields, themeCheck });
 }
 
 async function collectThemeFiles(
@@ -154,6 +163,17 @@ function parseRequest(line: string): GraphRequest {
 		method: request.method,
 		params: request.params,
 	};
+}
+
+function requiredFile(
+	params: Record<string, unknown> | undefined,
+): ThemeInputFile {
+	const path = requiredString(params, "path");
+	const contents = params?.contents;
+	if (typeof contents !== "string") {
+		throw new Error("Missing string parameter contents");
+	}
+	return { path, contents };
 }
 
 function requiredString(

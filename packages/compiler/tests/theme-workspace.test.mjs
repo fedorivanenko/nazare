@@ -15,6 +15,11 @@ const hasIssue = (result, code) =>
 
 test("workspace session updates graph with stable revisions and deltas", () => {
 	const session = new ThemeWorkspaceSession([
+		{
+			path: "templates/index.json",
+			contents: JSON.stringify({ sections: { main: { type: "main" } } }),
+		},
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
 		{ path: "snippets/card.liquid", contents: "Card" },
 	]);
 	const first = session.updateFile({
@@ -22,6 +27,12 @@ test("workspace session updates graph with stable revisions and deltas", () => {
 		contents: "Updated card",
 	});
 	assert.equal(first.revision, 1);
+	assert.deepEqual(first.invalidatedNodeIds, [
+		"sections/main.liquid",
+		"snippets/card.liquid",
+		"templates/index.json",
+	]);
+	assert.deepEqual(first.affectedPages, ["templates/index.json"]);
 	assert.deepEqual(first.changedPaths, ["snippets/card.liquid"]);
 	assert.deepEqual(first.addedNodeIds, []);
 	assert.deepEqual(first.removedNodeIds, []);
