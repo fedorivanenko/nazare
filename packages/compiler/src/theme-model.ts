@@ -948,7 +948,10 @@ function expectedInputRecords(
 			}
 			return;
 		}
-		byId.set(id, reconciledInput(path, name, origin, [evidenceId], propertyPath));
+		byId.set(
+			id,
+			reconciledInput(path, name, origin, [evidenceId], propertyPath),
+		);
 	};
 	/**
 	 * Effective requirement is the author's when they declared one, and the

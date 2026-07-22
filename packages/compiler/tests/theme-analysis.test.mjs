@@ -619,16 +619,20 @@ test("theme analysis excludes configured globs and reports every excluded file",
 	);
 
 	assert.equal(excluded.length, 2);
-	assert.deepEqual(
-		excluded.map((issue) => issue.span.file).sort(),
-		["snippets/reploChunk.abc.0.liquid", "snippets/reploChunk.abc.1.liquid"],
-	);
+	assert.deepEqual(excluded.map((issue) => issue.span.file).sort(), [
+		"snippets/reploChunk.abc.0.liquid",
+		"snippets/reploChunk.abc.1.liquid",
+	]);
 	assert.equal(
 		excluded.every((issue) => issue.severity === "info"),
 		true,
 	);
 	assert.equal(
-		analysis.issues.some((issue) => issue.span?.file === "snippets/card.liquid" && issue.code === "THEME_FILE_EXCLUDED"),
+		analysis.issues.some(
+			(issue) =>
+				issue.span?.file === "snippets/card.liquid" &&
+				issue.code === "THEME_FILE_EXCLUDED",
+		),
 		false,
 	);
 });
@@ -673,7 +677,10 @@ test("excluded files leave no nodes in the inspected graph", () => {
 test("theme exclusion globs match segments, wildcards, and single characters", async () => {
 	const { matchesThemeGlob } = await import("../dist/index.js");
 
-	assert.equal(matchesThemeGlob("snippets/a.liquid", "snippets/*.liquid"), true);
+	assert.equal(
+		matchesThemeGlob("snippets/a.liquid", "snippets/*.liquid"),
+		true,
+	);
 	assert.equal(
 		matchesThemeGlob("snippets/deep/a.liquid", "snippets/*.liquid"),
 		false,
@@ -682,11 +689,26 @@ test("theme exclusion globs match segments, wildcards, and single characters", a
 		matchesThemeGlob("snippets/deep/a.liquid", "snippets/**/*.liquid"),
 		true,
 	);
-	assert.equal(matchesThemeGlob("snippets/a.liquid", "snippets/**/*.liquid"), true);
-	assert.equal(matchesThemeGlob("snippets/ab.liquid", "snippets/a?.liquid"), true);
-	assert.equal(matchesThemeGlob("snippets/a.liquid", "snippets/a?.liquid"), false);
-	assert.equal(matchesThemeGlob("./snippets/a.liquid", "snippets/a.liquid"), true);
-	assert.equal(matchesThemeGlob("snippets/axliquid", "snippets/a.liquid"), false);
+	assert.equal(
+		matchesThemeGlob("snippets/a.liquid", "snippets/**/*.liquid"),
+		true,
+	);
+	assert.equal(
+		matchesThemeGlob("snippets/ab.liquid", "snippets/a?.liquid"),
+		true,
+	);
+	assert.equal(
+		matchesThemeGlob("snippets/a.liquid", "snippets/a?.liquid"),
+		false,
+	);
+	assert.equal(
+		matchesThemeGlob("./snippets/a.liquid", "snippets/a.liquid"),
+		true,
+	);
+	assert.equal(
+		matchesThemeGlob("snippets/axliquid", "snippets/a.liquid"),
+		false,
+	);
 });
 
 test("a guard stored in a derived boolean keeps the guarded input optional", () => {
@@ -698,7 +720,7 @@ test("a guard stored in a derived boolean keeps the guarded input optional", () 
 		"{%- else -%}",
 		"{% assign has_image = false %}",
 		"{%- endif -%}",
-		"{%- if has_image == true -%}<img src=\"{{ responsive_image }}\">{%- endif -%}",
+		'{%- if has_image == true -%}<img src="{{ responsive_image }}">{%- endif -%}',
 	].join("");
 	const analysis = analyzeNazareTheme([
 		{ path: "snippets/c-img.liquid", contents },
@@ -796,7 +818,10 @@ test("a declared param with no read is still part of the interface", () => {
 
 	assert.equal(ghost?.origin, "docParam");
 	assert.equal(ghost?.requirement, "optional");
-	assert.ok(ghost?.evidenceIds.length > 0, "declared inputs cite their doc span");
+	assert.ok(
+		ghost?.evidenceIds.length > 0,
+		"declared inputs cite their doc span",
+	);
 });
 
 test("doc contract disagreements are reported as information, not defects", () => {

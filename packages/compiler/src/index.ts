@@ -139,6 +139,7 @@ export {
 	contractFromIR,
 } from "./symbols.js";
 export { syntaxFromAst } from "./syntax.js";
+export { matchesThemeGlob } from "./theme-exclusions.js";
 export type {
 	AnalyzeNazareThemeOptions,
 	BuildNazareThemeWorkspaceOptions,
@@ -175,7 +176,6 @@ export type {
 	ThemeSemanticModel,
 	ThemeSettingReadRecord,
 } from "./theme-facts.js";
-export { matchesThemeGlob } from "./theme-exclusions.js";
 export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,

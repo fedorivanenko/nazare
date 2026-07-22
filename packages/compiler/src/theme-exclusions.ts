@@ -4,8 +4,8 @@
 // the user declares patterns, and every excluded file is reported, because a
 // graph that silently omits a render target would be lying about the theme.
 import type { Diagnostic } from "@nazare/core";
-import { normalizeThemePath } from "./theme-file-classifier.js";
 import type { ThemeInputFile } from "./theme-facts.js";
+import { normalizeThemePath } from "./theme-file-classifier.js";
 
 export type ThemeExclusion = { path: string; pattern: string };
 
