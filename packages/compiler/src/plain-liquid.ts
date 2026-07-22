@@ -195,13 +195,23 @@ function containsLiquidSyntax(maskedSource: string): boolean {
 	return maskedSource.includes("{{") || maskedSource.includes("{%");
 }
 
+/**
+ * Bodies that carry meaning even though they are not Liquid expressions, and so
+ * must survive masking: authored schema, and `{% doc %}` annotations, whose
+ * `@param` lines are the declared component contract.
+ */
+const PRESERVED_BLOCK_BODIES = [
+	/{%-?\s*schema\s*-?%}[\s\S]*?{%-?\s*endschema\s*-?%}/gi,
+	/{%-?\s*doc\s*-?%}[\s\S]*?{%-?\s*enddoc\s*-?%}/gi,
+];
+
 function sourceForLiquidOnlyAnalysis(source: string): string {
 	let masked = blankNonLiquidCharacters(source);
-	for (const match of source.matchAll(
-		/{%-?\s*schema\s*-?%}[\s\S]*?{%-?\s*endschema\s*-?%}/gi,
-	)) {
-		const start = match.index ?? 0;
-		masked = `${masked.slice(0, start)}${match[0]}${masked.slice(start + match[0].length)}`;
+	for (const pattern of PRESERVED_BLOCK_BODIES) {
+		for (const match of source.matchAll(pattern)) {
+			const start = match.index ?? 0;
+			masked = `${masked.slice(0, start)}${match[0]}${masked.slice(start + match[0].length)}`;
+		}
 	}
 	return masked;
 }
