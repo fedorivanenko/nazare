@@ -25,6 +25,7 @@ export class ThemeWorkspaceSession {
 	private readonly options: InspectNazareThemeOptions;
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
 	private graph: InspectNazareThemeResult;
+	private externalFingerprint: string;
 	private revision = 0;
 
 	constructor(
@@ -34,6 +35,7 @@ export class ThemeWorkspaceSession {
 		this.options = { ...options, cache: this.cache };
 		for (const file of files) this.filesByPath.set(file.path, file);
 		this.graph = inspectNazareTheme(this.files(), this.options);
+		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
 
 	getGraph(): InspectNazareThemeResult {
@@ -59,7 +61,13 @@ export class ThemeWorkspaceSession {
 	updateExternalArtifacts(
 		options: Pick<InspectNazareThemeOptions, "metafields" | "themeCheck">,
 	): ThemeGraphUpdate {
+		const nextOptions = { ...this.options, ...options };
+		const nextFingerprint = fingerprintExternalArtifacts(nextOptions);
+		if (nextFingerprint === this.externalFingerprint) {
+			return this.emptyUpdate([]);
+		}
 		Object.assign(this.options, options);
+		this.externalFingerprint = nextFingerprint;
 		return this.rebuild(
 			[options.metafields?.path, options.themeCheck?.path].filter(
 				(path): path is string => path !== undefined,
@@ -108,6 +116,15 @@ function diffGraphs(
 		removedEdgeIds: addedIds(currentEdges, previousEdges),
 		changedEdgeIds: changedIds(previousEdges, currentEdges),
 	};
+}
+
+function fingerprintExternalArtifacts(
+	options: Pick<InspectNazareThemeOptions, "metafields" | "themeCheck">,
+): string {
+	return JSON.stringify({
+		metafields: options.metafields,
+		themeCheck: options.themeCheck,
+	});
 }
 
 function invalidationClosure(
