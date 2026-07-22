@@ -579,6 +579,8 @@ nazare publish [dir]                publish a component folder
 nazare validate <file>              check one `.nz.liquid` file
 nazare schema <file>                print generated Shopify schema
 nazare graph <file>                 print component dependency graph
+nazare inspect theme [dir]          print whole-theme semantic graph JSON
+nazare graph-server [dir]           serve graph queries and file updates over stdio
 nazare ast <file>                   print parsed AST
 nazare ir <file>                    print compiler IR
 nazare artifact <file>              print full compiler artifact
@@ -593,6 +595,12 @@ Common options and environment variables:
 --source-root <dir>                 add/update/build source root (else `nazare.theme.json` build.sourceRoot)
 --out-dir <dir>                     build output directory (else `nazare.theme.json` build.outDir)
 --pull                              build: fetch live theme data before building
+
+Graph server requests are newline-delimited JSON. Supported methods include
+`initialize`, `summary`, `node`, `dependencies`, `dependents`, `affectedPages`,
+`updateFile`, `removeFile`, `watch`, `unwatch`, and `reload`. `watch` emits
+`graph/update` notifications with revisions and graph deltas on file changes.
+
 --store <domain>                    build --pull: Shopify store to pull from
 --theme <id|name>                   build --pull: theme to pull from
 --json                              build: print the raw result as JSON
