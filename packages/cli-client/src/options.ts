@@ -139,7 +139,7 @@ Options:
   --store <domain>                  build --pull: Shopify store to pull from
   --theme <id|name>                 build --pull: theme to pull from
   --json                            build: print the raw result as JSON
-  --format json|text                inspect: output machine JSON or human report
+  --format json|text|dot            inspect: output JSON, human report, or Graphviz DOT
 
 Env:
   NAZARE_REGISTRY                   registry base URL, or file:<dir> for a local one

@@ -10,6 +10,7 @@ import {
 	inspectNazareTheme,
 	summarizeThemeGraph,
 	type ThemeAnalysisCache,
+	themeGraphToDot,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
 import { registryFromEnv } from "@nazare/registry";
@@ -331,8 +332,10 @@ async function runInspect(
 		return 1;
 	}
 	const format = cliOptions.format ?? "json";
-	if (format !== "json" && format !== "text") {
-		output.error(`Unsupported inspect format ${format}; expected json or text`);
+	if (format !== "json" && format !== "text" && format !== "dot") {
+		output.error(
+			`Unsupported inspect format ${format}; expected json, text, or dot`,
+		);
 		return 1;
 	}
 	const manifest = await readProjectManifest(projectRoot);
@@ -368,7 +371,9 @@ async function runInspect(
 	output.log(
 		format === "text"
 			? renderInspectReport(inspected)
-			: JSON.stringify(inspected, null, 2),
+			: format === "dot"
+				? themeGraphToDot(inspected)
+				: JSON.stringify(inspected, null, 2),
 	);
 	return hasErrors(
 		inspected.issues.filter((issue) => issue.severity === "error"),
