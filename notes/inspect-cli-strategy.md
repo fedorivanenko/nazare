@@ -80,9 +80,11 @@ report that `product-card` renders on 23 other pages, so one fix pays 23 times,
 or that the expensive branch only executes when a setting is enabled. Per-page
 cost plus the graph turns a flamegraph into a prioritized, theme-wide list.
 
-**Unverified:** the documented flags show no `--output`/`--json`; the command
-opens a browser. Ingesting it likely means capturing the profile payload
-ourselves. Confirm hands-on before planning on it.
+**Verified against Shopify CLI documentation:** documented flags show no
+`--output`/`--json`; command opens a browser with Speedscope. Do not build
+profile ingestion yet. Future implementation must capture or receive browser
+payload through separately validated integration; CLI stdout is not a stable
+machine-readable source.
 
 ### 3. Console × graph
 
