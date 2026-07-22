@@ -11,6 +11,11 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	compareToBaseline,
+	report,
+	scoreGraph,
+} from "./check-doc-contract-agreement.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const manifestPath = join(
@@ -21,6 +26,8 @@ const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const options = parseArguments(process.argv.slice(2));
 const failures = [];
 
+const agreementScores = {};
+
 for (const [slug, expected] of Object.entries(manifest.themes)) {
 	if (options.only.size > 0 && !options.only.has(slug)) continue;
 	try {
@@ -29,9 +36,21 @@ for (const [slug, expected] of Object.entries(manifest.themes)) {
 		console.log(
 			`PASS ${slug}: ${graph.nodes.length} nodes, ${graph.edges.length} edges, ${graph.issues.length} issues`,
 		);
+		const score = scoreGraph(graph);
+		if (score.declared > 0) agreementScores[slug] = score;
 	} catch (error) {
 		failures.push(`${slug}: ${error instanceof Error ? error.message : String(error)}`);
 		console.error(`FAIL ${failures.at(-1)}`);
+	}
+}
+
+// Declarations override inference in the graph, so inference quality is not
+// observable in the output of a documented file. Score it here or it rots.
+if (Object.keys(agreementScores).length > 0) {
+	console.log("\nDeclared-vs-inferred requiredness agreement:");
+	for (const [slug, score] of Object.entries(agreementScores)) {
+		report(slug, score);
+		failures.push(...compareToBaseline(slug, score));
 	}
 }
 

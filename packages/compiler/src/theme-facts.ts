@@ -230,6 +230,17 @@ export type ThemeFact =
 			name: string;
 	  }
 	| {
+			/** A `@param` in a `{% doc %}` block: the author's own statement of
+			 * this component's interface, which outranks source inference. */
+			kind: "declaresDocParam";
+			path: string;
+			name: string;
+			required: boolean;
+			paramType?: string;
+			description?: string;
+			span?: SourceSpan;
+	  }
+	| {
 			kind: "detectsCapability";
 			path: string;
 			capability: string;
@@ -447,7 +458,8 @@ export type ThemeEvidenceRecord = {
 		| "renderCall"
 		| "renderArgument"
 		| "templateConfig"
-		| "dependency";
+		| "dependency"
+		| "docParam";
 	file: string;
 	span?: SourceSpan;
 	extractor: string;
@@ -459,8 +471,19 @@ export type ThemeExpectedInputRecord = {
 	name: string;
 	/** Compatibility projection. True only when source proves caller input need. */
 	required: boolean;
+	/** Effective requirement: a `{% doc %}` declaration wins over inference. */
 	requirement: "required" | "optional" | "unknown";
-	origin: "freeVariable" | "ambientShopifyContext";
+	/** Whether `requirement` came from the author or from source evidence. */
+	provenance: "declared" | "inferred";
+	/**
+	 * What inference concluded, kept even when a declaration overrides it.
+	 * Without this the two can never be compared, and inference quality would
+	 * rot invisibly the moment declarations start winning.
+	 */
+	inferredRequirement: "required" | "optional" | "unknown";
+	origin: "freeVariable" | "ambientShopifyContext" | "docParam";
+	/** Declared type from `@param {type} name`, when the author gave one. */
+	declaredType?: string;
 	propertyPaths: string[];
 	evidenceIds: string[];
 };
@@ -619,7 +642,10 @@ export type SemanticThemeGraphNode =
 			name: string;
 			required: boolean;
 			requirement: "required" | "optional" | "unknown";
-			origin: "freeVariable" | "ambientShopifyContext";
+			provenance: "declared" | "inferred";
+			inferredRequirement: "required" | "optional" | "unknown";
+			declaredType?: string;
+			origin: "freeVariable" | "ambientShopifyContext" | "docParam";
 			propertyPaths: string[];
 			evidenceIds: string[];
 	  }

@@ -47,6 +47,7 @@ export function buildThemeSemanticModel(
 	const dataAccesses: ThemeDataAccessRecord[] = [];
 	const variableReads: ThemeVariableReadRecord[] = [];
 	const guardedObjects = new Set<string>();
+	const docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[] = [];
 	const renderSiteFacts: Extract<ThemeFact, { kind: "rendersSnippet" }>[] = [];
 	const renderArguments: ThemeRenderArgumentRecord[] = [];
 	const capabilitySignals: ThemeCapabilitySignalRecord[] = [];
@@ -201,6 +202,9 @@ export function buildThemeSemanticModel(
 		}
 		if (fact.kind === "guardsObject") {
 			guardedObjects.add(`${fact.fromPath}:${fact.name}`);
+		}
+		if (fact.kind === "declaresDocParam") {
+			docParams.push(fact);
 		}
 		if (fact.kind === "readsShopifyData") {
 			dataAccesses.push({
@@ -414,7 +418,9 @@ export function buildThemeSemanticModel(
 		dataAccesses,
 		variableReads,
 		guardedObjects,
+		docParams,
 	);
+	modelIssues.push(...docContractIssues(expectedInputs, docParams));
 	const renderSites = renderSiteRecords(
 		renderSiteFacts,
 		byKindName,
@@ -450,6 +456,7 @@ export function buildThemeSemanticModel(
 		variableReads,
 		renderArguments,
 		capabilitySignals,
+		docParams,
 	});
 
 	const settingByPathAndId = new Map(
@@ -779,8 +786,16 @@ function evidenceRecords(records: {
 	variableReads: ThemeVariableReadRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
 	capabilitySignals: ThemeCapabilitySignalRecord[];
+	docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[];
 }): ThemeEvidenceRecord[] {
 	return [
+		...records.docParams.map((param) => ({
+			id: docParamEvidenceId(param.path, param.name),
+			kind: "docParam" as const,
+			file: param.path,
+			span: param.span,
+			extractor: "theme-source-facts",
+		})),
 		...records.sectionInstances.map((instance) => ({
 			id: instance.id,
 			kind: "templateConfig" as const,
@@ -875,7 +890,11 @@ function expectedInputRecords(
 	dataAccesses: ThemeDataAccessRecord[],
 	variableReads: ThemeVariableReadRecord[],
 	guardedObjects: Set<string>,
+	docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[],
 ): ThemeExpectedInputRecord[] {
+	const declaredByPathAndName = new Map(
+		docParams.map((param) => [`${param.path}:${param.name}`, param]),
+	);
 	const componentPaths = new Set(
 		declarations
 			.filter(
@@ -919,24 +938,52 @@ function expectedInputRecords(
 				...new Set([...existing.evidenceIds, evidenceId]),
 			];
 			// A free-variable read is stronger evidence than ambient context.
-			if (origin === "freeVariable") {
+			if (origin === "freeVariable" && existing.origin !== "docParam") {
 				existing.origin = origin;
-				existing.requirement = inferredRequirement(path, name, origin);
-				existing.required = existing.requirement === "required";
+				existing.inferredRequirement = inferredRequirement(path, name, origin);
+				if (existing.provenance === "inferred") {
+					existing.requirement = existing.inferredRequirement;
+					existing.required = existing.requirement === "required";
+				}
 			}
 			return;
 		}
-		const requirement = inferredRequirement(path, name, origin);
-		byId.set(id, {
-			id,
+		byId.set(id, reconciledInput(path, name, origin, [evidenceId], propertyPath));
+	};
+	/**
+	 * Effective requirement is the author's when they declared one, and the
+	 * inferred requirement otherwise. Both are kept: the declaration is the
+	 * answer, the inference is what makes disagreement visible.
+	 */
+	const reconciledInput = (
+		path: string,
+		name: string,
+		origin: ThemeExpectedInputRecord["origin"],
+		evidenceIds: string[],
+		propertyPath?: string,
+	): ThemeExpectedInputRecord => {
+		const declared = declaredByPathAndName.get(`${path}:${name}`);
+		const inferred = inferredRequirement(path, name, origin);
+		const requirement = declared
+			? declared.required
+				? "required"
+				: "optional"
+			: inferred;
+		return {
+			id: expectedInputId(path, name),
 			path,
 			name,
 			required: requirement === "required",
 			requirement,
+			provenance: declared ? "declared" : "inferred",
+			inferredRequirement: inferred,
 			origin,
+			declaredType: declared?.paramType,
 			propertyPaths: propertyPath ? [propertyPath] : [],
-			evidenceIds: [evidenceId],
-		});
+			evidenceIds: declared
+				? [...evidenceIds, docParamEvidenceId(path, name)]
+				: evidenceIds,
+		};
 	};
 	for (const access of dataAccesses) {
 		if (!componentPaths.has(access.fromPath)) continue;
@@ -959,7 +1006,84 @@ function expectedInputRecords(
 			"freeVariable",
 		);
 	}
+	// A declared parameter is part of the interface whether or not the body
+	// happens to read it, so declarations seed inputs that no read produced.
+	for (const param of docParams) {
+		if (!componentPaths.has(param.path)) continue;
+		const id = expectedInputId(param.path, param.name);
+		if (byId.has(id)) continue;
+		byId.set(id, reconciledInput(param.path, param.name, "docParam", []));
+	}
 	return [...byId.values()];
+}
+
+/**
+ * Where a `{% doc %}` block and the source it documents disagree. A stale
+ * declaration outranks correct inference, so these are what keep a contract
+ * honest once declarations win.
+ *
+ * All of these are informational. None of them is a runtime defect: Liquid
+ * renders an absent variable as empty rather than raising, so an unguarded
+ * read of an optional parameter is how an optional class hook is *supposed*
+ * to be written (`class='{{ item_class }}'`). These report a disagreement
+ * between two descriptions of one interface, which is worth a human's
+ * attention and is not worth a warning.
+ *
+ * Not reported: a declared-required input that inference calls optional or
+ * unknown. Inference is deliberately conservative, so its silence is expected
+ * and flagging it would blame the author for the compiler's caution. That
+ * disagreement is still recorded on the input for the agreement harness.
+ */
+function docContractIssues(
+	expectedInputs: ThemeExpectedInputRecord[],
+	docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[],
+): Diagnostic[] {
+	if (docParams.length === 0) return [];
+	const issues: Diagnostic[] = [];
+	const documentedPaths = new Set(docParams.map((param) => param.path));
+	const declaredByPathAndName = new Map(
+		docParams.map((param) => [`${param.path}:${param.name}`, param]),
+	);
+	for (const input of expectedInputs) {
+		const declared = declaredByPathAndName.get(`${input.path}:${input.name}`);
+		if (declared && !declared.required) {
+			if (input.inferredRequirement === "required") {
+				issues.push({
+					severity: "info",
+					code: "THEME_DOC_PARAM_UNGUARDED",
+					message: `@param ${input.name} is declared optional, but no read of it is guarded or defaulted; source evidence alone would call it required`,
+					phase: "resolve",
+					span: declared.span,
+				});
+			}
+			continue;
+		}
+		if (!declared && documentedPaths.has(input.path)) {
+			issues.push({
+				severity: "info",
+				code: "THEME_DOC_PARAM_UNDECLARED",
+				message: `${input.path} uses ${input.name} as an input but its {% doc %} block does not declare it`,
+				phase: "resolve",
+				span: fileSpan(input.path),
+			});
+		}
+	}
+	const usedNames = new Set(
+		expectedInputs
+			.filter((input) => input.origin !== "docParam")
+			.map((input) => `${input.path}:${input.name}`),
+	);
+	for (const param of docParams) {
+		if (usedNames.has(`${param.path}:${param.name}`)) continue;
+		issues.push({
+			severity: "info",
+			code: "THEME_DOC_PARAM_UNUSED",
+			message: `@param ${param.name} is declared but never read; the doc block has drifted from the source`,
+			phase: "resolve",
+			span: param.span,
+		});
+	}
+	return issues;
 }
 
 /**
@@ -1317,6 +1441,16 @@ export function variableReadId(
 
 export function expectedInputId(path: string, name: string): string {
 	return `expected-input:${path}:${name}`;
+}
+
+export function docParamEvidenceId(path: string, name: string): string {
+	return `doc-param:${path}:${name}`;
+}
+
+/** Anchors a file-level finding that has no single source position. */
+function fileSpan(path: string): SourceSpan {
+	const position = { line: 1, column: 1 };
+	return { file: path, start: position, end: position };
 }
 
 export function capabilitySignalId(
