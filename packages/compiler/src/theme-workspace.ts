@@ -222,6 +222,7 @@ function analyzeNormalizedThemeFiles(
 	const dependencyResolver: DependencyResolver =
 		createDependencyResolver(readFile);
 	const cache = options.cache?.version === 1 ? options.cache : undefined;
+	const componentDependencyFingerprint = fingerprintComponentSources(files);
 	if (cache) {
 		const currentPaths = new Set(files.map((file) => file.path));
 		for (const path of Object.keys(cache.entries)) {
@@ -231,24 +232,33 @@ function analyzeNormalizedThemeFiles(
 
 	for (const file of files) {
 		const fileKind = classifyThemeFile(file.path);
-		const cacheable = fileKind !== "nazareComponent";
-		const fingerprint = cacheable
-			? themeFileFingerprint(file, fileKind, options)
-			: undefined;
+		const cacheable = true;
+		const fingerprint = themeFileFingerprint(
+			file,
+			fileKind,
+			options,
+			fileKind === "nazareComponent"
+				? componentDependencyFingerprint
+				: undefined,
+		);
 		const cached = cacheable ? cache?.entries[file.path] : undefined;
 		if (cached && cached.fingerprint === fingerprint) {
 			facts.push(...cached.facts);
 			issues.push(...cached.issues);
+			if (cached.artifact) artifacts.push(cached.artifact);
 			continue;
 		}
 		const factStart = facts.length;
 		const issueStart = issues.length;
-		const saveCacheEntry = (): void => {
+		const saveCacheEntry = (
+			artifact?: ThemeBuildResult["artifacts"][number],
+		): void => {
 			if (!cache || !cacheable || !fingerprint) return;
 			cache.entries[file.path] = {
 				fingerprint,
 				facts: facts.slice(factStart),
 				issues: issues.slice(issueStart),
+				...(artifact ? { artifact } : {}),
 			};
 		};
 		facts.push({ kind: "file", path: file.path, fileKind });
@@ -299,7 +309,12 @@ function analyzeNormalizedThemeFiles(
 			});
 			facts.push(...result.facts);
 			issues.push(...result.issues);
-			if (result.artifact) artifacts.push(result.artifact);
+			if (result.artifact) {
+				artifacts.push(result.artifact);
+				saveCacheEntry(result.artifact);
+			} else {
+				saveCacheEntry();
+			}
 			continue;
 		}
 		if (file.path.endsWith(".liquid")) {
@@ -341,14 +356,23 @@ function themeFileFingerprint(
 	file: ThemeInputFile,
 	fileKind: ReturnType<typeof classifyThemeFile>,
 	options: AnalyzeNazareThemeOptions,
+	dependencyFingerprint?: string,
 ): string {
 	let hash = 2_166_136_261;
-	const input = `${THEME_FACT_CACHE_REVISION}\0${fileKind}\0${options.plainLiquidParseMode ?? "tolerant"}\0${file.contents}`;
+	const input = `${THEME_FACT_CACHE_REVISION}\0${fileKind}\0${options.plainLiquidParseMode ?? "tolerant"}\0${dependencyFingerprint ?? ""}\0${file.contents}`;
 	for (let index = 0; index < input.length; index += 1) {
 		hash ^= input.charCodeAt(index);
 		hash = Math.imul(hash, 16_777_619);
 	}
 	return `${input.length}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function fingerprintComponentSources(files: ThemeInputFile[]): string {
+	return files
+		.filter((file) => classifyThemeFile(file.path) === "nazareComponent")
+		.map((file) => `${file.path}\0${file.contents}`)
+		.sort()
+		.join("\0");
 }
 
 function buildScopeIssues(
