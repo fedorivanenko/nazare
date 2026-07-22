@@ -1,6 +1,9 @@
 import type { Diagnostic } from "@nazare/core";
 import { checkComponentScripts } from "./check-script.js";
 import { type EmitResult, emitTheme } from "./emit.js";
+// Generated from a digest of this package's source, so any change to fact
+// derivation invalidates persisted caches without anyone remembering to.
+import { THEME_FACT_CACHE_REVISION } from "./fact-cache-revision.js";
 import { parseNazareLiquid } from "./parser.js";
 import { markDiagnostics } from "./pipeline.js";
 import {
@@ -316,13 +319,6 @@ function analyzeNormalizedThemeFiles(
 	return { ir, artifacts, issues: ir.issues };
 }
 
-/**
- * Bump on every change to how facts are derived, not just to their shape. The
- * cache keys on file contents, so an unbumped revision silently serves facts
- * built by the previous compiler and a fix appears to do nothing on any theme
- * with a warm cache.
- */
-const THEME_FACT_CACHE_REVISION = "theme-facts-v8";
 
 function themeFileFingerprint(
 	file: ThemeInputFile,
