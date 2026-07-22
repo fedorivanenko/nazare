@@ -1,9 +1,9 @@
 import type { Diagnostic } from "@nazare/core";
+import type { ThemeEvidenceRecord } from "./theme-evidence-types.js";
 import type {
 	SemanticThemeGraphEdge,
 	SemanticThemeGraphNode,
-	ThemeEvidenceRecord,
-} from "./theme-facts.js";
+} from "./theme-graph-types.js";
 
 export type ThemeGraphView = {
 	nodeIds: string[];

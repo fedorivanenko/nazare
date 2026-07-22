@@ -7,8 +7,9 @@ import type {
 import type { NazareAst } from "./ast.js";
 import type { EmitResult } from "./emit.js";
 import type { ThemeCheckPolicyInput } from "./theme-check-policy.js";
+import type { ThemeEvidenceRecord } from "./theme-evidence-types.js";
+import type { ThemeMetafieldSnapshot } from "./theme-external-types.js";
 import type { ThemeFileKind } from "./theme-file-classifier.js";
-import type { ThemeMetafieldSnapshot } from "./theme-metafields.js";
 
 export interface ThemeInputFile {
 	path: string;
@@ -482,22 +483,7 @@ export type ThemeClassificationRecord = {
 	uncertainty: string[];
 };
 
-export type ThemeEvidenceRecord = {
-	id: string;
-	kind:
-		| "schema"
-		| "schemaSetting"
-		| "settingRead"
-		| "dataRead"
-		| "renderCall"
-		| "renderArgument"
-		| "templateConfig"
-		| "dependency"
-		| "docParam";
-	file: string;
-	span?: SourceSpan;
-	extractor: string;
-};
+export type { ThemeEvidenceRecord } from "./theme-evidence-types.js";
 
 export type ThemeExpectedInputRecord = {
 	id: string;

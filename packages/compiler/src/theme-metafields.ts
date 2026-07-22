@@ -1,11 +1,8 @@
 import type { Diagnostic } from "@nazare/core";
+import type { ThemeMetafieldSnapshot } from "./theme-external-types.js";
 import type { ThemeDataAccessRecord } from "./theme-facts.js";
 
-export type ThemeMetafieldSnapshot = {
-	path?: string;
-	contents: string;
-	pulledAt?: string;
-};
+export type { ThemeMetafieldSnapshot } from "./theme-external-types.js";
 
 export type ThemeMetafieldDefinitionRecord = {
 	id: string;
