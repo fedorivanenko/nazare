@@ -179,6 +179,7 @@ export function collectSourceThemeFacts(
 	const unguardedNames = new Set<string>();
 	const safeInitializationOffsets = new Set<number>();
 	const guardRangesByName = new Map<string, SourceRange[]>();
+	const guardProxyTargets = new Map<string, Set<string>>();
 	const localBindingRangesByName = new Map<string, SourceRange[]>();
 	const lexicalScopeRanges: SourceRange[] = [];
 	const aliasBindings = new Map<string, AliasBinding[]>();
@@ -210,8 +211,9 @@ export function collectSourceThemeFacts(
 			position?: SourceRange;
 		};
 		if (tag.name === "if" || tag.name === "unless") {
-			registerIfGuardRanges(tag, guardRangesByName);
+			registerIfGuardRanges(tag, guardRangesByName, guardProxyTargets);
 		}
+		if (tag.name === "if") registerGuardProxy(tag, guardProxyTargets);
 		if (tag.name === "for" || tag.name === "tablerow") {
 			registerLoopBindingRange(tag, localBindingRangesByName);
 		}
@@ -312,10 +314,19 @@ export function collectSourceThemeFacts(
 					const binding = (aliasBindings.get(name) ?? [])
 						.filter((candidate) => candidate.offset <= tag.position.start)
 						.at(-1);
-					if (!binding) continue;
+					// With a prior binding the defaulted value is whatever the name
+					// aliases. Without one the name is its own subject: an input that
+					// this block fills in when absent, which is what
+					// `{% unless x != blank %}{% assign x = … %}` states about a
+					// render input.
 					defaultedNames.add(
-						resolveAliasedLookup(binding.lookup, binding.offset, aliasBindings)
-							.object,
+						binding
+							? resolveAliasedLookup(
+									binding.lookup,
+									binding.offset,
+									aliasBindings,
+								).object
+							: name,
 					);
 				}
 			}
@@ -735,11 +746,18 @@ function registerBranchGuardRange(
 function registerIfGuardRanges(
 	tag: LiquidHtmlNode & { markup?: unknown },
 	guardRangesByName: Map<string, SourceRange[]>,
+	guardProxyTargets: Map<string, Set<string>>,
 ): void {
 	const names = new Set<string>();
 	visitLiquidExpressions(tag.markup, {
 		onLookup: (lookup) => names.add(lookup.name),
 	});
+	// A condition on a proxy boolean guards whatever the proxy was derived from,
+	// so `{% if has_image %}` protects reads of `image` exactly as
+	// `{% if image != blank %}` would.
+	for (const name of [...names]) {
+		for (const target of guardProxyTargets.get(name) ?? []) names.add(target);
+	}
 	const firstBranch = (tag as { children?: unknown[] }).children?.find(
 		(child) =>
 			!!child &&
@@ -753,6 +771,73 @@ function registerIfGuardRanges(
 			firstBranch.position,
 		]);
 	}
+}
+
+/**
+ * Records `{% if x … %}{% assign flag = true %}{% else %}{% assign flag = false %}`
+ * as `flag` standing in for a guard on `x`. Themes routinely test the value once
+ * and branch on the boolean afterwards; without this the later reads look
+ * unguarded and the input is inferred required even though the source guards it.
+ *
+ * Deliberately narrow: only `if` (an `unless` proxy would invert the meaning),
+ * and only boolean literals, so an ordinary assignment never becomes a guard.
+ * A later `{% if flag == false %}` block is treated as guarding too, which
+ * errs toward optional — the direction that declines to claim a requirement
+ * the source does not prove.
+ */
+function registerGuardProxy(
+	tag: LiquidHtmlNode & { markup?: unknown },
+	guardProxyTargets: Map<string, Set<string>>,
+): void {
+	const conditionNames = new Set<string>();
+	visitLiquidExpressions(tag.markup, {
+		onLookup: (lookup) => conditionNames.add(lookup.name),
+	});
+	if (conditionNames.size === 0) return;
+	const branches = ((tag as { children?: unknown[] }).children ?? []).filter(
+		(child) =>
+			!!child && (child as { type?: unknown }).type === NodeTypes.LiquidBranch,
+	) as { name?: unknown; children?: unknown[] }[];
+	const primary = branches.find((branch) => branch.name === null);
+	const alternate = branches.find((branch) => branch.name === "else");
+	if (!primary) return;
+	for (const [name, value] of booleanAssignments(primary.children ?? [])) {
+		if (value !== true) continue;
+		const alternateValue = alternate
+			? booleanAssignments(alternate.children ?? []).get(name)
+			: false;
+		if (alternateValue !== false) continue;
+		const targets = guardProxyTargets.get(name) ?? new Set<string>();
+		for (const conditionName of conditionNames) targets.add(conditionName);
+		guardProxyTargets.set(name, targets);
+	}
+}
+
+/** Names assigned a bare `true`/`false` literal directly in this sequence. */
+function booleanAssignments(nodes: unknown[]): Map<string, boolean> {
+	const assignments = new Map<string, boolean>();
+	for (const value of nodes) {
+		const node = value as { type?: unknown; markup?: unknown };
+		if (node.type !== NodeTypes.LiquidTag) continue;
+		visitLiquidExpressions(node.markup, {
+			onAssign: (markup) => {
+				const raw = markup.value as
+					| { type?: unknown; value?: unknown; filters?: unknown[] }
+					| undefined;
+				const expression = (
+					raw?.type === "LiquidVariable"
+						? (raw as { expression?: unknown }).expression
+						: raw
+				) as { type?: unknown; value?: unknown } | undefined;
+				const filters =
+					raw?.type === "LiquidVariable" ? (raw.filters ?? []) : [];
+				if (filters.length > 0 || expression?.type !== "LiquidLiteral") return;
+				if (typeof expression.value !== "boolean") return;
+				assignments.set(markup.name, expression.value);
+			},
+		});
+	}
+	return assignments;
 }
 
 function renderArgumentFacts(
