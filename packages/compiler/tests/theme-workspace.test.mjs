@@ -176,6 +176,33 @@ test("metafield snapshot resolves reads and reports missing definitions", () => 
 	assert.equal(graph.metafields.unconsumedDefinitionIds.length, 0);
 });
 
+test("metafield parser accepts nested owner maps and normalizes owner types", () => {
+	const graph = inspectNazareTheme(
+		[
+			{
+				path: "snippets/card.liquid",
+				contents: "{{ product.metafields.custom.subtitle }}",
+			},
+		],
+		{
+			metafields: {
+				contents: JSON.stringify({
+					PRODUCT: {
+						custom: { subtitle: { type: { name: "single_line_text_field" } } },
+					},
+				}),
+			},
+		},
+	);
+	assert.equal(graph.metafields.brokenReadIds.length, 0);
+	assert.equal(
+		graph.nodes.some(
+			(node) => node.kind === "metafieldDefinition" && node.owner === "product",
+		),
+		true,
+	);
+});
+
 test("missing metafield snapshot keeps schema state unknown", () => {
 	const graph = inspectNazareTheme([
 		{

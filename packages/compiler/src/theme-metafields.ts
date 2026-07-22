@@ -65,8 +65,8 @@ export function analyzeMetafields(
 	}
 	const definitions: ThemeMetafieldDefinitionRecord[] = [];
 	for (const item of findDefinitionCandidates(value)) {
-		const owner = stringValue(
-			item.owner ?? item.ownerType ?? item.resourceType,
+		const owner = normalizeOwner(
+			stringValue(item.owner ?? item.ownerType ?? item.resourceType),
 		);
 		const namespace = stringValue(item.namespace);
 		const key = stringValue(item.key);
@@ -78,7 +78,7 @@ export function analyzeMetafields(
 				owner,
 				namespace,
 				key,
-				type: stringValue(item.type ?? item.valueType),
+				type: typeValue(item.type ?? item.valueType ?? item.value_type),
 			});
 		}
 	}
@@ -149,15 +149,34 @@ function findDefinitionCandidates(value: unknown): Record<string, unknown>[] {
 	]) {
 		if (Array.isArray(value[key])) return value[key].filter(isRecord);
 	}
-	return Object.values(value).flatMap((child) =>
-		findDefinitionCandidates(child),
-	);
+	const nested: Record<string, unknown>[] = [];
+	for (const [owner, namespaces] of Object.entries(value)) {
+		if (!isRecord(namespaces)) continue;
+		for (const [namespace, keys] of Object.entries(namespaces)) {
+			if (!isRecord(keys)) continue;
+			for (const [key, definition] of Object.entries(keys)) {
+				if (!isRecord(definition)) continue;
+				nested.push({ owner, namespace, key, ...definition });
+			}
+		}
+	}
+	return nested.length > 0
+		? nested
+		: Object.values(value).flatMap((child) => findDefinitionCandidates(child));
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === "object" && !Array.isArray(value);
 }
 function stringValue(value: unknown): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+function normalizeOwner(value: string | undefined): string | undefined {
+	return value?.replace(/^resource_type:/i, "").toLowerCase();
+}
+function typeValue(value: unknown): string | undefined {
+	if (typeof value === "string") return value;
+	if (isRecord(value)) return stringValue(value.name ?? value.category);
+	return undefined;
 }
 function definitionKey(owner: string, namespace: string, key: string): string {
 	return `${owner}:${namespace}:${key}`.toLowerCase();
