@@ -15,14 +15,24 @@ import {
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
 
-test("component artifacts reuse analysis cache entries", () => {
+test("component artifacts reuse only affected dependency cache entries", () => {
 	const cache = { version: 1, entries: {} };
-	const files = [{ path: "card.nz.liquid", contents: "<span>Card</span>" }];
-	const first = analyzeNazareTheme(files, { cache });
-	const second = analyzeNazareTheme(files, { cache });
-	assert.equal(first.artifacts.length, 1);
-	assert.equal(second.artifacts.length, 1);
-	assert.ok(cache.entries["card.nz.liquid"].artifact);
+	const firstFiles = [
+		{ path: "card.nz.liquid", contents: "<span>Card</span>" },
+		{ path: "other.nz.liquid", contents: "<span>Other</span>" },
+	];
+	analyzeNazareTheme(firstFiles, { cache });
+	const otherFingerprint = cache.entries["other.nz.liquid"].fingerprint;
+	const second = analyzeNazareTheme(
+		[
+			{ path: "card.nz.liquid", contents: "<span>Updated</span>" },
+			firstFiles[1],
+		],
+		{ cache },
+	);
+	assert.equal(second.artifacts.length, 2);
+	assert.equal(cache.entries["other.nz.liquid"].fingerprint, otherFingerprint);
+	assert.ok(cache.entries["other.nz.liquid"].artifact);
 });
 
 test("theme graph DOT projection escapes identifiers and labels", () => {
