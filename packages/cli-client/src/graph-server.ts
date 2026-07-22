@@ -36,11 +36,11 @@ export async function serveThemeGraph(
 					stopWatching?.();
 					stopWatching = next;
 				},
-				(update) => writeResponse(output, update),
+				(update) => writeNotification(output, update),
 			);
-			writeResponse(output, { id: request.id, result });
+			writeResponse(output, request, { id: request.id, result });
 		} catch (error) {
-			writeResponse(output, {
+			writeResponse(output, request, {
 				id: request.id,
 				error: {
 					code: "REQUEST_FAILED",
@@ -53,6 +53,7 @@ export async function serveThemeGraph(
 }
 
 type GraphRequest = {
+	jsonrpc?: "2.0";
 	id: string | number | null;
 	method: string;
 	params?: Record<string, unknown>;
@@ -66,9 +67,35 @@ async function handleRequest(
 	setWatcher: (stop: () => void) => void,
 	notify: (update: unknown) => void,
 ): Promise<unknown> {
+	if (request.method === "tools/list") return { tools: graphTools() };
+	if (request.method === "tools/call") {
+		const name = requiredString(request.params, "name");
+		const args = request.params?.arguments;
+		if (args !== undefined && (!args || typeof args !== "object")) {
+			throw new Error("tools/call arguments must be an object");
+		}
+		const result = await handleRequest(
+			{
+				id: request.id,
+				method: name,
+				params: args as Record<string, unknown> | undefined,
+			},
+			root,
+			getSession,
+			setSession,
+			setWatcher,
+			notify,
+		);
+		return {
+			content: [{ type: "text", text: JSON.stringify(result) }],
+			structuredContent: result,
+		};
+	}
 	if (request.method === "initialize") {
 		return {
-			protocolVersion: 1,
+			protocolVersion: "2024-11-05",
+			capabilities: { tools: {} },
+			serverInfo: { name: "nazare-theme-graph", version: "1" },
 			methods: [
 				"inspect",
 				"reload",
@@ -246,6 +273,7 @@ function parseRequest(line: string): GraphRequest {
 	if (typeof request.method !== "string" || request.method.length === 0)
 		throw new Error("Request method must be a non-empty string");
 	return {
+		jsonrpc: request.jsonrpc,
 		id: request.id ?? null,
 		method: request.method,
 		params: request.params,
@@ -273,6 +301,51 @@ function requiredString(
 	return value;
 }
 
-function writeResponse(output: Writable, response: unknown): void {
-	output.write(`${JSON.stringify(response)}\n`);
+function graphTools(): {
+	name: string;
+	description: string;
+	inputSchema: object;
+}[] {
+	const nodeId = {
+		type: "object",
+		properties: { nodeId: { type: "string" } },
+		required: ["nodeId"],
+	};
+	return [
+		{
+			name: "summary",
+			description: "Summarize the current theme graph.",
+			inputSchema: { type: "object" },
+		},
+		{ name: "node", description: "Get one graph node.", inputSchema: nodeId },
+		{
+			name: "dependencies",
+			description: "Get direct dependencies.",
+			inputSchema: nodeId,
+		},
+		{
+			name: "dependents",
+			description: "Get direct dependents.",
+			inputSchema: nodeId,
+		},
+		{
+			name: "affectedPages",
+			description: "Get affected pages.",
+			inputSchema: nodeId,
+		},
+	];
+}
+
+function writeNotification(output: Writable, notification: unknown): void {
+	output.write(`${JSON.stringify(notification)}\n`);
+}
+
+function writeResponse(
+	output: Writable,
+	request: GraphRequest,
+	response: { id: string | number | null; result?: unknown; error?: unknown },
+): void {
+	const payload =
+		request.jsonrpc === "2.0" ? { jsonrpc: "2.0", ...response } : response;
+	output.write(`${JSON.stringify(payload)}\n`);
 }
