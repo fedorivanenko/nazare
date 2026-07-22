@@ -66,19 +66,23 @@ export function parseThemeCheckPolicy(
 	};
 }
 
+const THEME_CHECK_DIAGNOSTIC_MAP: ReadonlyMap<string, readonly string[]> =
+	new Map();
+
 export function filterThemeCheckIssues(
 	issues: Diagnostic[],
 	policy: ThemeCheckPolicy,
 ): Diagnostic[] {
-	if (policy.ignoredChecks.length === 0) return issues;
-	const ignored = new Set(policy.ignoredChecks.map(normalizeCheckName));
-	return issues.filter(
-		(issue) =>
-			!ignored.has(normalizeCheckName(issue.code)) &&
-			!ignored.has(normalizeCheckName(issue.code.replace(/^THEME_/, ""))),
+	if (
+		policy.ignoredChecks.length === 0 ||
+		THEME_CHECK_DIAGNOSTIC_MAP.size === 0
+	) {
+		return issues;
+	}
+	const suppressedCodes = new Set(
+		policy.ignoredChecks.flatMap(
+			(check) => THEME_CHECK_DIAGNOSTIC_MAP.get(check) ?? [],
+		),
 	);
-}
-
-function normalizeCheckName(value: string): string {
-	return value.replace(/[^A-Za-z0-9]/g, "").toLowerCase();
+	return issues.filter((issue) => !suppressedCodes.has(issue.code));
 }
