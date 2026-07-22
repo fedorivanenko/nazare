@@ -77,8 +77,17 @@ different actionability, so each gets its own code:
 | Code | Fires when | Severity | Why it matters |
 |---|---|---|---|
 | `THEME_DOC_PARAM_UNGUARDED` | declared optional, but no read is guarded or defaulted | info | The declaration and the source describe the interface differently. 16 instances. |
+| `THEME_DOC_PARAM_FALLBACK` | declared required, but the source guards or defaults it | info | The mirror case: either the contract is stricter than the code, or the fallback is unreachable. 16 instances. |
 | `THEME_DOC_PARAM_UNDECLARED` | a file with a doc block has an inferred input absent from it | info | Doc incompleteness. 13 instances. |
 | `THEME_DOC_PARAM_UNUSED` | a declared param is never read in the file | info | Doc rot, usually a rename. 1 instance. |
+
+**On the silence rule.** This design originally said a declared-required input
+that inference calls optional should never be reported, because inference is
+conservative. That reasoning holds for `unknown`, which is inference declining
+to have an opinion. It does not hold for `optional`, which is a positive
+finding that the file guards or defaults the input — concrete and actionable,
+so `THEME_DOC_PARAM_FALLBACK` reports it. Declared-required against inferred
+`unknown` remains silent.
 
 **Correction.** An earlier draft of this design made
 `THEME_DOC_PARAM_UNGUARDED` a warning, on the reasoning that a caller omitting
@@ -128,6 +137,38 @@ output, and would rot unnoticed.
    behavior before this phase starts.
 
 Phases 1 and 2 are worth doing together; phase 3 is separable and larger.
+
+## Measured against the contracts
+
+Using the harness as a labeled corpus, agreement moved from 81/131 (61.8%) to
+89/131 (67.9%). Four inference changes, each measured rather than assumed:
+
+- **Caller-supplied arguments are inputs.** A name a caller passes by name is a
+  parameter of the target, whatever it looks like from inside. This is what
+  ambient Shopify objects needed: `declared required, inferred unknown` fell
+  from 13 to 5, almost all `product`.
+- **Guarded ambient objects stay unknown.** A guard around an ambient object may
+  protect against absent page context rather than an omitted argument. Calling
+  these optional instead buys one more agreement and costs two more inputs
+  wrongly described as safe to omit, so unknown wins.
+- **A guard on a derived property is not a guard on its base name.**
+  `{% if benefits %}`, where `benefits` is `product.metafields…`, says the file
+  handles missing benefits, not a missing product.
+- **Conditional reads do not prove requirement.** Dispatcher snippets branch on
+  an argument; reads in unselected branches are not evidence. Without this, the
+  caller-argument change produced two `THEME_RENDER_ARGUMENT_MISSING` warnings
+  on ucan against a snippet whose callers correctly omit `product` when
+  selecting a branch that does not use it — the corpus golden caught them.
+
+One hypothesis was tested and rejected: treating a bare guard as `unknown`
+rather than `optional`, on the theory that a guard proves tolerance and not
+optionality. Agreement fell from 68% to 40%, because authors overwhelmingly do
+guard the inputs they consider optional. The rule stayed as it was.
+
+The remaining 42 disagreements are dominated by two classes that inspection
+says are genuine doc-vs-code disagreements rather than inference defects: 16
+declared-optional inputs whose reads carry no evidence of optionality, and 16
+declared-required inputs the source guards or defaults. Both are now reported.
 
 ## Scope and non-goals
 
