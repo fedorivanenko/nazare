@@ -377,6 +377,67 @@ export function themeGraphFromModel(
 			});
 		}
 	}
+	const storeSchemaNodeId = `store-schema:${model.metafieldSchema.path}`;
+	pushNode({
+		id: storeSchemaNodeId,
+		kind: "storeSchema",
+		path: model.metafieldSchema.path,
+		state: model.metafieldSchema.state,
+	});
+	for (const definition of model.metafieldDefinitions) {
+		pushNode({
+			id: definition.id,
+			kind: "metafieldDefinition",
+			owner: definition.owner,
+			namespace: definition.namespace,
+			key: definition.key,
+			type: definition.type,
+		});
+		pushEdge({
+			id: `edge:schemaFor:${model.metafieldSchema.path}->${definition.id}`,
+			kind: "schemaFor",
+			from: storeSchemaNodeId,
+			to: definition.id,
+		});
+	}
+	for (const read of model.metafieldReads) {
+		const target =
+			read.definitionId ??
+			`unresolved:metafield:${read.owner}:${read.namespace}:${read.key}`;
+		if (!read.definitionId)
+			pushNode({
+				id: target,
+				kind: "unresolved",
+				targetKind: "metafield",
+				name: `${read.owner}.metafields.${read.namespace}.${read.key}`,
+			});
+		pushNode({
+			id: read.id,
+			kind: "metafieldRead",
+			fromPath: read.fromPath,
+			owner: read.owner,
+			namespace: read.namespace,
+			key: read.key,
+		});
+		pushEdge({
+			id: `edge:readsMetafield:${read.id}`,
+			kind: "readsMetafield",
+			from: fileId(read.fromPath),
+			to: read.id,
+			namespace: read.namespace,
+			key: read.key,
+			evidenceIds: [read.dataAccessId],
+		});
+		pushEdge({
+			id: `edge:${read.definitionId ? "resolves" : "missing"}Metafield:${read.id}->${target}`,
+			kind: read.definitionId
+				? "resolvesMetafieldDefinition"
+				: "missingMetafieldDefinition",
+			from: read.id,
+			to: target,
+			evidenceIds: [read.dataAccessId],
+		});
+	}
 	for (const dataAccess of model.dataAccesses) {
 		const objectId = dataObjectId(dataAccess.object);
 		pushNode({
