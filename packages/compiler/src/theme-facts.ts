@@ -541,7 +541,7 @@ export interface ThemeSemanticModel {
 	metafieldSchema: {
 		state: "unknown" | "present" | "invalid";
 		path: string;
-		pulledAt?: string;
+		pulledAt: string | null;
 	};
 	themeCheck: {
 		path: string;
