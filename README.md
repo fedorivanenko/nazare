@@ -598,8 +598,10 @@ Common options and environment variables:
 
 Graph server requests are newline-delimited JSON. Supported methods include
 `initialize`, `summary`, `node`, `dependencies`, `dependents`, `affectedPages`,
-`updateFile`, `removeFile`, `watch`, `unwatch`, and `reload`. `watch` emits
-`graph/update` notifications with revisions and graph deltas on file changes.
+`build`, `buildUpdate`, `updateFile`, `removeFile`, `watch`, `unwatch`, and
+`reload`. `watch` emits
+`graph/update` and `build/update` notifications with revisions and graph/output
+deltas on file changes.
 
 --store <domain>                    build --pull: Shopify store to pull from
 --theme <id|name>                   build --pull: theme to pull from
