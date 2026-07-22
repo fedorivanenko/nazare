@@ -94,7 +94,7 @@ export type SemanticThemeGraphNode =
 			kind: "storeSchema";
 			path: string;
 			state: "unknown" | "present" | "invalid";
-			pulledAt?: string;
+			pulledAt: string | null;
 	  }
 	| {
 			id: string;

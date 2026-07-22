@@ -617,7 +617,7 @@ export function buildThemeSemanticModel(
 		metafieldSchema: {
 			state: options.metafields ? metafields.state : "unknown",
 			path: metafields.path,
-			pulledAt: metafields.pulledAt,
+			pulledAt: metafields.pulledAt ?? null,
 		},
 		themeCheck: {
 			path: ".theme-check.yml",
