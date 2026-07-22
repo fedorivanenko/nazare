@@ -2,11 +2,35 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
 	buildNazareThemeWorkspace,
+	getThemeAffectedPages,
+	getThemeDependencies,
+	getThemeNode,
 	inspectNazareTheme,
+	summarizeThemeGraph,
 } from "../dist/index.js";
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("theme query API reads canonical graph and impact indexes", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "templates/index.json",
+			contents: JSON.stringify({ sections: { main: { type: "main" } } }),
+		},
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const section = getThemeNode(graph, "section:sections/main.liquid:main");
+	assert.equal(section?.kind, "section");
+	assert.deepEqual(getThemeDependencies(graph, "templates/index.json"), [
+		"sections/main.liquid",
+	]);
+	assert.deepEqual(getThemeAffectedPages(graph, "snippets/card.liquid"), [
+		"templates/index.json",
+	]);
+	assert.equal(summarizeThemeGraph(graph).pageCount, 1);
+});
 
 test("inspectNazareTheme keeps unresolved references navigable", () => {
 	const graph = inspectNazareTheme([
