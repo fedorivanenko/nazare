@@ -15,6 +15,14 @@ import {
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
 
+test("semantic model memo reuses unchanged resolved models", () => {
+	const memo = {};
+	const files = [{ path: "snippets/card.liquid", contents: "Card" }];
+	const first = analyzeNazareTheme(files, { memo });
+	const second = analyzeNazareTheme(files, { memo });
+	assert.equal(first.ir, second.ir);
+});
+
 test("component artifacts reuse only affected dependency cache entries", () => {
 	const cache = { version: 1, entries: {} };
 	const firstFiles = [
