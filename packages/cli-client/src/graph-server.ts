@@ -1,3 +1,4 @@
+import { watch as watchDirectory } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { createInterface } from "node:readline";
@@ -18,6 +19,7 @@ export async function serveThemeGraph(
 	output: Writable,
 ): Promise<void> {
 	let session = await loadSession(root);
+	let stopWatching: (() => void) | undefined;
 	const readline = createInterface({ input, crlfDelay: Infinity });
 	for await (const line of readline) {
 		if (!line.trim()) continue;
@@ -30,6 +32,11 @@ export async function serveThemeGraph(
 				(next) => {
 					session = next;
 				},
+				(next) => {
+					stopWatching?.();
+					stopWatching = next;
+				},
+				(update) => writeResponse(output, update),
 			);
 			writeResponse(output, { id: request.id, result });
 		} catch (error) {
@@ -42,6 +49,7 @@ export async function serveThemeGraph(
 			});
 		}
 	}
+	stopWatching?.();
 }
 
 type GraphRequest = {
@@ -55,6 +63,8 @@ async function handleRequest(
 	root: string,
 	getSession: () => ThemeWorkspaceSession,
 	setSession: (session: ThemeWorkspaceSession) => void,
+	setWatcher: (stop: () => void) => void,
+	notify: (update: unknown) => void,
 ): Promise<unknown> {
 	if (request.method === "initialize") {
 		return {
@@ -64,6 +74,8 @@ async function handleRequest(
 				"reload",
 				"updateFile",
 				"removeFile",
+				"watch",
+				"unwatch",
 				"summary",
 				"node",
 				"dependencies",
@@ -84,6 +96,14 @@ async function handleRequest(
 	if (request.method === "removeFile") {
 		return session.removeFile(requiredString(request.params, "path"));
 	}
+	if (request.method === "watch") {
+		setWatcher(startWatcher(root, getSession, notify));
+		return { watching: true };
+	}
+	if (request.method === "unwatch") {
+		setWatcher(() => undefined);
+		return { watching: false };
+	}
 	const graph = session.getGraph();
 	if (request.method === "summary") return summarizeThemeGraph(graph);
 	const nodeId = requiredString(request.params, "nodeId");
@@ -94,6 +114,73 @@ async function handleRequest(
 	if (request.method === "affectedPages")
 		return getThemeAffectedPages(graph, nodeId);
 	throw new Error(`Unknown graph server method ${request.method}`);
+}
+
+function startWatcher(
+	root: string,
+	getSession: () => ThemeWorkspaceSession,
+	notify: (update: unknown) => void,
+): () => void {
+	let pending = Promise.resolve();
+	const watcher = watchDirectory(
+		root,
+		{ recursive: true },
+		(_event, filename) => {
+			const relativePath = filename?.toString().split("\\").join("/");
+			if (!relativePath || !isWatchedPath(relativePath)) return;
+			pending = pending
+				.then(async () => {
+					const session = getSession();
+					if (isThemeFile(relativePath)) {
+						try {
+							const contents = await readFile(join(root, relativePath), "utf8");
+							notify({
+								method: "graph/update",
+								params: session.updateFile({ path: relativePath, contents }),
+							});
+						} catch (error) {
+							if (isNotFound(error)) {
+								notify({
+									method: "graph/update",
+									params: session.removeFile(relativePath),
+								});
+								return;
+							}
+							throw error;
+						}
+						return;
+					}
+					const update = await session.updateExternalArtifacts({
+						metafields: await optionalFile(root, ".shopify/metafields.json"),
+						themeCheck: await optionalFile(root, ".theme-check.yml"),
+					});
+					notify({ method: "graph/update", params: update });
+				})
+				.catch((error) => {
+					notify({
+						method: "graph/error",
+						error: error instanceof Error ? error.message : String(error),
+					});
+				});
+		},
+	);
+	return () => watcher.close();
+}
+
+function isWatchedPath(path: string): boolean {
+	return (
+		isThemeFile(path) ||
+		path === ".shopify/metafields.json" ||
+		path === ".theme-check.yml"
+	);
+}
+
+function isNotFound(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		"code" in error &&
+		(error as NodeJS.ErrnoException).code === "ENOENT"
+	);
 }
 
 async function loadSession(root: string): Promise<ThemeWorkspaceSession> {
