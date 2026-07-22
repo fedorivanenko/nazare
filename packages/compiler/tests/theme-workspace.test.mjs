@@ -31,6 +31,7 @@ test("build session reports emitted output deltas", () => {
 	});
 	assert.equal(changed.revision, 1);
 	assert.deepEqual(changed.changedPaths, ["card.nz.liquid"]);
+	assert.deepEqual(changed.recomputedPaths, ["card.nz.liquid"]);
 	assert.ok(changed.changedOutputPaths.length > 0);
 });
 
