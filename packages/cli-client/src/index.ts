@@ -389,23 +389,35 @@ function inspectExcludePatterns(
 async function readThemeCheckPolicy(
 	projectRoot: string,
 ): Promise<{ path: string; contents: string } | undefined> {
-	const path = ".theme-check.yml";
-	try {
-		return { path, contents: await readFile(join(projectRoot, path), "utf8") };
-	} catch {
-		return undefined;
-	}
+	return readOptionalInspectArtifact(projectRoot, ".theme-check.yml");
 }
 
 async function readMetafieldSnapshot(
 	projectRoot: string,
 ): Promise<{ path: string; contents: string } | undefined> {
-	const path = ".shopify/metafields.json";
+	return readOptionalInspectArtifact(projectRoot, ".shopify/metafields.json");
+}
+
+async function readOptionalInspectArtifact(
+	projectRoot: string,
+	path: string,
+): Promise<{ path: string; contents: string } | undefined> {
 	try {
 		return { path, contents: await readFile(join(projectRoot, path), "utf8") };
-	} catch {
-		return undefined;
+	} catch (error) {
+		if (isMissingFileError(error)) return undefined;
+		throw new Error(
+			`Unable to read inspect artifact ${path}: ${error instanceof Error ? error.message : String(error)}`,
+		);
 	}
+}
+
+function isMissingFileError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		"code" in error &&
+		(error as NodeJS.ErrnoException).code === "ENOENT"
+	);
 }
 
 function isOutsideRoot(root: string, path: string): boolean {
