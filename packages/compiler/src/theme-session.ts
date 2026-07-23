@@ -1,3 +1,9 @@
+import {
+	createThemeDeclarationPass,
+	type ThemeDeclarationPassContext,
+	type ThemeDeclarationPassRecord,
+	type ThemeDeclarationPassResult,
+} from "./theme-declaration-pass.js";
 import { ThemeFactIndex } from "./theme-fact-index.js";
 import { ThemeFactStore, themeFactSourcePath } from "./theme-fact-store.js";
 import type {
@@ -5,7 +11,11 @@ import type {
 	InspectNazareThemeResult,
 	ThemeAnalysisCache,
 	ThemeAnalysisMemo,
+	ThemeDeclaration,
+	ThemeFileRecord,
 	ThemeInputFile,
+	ThemeReference,
+	ThemeSemanticModel,
 } from "./theme-facts.js";
 import {
 	shareThemeGraphRecords,
@@ -14,6 +24,16 @@ import {
 import { impactSummary } from "./theme-impact.js";
 import { ThemeImpactIndex } from "./theme-impact-index.js";
 import { ThemeMetafieldIndex } from "./theme-metafield-index.js";
+import { declarationId, fileId, referenceId } from "./theme-model.js";
+import {
+	incrementalThemePass,
+	type PassChange,
+	ThemePassScheduler,
+} from "./theme-pass-scheduler.js";
+import {
+	createThemeReferencePass,
+	type ThemeReferencePassContext,
+} from "./theme-reference-pass.js";
 import { ThemeResolverIndex } from "./theme-resolver-index.js";
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
 import { analyzeNazareTheme } from "./theme-workspace.js";
@@ -38,8 +58,14 @@ export class ThemeWorkspaceSession {
 	private readonly options: InspectNazareThemeOptions;
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
 	private readonly memo = {} as ThemeAnalysisMemo;
-	private readonly factStore: ThemeFactStore;
-	private readonly factIndex: ThemeFactIndex;
+	private factStore: ThemeFactStore;
+	private factIndex: ThemeFactIndex;
+	private readonly collectionScheduler = createCollectionScheduler();
+	private declarationResultsBySource = new Map<
+		string,
+		ThemeDeclarationPassResult
+	>();
+	private referencesBySource = new Map<string, ThemeReference[]>();
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
@@ -57,9 +83,26 @@ export class ThemeWorkspaceSession {
 		const analysis = analyzeNazareTheme(this.files(), this.options);
 		this.factStore = new ThemeFactStore(analysis.facts);
 		this.factIndex = new ThemeFactIndex(analysis.facts);
-		this.semanticStore = new ThemeSemanticStore(analysis.ir);
-		this.resolverIndex = new ThemeResolverIndex(analysis.ir);
-		this.metafieldIndex = new ThemeMetafieldIndex(analysis.ir);
+		const collection = runCollectionPasses(
+			this.collectionScheduler,
+			this.factStore,
+			this.declarationResultsBySource,
+			this.referencesBySource,
+			this.factStore.files(),
+		);
+		this.declarationResultsBySource = collection.declarations;
+		this.referencesBySource = collection.references;
+		const collectedModel = modelWithCollectedRecords(
+			analysis.ir,
+			collection.declarations,
+			collection.references,
+		);
+		const model = new ThemeResolverIndex(collectedModel).resolveModel(
+			collectedModel,
+		);
+		this.semanticStore = new ThemeSemanticStore(model);
+		this.resolverIndex = new ThemeResolverIndex(model);
+		this.metafieldIndex = new ThemeMetafieldIndex(model);
 		this.graph = themeGraphFromModel(this.semanticStore.getModel(), {
 			impact: impactSummary(this.semanticStore.getModel()),
 		});
@@ -83,20 +126,36 @@ export class ThemeWorkspaceSession {
 		return this.impactIndex.getAffectedPages(nodeId);
 	}
 
+	getMetafieldAffectedSources(definitionId: string): string[] {
+		return this.metafieldIndex.getAffectedSources(definitionId);
+	}
+
 	updateFile(file: ThemeInputFile): ThemeGraphUpdate {
 		const previous = this.filesByPath.get(file.path);
 		if (previous?.contents === file.contents) {
 			return this.emptyUpdate([]);
 		}
 		this.filesByPath.set(file.path, file);
-		return this.rebuild([file.path]);
+		try {
+			return this.rebuild([file.path], [file.path]);
+		} catch (error) {
+			if (previous) this.filesByPath.set(file.path, previous);
+			else this.filesByPath.delete(file.path);
+			throw error;
+		}
 	}
 
 	removeFile(path: string): ThemeGraphUpdate {
-		if (!this.filesByPath.delete(path)) {
+		const previous = this.filesByPath.get(path);
+		if (!previous || !this.filesByPath.delete(path)) {
 			return this.emptyUpdate([]);
 		}
-		return this.rebuild([path]);
+		try {
+			return this.rebuild([path], [path]);
+		} catch (error) {
+			this.filesByPath.set(path, previous);
+			throw error;
+		}
 	}
 
 	updateExternalArtifacts(
@@ -108,37 +167,72 @@ export class ThemeWorkspaceSession {
 			return this.emptyUpdate([]);
 		}
 		const changedPaths = externalChangedPaths(this.options, options);
+		const previousOptions = {
+			metafields: this.options.metafields,
+			themeCheck: this.options.themeCheck,
+		};
 		Object.assign(this.options, options);
-		this.externalFingerprint = nextFingerprint;
-		return this.rebuild(changedPaths);
+		try {
+			const update = this.rebuild(changedPaths, []);
+			this.externalFingerprint = nextFingerprint;
+			return update;
+		} catch (error) {
+			Object.assign(this.options, previousOptions);
+			throw error;
+		}
 	}
 
-	private rebuild(changedPaths: string[]): ThemeGraphUpdate {
+	private rebuild(
+		changedPaths: string[],
+		factChangedPaths: string[],
+	): ThemeGraphUpdate {
 		const previous = this.graph;
 		const analysis = analyzeNazareTheme(this.files(), this.options);
-		for (const path of changedPaths) {
+		const nextFactStore = new ThemeFactStore(this.factStore.all());
+		for (const path of factChangedPaths) {
 			const facts = analysis.facts.filter(
 				(fact) => themeFactSourcePath(fact) === path,
 			);
-			this.factStore.replaceFile(path, facts);
-			this.factIndex.replaceFileFacts(path, facts);
+			nextFactStore.replaceFile(path, facts);
 		}
-		const resolvedModel = this.resolverIndex.resolveModel(analysis.ir);
+		const nextFactIndex = new ThemeFactIndex(nextFactStore.all());
+		const collection = runCollectionPasses(
+			this.collectionScheduler,
+			nextFactStore,
+			this.declarationResultsBySource,
+			this.referencesBySource,
+			factChangedPaths,
+		);
+		const collectedModel = modelWithCollectedRecords(
+			analysis.ir,
+			collection.declarations,
+			collection.references,
+		);
+		const resolvedModel = this.resolverIndex.resolveModel(collectedModel);
 		const transaction = this.semanticStore.beginUpdate(resolvedModel);
-		const semanticUpdate = transaction.commit();
-		this.resolverIndex.apply(semanticUpdate);
-		this.metafieldIndex.apply(semanticUpdate);
-		this.graph = shareThemeGraphRecords(
+		const semanticUpdate = transaction.update;
+		const nextResolverIndex = new ThemeResolverIndex(semanticUpdate.model);
+		const nextMetafieldIndex = new ThemeMetafieldIndex(semanticUpdate.model);
+		const nextGraph = shareThemeGraphRecords(
 			this.graph,
 			themeGraphFromModel(semanticUpdate.model, {
 				impact: impactSummary(semanticUpdate.model),
 			}),
 		);
-		this.impactIndex.replaceGraph(this.graph);
-		this.revision += 1;
+		const nextImpactIndex = new ThemeImpactIndex(nextGraph);
 		const resolverDependents = semanticUpdate.changedRecordIds.flatMap((id) =>
-			this.resolverIndex.getDependents(id),
+			nextResolverIndex.getDependents(id),
 		);
+		transaction.commit();
+		this.factStore = nextFactStore;
+		this.factIndex = nextFactIndex;
+		this.declarationResultsBySource = collection.declarations;
+		this.referencesBySource = collection.references;
+		this.resolverIndex = nextResolverIndex;
+		this.metafieldIndex = nextMetafieldIndex;
+		this.graph = nextGraph;
+		this.impactIndex = nextImpactIndex;
+		this.revision += 1;
 		return diffGraphs(
 			this.revision,
 			previous,
@@ -170,6 +264,86 @@ export class ThemeWorkspaceSession {
 			a.path.localeCompare(b.path),
 		);
 	}
+}
+
+type ThemeCollectionContext = ThemeDeclarationPassContext &
+	ThemeReferencePassContext;
+
+type ThemeCollectionState = {
+	declarations: Map<string, ThemeDeclarationPassResult>;
+	references: Map<string, ThemeReference[]>;
+};
+
+function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
+	return new ThemePassScheduler<ThemeCollectionContext>([
+		incrementalThemePass<
+			ThemeCollectionContext,
+			string,
+			ThemeDeclarationPassRecord
+		>(createThemeDeclarationPass()),
+		incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
+			createThemeReferencePass(),
+		),
+	]);
+}
+
+function runCollectionPasses(
+	scheduler: ThemePassScheduler<ThemeCollectionContext>,
+	facts: ThemeFactStore,
+	previousDeclarations: Map<string, ThemeDeclarationPassResult>,
+	previousReferences: Map<string, ThemeReference[]>,
+	changedPaths: string[],
+): ThemeCollectionState {
+	const declarations = cloneDeclarationResults(previousDeclarations);
+	const references = new Map(
+		[...previousReferences].map(([path, records]) => [path, [...records]]),
+	);
+	const context: ThemeCollectionContext = {
+		facts,
+		resultsBySource: declarations,
+		referencesBySource: references,
+		ids: { file: fileId, declaration: declarationId },
+		id: referenceId,
+	};
+	scheduler.execute(
+		[...new Set(changedPaths)]
+			.sort((a, b) => a.localeCompare(b))
+			.map((path): PassChange => ({ kind: "factsChanged", path })),
+		context,
+	);
+	return { declarations, references };
+}
+
+function cloneDeclarationResults(
+	results: Map<string, ThemeDeclarationPassResult>,
+): Map<string, ThemeDeclarationPassResult> {
+	return new Map(
+		[...results].map(([path, result]) => [
+			path,
+			{ files: new Map(result.files), declarations: [...result.declarations] },
+		]),
+	);
+}
+
+function modelWithCollectedRecords(
+	model: ThemeSemanticModel,
+	declarationsBySource: Map<string, ThemeDeclarationPassResult>,
+	referencesBySource: Map<string, ThemeReference[]>,
+): ThemeSemanticModel {
+	const files: ThemeFileRecord[] = [];
+	const declarations: ThemeDeclaration[] = [];
+	for (const path of [...declarationsBySource.keys()].sort((a, b) =>
+		a.localeCompare(b),
+	)) {
+		const result = declarationsBySource.get(path);
+		if (!result) continue;
+		files.push(...result.files.values());
+		declarations.push(...result.declarations);
+	}
+	const references = [...referencesBySource.keys()]
+		.sort((a, b) => a.localeCompare(b))
+		.flatMap((path) => referencesBySource.get(path) ?? []);
+	return { ...model, files, declarations, references };
 }
 
 function diffGraphs(

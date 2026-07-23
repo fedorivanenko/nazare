@@ -5,6 +5,16 @@ import type {
 } from "./theme-facts.js";
 import type { ThemeSemanticUpdate } from "./theme-semantic-store.js";
 
+function addResolutionCandidate(
+	index: Map<string, string[]>,
+	key: string,
+	id: string,
+): void {
+	const ids = index.get(key) ?? [];
+	ids.push(id);
+	index.set(key, ids);
+}
+
 export class ThemeResolverIndex {
 	private readonly declarations = new Map<string, ThemeDeclaration>();
 	private readonly references = new Map<string, ThemeReference>();
@@ -36,10 +46,18 @@ export class ThemeResolverIndex {
 	resolveModel(model: ThemeSemanticModel): ThemeSemanticModel {
 		const declarationsByKey = new Map<string, string[]>();
 		for (const declaration of model.declarations) {
-			const key = `${declaration.kind}:${declaration.name}`;
-			const ids = declarationsByKey.get(key) ?? [];
-			ids.push(declaration.id);
-			declarationsByKey.set(key, ids);
+			addResolutionCandidate(
+				declarationsByKey,
+				`${declaration.kind}:${declaration.name}`,
+				declaration.id,
+			);
+			if (declaration.kind === "component") {
+				addResolutionCandidate(
+					declarationsByKey,
+					`component:${declaration.path}`,
+					declaration.id,
+				);
+			}
 		}
 		return {
 			...model,
