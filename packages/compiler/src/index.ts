@@ -195,6 +195,7 @@ export type {
 	ThemeSettingReadRecord,
 } from "./theme-facts.js";
 export { shareThemeGraphRecords } from "./theme-graph-output.js";
+export { ThemeImpactIndex } from "./theme-impact-index.js";
 export { ThemeMetafieldIndex } from "./theme-metafield-index.js";
 export {
 	analyzeMetafields,

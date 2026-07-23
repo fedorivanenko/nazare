@@ -12,6 +12,7 @@ import {
 	ThemeBuildSession,
 	ThemeFactIndex,
 	ThemeFactStore,
+	ThemeImpactIndex,
 	ThemeMetafieldIndex,
 	ThemeResolverIndex,
 	ThemeSemanticStore,
@@ -21,6 +22,21 @@ import {
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("impact index propagates dependencies to pages", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "templates/index.json",
+			contents: JSON.stringify({ sections: { main: { type: "main" } } }),
+		},
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const index = new ThemeImpactIndex(graph);
+	assert.deepEqual(index.getAffectedPages("snippets/card.liquid"), [
+		"templates/index.json",
+	]);
+});
 
 test("metafield index serves reads by definition", () => {
 	const model = analyzeNazareTheme(
