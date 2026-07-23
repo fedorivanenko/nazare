@@ -7,7 +7,6 @@ import {
 import { ThemeFactStore } from "./theme-fact-store.js";
 import type {
 	ThemeBlockInstanceRecord,
-	ThemeBlockSettingRecord,
 	ThemeCapabilitySignalRecord,
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
@@ -42,6 +41,7 @@ import {
 	type ThemeReferencePassContext,
 } from "./theme-reference-pass.js";
 import { resolveThemeDeclarationsAndReferences } from "./theme-resolution-pass.js";
+import { ThemeSchemaIndex } from "./theme-schema-index.js";
 import { collectThemeSchemaSettings } from "./theme-schema-setting-pass.js";
 
 function collectScheduledDeclarationAndReferenceRecords(facts: ThemeFact[]): {
@@ -100,24 +100,35 @@ export function buildThemeSemanticModel(
 		declarations,
 		references: collectedReferences,
 	} = collectScheduledDeclarationAndReferenceRecords(facts);
-	const { schemas, settings, blocks, blockSettings, settingReads } =
-		collectThemeSchemaSettings(facts, {
-			schema: schemaId,
-			setting: settingId,
-			block: blockId,
-			blockSetting: blockSettingId,
-			settingRead: settingReadId,
-		});
-	const { sectionInstances, blockInstances } = collectThemeInstances(facts, {
+	const {
+		schemas,
+		settings,
+		blocks,
+		blockSettings,
+		settingReads: unresolvedSettingReads,
+	} = collectThemeSchemaSettings(facts, {
+		schema: schemaId,
+		setting: settingId,
+		block: blockId,
+		blockSetting: blockSettingId,
+		settingRead: settingReadId,
+	});
+	const {
+		sectionInstances: unresolvedSectionInstances,
+		blockInstances: unresolvedBlockInstances,
+	} = collectThemeInstances(facts, {
 		section: sectionInstanceId,
 		block: blockInstanceId,
 	});
-	const { localeKeys, localeTranslations, localeReferences } =
-		collectThemeLocales(facts, {
-			key: localeKeyId,
-			translation: localeTranslationId,
-			reference: localeReferenceId,
-		});
+	const {
+		localeKeys,
+		localeTranslations,
+		localeReferences: unresolvedLocaleReferences,
+	} = collectThemeLocales(facts, {
+		key: localeKeyId,
+		translation: localeTranslationId,
+		reference: localeReferenceId,
+	});
 	const dataAccesses: ThemeDataAccessRecord[] = [];
 	const variableReads: ThemeVariableReadRecord[] = [];
 	const guardedObjects = new Set<string>();
@@ -195,40 +206,26 @@ export function buildThemeSemanticModel(
 	const byKindName = resolution.declarationByKey;
 	const references = resolution.references;
 
-	for (const instance of sectionInstances) {
-		if (!instance.sectionType) continue;
-		const declaration = byKindName.get(`section:${instance.sectionType}`);
-		if (declaration) instance.resolvedDeclarationId = declaration.id;
-	}
-	const sectionInstanceByOwnerAndId = new Map(
-		sectionInstances.map((instance) => [
-			`${instance.templatePath}:${instance.instanceId}`,
-			instance,
-		]),
+	const schemaIndex = new ThemeSchemaIndex({
+		declarations,
+		blocks,
+		settings,
+		blockSettings,
+		localeKeys,
+	});
+	const instanceResolution = schemaIndex.resolveInstances(
+		unresolvedSectionInstances,
+		unresolvedBlockInstances,
 	);
-	for (const instance of blockInstances) {
-		if (!instance.blockType) continue;
-		const themeBlock = byKindName.get(`themeBlock:${instance.blockType}`);
-		if (themeBlock) {
-			instance.resolvedBlockId = themeBlock.id;
-			continue;
-		}
-		const sectionInstance = sectionInstanceByOwnerAndId.get(
-			`${instance.ownerPath}:${instance.sectionInstanceId}`,
-		);
-		const sectionPath = sectionInstance?.resolvedDeclarationId
-			? declarations.find(
-					(declaration) =>
-						declaration.id === sectionInstance.resolvedDeclarationId,
-				)?.path
-			: undefined;
-		if (!sectionPath) continue;
-		const schemaBlock = blocks.find(
-			(block) =>
-				block.path === sectionPath && block.blockType === instance.blockType,
-		);
-		if (schemaBlock) instance.resolvedBlockId = schemaBlock.id;
-	}
+	const { sectionInstances, blockInstances } = instanceResolution;
+	const settingResolution = schemaIndex.resolveSettingReads(
+		unresolvedSettingReads,
+	);
+	const settingReads = settingResolution.records;
+	const localeResolution = schemaIndex.resolveLocaleReferences(
+		unresolvedLocaleReferences,
+	);
+	const localeReferences = localeResolution.records;
 
 	const pages = pageRecords(declarations);
 	const expectedInputs = expectedInputRecords(
@@ -283,85 +280,7 @@ export function buildThemeSemanticModel(
 		docParams,
 	});
 
-	const settingByPathAndId = new Map(
-		settings.map((setting) => [
-			`${setting.path}:${setting.settingId}`,
-			setting,
-		]),
-	);
-	const globalSettingById = new Map(
-		settings
-			.filter((setting) => setting.path === "config/settings_schema.json")
-			.map((setting) => [setting.settingId, setting]),
-	);
-	const blockSettingsByPathAndId = new Map<string, ThemeBlockSettingRecord[]>();
-	for (const setting of blockSettings) {
-		const key = `${setting.path}:${setting.settingId}`;
-		blockSettingsByPathAndId.set(key, [
-			...(blockSettingsByPathAndId.get(key) ?? []),
-			setting,
-		]);
-	}
-	for (const read of settingReads) {
-		if (read.settingObject === "settings") {
-			read.resolvedSettingId = globalSettingById.get(read.settingId)?.id;
-			continue;
-		}
-		if (read.settingObject === "section") {
-			read.resolvedSettingId = settingByPathAndId.get(
-				`${read.fromPath}:${read.settingId}`,
-			)?.id;
-			continue;
-		}
-		const candidates =
-			blockSettingsByPathAndId.get(`${read.fromPath}:${read.settingId}`) ?? [];
-		if (candidates.length === 1) {
-			read.resolvedSettingId = candidates[0]?.id;
-			continue;
-		}
-		if (candidates.length > 1) {
-			read.candidateSettingIds = candidates
-				.map((candidate) => candidate.id)
-				.sort((a, b) => a.localeCompare(b));
-			modelIssues.push({
-				severity: "warning",
-				code: "THEME_AMBIGUOUS_SETTING_READ",
-				message: `Block setting read ${read.settingId} from ${read.fromPath} matches multiple block types`,
-				phase: "resolve",
-				span: read.span,
-			});
-		}
-	}
-	for (const read of settingReads) {
-		if (read.resolvedSettingId || (read.candidateSettingIds?.length ?? 0) > 0) {
-			continue;
-		}
-		modelIssues.push({
-			severity: "warning",
-			code: "THEME_UNRESOLVED_SETTING_READ",
-			message: `Unresolved ${read.settingObject} setting ${read.settingId} from ${read.fromPath}`,
-			phase: "resolve",
-			span: read.span,
-		});
-	}
-
-	const localeKeyByKey = new Map(
-		localeKeys.map((localeKey) => [localeKey.key, localeKey]),
-	);
-	for (const reference of localeReferences) {
-		if (!reference.static || !reference.key) continue;
-		const resolved = localeKeyByKey.get(reference.key);
-		reference.resolvedLocaleKeyIds = resolved ? [resolved.id] : [];
-		if (reference.resolvedLocaleKeyIds.length === 0) {
-			modelIssues.push({
-				severity: "warning",
-				code: "THEME_UNRESOLVED_LOCALE_KEY",
-				message: `Unresolved locale key ${reference.key} from ${reference.fromPath}`,
-				phase: "resolve",
-				span: reference.span,
-			});
-		}
-	}
+	modelIssues.push(...settingResolution.issues, ...localeResolution.issues);
 
 	const model: ThemeSemanticModel = {
 		version: 2,
