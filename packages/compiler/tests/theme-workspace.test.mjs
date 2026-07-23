@@ -9,12 +9,34 @@ import {
 	inspectNazareTheme,
 	summarizeThemeGraph,
 	ThemeBuildSession,
+	ThemeFactStore,
 	ThemeWorkspaceSession,
 	themeGraphToDot,
 } from "../dist/index.js";
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("fact store replaces only one source bucket", () => {
+	const store = new ThemeFactStore([
+		{ kind: "file", path: "a.liquid", fileKind: "other" },
+		{
+			kind: "rendersSnippet",
+			fromPath: "a.liquid",
+			siteId: "a@1:1",
+			invocationKind: "render",
+			static: true,
+			targetName: "card",
+		},
+		{ kind: "file", path: "b.liquid", fileKind: "other" },
+	]);
+	store.replaceFile("a.liquid", [
+		{ kind: "file", path: "a.liquid", fileKind: "other" },
+	]);
+	assert.deepEqual(store.files(), ["a.liquid", "b.liquid"]);
+	assert.equal(store.getFile("a.liquid").length, 1);
+	assert.equal(store.all().length, 2);
+});
 
 test("build session reports emitted output deltas", () => {
 	const session = new ThemeBuildSession([
