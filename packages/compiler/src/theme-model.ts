@@ -42,6 +42,7 @@ import {
 	createThemeReferencePass,
 	type ThemeReferencePassContext,
 } from "./theme-reference-pass.js";
+import { resolveThemeDeclarationsAndReferences } from "./theme-resolution-pass.js";
 
 function collectScheduledDeclarationAndReferenceRecords(facts: ThemeFact[]): {
 	files: Map<string, ThemeFileRecord>;
@@ -274,61 +275,13 @@ export function buildThemeSemanticModel(
 	}
 
 	const modelIssues = [...issues];
-	const declarationCollisions = new Map<string, ThemeDeclaration[]>();
-	for (const declaration of declarations) {
-		const key = `${declaration.kind}:${declaration.name}`;
-		declarationCollisions.set(key, [
-			...(declarationCollisions.get(key) ?? []),
-			declaration,
-		]);
-	}
-	for (const [key, colliding] of declarationCollisions) {
-		const paths = [
-			...new Set(colliding.map((declaration) => declaration.path)),
-		];
-		if (paths.length <= 1) continue;
-		modelIssues.push({
-			severity: "warning",
-			code: "THEME_DUPLICATE_DECLARATION",
-			message: `Duplicate theme declaration ${key} in ${paths.join(", ")}`,
-			phase: "resolve",
-		});
-	}
-
-	const ambiguousDeclarationKeys = new Set(
-		[...declarationCollisions.entries()]
-			.filter(([, colliding]) => {
-				const paths = new Set(colliding.map((declaration) => declaration.path));
-				return paths.size > 1;
-			})
-			.map(([key]) => key),
+	const resolution = resolveThemeDeclarationsAndReferences(
+		declarations,
+		collectedReferences,
 	);
-	const byKindName = new Map<string, ThemeDeclaration>();
-	const componentByPath = new Map<string, ThemeDeclaration>();
-	for (const declaration of declarations) {
-		const key = `${declaration.kind}:${declaration.name}`;
-		if (!ambiguousDeclarationKeys.has(key)) byKindName.set(key, declaration);
-		if (declaration.kind === "component") {
-			componentByPath.set(declaration.path, declaration);
-		}
-		if (declaration.kind === "asset")
-			byKindName.set(`asset:${declaration.path}`, declaration);
-	}
-
-	const references = collectedReferences.map((reference) => {
-		const declaration =
-			reference.kind === "importsComponent" && reference.targetPath
-				? componentByPath.get(reference.targetPath)
-				: reference.kind === "referencesAsset" && reference.targetName
-					? (byKindName.get(`asset:${reference.targetName}`) ??
-						byKindName.get(`asset:assets/${reference.targetName}`))
-					: reference.targetName
-						? byKindName.get(`${reference.targetKind}:${reference.targetName}`)
-						: undefined;
-		return declaration
-			? { ...reference, resolvedDeclarationId: declaration.id }
-			: reference;
-	});
+	modelIssues.push(...resolution.issues);
+	const byKindName = resolution.declarationByKey;
+	const references = resolution.references;
 
 	for (const instance of sectionInstances) {
 		if (!instance.sectionType) continue;
@@ -496,30 +449,6 @@ export function buildThemeSemanticModel(
 				span: reference.span,
 			});
 		}
-	}
-
-	for (const ref of references) {
-		if (!ref.static || ref.resolvedDeclarationId) continue;
-		const targetKey = ref.targetName
-			? `${ref.targetKind}:${ref.targetName}`
-			: undefined;
-		if (targetKey && ambiguousDeclarationKeys.has(targetKey)) {
-			modelIssues.push({
-				severity: "warning",
-				code: "THEME_AMBIGUOUS_REFERENCE",
-				message: `Ambiguous ${ref.targetKind} reference ${ref.targetName} from ${ref.fromPath}`,
-				phase: "resolve",
-				span: ref.span,
-			});
-			continue;
-		}
-		modelIssues.push({
-			severity: "warning",
-			code: "THEME_UNRESOLVED_REFERENCE",
-			message: `Unresolved ${ref.targetKind} reference${ref.targetName ? ` ${ref.targetName}` : ""} from ${ref.fromPath}`,
-			phase: "resolve",
-			span: ref.span,
-		});
 	}
 
 	const model: ThemeSemanticModel = {

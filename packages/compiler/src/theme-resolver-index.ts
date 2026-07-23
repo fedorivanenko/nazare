@@ -3,17 +3,8 @@ import type {
 	ThemeReference,
 	ThemeSemanticModel,
 } from "./theme-facts.js";
+import { resolveThemeDeclarationsAndReferences } from "./theme-resolution-pass.js";
 import type { ThemeSemanticUpdate } from "./theme-semantic-store.js";
-
-function addResolutionCandidate(
-	index: Map<string, string[]>,
-	key: string,
-	id: string,
-): void {
-	const ids = index.get(key) ?? [];
-	ids.push(id);
-	index.set(key, ids);
-}
 
 export class ThemeResolverIndex {
 	private readonly declarations = new Map<string, ThemeDeclaration>();
@@ -44,36 +35,11 @@ export class ThemeResolverIndex {
 	}
 
 	resolveModel(model: ThemeSemanticModel): ThemeSemanticModel {
-		const declarationsByKey = new Map<string, string[]>();
-		for (const declaration of model.declarations) {
-			addResolutionCandidate(
-				declarationsByKey,
-				`${declaration.kind}:${declaration.name}`,
-				declaration.id,
-			);
-			if (declaration.kind === "component") {
-				addResolutionCandidate(
-					declarationsByKey,
-					`component:${declaration.path}`,
-					declaration.id,
-				);
-			}
-		}
-		return {
-			...model,
-			references: model.references.map((reference) => {
-				const key = reference.targetPath
-					? `${reference.targetKind}:${reference.targetPath}`
-					: reference.targetName
-						? `${reference.targetKind}:${reference.targetName}`
-						: undefined;
-				const ids = key ? (declarationsByKey.get(key) ?? []) : [];
-				const resolvedDeclarationId = ids.length === 1 ? ids[0] : undefined;
-				return resolvedDeclarationId === reference.resolvedDeclarationId
-					? reference
-					: { ...reference, resolvedDeclarationId };
-			}),
-		};
+		const resolution = resolveThemeDeclarationsAndReferences(
+			model.declarations,
+			model.references,
+		);
+		return { ...model, references: resolution.references };
 	}
 
 	getDependents(declarationId: string): string[] {
