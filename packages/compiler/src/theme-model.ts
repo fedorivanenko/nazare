@@ -1,6 +1,7 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
 import {
 	collectThemeDataFlowInputs,
+	deriveRenderArgumentDataAccesses,
 	deriveThemeRenderSites,
 } from "./theme-data-flow-pass.js";
 import {
@@ -220,7 +221,7 @@ export function buildThemeSemanticModel(
 		declarations,
 	);
 	dataAccesses.push(
-		...deriveArgumentDataAccesses(
+		...deriveRenderArgumentDataAccesses(
 			renderSites,
 			renderArguments,
 			expectedInputs,
@@ -582,68 +583,6 @@ function evidenceRecords(records: {
  * forward a render argument remains unknown because forwarding alone does not
  * prove the downstream snippet requires it.
  */
-function deriveArgumentDataAccesses(
-	renderSites: ThemeRenderSiteRecord[],
-	renderArguments: ThemeRenderArgumentRecord[],
-	expectedInputs: ThemeExpectedInputRecord[],
-	declarations: ThemeDeclaration[],
-	variableReads: ThemeVariableReadRecord[],
-): ThemeDataAccessRecord[] {
-	const declarationById = new Map(
-		declarations.map((declaration) => [declaration.id, declaration]),
-	);
-	const argumentById = new Map(
-		renderArguments.map((argument) => [argument.id, argument]),
-	);
-	const inputsByPathAndName = new Map(
-		expectedInputs.map((input) => [`${input.path}:${input.name}`, input]),
-	);
-	const variableReadById = new Map(
-		variableReads.map((read) => [read.id, read]),
-	);
-	const accesses: ThemeDataAccessRecord[] = [];
-	for (const site of renderSites) {
-		if (!site.resolvedDeclarationId) continue;
-		const targetPath = declarationById.get(site.resolvedDeclarationId)?.path;
-		if (!targetPath) continue;
-		for (const argumentId of site.argumentIds) {
-			const argument = argumentById.get(argumentId);
-			if (
-				!argument?.sourceObject ||
-				argument.sourceObject.endsWith(".settings")
-			)
-				continue;
-			const input = inputsByPathAndName.get(
-				`${targetPath}:${argument.argumentName}`,
-			);
-			if (!input) continue;
-			for (const inputPropertyPath of input.propertyPaths) {
-				const propertyPath = [argument.sourcePath, inputPropertyPath]
-					.filter(Boolean)
-					.join(".");
-				const expression = propertyPath
-					? `${argument.sourceObject}.${propertyPath}`
-					: argument.sourceObject;
-				const readEvidence = input.evidenceIds
-					.map((id) => variableReadById.get(id))
-					.find((read) => read?.propertyPath === inputPropertyPath);
-				accesses.push({
-					id: `data-access-derived:${targetPath}:${argument.id}:${expression}`,
-					fromPath: targetPath,
-					object: argument.sourceObject,
-					propertyPath: propertyPath || undefined,
-					expression,
-					origin: "renderArgument",
-					sourceRenderArgumentId: argument.id,
-					inputName: argument.argumentName,
-					span: readEvidence?.span,
-				});
-			}
-		}
-	}
-	return accesses;
-}
-
 function addInputDiagnostics(
 	issues: Diagnostic[],
 	renderSites: ThemeRenderSiteRecord[],
