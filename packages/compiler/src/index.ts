@@ -152,10 +152,16 @@ export {
 export { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 export {
 	collectThemeDataFlowInputs,
+	createThemeDataFlowFixedPointPass,
 	createThemeDataFlowInputPass,
+	dataFlowGroupKey,
 	dataFlowWorkKey,
 	deriveRenderArgumentDataAccesses,
 	deriveThemeRenderSites,
+	type ThemeDataFlowDerivedRecord,
+	type ThemeDataFlowFixedPointContext,
+	type ThemeDataFlowGroupDelta,
+	type ThemeDataFlowGroupKey,
 	type ThemeDataFlowIds,
 	type ThemeDataFlowInputPassContext,
 	type ThemeDataFlowInputPassResult,
