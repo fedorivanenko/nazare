@@ -29,6 +29,12 @@ import {
 	type ThemeInstancePassResult,
 	type ThemeInstanceRecord,
 } from "./theme-instance-pass.js";
+import {
+	createThemeLocalePass,
+	type ThemeLocalePassContext,
+	type ThemeLocalePassResult,
+	type ThemeLocaleRecord,
+} from "./theme-locale-pass.js";
 import { ThemeMetafieldIndex } from "./theme-metafield-index.js";
 import {
 	blockId,
@@ -36,6 +42,9 @@ import {
 	blockSettingId,
 	declarationId,
 	fileId,
+	localeKeyId,
+	localeReferenceId,
+	localeTranslationId,
 	referenceId,
 	schemaId,
 	sectionInstanceId,
@@ -105,6 +114,7 @@ export class ThemeWorkspaceSession {
 		ThemeSchemaSettingPassResult
 	>();
 	private instanceResultsBySource = new Map<string, ThemeInstancePassResult>();
+	private localeResultsBySource = new Map<string, ThemeLocalePassResult>();
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
@@ -135,6 +145,7 @@ export class ThemeWorkspaceSession {
 			collection.resolvedReferencesById,
 			collection.schemaSettings,
 			collection.instances,
+			collection.locales,
 		);
 		const model = new ThemeResolverIndex(collectedModel).resolveModel(
 			collectedModel,
@@ -247,6 +258,7 @@ export class ThemeWorkspaceSession {
 			collection.resolvedReferencesById,
 			collection.schemaSettings,
 			collection.instances,
+			collection.locales,
 		);
 		const resolvedModel = this.resolverIndex.resolveModel(collectedModel);
 		const transaction = this.semanticStore.beginUpdate(resolvedModel);
@@ -296,6 +308,7 @@ export class ThemeWorkspaceSession {
 			resolvedReferencesById: this.resolvedReferencesById,
 			schemaSettings: this.schemaSettingResultsBySource,
 			instances: this.instanceResultsBySource,
+			locales: this.localeResultsBySource,
 		};
 	}
 
@@ -308,6 +321,7 @@ export class ThemeWorkspaceSession {
 		this.resolvedReferencesById = state.resolvedReferencesById;
 		this.schemaSettingResultsBySource = state.schemaSettings;
 		this.instanceResultsBySource = state.instances;
+		this.localeResultsBySource = state.locales;
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
@@ -333,7 +347,8 @@ type ThemeCollectionContext = ThemeDeclarationPassContext &
 	ThemeReferencePassContext &
 	ThemeIncrementalResolutionContext &
 	ThemeSchemaSettingPassContext &
-	ThemeInstancePassContext;
+	ThemeInstancePassContext &
+	ThemeLocalePassContext;
 
 type ThemeCollectionState = {
 	declarations: Map<string, ThemeDeclarationPassResult>;
@@ -344,6 +359,7 @@ type ThemeCollectionState = {
 	resolvedReferencesById: Map<string, ThemeReference>;
 	schemaSettings: Map<string, ThemeSchemaSettingPassResult>;
 	instances: Map<string, ThemeInstancePassResult>;
+	locales: Map<string, ThemeLocalePassResult>;
 };
 
 function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
@@ -366,6 +382,9 @@ function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext>
 		>(createThemeSchemaSettingPass()),
 		incrementalThemePass<ThemeCollectionContext, string, ThemeInstanceRecord>(
 			createThemeInstancePass(),
+		),
+		incrementalThemePass<ThemeCollectionContext, string, ThemeLocaleRecord>(
+			createThemeLocalePass(),
 		),
 	]);
 }
@@ -390,6 +409,12 @@ function runCollectionPasses(
 		instanceIds: {
 			section: sectionInstanceId,
 			block: blockInstanceId,
+		},
+		localeResultsBySource: state.locales,
+		localeIds: {
+			key: localeKeyId,
+			translation: localeTranslationId,
+			reference: localeReferenceId,
 		},
 		ids: {
 			file: fileId,
@@ -425,6 +450,7 @@ function cloneCollectionState(
 		resolvedReferencesById: new Map(state.resolvedReferencesById),
 		schemaSettings: cloneSchemaSettingResults(state.schemaSettings),
 		instances: cloneInstanceResults(state.instances),
+		locales: cloneLocaleResults(state.locales),
 	};
 }
 
@@ -476,12 +502,28 @@ function cloneInstanceResults(
 	);
 }
 
+function cloneLocaleResults(
+	results: Map<string, ThemeLocalePassResult>,
+): Map<string, ThemeLocalePassResult> {
+	return new Map(
+		[...results].map(([path, result]) => [
+			path,
+			{
+				localeKeys: [...result.localeKeys],
+				localeTranslations: [...result.localeTranslations],
+				localeReferences: [...result.localeReferences],
+			},
+		]),
+	);
+}
+
 function modelWithCollectedRecords(
 	model: ThemeSemanticModel,
 	declarationsBySource: Map<string, ThemeDeclarationPassResult>,
 	resolvedReferencesById: Map<string, ThemeReference>,
 	schemaSettingsBySource: Map<string, ThemeSchemaSettingPassResult>,
 	instancesBySource: Map<string, ThemeInstancePassResult>,
+	localesBySource: Map<string, ThemeLocalePassResult>,
 ): ThemeSemanticModel {
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
@@ -515,6 +557,13 @@ function modelWithCollectedRecords(
 		.sort((a, b) => a.localeCompare(b))
 		.map((path) => instancesBySource.get(path))
 		.filter((result): result is ThemeInstancePassResult => Boolean(result));
+	const locales = [...localesBySource.keys()]
+		.sort((a, b) => a.localeCompare(b))
+		.map((path) => localesBySource.get(path))
+		.filter((result): result is ThemeLocalePassResult => Boolean(result));
+	const analyzedLocaleReferences = new Map(
+		model.localeReferences.map((reference) => [reference.id, reference]),
+	);
 	return {
 		...model,
 		files,
@@ -539,7 +588,27 @@ function modelWithCollectedRecords(
 				(instance) => analyzedBlockInstances.get(instance.id) ?? instance,
 			),
 		),
+		localeKeys: uniqueById(locales.flatMap((result) => result.localeKeys)),
+		localeTranslations: uniqueById(
+			locales.flatMap((result) => result.localeTranslations),
+		),
+		localeReferences: uniqueById(
+			locales.flatMap((result) =>
+				result.localeReferences.map(
+					(reference) =>
+						analyzedLocaleReferences.get(reference.id) ?? reference,
+				),
+			),
+		),
 	};
+}
+
+function uniqueById<RecordValue extends { id: string }>(
+	records: RecordValue[],
+): RecordValue[] {
+	return [
+		...new Map(records.map((record) => [record.id, record])).values(),
+	].sort((a, b) => a.id.localeCompare(b.id));
 }
 
 function diffGraphs(
