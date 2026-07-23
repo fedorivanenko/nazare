@@ -204,6 +204,22 @@ export {
 	type ThemeMetafieldSnapshot,
 } from "./theme-metafields.js";
 export {
+	type FixedPointPass,
+	type FixedPointStep,
+	fixedPointThemePass,
+	type IncrementalPass,
+	incrementalThemePass,
+	type PassChange,
+	type PassChangeKind,
+	type PassDelta,
+	type PassRoute,
+	THEME_PASS_ORDER,
+	ThemePassScheduler,
+	type ThemePassStage,
+	type ThemePassTrace,
+	type ThemeSchedulerResult,
+} from "./theme-pass-scheduler.js";
+export {
 	getThemeAffectedPages,
 	getThemeDependencies,
 	getThemeDependents,

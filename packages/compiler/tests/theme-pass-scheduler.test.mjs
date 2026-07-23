@@ -1,0 +1,133 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+	fixedPointThemePass,
+	incrementalThemePass,
+	ThemePassScheduler,
+} from "../dist/index.js";
+
+test("theme pass scheduler propagates typed changes forward deterministically", () => {
+	const scheduler = new ThemePassScheduler([
+		incrementalThemePass({
+			name: "facts",
+			stage: "facts",
+			routes: [{ kind: "declarationChanged", target: "declarations" }],
+			collectChanges: (changes) =>
+				new Set(
+					changes
+						.filter((change) => change.kind === "sourceChanged")
+						.map((change) => change.path),
+				),
+			run: (paths) => ({
+				records: [...paths],
+				changes: [...paths].map((path) => ({
+					kind: "declarationChanged",
+					key: `snippet:${path}`,
+				})),
+			}),
+		}),
+		incrementalThemePass({
+			name: "declarations",
+			stage: "declarations",
+			routes: [{ kind: "referenceChanged", target: "references" }],
+			collectChanges: (changes) =>
+				new Set(
+					changes
+						.filter((change) => change.kind === "declarationChanged")
+						.map((change) => change.key),
+				),
+			run: (keys) => ({
+				records: [...keys],
+				changes: [...keys].map((id) => ({ kind: "referenceChanged", id })),
+			}),
+		}),
+	]);
+	const result = scheduler.execute(
+		[{ kind: "sourceChanged", path: "snippets/card.liquid" }],
+		{},
+	);
+	assert.deepEqual(
+		result.trace.map((entry) => entry.pass),
+		["facts", "declarations"],
+	);
+	assert.ok(
+		result.changes.some((change) => change.kind === "referenceChanged"),
+	);
+});
+
+test("theme pass scheduler rejects backward routes", () => {
+	assert.throws(
+		() =>
+			new ThemePassScheduler([
+				incrementalThemePass({
+					name: "bad-resolution",
+					stage: "resolution",
+					routes: [{ kind: "factsChanged", target: "facts" }],
+					collectChanges: () => new Set(),
+					run: () => ({ records: [], changes: [] }),
+				}),
+			]),
+		/non-forward/,
+	);
+});
+
+test("theme pass scheduler bounds fixed-point convergence", () => {
+	const scheduler = new ThemePassScheduler(
+		[
+			fixedPointThemePass({
+				name: "data-flow",
+				stage: "dataFlow",
+				fixedPointGroup: "render-flow",
+				routes: [
+					{
+						kind: "dataFlowChanged",
+						target: "dataFlow",
+						fixedPointGroup: "render-flow",
+					},
+				],
+				seed: () => new Set(["card"]),
+				step: (pending) => ({
+					records: [...pending],
+					changes: [],
+					pending: new Set(pending),
+				}),
+			}),
+		],
+		{ maximumFixedPointIterations: 2 },
+	);
+	assert.throws(
+		() => scheduler.execute([{ kind: "sourceChanged", path: "card" }], {}),
+		/did not converge after 2 iterations/,
+	);
+});
+
+test("metafield snapshot changes can seed a snapshot-only pass", () => {
+	const scheduler = new ThemePassScheduler([
+		incrementalThemePass({
+			name: "metafields",
+			stage: "metafields",
+			routes: [{ kind: "diagnosticsChanged", target: "diagnostics" }],
+			collectChanges: (changes) =>
+				new Set(
+					changes
+						.filter((change) => change.kind === "metafieldSnapshotChanged")
+						.flatMap((change) => change.changedKeys),
+				),
+			run: (keys) => ({
+				records: [...keys],
+				changes: [{ kind: "diagnosticsChanged", owner: "metafields" }],
+			}),
+		}),
+	]);
+	const result = scheduler.execute(
+		[
+			{
+				kind: "metafieldSnapshotChanged",
+				changedKeys: ["product:custom:subtitle"],
+				state: "present",
+			},
+		],
+		{},
+	);
+	assert.deepEqual(result.records, ["product:custom:subtitle"]);
+});
