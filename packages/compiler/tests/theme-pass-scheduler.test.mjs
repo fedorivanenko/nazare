@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	createThemeDeclarationPass,
+	createThemeReferencePass,
 	fixedPointThemePass,
 	incrementalThemePass,
+	ThemeFactStore,
 	ThemePassScheduler,
 } from "../dist/index.js";
 
@@ -52,6 +55,69 @@ test("theme pass scheduler propagates typed changes forward deterministically", 
 	);
 	assert.ok(
 		result.changes.some((change) => change.kind === "referenceChanged"),
+	);
+});
+
+test("declaration and reference passes replace per-source outputs", () => {
+	const path = "snippets/card.liquid";
+	const facts = new ThemeFactStore([
+		{ kind: "file", path, fileKind: "snippet" },
+		{ kind: "declaresSnippet", path, name: "card" },
+		{
+			kind: "rendersSnippet",
+			fromPath: path,
+			targetName: "icon",
+			siteId: `${path}@1:1`,
+			invocationKind: "render",
+			static: true,
+		},
+	]);
+	const context = {
+		facts,
+		resultsBySource: new Map(),
+		referencesBySource: new Map(),
+		ids: {
+			file: (sourcePath) => `file:${sourcePath}`,
+			declaration: (kind, sourcePath, name) => `${kind}:${sourcePath}:${name}`,
+		},
+		id: (reference) =>
+			`ref:${reference.kind}:${reference.fromPath}:${reference.targetName}`,
+	};
+	const scheduler = new ThemePassScheduler([
+		incrementalThemePass(createThemeDeclarationPass()),
+		incrementalThemePass(createThemeReferencePass()),
+	]);
+	const initial = scheduler.execute([{ kind: "factsChanged", path }], context);
+	assert.equal(context.resultsBySource.get(path).declarations[0].name, "card");
+	assert.equal(context.referencesBySource.get(path)[0].targetName, "icon");
+	assert.ok(
+		initial.changes.some(
+			(change) =>
+				change.kind === "declarationChanged" && change.key === "snippet:card",
+		),
+	);
+
+	facts.replaceFile(path, [
+		{ kind: "file", path, fileKind: "snippet" },
+		{ kind: "declaresSnippet", path, name: "tile" },
+	]);
+	const update = scheduler.execute([{ kind: "factsChanged", path }], context);
+	assert.equal(context.resultsBySource.get(path).declarations[0].name, "tile");
+	assert.equal(context.referencesBySource.has(path), false);
+	assert.ok(
+		update.changes.some(
+			(change) =>
+				change.kind === "declarationChanged" && change.key === "snippet:card",
+		),
+	);
+	assert.ok(
+		update.changes.some(
+			(change) =>
+				change.kind === "declarationChanged" && change.key === "snippet:tile",
+		),
+	);
+	assert.ok(
+		update.changes.some((change) => change.kind === "referenceChanged"),
 	);
 });
 

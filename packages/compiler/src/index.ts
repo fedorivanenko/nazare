@@ -149,6 +149,13 @@ export {
 	type ThemeCheckPolicy,
 	type ThemeCheckPolicyInput,
 } from "./theme-check-policy.js";
+export {
+	collectThemeDeclarations,
+	createThemeDeclarationPass,
+	type ThemeDeclarationPassContext,
+	type ThemeDeclarationPassRecord,
+	type ThemeDeclarationPassResult,
+} from "./theme-declaration-pass.js";
 export { matchesThemeGlob } from "./theme-exclusions.js";
 export { ThemeFactIndex } from "./theme-fact-index.js";
 export {
@@ -230,6 +237,11 @@ export {
 	type ThemeGraphSummary,
 	themeGraphToDot,
 } from "./theme-queries.js";
+export {
+	collectThemeReferences,
+	createThemeReferencePass,
+	type ThemeReferencePassContext,
+} from "./theme-reference-pass.js";
 export { ThemeResolverIndex } from "./theme-resolver-index.js";
 export {
 	ThemeSemanticStore,

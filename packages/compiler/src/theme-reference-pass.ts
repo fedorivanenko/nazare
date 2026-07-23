@@ -1,4 +1,53 @@
+import type { ThemeFactStore } from "./theme-fact-store.js";
 import type { ThemeFact, ThemeReference } from "./theme-facts.js";
+import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
+
+export type ThemeReferencePassContext = {
+	facts: ThemeFactStore;
+	referencesBySource: Map<string, ThemeReference[]>;
+	id(reference: Omit<ThemeReference, "id">): string;
+};
+
+export function createThemeReferencePass(): IncrementalPass<
+	string,
+	ThemeReference,
+	ThemeReferencePassContext
+> {
+	return {
+		name: "references",
+		stage: "references",
+		routes: [{ kind: "referenceChanged", target: "resolution" }],
+		collectChanges(changes) {
+			return new Set(
+				changes
+					.filter((change) => change.kind === "factsChanged")
+					.map((change) => change.path),
+			);
+		},
+		run(paths, context) {
+			const records: ThemeReference[] = [];
+			const changedIds = new Set<string>();
+			for (const path of [...paths].sort((a, b) => a.localeCompare(b))) {
+				const previous = context.referencesBySource.get(path) ?? [];
+				const next = collectThemeReferences(
+					context.facts.getFile(path),
+					context.id,
+				);
+				for (const reference of previous) changedIds.add(reference.id);
+				for (const reference of next) changedIds.add(reference.id);
+				if (next.length === 0) context.referencesBySource.delete(path);
+				else context.referencesBySource.set(path, next);
+				records.push(...next);
+			}
+			return {
+				records,
+				changes: [...changedIds]
+					.sort((a, b) => a.localeCompare(b))
+					.map((id): PassChange => ({ kind: "referenceChanged", id })),
+			};
+		},
+	};
+}
 
 export function collectThemeReferences(
 	facts: ThemeFact[],
