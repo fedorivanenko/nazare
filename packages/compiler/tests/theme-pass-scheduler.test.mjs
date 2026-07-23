@@ -8,6 +8,7 @@ import {
 	incrementalThemePass,
 	ThemeFactStore,
 	ThemePassScheduler,
+	ThemeRenderDependencyIndex,
 } from "../dist/index.js";
 
 test("theme pass scheduler propagates typed changes forward deterministically", () => {
@@ -185,6 +186,29 @@ test("resolution pass recomputes only references under changed target keys", () 
 		context.resolvedReferencesById.get(tileReference.id),
 		tileReference,
 	);
+});
+
+test("render dependency index partitions cycles deterministically", () => {
+	const declarations = [
+		{ id: "snippet:a:a", kind: "snippet", path: "a", name: "a" },
+		{ id: "snippet:b:b", kind: "snippet", path: "b", name: "b" },
+		{ id: "snippet:c:c", kind: "snippet", path: "c", name: "c" },
+	];
+	const render = (fromPath, targetName) => ({
+		kind: "rendersSnippet",
+		fromPath,
+		targetName,
+		siteId: `${fromPath}@1:1`,
+		invocationKind: "render",
+		static: true,
+	});
+	const index = new ThemeRenderDependencyIndex(declarations, [
+		render("a", "b"),
+		render("b", "a"),
+		render("c", "a"),
+	]);
+	assert.deepEqual(index.getStronglyConnectedGroup("a"), ["a", "b"]);
+	assert.deepEqual(index.getAffectedGroups(["c"]), [["a", "b"], ["c"]]);
 });
 
 test("theme pass scheduler rejects backward routes", () => {
