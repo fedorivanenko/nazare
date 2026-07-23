@@ -1,5 +1,82 @@
 import type { Diagnostic } from "@nazare/core";
 import type { ThemeDeclaration, ThemeReference } from "./theme-facts.js";
+import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
+import { referenceTargetKeys } from "./theme-reference-pass.js";
+
+export type ThemeIncrementalResolutionContext = {
+	declarationsByKey: Map<string, Map<string, ThemeDeclaration>>;
+	referencesById: Map<string, ThemeReference>;
+	referencesByTargetKey: Map<string, Map<string, ThemeReference>>;
+	resolvedReferencesById: Map<string, ThemeReference>;
+};
+
+export function createThemeResolutionPass(): IncrementalPass<
+	string,
+	ThemeReference,
+	ThemeIncrementalResolutionContext
+> {
+	return {
+		name: "resolution",
+		stage: "resolution",
+		routes: [{ kind: "resolutionChanged", target: "diagnostics" }],
+		collectChanges(changes) {
+			const keys = new Set<string>();
+			for (const change of changes) {
+				if (change.kind === "declarationChanged") {
+					keys.add(`target:${change.key}`);
+				}
+				if (change.kind === "referenceChanged") {
+					keys.add(`reference:${change.id}`);
+				}
+			}
+			return keys;
+		},
+		run(keys, context) {
+			const referenceIds = new Set<string>();
+			for (const key of keys) {
+				if (key.startsWith("reference:")) {
+					referenceIds.add(key.slice("reference:".length));
+					continue;
+				}
+				const targetKey = key.slice("target:".length);
+				for (const id of context.referencesByTargetKey.get(targetKey)?.keys() ??
+					[]) {
+					referenceIds.add(id);
+				}
+			}
+
+			const records: ThemeReference[] = [];
+			const changes: PassChange[] = [];
+			for (const id of [...referenceIds].sort((a, b) => a.localeCompare(b))) {
+				const reference = context.referencesById.get(id);
+				if (!reference) {
+					context.resolvedReferencesById.delete(id);
+					changes.push({ kind: "resolutionChanged", id });
+					continue;
+				}
+				const resolved = resolveIndexedReference(reference, context);
+				context.resolvedReferencesById.set(id, resolved);
+				records.push(resolved);
+				changes.push({ kind: "resolutionChanged", id });
+			}
+			return { records, changes };
+		},
+	};
+}
+
+function resolveIndexedReference(
+	reference: ThemeReference,
+	context: ThemeIncrementalResolutionContext,
+): ThemeReference {
+	for (const key of referenceTargetKeys(reference)) {
+		const candidates = context.declarationsByKey.get(key);
+		if (!candidates || candidates.size === 0) continue;
+		const resolvedDeclarationId =
+			candidates.size === 1 ? candidates.keys().next().value : undefined;
+		return withResolvedDeclaration(reference, resolvedDeclarationId);
+	}
+	return withResolvedDeclaration(reference, undefined);
+}
 
 export type ThemeResolutionPassResult = {
 	references: ThemeReference[];

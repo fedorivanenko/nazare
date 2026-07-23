@@ -281,6 +281,35 @@ test("workspace scheduler preserves unresolved and resolved reference transition
 	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
 });
 
+test("workspace scheduler preserves resolved and ambiguous transitions", () => {
+	let files = [
+		{ path: "sections/main.liquid", contents: "{% render 'button' %}" },
+		{ path: "snippets/button.liquid", contents: "Button" },
+	];
+	const session = new ThemeWorkspaceSession(files);
+	assert.equal(
+		hasIssue(session.getGraph(), "THEME_AMBIGUOUS_REFERENCE"),
+		false,
+	);
+
+	const duplicate = {
+		path: "components/button.nz.liquid",
+		contents: "<button>NZ</button>",
+	};
+	files = [...files, duplicate];
+	session.updateFile(duplicate);
+	assert.equal(hasIssue(session.getGraph(), "THEME_AMBIGUOUS_REFERENCE"), true);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+
+	files = files.filter((file) => file.path !== duplicate.path);
+	session.removeFile(duplicate.path);
+	assert.equal(
+		hasIssue(session.getGraph(), "THEME_AMBIGUOUS_REFERENCE"),
+		false,
+	);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+});
+
 test("workspace session updates graph with stable revisions and deltas", () => {
 	const session = new ThemeWorkspaceSession([
 		{
