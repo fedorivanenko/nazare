@@ -238,6 +238,30 @@ test("theme graph DOT projection escapes identifiers and labels", () => {
 	assert.match(dot, /file:snippets\/card\.liquid/);
 });
 
+test("incremental graph replay equals full rebuild", () => {
+	let files = [
+		{
+			path: "templates/index.json",
+			contents: JSON.stringify({ sections: { main: { type: "main" } } }),
+		},
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const edits = [
+		{ path: "snippets/card.liquid", contents: "Updated" },
+		{ path: "snippets/extra.liquid", contents: "Extra" },
+	];
+	for (const edit of edits) {
+		files = [...files.filter((file) => file.path !== edit.path), edit];
+		session.updateFile(edit);
+		assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	}
+	files = files.filter((file) => file.path !== "snippets/card.liquid");
+	session.removeFile("snippets/card.liquid");
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+});
+
 test("workspace session updates graph with stable revisions and deltas", () => {
 	const session = new ThemeWorkspaceSession([
 		{
