@@ -29,9 +29,9 @@ test("semantic transaction shares unchanged identified records", () => {
 	]);
 	const store = new ThemeSemanticStore(first.ir);
 	const transaction = store.beginUpdate(second.ir);
-	const model = transaction.commit();
+	const update = transaction.commit();
 	assert.equal(
-		model.files.find((file) => file.path === "sections/main.liquid"),
+		update.model.files.find((file) => file.path === "sections/main.liquid"),
 		first.ir.files.find((file) => file.path === "sections/main.liquid"),
 	);
 });
