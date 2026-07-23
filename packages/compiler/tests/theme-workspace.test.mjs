@@ -404,6 +404,43 @@ test("workspace scheduler replaces section and block instances by source", () =>
 	);
 });
 
+test("workspace scheduler replaces locale keys and references by source", () => {
+	let files = [
+		{
+			path: "locales/en.default.json",
+			contents: JSON.stringify({ general: { hello: "Hello" } }),
+		},
+		{
+			path: "sections/main.liquid",
+			contents: "{{ 'general.hello' | t }}",
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const locale = {
+		path: "locales/en.default.json",
+		contents: JSON.stringify({ general: { goodbye: "Goodbye" } }),
+	};
+	files = [...files.filter((file) => file.path !== locale.path), locale];
+	session.updateFile(locale);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	assert.equal(
+		hasIssue(session.getGraph(), "THEME_UNRESOLVED_LOCALE_KEY"),
+		true,
+	);
+
+	const section = {
+		path: "sections/main.liquid",
+		contents: "{{ 'general.goodbye' | t }}",
+	};
+	files = [...files.filter((file) => file.path !== section.path), section];
+	session.updateFile(section);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	assert.equal(
+		hasIssue(session.getGraph(), "THEME_UNRESOLVED_LOCALE_KEY"),
+		false,
+	);
+});
+
 test("workspace session updates graph with stable revisions and deltas", () => {
 	const session = new ThemeWorkspaceSession([
 		{
