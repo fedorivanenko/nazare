@@ -44,13 +44,22 @@ export class ThemeFactIndex {
 		while (pending.length > 0) {
 			const path = pending.pop();
 			if (!path) continue;
-			for (const dependent of this.getDependents(path)) {
+			for (const dependent of this.dependentsForPath(path)) {
 				if (result.has(dependent)) continue;
 				result.add(dependent);
 				pending.push(dependent);
 			}
 		}
 		return [...result].sort();
+	}
+
+	private dependentsForPath(path: string): string[] {
+		const result = new Set<string>(this.getDependents(path));
+		for (const [key, declarations] of this.declarationsByKey) {
+			if (!declarations.has(path)) continue;
+			for (const dependent of this.getDependents(key)) result.add(dependent);
+		}
+		return [...result];
 	}
 
 	snapshot(): ThemeFactIndexSnapshot {

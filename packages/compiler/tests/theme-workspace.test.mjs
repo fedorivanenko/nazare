@@ -36,6 +36,10 @@ test("fact index replaces declarations and dependents transactionally", () => {
 	assert.deepEqual(index.getDependents("snippet:card"), [
 		"sections/main.liquid",
 	]);
+	assert.deepEqual(index.dependentsOfFiles(["snippets/card.liquid"]), [
+		"sections/main.liquid",
+		"snippets/card.liquid",
+	]);
 	index.replaceFileFacts("sections/main.liquid", []);
 	assert.deepEqual(index.getDependents("snippet:card"), []);
 });
