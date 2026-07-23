@@ -310,6 +310,35 @@ test("workspace scheduler preserves resolved and ambiguous transitions", () => {
 	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
 });
 
+test("workspace scheduler treats declaration rename as delete plus add", () => {
+	let files = [
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	];
+	const session = new ThemeWorkspaceSession(files);
+
+	files = files.filter((file) => file.path !== "snippets/card.liquid");
+	session.removeFile("snippets/card.liquid");
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+
+	const tile = { path: "snippets/tile.liquid", contents: "Tile" };
+	files = [...files, tile];
+	session.updateFile(tile);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+
+	const caller = {
+		path: "sections/main.liquid",
+		contents: "{% render 'tile' %}",
+	};
+	files = [...files.filter((file) => file.path !== caller.path), caller];
+	session.updateFile(caller);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	assert.equal(
+		hasIssue(session.getGraph(), "THEME_UNRESOLVED_REFERENCE"),
+		false,
+	);
+});
+
 test("workspace session updates graph with stable revisions and deltas", () => {
 	const session = new ThemeWorkspaceSession([
 		{

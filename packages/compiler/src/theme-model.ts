@@ -7,7 +7,6 @@ import {
 import { ThemeFactStore } from "./theme-fact-store.js";
 import type {
 	ThemeBlockInstanceRecord,
-	ThemeBlockRecord,
 	ThemeBlockSettingRecord,
 	ThemeCapabilitySignalRecord,
 	ThemeDataAccessRecord,
@@ -43,6 +42,7 @@ import {
 	type ThemeReferencePassContext,
 } from "./theme-reference-pass.js";
 import { resolveThemeDeclarationsAndReferences } from "./theme-resolution-pass.js";
+import { collectThemeSchemaSettings } from "./theme-schema-setting-pass.js";
 
 function collectScheduledDeclarationAndReferenceRecords(facts: ThemeFact[]): {
 	files: Map<string, ThemeFileRecord>;
@@ -100,16 +100,19 @@ export function buildThemeSemanticModel(
 		declarations,
 		references: collectedReferences,
 	} = collectScheduledDeclarationAndReferenceRecords(facts);
-	const schemas: ThemeSchemaRecord[] = [];
-	const settings: ThemeSettingRecord[] = [];
-	const blocks: ThemeBlockRecord[] = [];
-	const blockSettings: ThemeBlockSettingRecord[] = [];
+	const { schemas, settings, blocks, blockSettings, settingReads } =
+		collectThemeSchemaSettings(facts, {
+			schema: schemaId,
+			setting: settingId,
+			block: blockId,
+			blockSetting: blockSettingId,
+			settingRead: settingReadId,
+		});
 	const sectionInstances: ThemeSectionInstanceRecord[] = [];
 	const blockInstances: ThemeBlockInstanceRecord[] = [];
 	const localeKeys: ThemeLocaleKeyRecord[] = [];
 	const localeTranslations: ThemeLocaleTranslationRecord[] = [];
 	const localeReferences: ThemeLocaleReferenceRecord[] = [];
-	const settingReads: ThemeSettingReadRecord[] = [];
 	const dataAccesses: ThemeDataAccessRecord[] = [];
 	const variableReads: ThemeVariableReadRecord[] = [];
 	const guardedObjects = new Set<string>();
@@ -144,24 +147,6 @@ export function buildThemeSemanticModel(
 				static: fact.static,
 			});
 		}
-		if (fact.kind === "definesSchema") {
-			schemas.push({
-				id: schemaId(fact.path, fact.schemaPath),
-				path: fact.path,
-				schemaPath: fact.schemaPath,
-				span: fact.span,
-			});
-		}
-		if (fact.kind === "definesSetting") {
-			settings.push({
-				id: settingId(fact.path, fact.schemaPath, fact.settingId),
-				path: fact.path,
-				schemaPath: fact.schemaPath,
-				settingId: fact.settingId,
-				settingType: fact.settingType,
-				span: fact.span,
-			});
-		}
 		if (fact.kind === "definesLocaleKey") {
 			const keyId = localeKeyId(fact.key);
 			localeKeys.push({ id: keyId, key: fact.key });
@@ -180,39 +165,6 @@ export function buildThemeSemanticModel(
 				key: fact.key,
 				resolvedLocaleKeyIds: [],
 				static: fact.static,
-				span: fact.span,
-			});
-		}
-		if (fact.kind === "declaresBlock") {
-			blocks.push({
-				id: blockId(fact.path, fact.blockType),
-				path: fact.path,
-				blockType: fact.blockType,
-				name: fact.name,
-				span: fact.span,
-			});
-		}
-		if (fact.kind === "definesBlockSetting") {
-			blockSettings.push({
-				id: blockSettingId(fact.path, fact.blockType, fact.settingId),
-				path: fact.path,
-				blockType: fact.blockType,
-				settingId: fact.settingId,
-				settingType: fact.settingType,
-				span: fact.span,
-			});
-		}
-		if (fact.kind === "readsSetting") {
-			settingReads.push({
-				id: settingReadId(
-					fact.fromPath,
-					fact.settingObject,
-					fact.settingId,
-					fact.span,
-				),
-				fromPath: fact.fromPath,
-				settingObject: fact.settingObject,
-				settingId: fact.settingId,
 				span: fact.span,
 			});
 		}
