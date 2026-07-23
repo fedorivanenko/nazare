@@ -339,6 +339,33 @@ test("workspace scheduler treats declaration rename as delete plus add", () => {
 	);
 });
 
+test("workspace scheduler replaces schema and setting records by source", () => {
+	let files = [
+		{
+			path: "sections/main.liquid",
+			contents:
+				'{{ block.settings.heading }}{% schema %}{"blocks":[{"type":"feature","settings":[{"type":"text","id":"heading"}]}]}{% endschema %}',
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const updated = {
+		path: "sections/main.liquid",
+		contents:
+			'{{ block.settings.title }}{% schema %}{"blocks":[{"type":"feature","settings":[{"type":"text","id":"title"}]}]}{% endschema %}',
+	};
+	files = [updated];
+	session.updateFile(updated);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	assert.equal(
+		hasIssue(session.getGraph(), "THEME_UNRESOLVED_SETTING_READ"),
+		false,
+	);
+	assert.equal(
+		session.getGraph().nodes.some((node) => node.id.includes(":heading")),
+		false,
+	);
+});
+
 test("workspace session updates graph with stable revisions and deltas", () => {
 	const session = new ThemeWorkspaceSession([
 		{

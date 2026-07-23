@@ -24,7 +24,16 @@ import {
 import { impactSummary } from "./theme-impact.js";
 import { ThemeImpactIndex } from "./theme-impact-index.js";
 import { ThemeMetafieldIndex } from "./theme-metafield-index.js";
-import { declarationId, fileId, referenceId } from "./theme-model.js";
+import {
+	blockId,
+	blockSettingId,
+	declarationId,
+	fileId,
+	referenceId,
+	schemaId,
+	settingId,
+	settingReadId,
+} from "./theme-model.js";
 import {
 	incrementalThemePass,
 	type PassChange,
@@ -39,6 +48,12 @@ import {
 	type ThemeIncrementalResolutionContext,
 } from "./theme-resolution-pass.js";
 import { ThemeResolverIndex } from "./theme-resolver-index.js";
+import {
+	createThemeSchemaSettingPass,
+	type ThemeSchemaSettingPassContext,
+	type ThemeSchemaSettingPassResult,
+	type ThemeSchemaSettingRecord,
+} from "./theme-schema-setting-pass.js";
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
 import { analyzeNazareTheme } from "./theme-workspace.js";
 
@@ -77,6 +92,10 @@ export class ThemeWorkspaceSession {
 		Map<string, ThemeReference>
 	>();
 	private resolvedReferencesById = new Map<string, ThemeReference>();
+	private schemaSettingResultsBySource = new Map<
+		string,
+		ThemeSchemaSettingPassResult
+	>();
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
@@ -105,6 +124,7 @@ export class ThemeWorkspaceSession {
 			analysis.ir,
 			collection.declarations,
 			collection.resolvedReferencesById,
+			collection.schemaSettings,
 		);
 		const model = new ThemeResolverIndex(collectedModel).resolveModel(
 			collectedModel,
@@ -215,6 +235,7 @@ export class ThemeWorkspaceSession {
 			analysis.ir,
 			collection.declarations,
 			collection.resolvedReferencesById,
+			collection.schemaSettings,
 		);
 		const resolvedModel = this.resolverIndex.resolveModel(collectedModel);
 		const transaction = this.semanticStore.beginUpdate(resolvedModel);
@@ -262,6 +283,7 @@ export class ThemeWorkspaceSession {
 			referencesById: this.referencesById,
 			referencesByTargetKey: this.referencesByTargetKey,
 			resolvedReferencesById: this.resolvedReferencesById,
+			schemaSettings: this.schemaSettingResultsBySource,
 		};
 	}
 
@@ -272,6 +294,7 @@ export class ThemeWorkspaceSession {
 		this.referencesById = state.referencesById;
 		this.referencesByTargetKey = state.referencesByTargetKey;
 		this.resolvedReferencesById = state.resolvedReferencesById;
+		this.schemaSettingResultsBySource = state.schemaSettings;
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
@@ -295,7 +318,8 @@ export class ThemeWorkspaceSession {
 
 type ThemeCollectionContext = ThemeDeclarationPassContext &
 	ThemeReferencePassContext &
-	ThemeIncrementalResolutionContext;
+	ThemeIncrementalResolutionContext &
+	ThemeSchemaSettingPassContext;
 
 type ThemeCollectionState = {
 	declarations: Map<string, ThemeDeclarationPassResult>;
@@ -304,6 +328,7 @@ type ThemeCollectionState = {
 	referencesById: Map<string, ThemeReference>;
 	referencesByTargetKey: Map<string, Map<string, ThemeReference>>;
 	resolvedReferencesById: Map<string, ThemeReference>;
+	schemaSettings: Map<string, ThemeSchemaSettingPassResult>;
 };
 
 function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
@@ -319,6 +344,11 @@ function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext>
 		incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
 			createThemeResolutionPass(),
 		),
+		incrementalThemePass<
+			ThemeCollectionContext,
+			string,
+			ThemeSchemaSettingRecord
+		>(createThemeSchemaSettingPass()),
 	]);
 }
 
@@ -337,7 +367,16 @@ function runCollectionPasses(
 		referencesById: state.referencesById,
 		referencesByTargetKey: state.referencesByTargetKey,
 		resolvedReferencesById: state.resolvedReferencesById,
-		ids: { file: fileId, declaration: declarationId },
+		schemaSettingResultsBySource: state.schemaSettings,
+		ids: {
+			file: fileId,
+			declaration: declarationId,
+			schema: schemaId,
+			setting: settingId,
+			block: blockId,
+			blockSetting: blockSettingId,
+			settingRead: settingReadId,
+		},
 		id: referenceId,
 	};
 	scheduler.execute(
@@ -361,6 +400,7 @@ function cloneCollectionState(
 		referencesById: new Map(state.referencesById),
 		referencesByTargetKey: cloneRecordIndex(state.referencesByTargetKey),
 		resolvedReferencesById: new Map(state.resolvedReferencesById),
+		schemaSettings: cloneSchemaSettingResults(state.schemaSettings),
 	};
 }
 
@@ -381,10 +421,28 @@ function cloneDeclarationResults(
 	);
 }
 
+function cloneSchemaSettingResults(
+	results: Map<string, ThemeSchemaSettingPassResult>,
+): Map<string, ThemeSchemaSettingPassResult> {
+	return new Map(
+		[...results].map(([path, result]) => [
+			path,
+			{
+				schemas: [...result.schemas],
+				settings: [...result.settings],
+				blocks: [...result.blocks],
+				blockSettings: [...result.blockSettings],
+				settingReads: [...result.settingReads],
+			},
+		]),
+	);
+}
+
 function modelWithCollectedRecords(
 	model: ThemeSemanticModel,
 	declarationsBySource: Map<string, ThemeDeclarationPassResult>,
 	resolvedReferencesById: Map<string, ThemeReference>,
+	schemaSettingsBySource: Map<string, ThemeSchemaSettingPassResult>,
 ): ThemeSemanticModel {
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
@@ -399,7 +457,30 @@ function modelWithCollectedRecords(
 	const references = [...resolvedReferencesById.values()].sort((a, b) =>
 		a.id.localeCompare(b.id),
 	);
-	return { ...model, files, declarations, references };
+	const schemaSettings = [...schemaSettingsBySource.keys()]
+		.sort((a, b) => a.localeCompare(b))
+		.map((path) => schemaSettingsBySource.get(path))
+		.filter((result): result is ThemeSchemaSettingPassResult =>
+			Boolean(result),
+		);
+	const analyzedSettingReads = new Map(
+		model.settingReads.map((read) => [read.id, read]),
+	);
+	return {
+		...model,
+		files,
+		declarations,
+		references,
+		schemas: schemaSettings.flatMap((result) => result.schemas),
+		settings: schemaSettings.flatMap((result) => result.settings),
+		blocks: schemaSettings.flatMap((result) => result.blocks),
+		blockSettings: schemaSettings.flatMap((result) => result.blockSettings),
+		settingReads: schemaSettings.flatMap((result) =>
+			result.settingReads.map(
+				(read) => analyzedSettingReads.get(read.id) ?? read,
+			),
+		),
+	};
 }
 
 function diffGraphs(
