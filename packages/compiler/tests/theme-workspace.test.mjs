@@ -12,6 +12,7 @@ import {
 	ThemeBuildSession,
 	ThemeFactIndex,
 	ThemeFactStore,
+	ThemeResolverIndex,
 	ThemeSemanticStore,
 	ThemeWorkspaceSession,
 	themeGraphToDot,
@@ -19,6 +20,19 @@ import {
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("resolver index serves declaration dependents", () => {
+	const model = analyzeNazareTheme([
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]).ir;
+	const index = new ThemeResolverIndex(model);
+	const declarationId = index.getDeclarations("snippet:card")[0];
+	assert.ok(declarationId);
+	assert.deepEqual(index.getDependents(declarationId), [
+		"sections/main.liquid",
+	]);
+});
 
 test("graph projection shares unchanged nodes and edges", () => {
 	const first = inspectNazareTheme([

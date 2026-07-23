@@ -11,6 +11,7 @@ import {
 	shareThemeGraphRecords,
 	themeGraphFromModel,
 } from "./theme-graph-output.js";
+import { ThemeResolverIndex } from "./theme-resolver-index.js";
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
 import { analyzeNazareTheme } from "./theme-workspace.js";
 
@@ -37,6 +38,7 @@ export class ThemeWorkspaceSession {
 	private readonly factStore: ThemeFactStore;
 	private readonly factIndex: ThemeFactIndex;
 	private semanticStore: ThemeSemanticStore;
+	private resolverIndex: ThemeResolverIndex;
 	private graph: InspectNazareThemeResult;
 	private externalFingerprint: string;
 	private revision = 0;
@@ -51,6 +53,7 @@ export class ThemeWorkspaceSession {
 		this.factStore = new ThemeFactStore(analysis.facts);
 		this.factIndex = new ThemeFactIndex(analysis.facts);
 		this.semanticStore = new ThemeSemanticStore(analysis.ir);
+		this.resolverIndex = new ThemeResolverIndex(analysis.ir);
 		this.graph = themeGraphFromModel(this.semanticStore.getModel());
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
@@ -101,17 +104,24 @@ export class ThemeWorkspaceSession {
 		}
 		const transaction = this.semanticStore.beginUpdate(analysis.ir);
 		const semanticUpdate = transaction.commit();
+		this.resolverIndex.apply(semanticUpdate);
 		this.graph = shareThemeGraphRecords(
 			this.graph,
 			themeGraphFromModel(semanticUpdate.model),
 		);
 		this.revision += 1;
+		const resolverDependents = semanticUpdate.changedRecordIds.flatMap((id) =>
+			this.resolverIndex.getDependents(id),
+		);
 		return diffGraphs(
 			this.revision,
 			previous,
 			this.graph,
 			changedPaths,
-			this.factIndex.dependentsOfFiles(changedPaths),
+			[
+				...this.factIndex.dependentsOfFiles(changedPaths),
+				...resolverDependents,
+			],
 			semanticUpdate.changedRecordIds,
 		);
 	}

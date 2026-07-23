@@ -212,6 +212,7 @@ export {
 	type ThemeGraphSummary,
 	themeGraphToDot,
 } from "./theme-queries.js";
+export { ThemeResolverIndex } from "./theme-resolver-index.js";
 export {
 	ThemeSemanticStore,
 	ThemeSemanticTransaction,
