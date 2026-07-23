@@ -12,6 +12,7 @@ import {
 	ThemeBuildSession,
 	ThemeFactIndex,
 	ThemeFactStore,
+	ThemeMetafieldIndex,
 	ThemeResolverIndex,
 	ThemeSemanticStore,
 	ThemeWorkspaceSession,
@@ -20,6 +21,37 @@ import {
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("metafield index serves reads by definition", () => {
+	const model = analyzeNazareTheme(
+		[
+			{
+				path: "snippets/card.liquid",
+				contents: "{{ product.metafields.custom.subtitle }}",
+			},
+		],
+		{
+			metafields: {
+				path: ".shopify/metafields.json",
+				contents: JSON.stringify([
+					{
+						owner: "product",
+						namespace: "custom",
+						key: "subtitle",
+						type: "single_line_text_field",
+					},
+				]),
+			},
+		},
+	).ir;
+	const index = new ThemeMetafieldIndex(model);
+	const definition = model.metafieldDefinitions[0];
+	assert.ok(definition);
+	assert.equal(index.getReads(definition.id).length, 1);
+	assert.deepEqual(index.getAffectedSources(definition.id), [
+		"snippets/card.liquid",
+	]);
+});
 
 test("resolver index serves declaration dependents", () => {
 	const model = analyzeNazareTheme([
