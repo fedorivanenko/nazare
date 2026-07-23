@@ -71,6 +71,14 @@ export class ThemeWorkspaceSession {
 		return this.graph;
 	}
 
+	getDependencies(nodeId: string): string[] {
+		return this.impactIndex.getDependencies(nodeId);
+	}
+
+	getDependents(nodeId: string): string[] {
+		return this.impactIndex.getDependents(nodeId);
+	}
+
 	getAffectedPages(nodeId: string): string[] {
 		return this.impactIndex.getAffectedPages(nodeId);
 	}

@@ -33,6 +33,16 @@ test("impact index propagates dependencies to pages", () => {
 		{ path: "snippets/card.liquid", contents: "Card" },
 	]);
 	const index = new ThemeImpactIndex(graph);
+	assert.ok(
+		index
+			.getDependencies("sections/main.liquid")
+			.includes("snippets/card.liquid"),
+	);
+	assert.ok(
+		index
+			.getDependents("snippets/card.liquid")
+			.includes("sections/main.liquid"),
+	);
 	assert.deepEqual(index.getAffectedPages("snippets/card.liquid"), [
 		"templates/index.json",
 	]);

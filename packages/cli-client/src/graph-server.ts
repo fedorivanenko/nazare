@@ -4,8 +4,6 @@ import { join, relative, sep } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import {
-	getThemeDependencies,
-	getThemeDependents,
 	getThemeNode,
 	summarizeThemeGraph,
 	ThemeBuildSession,
@@ -159,9 +157,8 @@ async function handleRequest(
 	if (request.method === "summary") return summarizeThemeGraph(graph);
 	const nodeId = requiredString(request.params, "nodeId");
 	if (request.method === "node") return getThemeNode(graph, nodeId) ?? null;
-	if (request.method === "dependencies")
-		return getThemeDependencies(graph, nodeId);
-	if (request.method === "dependents") return getThemeDependents(graph, nodeId);
+	if (request.method === "dependencies") return session.getDependencies(nodeId);
+	if (request.method === "dependents") return session.getDependents(nodeId);
 	if (request.method === "affectedPages")
 		return session.getAffectedPages(nodeId);
 	throw new Error(`Unknown graph server method ${request.method}`);
