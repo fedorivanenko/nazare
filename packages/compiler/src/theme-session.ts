@@ -11,6 +11,7 @@ import {
 	shareThemeGraphRecords,
 	themeGraphFromModel,
 } from "./theme-graph-output.js";
+import { impactSummary } from "./theme-impact.js";
 import { ThemeImpactIndex } from "./theme-impact-index.js";
 import { ThemeMetafieldIndex } from "./theme-metafield-index.js";
 import { ThemeResolverIndex } from "./theme-resolver-index.js";
@@ -59,7 +60,9 @@ export class ThemeWorkspaceSession {
 		this.semanticStore = new ThemeSemanticStore(analysis.ir);
 		this.resolverIndex = new ThemeResolverIndex(analysis.ir);
 		this.metafieldIndex = new ThemeMetafieldIndex(analysis.ir);
-		this.graph = themeGraphFromModel(this.semanticStore.getModel());
+		this.graph = themeGraphFromModel(this.semanticStore.getModel(), {
+			impact: impactSummary(this.semanticStore.getModel()),
+		});
 		this.impactIndex = new ThemeImpactIndex(this.graph);
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
@@ -115,7 +118,9 @@ export class ThemeWorkspaceSession {
 		this.metafieldIndex.apply(semanticUpdate);
 		this.graph = shareThemeGraphRecords(
 			this.graph,
-			themeGraphFromModel(semanticUpdate.model),
+			themeGraphFromModel(semanticUpdate.model, {
+				impact: impactSummary(semanticUpdate.model),
+			}),
 		);
 		this.impactIndex.replaceGraph(this.graph);
 		this.revision += 1;
