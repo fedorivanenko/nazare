@@ -3,6 +3,7 @@ import type {
 	SemanticThemeGraphEdge,
 	SemanticThemeGraphNode,
 	ThemeGraphViews,
+	ThemeImpactSummary,
 	ThemeReference,
 	ThemeSemanticModel,
 } from "./theme-facts.js";
@@ -37,6 +38,7 @@ export function shareThemeGraphRecords(
 
 export function themeGraphFromModel(
 	model: ThemeSemanticModel,
+	options: { impact?: ThemeImpactSummary } = {},
 ): InspectNazareThemeResult {
 	const nodes: SemanticThemeGraphNode[] = [];
 	const edges: SemanticThemeGraphEdge[] = [];
@@ -797,7 +799,7 @@ export function themeGraphFromModel(
 		nodes: sortedNodes,
 		edges: sortedEdges,
 		evidence: model.evidence,
-		impact: impactSummary(model),
+		impact: options.impact ?? impactSummary(model),
 		metafields: metafieldQueries(model),
 		themeCheck: model.themeCheck,
 		views,
