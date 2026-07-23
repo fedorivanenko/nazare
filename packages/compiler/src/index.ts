@@ -212,6 +212,10 @@ export {
 	themeGraphToDot,
 } from "./theme-queries.js";
 export {
+	ThemeSemanticStore,
+	ThemeSemanticTransaction,
+} from "./theme-semantic-store.js";
+export {
 	type ThemeGraphUpdate,
 	ThemeWorkspaceSession,
 } from "./theme-session.js";
