@@ -94,11 +94,17 @@ export class ThemeWorkspaceSession {
 		}
 		this.graph = themeGraphFromModel(analysis.ir);
 		this.revision += 1;
-		return diffGraphs(this.revision, previous, this.graph, changedPaths);
+		return diffGraphs(
+			this.revision,
+			previous,
+			this.graph,
+			changedPaths,
+			this.factIndex.dependentsOfFiles(changedPaths),
+		);
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
-		return diffGraphs(this.revision, this.graph, this.graph, changedPaths);
+		return diffGraphs(this.revision, this.graph, this.graph, changedPaths, []);
 	}
 
 	private files(): ThemeInputFile[] {
@@ -113,6 +119,7 @@ function diffGraphs(
 	previous: InspectNazareThemeResult,
 	current: InspectNazareThemeResult,
 	changedPaths: string[],
+	indexedInvalidation: string[],
 ): ThemeGraphUpdate {
 	const previousNodes = new Map(previous.nodes.map((node) => [node.id, node]));
 	const currentNodes = new Map(current.nodes.map((node) => [node.id, node]));
@@ -122,7 +129,12 @@ function diffGraphs(
 		revision,
 		graph: current,
 		changedPaths: [...new Set(changedPaths)].sort(),
-		invalidatedNodeIds: invalidationClosure(current, changedPaths),
+		invalidatedNodeIds: [
+			...new Set([
+				...invalidationClosure(current, changedPaths),
+				...indexedInvalidation,
+			]),
+		].sort(),
 		affectedPages: affectedPages(current, changedPaths),
 		addedNodeIds: addedIds(previousNodes, currentNodes),
 		removedNodeIds: addedIds(currentNodes, previousNodes),
