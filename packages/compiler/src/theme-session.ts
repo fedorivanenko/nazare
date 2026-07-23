@@ -8,6 +8,7 @@ import type {
 	ThemeInputFile,
 } from "./theme-facts.js";
 import { themeGraphFromModel } from "./theme-graph-output.js";
+import { ThemeSemanticStore } from "./theme-semantic-store.js";
 import { analyzeNazareTheme } from "./theme-workspace.js";
 
 export type ThemeGraphUpdate = {
@@ -31,6 +32,7 @@ export class ThemeWorkspaceSession {
 	private readonly memo = {} as ThemeAnalysisMemo;
 	private readonly factStore: ThemeFactStore;
 	private readonly factIndex: ThemeFactIndex;
+	private semanticStore: ThemeSemanticStore;
 	private graph: InspectNazareThemeResult;
 	private externalFingerprint: string;
 	private revision = 0;
@@ -44,7 +46,8 @@ export class ThemeWorkspaceSession {
 		const analysis = analyzeNazareTheme(this.files(), this.options);
 		this.factStore = new ThemeFactStore(analysis.facts);
 		this.factIndex = new ThemeFactIndex(analysis.facts);
-		this.graph = themeGraphFromModel(analysis.ir);
+		this.semanticStore = new ThemeSemanticStore(analysis.ir);
+		this.graph = themeGraphFromModel(this.semanticStore.getModel());
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
 
@@ -92,7 +95,8 @@ export class ThemeWorkspaceSession {
 			this.factStore.replaceFile(path, facts);
 			this.factIndex.replaceFileFacts(path, facts);
 		}
-		this.graph = themeGraphFromModel(analysis.ir);
+		const transaction = this.semanticStore.beginUpdate(analysis.ir);
+		this.graph = themeGraphFromModel(transaction.commit());
 		this.revision += 1;
 		return diffGraphs(
 			this.revision,
