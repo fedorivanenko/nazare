@@ -7,7 +7,10 @@ import type {
 	ThemeAnalysisMemo,
 	ThemeInputFile,
 } from "./theme-facts.js";
-import { themeGraphFromModel } from "./theme-graph-output.js";
+import {
+	shareThemeGraphRecords,
+	themeGraphFromModel,
+} from "./theme-graph-output.js";
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
 import { analyzeNazareTheme } from "./theme-workspace.js";
 
@@ -98,7 +101,10 @@ export class ThemeWorkspaceSession {
 		}
 		const transaction = this.semanticStore.beginUpdate(analysis.ir);
 		const semanticUpdate = transaction.commit();
-		this.graph = themeGraphFromModel(semanticUpdate.model);
+		this.graph = shareThemeGraphRecords(
+			this.graph,
+			themeGraphFromModel(semanticUpdate.model),
+		);
 		this.revision += 1;
 		return diffGraphs(
 			this.revision,

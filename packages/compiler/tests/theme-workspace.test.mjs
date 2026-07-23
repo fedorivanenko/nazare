@@ -7,6 +7,7 @@ import {
 	getThemeDependencies,
 	getThemeNode,
 	inspectNazareTheme,
+	shareThemeGraphRecords,
 	summarizeThemeGraph,
 	ThemeBuildSession,
 	ThemeFactIndex,
@@ -18,6 +19,24 @@ import {
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("graph projection shares unchanged nodes and edges", () => {
+	const first = inspectNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const second = inspectNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+		{ path: "assets/new.css", contents: ".new {}" },
+	]);
+	const shared = shareThemeGraphRecords(first, second);
+	const firstFile = first.nodes.find(
+		(node) => node.id === "file:snippets/card.liquid",
+	);
+	const sharedFile = shared.nodes.find(
+		(node) => node.id === "file:snippets/card.liquid",
+	);
+	assert.equal(sharedFile, firstFile);
+});
 
 test("semantic transaction shares unchanged identified records", () => {
 	const first = analyzeNazareTheme([
