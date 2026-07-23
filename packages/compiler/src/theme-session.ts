@@ -1,5 +1,11 @@
+import { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 import {
+	createThemeDataFlowFixedPointPass,
 	createThemeDataFlowInputPass,
+	deriveRenderArgumentDataAccesses,
+	deriveThemeRenderSites,
+	type ThemeDataFlowDerivedRecord,
+	type ThemeDataFlowFixedPointContext,
 	type ThemeDataFlowInputPassContext,
 	type ThemeDataFlowInputPassResult,
 	type ThemeDataFlowInputRecord,
@@ -10,6 +16,7 @@ import {
 	type ThemeDeclarationPassRecord,
 	type ThemeDeclarationPassResult,
 } from "./theme-declaration-pass.js";
+import { deriveThemeExpectedInputs } from "./theme-expected-input-pass.js";
 import { ThemeFactIndex } from "./theme-fact-index.js";
 import { ThemeFactStore, themeFactSourcePath } from "./theme-fact-store.js";
 import type {
@@ -17,10 +24,13 @@ import type {
 	InspectNazareThemeResult,
 	ThemeAnalysisCache,
 	ThemeAnalysisMemo,
+	ThemeDataAccessRecord,
 	ThemeDeclaration,
+	ThemeExpectedInputRecord,
 	ThemeFileRecord,
 	ThemeInputFile,
 	ThemeReference,
+	ThemeRenderSiteRecord,
 	ThemeSemanticModel,
 } from "./theme-facts.js";
 import {
@@ -54,6 +64,7 @@ import {
 	localeTranslationId,
 	referenceId,
 	renderArgumentId,
+	renderSiteId,
 	schemaId,
 	sectionInstanceId,
 	settingId,
@@ -61,6 +72,7 @@ import {
 	variableReadId,
 } from "./theme-model.js";
 import {
+	fixedPointThemePass,
 	incrementalThemePass,
 	type PassChange,
 	ThemePassScheduler,
@@ -128,6 +140,10 @@ export class ThemeWorkspaceSession {
 		string,
 		ThemeDataFlowInputPassResult
 	>();
+	private derivedDataFlowBySource = new Map<
+		string,
+		ThemeDerivedDataFlowResult
+	>();
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
@@ -160,6 +176,7 @@ export class ThemeWorkspaceSession {
 			collection.instances,
 			collection.locales,
 			collection.dataFlowInputs,
+			collection.derivedDataFlow,
 		);
 		const model = new ThemeResolverIndex(collectedModel).resolveModel(
 			collectedModel,
@@ -274,6 +291,7 @@ export class ThemeWorkspaceSession {
 			collection.instances,
 			collection.locales,
 			collection.dataFlowInputs,
+			collection.derivedDataFlow,
 		);
 		const resolvedModel = this.resolverIndex.resolveModel(collectedModel);
 		const transaction = this.semanticStore.beginUpdate(resolvedModel);
@@ -325,6 +343,7 @@ export class ThemeWorkspaceSession {
 			instances: this.instanceResultsBySource,
 			locales: this.localeResultsBySource,
 			dataFlowInputs: this.dataFlowInputResultsBySource,
+			derivedDataFlow: this.derivedDataFlowBySource,
 		};
 	}
 
@@ -339,6 +358,7 @@ export class ThemeWorkspaceSession {
 		this.instanceResultsBySource = state.instances;
 		this.localeResultsBySource = state.locales;
 		this.dataFlowInputResultsBySource = state.dataFlowInputs;
+		this.derivedDataFlowBySource = state.derivedDataFlow;
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
@@ -366,7 +386,14 @@ type ThemeCollectionContext = ThemeDeclarationPassContext &
 	ThemeSchemaSettingPassContext &
 	ThemeInstancePassContext &
 	ThemeLocalePassContext &
-	ThemeDataFlowInputPassContext;
+	ThemeDataFlowInputPassContext &
+	ThemeDataFlowFixedPointContext;
+
+type ThemeDerivedDataFlowResult = {
+	expectedInputs: ThemeExpectedInputRecord[];
+	renderSites: ThemeRenderSiteRecord[];
+	dataAccesses: ThemeDataAccessRecord[];
+};
 
 type ThemeCollectionState = {
 	declarations: Map<string, ThemeDeclarationPassResult>;
@@ -379,6 +406,7 @@ type ThemeCollectionState = {
 	instances: Map<string, ThemeInstancePassResult>;
 	locales: Map<string, ThemeLocalePassResult>;
 	dataFlowInputs: Map<string, ThemeDataFlowInputPassResult>;
+	derivedDataFlow: Map<string, ThemeDerivedDataFlowResult>;
 };
 
 function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
@@ -410,6 +438,11 @@ function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext>
 			string,
 			ThemeDataFlowInputRecord
 		>(createThemeDataFlowInputPass()),
+		fixedPointThemePass<
+			ThemeCollectionContext,
+			string,
+			ThemeDataFlowDerivedRecord
+		>(createThemeDataFlowFixedPointPass()),
 	]);
 }
 
@@ -420,6 +453,7 @@ function runCollectionPasses(
 	changedPaths: string[],
 ): ThemeCollectionState {
 	const state = cloneCollectionState(previous);
+	let derivedSnapshot: Map<string, ThemeDerivedDataFlowResult> | undefined;
 	const context: ThemeCollectionContext = {
 		facts,
 		resultsBySource: state.declarations,
@@ -445,6 +479,42 @@ function runCollectionPasses(
 			dataAccess: dataAccessId,
 			variableRead: variableReadId,
 			renderArgument: renderArgumentId,
+		},
+		get renderDependencies() {
+			const inputs = allDataFlowInputs(state.dataFlowInputs);
+			return new ThemeRenderDependencyIndex(
+				allDeclarations(state.declarations),
+				inputs.renderSiteFacts,
+			);
+		},
+		recomputeDataFlowGroup(paths) {
+			derivedSnapshot ??= deriveDataFlowSnapshot(state);
+			const records: ThemeDataFlowDerivedRecord[] = [];
+			const changed = new Set<string>();
+			for (const path of paths) {
+				const previousResult = state.derivedDataFlow.get(path);
+				const nextResult = derivedSnapshot.get(path);
+				if (JSON.stringify(previousResult) === JSON.stringify(nextResult))
+					continue;
+				changed.add(path);
+				if (nextResult) {
+					state.derivedDataFlow.set(path, nextResult);
+					records.push(
+						...nextResult.expectedInputs,
+						...nextResult.renderSites,
+						...nextResult.dataAccesses,
+					);
+				} else {
+					state.derivedDataFlow.delete(path);
+				}
+			}
+			return {
+				records,
+				changes: [...changed]
+					.sort()
+					.map((owner): PassChange => ({ kind: "diagnosticsChanged", owner })),
+				propagatePaths: [...changed],
+			};
 		},
 		ids: {
 			file: fileId,
@@ -482,6 +552,7 @@ function cloneCollectionState(
 		instances: cloneInstanceResults(state.instances),
 		locales: cloneLocaleResults(state.locales),
 		dataFlowInputs: cloneDataFlowInputResults(state.dataFlowInputs),
+		derivedDataFlow: cloneDerivedDataFlowResults(state.derivedDataFlow),
 	};
 }
 
@@ -567,6 +638,93 @@ function cloneDataFlowInputResults(
 	);
 }
 
+function cloneDerivedDataFlowResults(
+	results: Map<string, ThemeDerivedDataFlowResult>,
+): Map<string, ThemeDerivedDataFlowResult> {
+	return new Map(
+		[...results].map(([path, result]) => [
+			path,
+			{
+				expectedInputs: [...result.expectedInputs],
+				renderSites: [...result.renderSites],
+				dataAccesses: [...result.dataAccesses],
+			},
+		]),
+	);
+}
+
+function allDeclarations(
+	results: Map<string, ThemeDeclarationPassResult>,
+): ThemeDeclaration[] {
+	return [...results.values()].flatMap((result) => result.declarations);
+}
+
+function allDataFlowInputs(
+	results: Map<string, ThemeDataFlowInputPassResult>,
+): ThemeDataFlowInputPassResult {
+	const values = [...results.values()];
+	return {
+		dataAccesses: values.flatMap((result) => result.dataAccesses),
+		variableReads: values.flatMap((result) => result.variableReads),
+		guardedObjects: values.flatMap((result) => result.guardedObjects),
+		defaultedObjects: values.flatMap((result) => result.defaultedObjects),
+		docParams: values.flatMap((result) => result.docParams),
+		renderSiteFacts: values.flatMap((result) => result.renderSiteFacts),
+		renderArguments: values.flatMap((result) => result.renderArguments),
+	};
+}
+
+function deriveDataFlowSnapshot(
+	state: ThemeCollectionState,
+): Map<string, ThemeDerivedDataFlowResult> {
+	const declarations = allDeclarations(state.declarations);
+	const inputs = allDataFlowInputs(state.dataFlowInputs);
+	const declarationByKey = new Map<string, ThemeDeclaration>();
+	for (const [key, candidates] of state.declarationsByKey) {
+		if (candidates.size === 1) {
+			const declaration = candidates.values().next().value;
+			if (declaration) declarationByKey.set(key, declaration);
+		}
+	}
+	const expectedInputs = deriveThemeExpectedInputs(
+		declarations,
+		inputs.dataAccesses,
+		inputs.variableReads,
+		new Set(inputs.guardedObjects),
+		new Set(inputs.defaultedObjects),
+		inputs.docParams,
+		inputs.renderArguments,
+	);
+	const renderSites = deriveThemeRenderSites(
+		inputs.renderSiteFacts,
+		declarationByKey,
+		inputs.renderArguments,
+		renderSiteId,
+	);
+	const dataAccesses = deriveRenderArgumentDataAccesses(
+		renderSites,
+		inputs.renderArguments,
+		expectedInputs,
+		declarations,
+		inputs.variableReads,
+	);
+	const paths = new Set([
+		...expectedInputs.map((record) => record.path),
+		...renderSites.map((record) => record.fromPath),
+		...dataAccesses.map((record) => record.fromPath),
+	]);
+	return new Map(
+		[...paths].sort().map((path) => [
+			path,
+			{
+				expectedInputs: expectedInputs.filter((record) => record.path === path),
+				renderSites: renderSites.filter((record) => record.fromPath === path),
+				dataAccesses: dataAccesses.filter((record) => record.fromPath === path),
+			},
+		]),
+	);
+}
+
 function modelWithCollectedRecords(
 	model: ThemeSemanticModel,
 	declarationsBySource: Map<string, ThemeDeclarationPassResult>,
@@ -575,6 +733,7 @@ function modelWithCollectedRecords(
 	instancesBySource: Map<string, ThemeInstancePassResult>,
 	localesBySource: Map<string, ThemeLocalePassResult>,
 	dataFlowInputsBySource: Map<string, ThemeDataFlowInputPassResult>,
+	derivedDataFlowBySource: Map<string, ThemeDerivedDataFlowResult>,
 ): ThemeSemanticModel {
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
@@ -621,8 +780,9 @@ function modelWithCollectedRecords(
 		.filter((result): result is ThemeDataFlowInputPassResult =>
 			Boolean(result),
 		);
-	const derivedDataAccesses = model.dataAccesses.filter(
-		(access) => access.origin === "renderArgument",
+	const derivedDataFlow = [...derivedDataFlowBySource.values()];
+	const derivedDataAccesses = derivedDataFlow.flatMap(
+		(result) => result.dataAccesses,
 	);
 	return {
 		...model,
@@ -669,6 +829,12 @@ function modelWithCollectedRecords(
 		),
 		renderArguments: uniqueById(
 			dataFlowInputs.flatMap((result) => result.renderArguments),
+		),
+		expectedInputs: uniqueById(
+			derivedDataFlow.flatMap((result) => result.expectedInputs),
+		),
+		renderSites: uniqueById(
+			derivedDataFlow.flatMap((result) => result.renderSites),
 		),
 	};
 }
