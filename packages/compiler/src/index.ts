@@ -240,10 +240,13 @@ export {
 export {
 	collectThemeReferences,
 	createThemeReferencePass,
+	referenceTargetKeys,
 	type ThemeReferencePassContext,
 } from "./theme-reference-pass.js";
 export {
+	createThemeResolutionPass,
 	resolveThemeDeclarationsAndReferences,
+	type ThemeIncrementalResolutionContext,
 	type ThemeResolutionPassResult,
 } from "./theme-resolution-pass.js";
 export { ThemeResolverIndex } from "./theme-resolver-index.js";

@@ -5,6 +5,8 @@ import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
 export type ThemeReferencePassContext = {
 	facts: ThemeFactStore;
 	referencesBySource: Map<string, ThemeReference[]>;
+	referencesById?: Map<string, ThemeReference>;
+	referencesByTargetKey?: Map<string, Map<string, ThemeReference>>;
 	id(reference: Omit<ThemeReference, "id">): string;
 };
 
@@ -33,8 +35,14 @@ export function createThemeReferencePass(): IncrementalPass<
 					context.facts.getFile(path),
 					context.id,
 				);
-				for (const reference of previous) changedIds.add(reference.id);
-				for (const reference of next) changedIds.add(reference.id);
+				for (const reference of previous) {
+					changedIds.add(reference.id);
+					removeReferenceFromIndexes(context, reference);
+				}
+				for (const reference of next) {
+					changedIds.add(reference.id);
+					addReferenceToIndexes(context, reference);
+				}
 				if (next.length === 0) context.referencesBySource.delete(path);
 				else context.referencesBySource.set(path, next);
 				records.push(...next);
@@ -47,6 +55,47 @@ export function createThemeReferencePass(): IncrementalPass<
 			};
 		},
 	};
+}
+
+export function referenceTargetKeys(reference: ThemeReference): string[] {
+	if (reference.targetPath) {
+		return [`${reference.targetKind}:${reference.targetPath}`];
+	}
+	if (!reference.targetName) return [];
+	if (reference.kind === "referencesAsset") {
+		return [
+			`asset:${reference.targetName}`,
+			`asset:assets/${reference.targetName}`,
+		];
+	}
+	return [`${reference.targetKind}:${reference.targetName}`];
+}
+
+function addReferenceToIndexes(
+	context: ThemeReferencePassContext,
+	reference: ThemeReference,
+): void {
+	context.referencesById?.set(reference.id, reference);
+	for (const key of referenceTargetKeys(reference)) {
+		const references =
+			context.referencesByTargetKey?.get(key) ??
+			new Map<string, ThemeReference>();
+		references.set(reference.id, reference);
+		context.referencesByTargetKey?.set(key, references);
+	}
+}
+
+function removeReferenceFromIndexes(
+	context: ThemeReferencePassContext,
+	reference: ThemeReference,
+): void {
+	context.referencesById?.delete(reference.id);
+	for (const key of referenceTargetKeys(reference)) {
+		const references = context.referencesByTargetKey?.get(key);
+		if (!references) continue;
+		references.delete(reference.id);
+		if (references.size === 0) context.referencesByTargetKey?.delete(key);
+	}
 }
 
 export function collectThemeReferences(

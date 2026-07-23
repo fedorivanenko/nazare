@@ -3,6 +3,7 @@ import test from "node:test";
 import {
 	createThemeDeclarationPass,
 	createThemeReferencePass,
+	createThemeResolutionPass,
 	fixedPointThemePass,
 	incrementalThemePass,
 	ThemeFactStore,
@@ -118,6 +119,71 @@ test("declaration and reference passes replace per-source outputs", () => {
 	);
 	assert.ok(
 		update.changes.some((change) => change.kind === "referenceChanged"),
+	);
+});
+
+test("resolution pass recomputes only references under changed target keys", () => {
+	const card = {
+		id: "snippet:snippets/card.liquid:card",
+		kind: "snippet",
+		path: "snippets/card.liquid",
+		name: "card",
+	};
+	const tile = {
+		id: "snippet:snippets/tile.liquid:tile",
+		kind: "snippet",
+		path: "snippets/tile.liquid",
+		name: "tile",
+	};
+	const cardReference = {
+		id: "ref:card",
+		kind: "rendersSnippet",
+		fromPath: "sections/main.liquid",
+		targetKind: "snippet",
+		targetName: "card",
+		static: true,
+	};
+	const tileReference = {
+		id: "ref:tile",
+		kind: "rendersSnippet",
+		fromPath: "sections/other.liquid",
+		targetKind: "snippet",
+		targetName: "tile",
+		static: true,
+		resolvedDeclarationId: tile.id,
+	};
+	const context = {
+		declarationsByKey: new Map([
+			["snippet:card", new Map([[card.id, card]])],
+			["snippet:tile", new Map([[tile.id, tile]])],
+		]),
+		referencesById: new Map([
+			[cardReference.id, cardReference],
+			[tileReference.id, tileReference],
+		]),
+		referencesByTargetKey: new Map([
+			["snippet:card", new Map([[cardReference.id, cardReference]])],
+			["snippet:tile", new Map([[tileReference.id, tileReference]])],
+		]),
+		resolvedReferencesById: new Map([[tileReference.id, tileReference]]),
+	};
+	const pass = createThemeResolutionPass();
+	const keys = pass.collectChanges(
+		[{ kind: "declarationChanged", key: "snippet:card" }],
+		context,
+	);
+	const delta = pass.run(keys, context);
+	assert.deepEqual(
+		delta.records.map((reference) => reference.id),
+		[cardReference.id],
+	);
+	assert.equal(
+		context.resolvedReferencesById.get(cardReference.id).resolvedDeclarationId,
+		card.id,
+	);
+	assert.equal(
+		context.resolvedReferencesById.get(tileReference.id),
+		tileReference,
 	);
 });
 

@@ -14,6 +14,7 @@ export type ThemeDeclarationPassResult = {
 export type ThemeDeclarationPassContext = {
 	facts: ThemeFactStore;
 	resultsBySource: Map<string, ThemeDeclarationPassResult>;
+	declarationsByKey?: Map<string, Map<string, ThemeDeclaration>>;
 	ids: {
 		file(path: string): string;
 		declaration(kind: string, path: string, name: string): string;
@@ -44,10 +45,20 @@ export function createThemeDeclarationPass(): IncrementalPass<
 					context.ids,
 				);
 				for (const declaration of previous?.declarations ?? []) {
-					changedKeys.add(declarationKey(declaration));
+					for (const key of declarationKeys(declaration)) {
+						changedKeys.add(key);
+						removeDeclarationFromIndex(
+							context.declarationsByKey,
+							key,
+							declaration.id,
+						);
+					}
 				}
 				for (const declaration of next.declarations) {
-					changedKeys.add(declarationKey(declaration));
+					for (const key of declarationKeys(declaration)) {
+						changedKeys.add(key);
+						addDeclarationToIndex(context.declarationsByKey, key, declaration);
+					}
 				}
 				if (next.files.size === 0 && next.declarations.length === 0) {
 					context.resultsBySource.delete(path);
@@ -119,8 +130,34 @@ function changedSourcePaths(changes: readonly PassChange[]): Set<string> {
 	);
 }
 
-function declarationKey(declaration: ThemeDeclaration): string {
-	return `${declaration.kind}:${declaration.name}`;
+function declarationKeys(declaration: ThemeDeclaration): string[] {
+	const keys = [`${declaration.kind}:${declaration.name}`];
+	if (declaration.kind === "component" || declaration.kind === "asset") {
+		keys.push(`${declaration.kind}:${declaration.path}`);
+	}
+	return keys;
+}
+
+function addDeclarationToIndex(
+	index: Map<string, Map<string, ThemeDeclaration>> | undefined,
+	key: string,
+	declaration: ThemeDeclaration,
+): void {
+	if (!index) return;
+	const declarations = index.get(key) ?? new Map<string, ThemeDeclaration>();
+	declarations.set(declaration.id, declaration);
+	index.set(key, declarations);
+}
+
+function removeDeclarationFromIndex(
+	index: Map<string, Map<string, ThemeDeclaration>> | undefined,
+	key: string,
+	id: string,
+): void {
+	const declarations = index?.get(key);
+	if (!declarations) return;
+	declarations.delete(id);
+	if (declarations.size === 0) index?.delete(key);
 }
 
 function record(
