@@ -32,6 +32,13 @@ test("resolver index serves declaration dependents", () => {
 	assert.deepEqual(index.getDependents(declarationId), [
 		"sections/main.liquid",
 	]);
+	assert.equal(
+		index
+			.resolveModel(model)
+			.references.find((reference) => reference.kind === "rendersSnippet")
+			?.resolvedDeclarationId,
+		declarationId,
+	);
 });
 
 test("graph projection shares unchanged nodes and edges", () => {

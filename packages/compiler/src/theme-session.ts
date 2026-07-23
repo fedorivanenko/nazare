@@ -102,7 +102,8 @@ export class ThemeWorkspaceSession {
 			this.factStore.replaceFile(path, facts);
 			this.factIndex.replaceFileFacts(path, facts);
 		}
-		const transaction = this.semanticStore.beginUpdate(analysis.ir);
+		const resolvedModel = this.resolverIndex.resolveModel(analysis.ir);
+		const transaction = this.semanticStore.beginUpdate(resolvedModel);
 		const semanticUpdate = transaction.commit();
 		this.resolverIndex.apply(semanticUpdate);
 		this.graph = shareThemeGraphRecords(

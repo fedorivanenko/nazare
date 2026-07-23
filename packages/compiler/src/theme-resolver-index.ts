@@ -33,6 +33,31 @@ export class ThemeResolverIndex {
 		return [...(this.declarationIdsByKey.get(key) ?? [])].sort();
 	}
 
+	resolveModel(model: ThemeSemanticModel): ThemeSemanticModel {
+		const declarationsByKey = new Map<string, string[]>();
+		for (const declaration of model.declarations) {
+			const key = `${declaration.kind}:${declaration.name}`;
+			const ids = declarationsByKey.get(key) ?? [];
+			ids.push(declaration.id);
+			declarationsByKey.set(key, ids);
+		}
+		return {
+			...model,
+			references: model.references.map((reference) => {
+				const key = reference.targetPath
+					? `${reference.targetKind}:${reference.targetPath}`
+					: reference.targetName
+						? `${reference.targetKind}:${reference.targetName}`
+						: undefined;
+				const ids = key ? (declarationsByKey.get(key) ?? []) : [];
+				const resolvedDeclarationId = ids.length === 1 ? ids[0] : undefined;
+				return resolvedDeclarationId === reference.resolvedDeclarationId
+					? reference
+					: { ...reference, resolvedDeclarationId };
+			}),
+		};
+	}
+
 	getDependents(declarationId: string): string[] {
 		const result: string[] = [];
 		for (const referenceId of this.referenceIdsByDeclaration.get(
