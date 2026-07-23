@@ -11,6 +11,7 @@ import {
 	shareThemeGraphRecords,
 	themeGraphFromModel,
 } from "./theme-graph-output.js";
+import { ThemeImpactIndex } from "./theme-impact-index.js";
 import { ThemeMetafieldIndex } from "./theme-metafield-index.js";
 import { ThemeResolverIndex } from "./theme-resolver-index.js";
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
@@ -41,6 +42,7 @@ export class ThemeWorkspaceSession {
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
+	private impactIndex: ThemeImpactIndex;
 	private graph: InspectNazareThemeResult;
 	private externalFingerprint: string;
 	private revision = 0;
@@ -58,6 +60,7 @@ export class ThemeWorkspaceSession {
 		this.resolverIndex = new ThemeResolverIndex(analysis.ir);
 		this.metafieldIndex = new ThemeMetafieldIndex(analysis.ir);
 		this.graph = themeGraphFromModel(this.semanticStore.getModel());
+		this.impactIndex = new ThemeImpactIndex(this.graph);
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
 
@@ -114,6 +117,7 @@ export class ThemeWorkspaceSession {
 			this.graph,
 			themeGraphFromModel(semanticUpdate.model),
 		);
+		this.impactIndex.replaceGraph(this.graph);
 		this.revision += 1;
 		const resolverDependents = semanticUpdate.changedRecordIds.flatMap((id) =>
 			this.resolverIndex.getDependents(id),
@@ -128,6 +132,7 @@ export class ThemeWorkspaceSession {
 				...resolverDependents,
 			],
 			semanticUpdate.changedRecordIds,
+			changedPaths.flatMap((path) => this.impactIndex.getAffectedPages(path)),
 		);
 	}
 
@@ -137,6 +142,7 @@ export class ThemeWorkspaceSession {
 			this.graph,
 			this.graph,
 			changedPaths,
+			[],
 			[],
 			[],
 		);
@@ -156,6 +162,7 @@ function diffGraphs(
 	changedPaths: string[],
 	indexedInvalidation: string[],
 	changedSemanticRecordIds: string[],
+	indexedAffectedPages: string[],
 ): ThemeGraphUpdate {
 	const previousNodes = new Map(previous.nodes.map((node) => [node.id, node]));
 	const currentNodes = new Map(current.nodes.map((node) => [node.id, node]));
@@ -172,7 +179,12 @@ function diffGraphs(
 				...indexedInvalidation,
 			]),
 		].sort(),
-		affectedPages: affectedPages(current, changedPaths),
+		affectedPages: [
+			...new Set([
+				...affectedPages(current, changedPaths),
+				...indexedAffectedPages,
+			]),
+		].sort(),
 		addedNodeIds: addedIds(previousNodes, currentNodes),
 		removedNodeIds: addedIds(currentNodes, previousNodes),
 		changedNodeIds: changedIds(previousNodes, currentNodes),
