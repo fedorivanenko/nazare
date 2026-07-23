@@ -71,6 +71,10 @@ export class ThemeWorkspaceSession {
 		return this.graph;
 	}
 
+	getAffectedPages(nodeId: string): string[] {
+		return this.impactIndex.getAffectedPages(nodeId);
+	}
+
 	updateFile(file: ThemeInputFile): ThemeGraphUpdate {
 		const previous = this.filesByPath.get(file.path);
 		if (previous?.contents === file.contents) {
