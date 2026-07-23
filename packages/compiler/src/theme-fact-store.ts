@@ -31,7 +31,7 @@ export class ThemeFactStore {
 
 	private add(facts: ThemeFact[]): void {
 		for (const fact of facts) {
-			const path = factSourcePath(fact);
+			const path = themeFactSourcePath(fact);
 			const bucket = this.buckets.get(path) ?? [];
 			bucket.push(fact);
 			this.buckets.set(path, bucket);
@@ -39,7 +39,7 @@ export class ThemeFactStore {
 	}
 }
 
-function factSourcePath(fact: ThemeFact): string {
+export function themeFactSourcePath(fact: ThemeFact): string {
 	if ("path" in fact) return fact.path;
 	if ("fromPath" in fact) return fact.fromPath;
 	if ("templatePath" in fact) return fact.templatePath;

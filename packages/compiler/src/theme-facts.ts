@@ -569,6 +569,7 @@ export interface ThemeSemanticModel {
 export interface ThemeAnalysis {
 	ir: ThemeSemanticModel;
 	artifacts: ThemeBuiltArtifact[];
+	facts: ThemeFact[];
 	issues: Diagnostic[];
 }
 
