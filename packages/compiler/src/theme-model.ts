@@ -27,6 +27,7 @@ import type {
 import { inferCapabilities, inferClassifications } from "./theme-inference.js";
 import { CONTEXT_INPUT_OBJECTS } from "./theme-input-policy.js";
 import { analyzeMetafields } from "./theme-metafields.js";
+import { collectThemeReferences } from "./theme-reference-pass.js";
 
 export function buildThemeSemanticModel(
 	facts: ThemeFact[],
@@ -256,100 +257,24 @@ export function buildThemeSemanticModel(
 			byKindName.set(`asset:${declaration.path}`, declaration);
 	}
 
-	const references: ThemeReference[] = [];
-	for (const fact of facts) {
-		if (fact.kind === "rendersSnippet") {
-			references.push(
-				reference({
-					kind: "rendersSnippet",
-					fromPath: fact.fromPath,
-					targetKind: "snippet",
-					targetName: fact.targetName,
-					static: fact.static,
-					span: fact.span,
-					declaration: fact.targetName
-						? byKindName.get(`snippet:${fact.targetName}`)
-						: undefined,
-				}),
-			);
-		}
-		if (fact.kind === "containsSection") {
-			references.push(
-				reference({
-					kind: "containsSection",
-					fromPath: fact.fromPath,
-					targetKind: "section",
-					targetName: fact.targetName,
-					static: fact.static,
-					span: fact.span,
-					declaration: fact.targetName
-						? byKindName.get(`section:${fact.targetName}`)
-						: undefined,
-				}),
-			);
-		}
-		if (fact.kind === "containsSectionGroup") {
-			references.push(
-				reference({
-					kind: "containsSectionGroup",
-					fromPath: fact.fromPath,
-					targetKind: "sectionGroup",
-					targetName: fact.targetName,
-					static: fact.static,
-					span: fact.span,
-					declaration: fact.targetName
-						? byKindName.get(`sectionGroup:${fact.targetName}`)
-						: undefined,
-				}),
-			);
-		}
-		if (fact.kind === "usesLayout") {
-			references.push(
-				reference({
-					kind: "usesLayout",
-					fromPath: fact.fromPath,
-					targetKind: "layout",
-					targetName: fact.targetName,
-					static: fact.static,
-					span: fact.span,
-					declaration: fact.targetName
-						? byKindName.get(`layout:${fact.targetName}`)
-						: undefined,
-				}),
-			);
-		}
-		if (fact.kind === "referencesAsset") {
-			const declaration = fact.targetName
-				? (byKindName.get(`asset:${fact.targetName}`) ??
-					byKindName.get(`asset:assets/${fact.targetName}`))
-				: undefined;
-			references.push(
-				reference({
-					kind: "referencesAsset",
-					fromPath: fact.fromPath,
-					targetKind: "asset",
-					targetName: fact.targetName,
-					static: fact.static,
-					span: fact.span,
-					declaration,
-				}),
-			);
-		}
-		if (fact.kind === "importsComponent") {
-			references.push(
-				reference({
-					kind: "importsComponent",
-					fromPath: fact.fromPath,
-					targetKind: "component",
-					targetName: fact.localName,
-					targetPath: fact.targetPath,
-					static: true,
-					span: fact.span,
-					declaration: componentByPath.get(fact.targetPath),
-				}),
-			);
-		}
-	}
+	const references = collectThemeReferences(facts, referenceId).map(
+		(reference) => {
+			const declaration =
+				reference.kind === "importsComponent" && reference.targetPath
+					? componentByPath.get(reference.targetPath)
+					: reference.kind === "referencesAsset" && reference.targetName
+						? (byKindName.get(`asset:${reference.targetName}`) ??
+							byKindName.get(`asset:assets/${reference.targetName}`))
+						: reference.targetName
+							? byKindName.get(
+									`${reference.targetKind}:${reference.targetName}`,
+								)
+							: undefined;
+			return declaration
+				? { ...reference, resolvedDeclarationId: declaration.id }
+				: reference;
+		},
+	);
 
 	for (const instance of sectionInstances) {
 		if (!instance.sectionType) continue;
@@ -1334,27 +1259,8 @@ function addInputDiagnostics(
 	}
 }
 
-function reference(options: {
-	kind: ThemeReference["kind"];
-	fromPath: string;
-	targetKind: ThemeReference["targetKind"];
-	targetName?: string;
-	targetPath?: string;
-	static: boolean;
-	span?: ThemeReference["span"];
-	declaration?: ThemeDeclaration;
-}): ThemeReference {
-	return {
-		id: `ref:${options.kind}:${options.fromPath}:${options.targetPath ?? options.targetName ?? "dynamic"}:${occurrenceSuffix(options.span)}`,
-		kind: options.kind,
-		fromPath: options.fromPath,
-		targetKind: options.targetKind,
-		targetName: options.targetName,
-		targetPath: options.targetPath,
-		resolvedDeclarationId: options.declaration?.id,
-		static: options.static,
-		span: options.span,
-	};
+function referenceId(reference: Omit<ThemeReference, "id">): string {
+	return `ref:${reference.kind}:${reference.fromPath}:${reference.targetPath ?? reference.targetName ?? "dynamic"}:${occurrenceSuffix(reference.span)}`;
 }
 
 function dedupeById<T extends { id: string }>(items: T[]): T[] {
