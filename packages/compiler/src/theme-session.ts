@@ -34,6 +34,10 @@ import {
 	createThemeReferencePass,
 	type ThemeReferencePassContext,
 } from "./theme-reference-pass.js";
+import {
+	createThemeResolutionPass,
+	type ThemeIncrementalResolutionContext,
+} from "./theme-resolution-pass.js";
 import { ThemeResolverIndex } from "./theme-resolver-index.js";
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
 import { analyzeNazareTheme } from "./theme-workspace.js";
@@ -66,6 +70,13 @@ export class ThemeWorkspaceSession {
 		ThemeDeclarationPassResult
 	>();
 	private referencesBySource = new Map<string, ThemeReference[]>();
+	private declarationsByKey = new Map<string, Map<string, ThemeDeclaration>>();
+	private referencesById = new Map<string, ThemeReference>();
+	private referencesByTargetKey = new Map<
+		string,
+		Map<string, ThemeReference>
+	>();
+	private resolvedReferencesById = new Map<string, ThemeReference>();
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
@@ -86,16 +97,14 @@ export class ThemeWorkspaceSession {
 		const collection = runCollectionPasses(
 			this.collectionScheduler,
 			this.factStore,
-			this.declarationResultsBySource,
-			this.referencesBySource,
+			this.collectionState(),
 			this.factStore.files(),
 		);
-		this.declarationResultsBySource = collection.declarations;
-		this.referencesBySource = collection.references;
+		this.applyCollectionState(collection);
 		const collectedModel = modelWithCollectedRecords(
 			analysis.ir,
 			collection.declarations,
-			collection.references,
+			collection.resolvedReferencesById,
 		);
 		const model = new ThemeResolverIndex(collectedModel).resolveModel(
 			collectedModel,
@@ -199,14 +208,13 @@ export class ThemeWorkspaceSession {
 		const collection = runCollectionPasses(
 			this.collectionScheduler,
 			nextFactStore,
-			this.declarationResultsBySource,
-			this.referencesBySource,
+			this.collectionState(),
 			factChangedPaths,
 		);
 		const collectedModel = modelWithCollectedRecords(
 			analysis.ir,
 			collection.declarations,
-			collection.references,
+			collection.resolvedReferencesById,
 		);
 		const resolvedModel = this.resolverIndex.resolveModel(collectedModel);
 		const transaction = this.semanticStore.beginUpdate(resolvedModel);
@@ -226,8 +234,7 @@ export class ThemeWorkspaceSession {
 		transaction.commit();
 		this.factStore = nextFactStore;
 		this.factIndex = nextFactIndex;
-		this.declarationResultsBySource = collection.declarations;
-		this.referencesBySource = collection.references;
+		this.applyCollectionState(collection);
 		this.resolverIndex = nextResolverIndex;
 		this.metafieldIndex = nextMetafieldIndex;
 		this.graph = nextGraph;
@@ -245,6 +252,26 @@ export class ThemeWorkspaceSession {
 			semanticUpdate.changedRecordIds,
 			changedPaths.flatMap((path) => this.impactIndex.getAffectedPages(path)),
 		);
+	}
+
+	private collectionState(): ThemeCollectionState {
+		return {
+			declarations: this.declarationResultsBySource,
+			references: this.referencesBySource,
+			declarationsByKey: this.declarationsByKey,
+			referencesById: this.referencesById,
+			referencesByTargetKey: this.referencesByTargetKey,
+			resolvedReferencesById: this.resolvedReferencesById,
+		};
+	}
+
+	private applyCollectionState(state: ThemeCollectionState): void {
+		this.declarationResultsBySource = state.declarations;
+		this.referencesBySource = state.references;
+		this.declarationsByKey = state.declarationsByKey;
+		this.referencesById = state.referencesById;
+		this.referencesByTargetKey = state.referencesByTargetKey;
+		this.resolvedReferencesById = state.resolvedReferencesById;
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
@@ -267,11 +294,16 @@ export class ThemeWorkspaceSession {
 }
 
 type ThemeCollectionContext = ThemeDeclarationPassContext &
-	ThemeReferencePassContext;
+	ThemeReferencePassContext &
+	ThemeIncrementalResolutionContext;
 
 type ThemeCollectionState = {
 	declarations: Map<string, ThemeDeclarationPassResult>;
 	references: Map<string, ThemeReference[]>;
+	declarationsByKey: Map<string, Map<string, ThemeDeclaration>>;
+	referencesById: Map<string, ThemeReference>;
+	referencesByTargetKey: Map<string, Map<string, ThemeReference>>;
+	resolvedReferencesById: Map<string, ThemeReference>;
 };
 
 function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
@@ -284,24 +316,27 @@ function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext>
 		incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
 			createThemeReferencePass(),
 		),
+		incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
+			createThemeResolutionPass(),
+		),
 	]);
 }
 
 function runCollectionPasses(
 	scheduler: ThemePassScheduler<ThemeCollectionContext>,
 	facts: ThemeFactStore,
-	previousDeclarations: Map<string, ThemeDeclarationPassResult>,
-	previousReferences: Map<string, ThemeReference[]>,
+	previous: ThemeCollectionState,
 	changedPaths: string[],
 ): ThemeCollectionState {
-	const declarations = cloneDeclarationResults(previousDeclarations);
-	const references = new Map(
-		[...previousReferences].map(([path, records]) => [path, [...records]]),
-	);
+	const state = cloneCollectionState(previous);
 	const context: ThemeCollectionContext = {
 		facts,
-		resultsBySource: declarations,
-		referencesBySource: references,
+		resultsBySource: state.declarations,
+		referencesBySource: state.references,
+		declarationsByKey: state.declarationsByKey,
+		referencesById: state.referencesById,
+		referencesByTargetKey: state.referencesByTargetKey,
+		resolvedReferencesById: state.resolvedReferencesById,
 		ids: { file: fileId, declaration: declarationId },
 		id: referenceId,
 	};
@@ -311,7 +346,28 @@ function runCollectionPasses(
 			.map((path): PassChange => ({ kind: "factsChanged", path })),
 		context,
 	);
-	return { declarations, references };
+	return state;
+}
+
+function cloneCollectionState(
+	state: ThemeCollectionState,
+): ThemeCollectionState {
+	return {
+		declarations: cloneDeclarationResults(state.declarations),
+		references: new Map(
+			[...state.references].map(([path, records]) => [path, [...records]]),
+		),
+		declarationsByKey: cloneRecordIndex(state.declarationsByKey),
+		referencesById: new Map(state.referencesById),
+		referencesByTargetKey: cloneRecordIndex(state.referencesByTargetKey),
+		resolvedReferencesById: new Map(state.resolvedReferencesById),
+	};
+}
+
+function cloneRecordIndex<RecordValue>(
+	index: Map<string, Map<string, RecordValue>>,
+): Map<string, Map<string, RecordValue>> {
+	return new Map([...index].map(([key, records]) => [key, new Map(records)]));
 }
 
 function cloneDeclarationResults(
@@ -328,7 +384,7 @@ function cloneDeclarationResults(
 function modelWithCollectedRecords(
 	model: ThemeSemanticModel,
 	declarationsBySource: Map<string, ThemeDeclarationPassResult>,
-	referencesBySource: Map<string, ThemeReference[]>,
+	resolvedReferencesById: Map<string, ThemeReference>,
 ): ThemeSemanticModel {
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
@@ -340,9 +396,9 @@ function modelWithCollectedRecords(
 		files.push(...result.files.values());
 		declarations.push(...result.declarations);
 	}
-	const references = [...referencesBySource.keys()]
-		.sort((a, b) => a.localeCompare(b))
-		.flatMap((path) => referencesBySource.get(path) ?? []);
+	const references = [...resolvedReferencesById.values()].sort((a, b) =>
+		a.id.localeCompare(b.id),
+	);
 	return { ...model, files, declarations, references };
 }
 
