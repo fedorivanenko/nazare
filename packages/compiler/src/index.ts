@@ -242,6 +242,10 @@ export {
 	createThemeReferencePass,
 	type ThemeReferencePassContext,
 } from "./theme-reference-pass.js";
+export {
+	resolveThemeDeclarationsAndReferences,
+	type ThemeResolutionPassResult,
+} from "./theme-resolution-pass.js";
 export { ThemeResolverIndex } from "./theme-resolver-index.js";
 export {
 	ThemeSemanticStore,
