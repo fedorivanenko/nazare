@@ -1,5 +1,10 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
-import { collectThemeDeclarations } from "./theme-declaration-pass.js";
+import {
+	createThemeDeclarationPass,
+	type ThemeDeclarationPassContext,
+	type ThemeDeclarationPassRecord,
+} from "./theme-declaration-pass.js";
+import { ThemeFactStore } from "./theme-fact-store.js";
 import type {
 	ThemeBlockInstanceRecord,
 	ThemeBlockRecord,
@@ -10,6 +15,7 @@ import type {
 	ThemeEvidenceRecord,
 	ThemeExpectedInputRecord,
 	ThemeFact,
+	ThemeFileRecord,
 	ThemeLocaleKeyRecord,
 	ThemeLocaleReferenceRecord,
 	ThemeLocaleTranslationRecord,
@@ -27,7 +33,58 @@ import type {
 import { inferCapabilities, inferClassifications } from "./theme-inference.js";
 import { CONTEXT_INPUT_OBJECTS } from "./theme-input-policy.js";
 import { analyzeMetafields } from "./theme-metafields.js";
-import { collectThemeReferences } from "./theme-reference-pass.js";
+import {
+	incrementalThemePass,
+	type PassChange,
+	ThemePassScheduler,
+} from "./theme-pass-scheduler.js";
+import {
+	createThemeReferencePass,
+	type ThemeReferencePassContext,
+} from "./theme-reference-pass.js";
+
+function collectScheduledDeclarationAndReferenceRecords(facts: ThemeFact[]): {
+	files: Map<string, ThemeFileRecord>;
+	declarations: ThemeDeclaration[];
+	references: ThemeReference[];
+} {
+	const factStore = new ThemeFactStore(facts);
+	const context: ThemeDeclarationPassContext & ThemeReferencePassContext = {
+		facts: factStore,
+		resultsBySource: new Map(),
+		referencesBySource: new Map(),
+		ids: { file: fileId, declaration: declarationId },
+		id: referenceId,
+	};
+	const scheduler = new ThemePassScheduler<typeof context>([
+		incrementalThemePass<typeof context, string, ThemeDeclarationPassRecord>(
+			createThemeDeclarationPass(),
+		),
+		incrementalThemePass<typeof context, string, ThemeReference>(
+			createThemeReferencePass(),
+		),
+	]);
+	scheduler.execute(
+		factStore
+			.files()
+			.map((path): PassChange => ({ kind: "factsChanged", path })),
+		context,
+	);
+	const files = new Map<string, ThemeFileRecord>();
+	const declarations: ThemeDeclaration[] = [];
+	for (const path of [...context.resultsBySource.keys()].sort((a, b) =>
+		a.localeCompare(b),
+	)) {
+		const result = context.resultsBySource.get(path);
+		if (!result) continue;
+		for (const [filePath, file] of result.files) files.set(filePath, file);
+		declarations.push(...result.declarations);
+	}
+	const references = [...context.referencesBySource.keys()]
+		.sort((a, b) => a.localeCompare(b))
+		.flatMap((path) => context.referencesBySource.get(path) ?? []);
+	return { files, declarations, references };
+}
 
 export function buildThemeSemanticModel(
 	facts: ThemeFact[],
@@ -37,10 +94,11 @@ export function buildThemeSemanticModel(
 		metafields?: import("./theme-metafields.js").ThemeMetafieldSnapshot;
 	} = {},
 ): ThemeSemanticModel {
-	const { files, declarations } = collectThemeDeclarations(facts, {
-		file: fileId,
-		declaration: declarationId,
-	});
+	const {
+		files,
+		declarations,
+		references: collectedReferences,
+	} = collectScheduledDeclarationAndReferenceRecords(facts);
 	const schemas: ThemeSchemaRecord[] = [];
 	const settings: ThemeSettingRecord[] = [];
 	const blocks: ThemeBlockRecord[] = [];
@@ -257,24 +315,20 @@ export function buildThemeSemanticModel(
 			byKindName.set(`asset:${declaration.path}`, declaration);
 	}
 
-	const references = collectThemeReferences(facts, referenceId).map(
-		(reference) => {
-			const declaration =
-				reference.kind === "importsComponent" && reference.targetPath
-					? componentByPath.get(reference.targetPath)
-					: reference.kind === "referencesAsset" && reference.targetName
-						? (byKindName.get(`asset:${reference.targetName}`) ??
-							byKindName.get(`asset:assets/${reference.targetName}`))
-						: reference.targetName
-							? byKindName.get(
-									`${reference.targetKind}:${reference.targetName}`,
-								)
-							: undefined;
-			return declaration
-				? { ...reference, resolvedDeclarationId: declaration.id }
-				: reference;
-		},
-	);
+	const references = collectedReferences.map((reference) => {
+		const declaration =
+			reference.kind === "importsComponent" && reference.targetPath
+				? componentByPath.get(reference.targetPath)
+				: reference.kind === "referencesAsset" && reference.targetName
+					? (byKindName.get(`asset:${reference.targetName}`) ??
+						byKindName.get(`asset:assets/${reference.targetName}`))
+					: reference.targetName
+						? byKindName.get(`${reference.targetKind}:${reference.targetName}`)
+						: undefined;
+		return declaration
+			? { ...reference, resolvedDeclarationId: declaration.id }
+			: reference;
+	});
 
 	for (const instance of sectionInstances) {
 		if (!instance.sectionType) continue;
