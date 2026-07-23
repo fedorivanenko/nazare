@@ -1,4 +1,10 @@
 import {
+	createThemeDataFlowInputPass,
+	type ThemeDataFlowInputPassContext,
+	type ThemeDataFlowInputPassResult,
+	type ThemeDataFlowInputRecord,
+} from "./theme-data-flow-pass.js";
+import {
 	createThemeDeclarationPass,
 	type ThemeDeclarationPassContext,
 	type ThemeDeclarationPassRecord,
@@ -40,16 +46,19 @@ import {
 	blockId,
 	blockInstanceId,
 	blockSettingId,
+	dataAccessId,
 	declarationId,
 	fileId,
 	localeKeyId,
 	localeReferenceId,
 	localeTranslationId,
 	referenceId,
+	renderArgumentId,
 	schemaId,
 	sectionInstanceId,
 	settingId,
 	settingReadId,
+	variableReadId,
 } from "./theme-model.js";
 import {
 	incrementalThemePass,
@@ -115,6 +124,10 @@ export class ThemeWorkspaceSession {
 	>();
 	private instanceResultsBySource = new Map<string, ThemeInstancePassResult>();
 	private localeResultsBySource = new Map<string, ThemeLocalePassResult>();
+	private dataFlowInputResultsBySource = new Map<
+		string,
+		ThemeDataFlowInputPassResult
+	>();
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
@@ -146,6 +159,7 @@ export class ThemeWorkspaceSession {
 			collection.schemaSettings,
 			collection.instances,
 			collection.locales,
+			collection.dataFlowInputs,
 		);
 		const model = new ThemeResolverIndex(collectedModel).resolveModel(
 			collectedModel,
@@ -259,6 +273,7 @@ export class ThemeWorkspaceSession {
 			collection.schemaSettings,
 			collection.instances,
 			collection.locales,
+			collection.dataFlowInputs,
 		);
 		const resolvedModel = this.resolverIndex.resolveModel(collectedModel);
 		const transaction = this.semanticStore.beginUpdate(resolvedModel);
@@ -309,6 +324,7 @@ export class ThemeWorkspaceSession {
 			schemaSettings: this.schemaSettingResultsBySource,
 			instances: this.instanceResultsBySource,
 			locales: this.localeResultsBySource,
+			dataFlowInputs: this.dataFlowInputResultsBySource,
 		};
 	}
 
@@ -322,6 +338,7 @@ export class ThemeWorkspaceSession {
 		this.schemaSettingResultsBySource = state.schemaSettings;
 		this.instanceResultsBySource = state.instances;
 		this.localeResultsBySource = state.locales;
+		this.dataFlowInputResultsBySource = state.dataFlowInputs;
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
@@ -348,7 +365,8 @@ type ThemeCollectionContext = ThemeDeclarationPassContext &
 	ThemeIncrementalResolutionContext &
 	ThemeSchemaSettingPassContext &
 	ThemeInstancePassContext &
-	ThemeLocalePassContext;
+	ThemeLocalePassContext &
+	ThemeDataFlowInputPassContext;
 
 type ThemeCollectionState = {
 	declarations: Map<string, ThemeDeclarationPassResult>;
@@ -360,6 +378,7 @@ type ThemeCollectionState = {
 	schemaSettings: Map<string, ThemeSchemaSettingPassResult>;
 	instances: Map<string, ThemeInstancePassResult>;
 	locales: Map<string, ThemeLocalePassResult>;
+	dataFlowInputs: Map<string, ThemeDataFlowInputPassResult>;
 };
 
 function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
@@ -386,6 +405,11 @@ function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext>
 		incrementalThemePass<ThemeCollectionContext, string, ThemeLocaleRecord>(
 			createThemeLocalePass(),
 		),
+		incrementalThemePass<
+			ThemeCollectionContext,
+			string,
+			ThemeDataFlowInputRecord
+		>(createThemeDataFlowInputPass()),
 	]);
 }
 
@@ -415,6 +439,12 @@ function runCollectionPasses(
 			key: localeKeyId,
 			translation: localeTranslationId,
 			reference: localeReferenceId,
+		},
+		dataFlowInputResultsBySource: state.dataFlowInputs,
+		dataFlowIds: {
+			dataAccess: dataAccessId,
+			variableRead: variableReadId,
+			renderArgument: renderArgumentId,
 		},
 		ids: {
 			file: fileId,
@@ -451,6 +481,7 @@ function cloneCollectionState(
 		schemaSettings: cloneSchemaSettingResults(state.schemaSettings),
 		instances: cloneInstanceResults(state.instances),
 		locales: cloneLocaleResults(state.locales),
+		dataFlowInputs: cloneDataFlowInputResults(state.dataFlowInputs),
 	};
 }
 
@@ -517,6 +548,25 @@ function cloneLocaleResults(
 	);
 }
 
+function cloneDataFlowInputResults(
+	results: Map<string, ThemeDataFlowInputPassResult>,
+): Map<string, ThemeDataFlowInputPassResult> {
+	return new Map(
+		[...results].map(([path, result]) => [
+			path,
+			{
+				dataAccesses: [...result.dataAccesses],
+				variableReads: [...result.variableReads],
+				guardedObjects: [...result.guardedObjects],
+				defaultedObjects: [...result.defaultedObjects],
+				docParams: [...result.docParams],
+				renderSiteFacts: [...result.renderSiteFacts],
+				renderArguments: [...result.renderArguments],
+			},
+		]),
+	);
+}
+
 function modelWithCollectedRecords(
 	model: ThemeSemanticModel,
 	declarationsBySource: Map<string, ThemeDeclarationPassResult>,
@@ -524,6 +574,7 @@ function modelWithCollectedRecords(
 	schemaSettingsBySource: Map<string, ThemeSchemaSettingPassResult>,
 	instancesBySource: Map<string, ThemeInstancePassResult>,
 	localesBySource: Map<string, ThemeLocalePassResult>,
+	dataFlowInputsBySource: Map<string, ThemeDataFlowInputPassResult>,
 ): ThemeSemanticModel {
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
@@ -564,6 +615,15 @@ function modelWithCollectedRecords(
 	const analyzedLocaleReferences = new Map(
 		model.localeReferences.map((reference) => [reference.id, reference]),
 	);
+	const dataFlowInputs = [...dataFlowInputsBySource.keys()]
+		.sort((a, b) => a.localeCompare(b))
+		.map((path) => dataFlowInputsBySource.get(path))
+		.filter((result): result is ThemeDataFlowInputPassResult =>
+			Boolean(result),
+		);
+	const derivedDataAccesses = model.dataAccesses.filter(
+		(access) => access.origin === "renderArgument",
+	);
 	return {
 		...model,
 		files,
@@ -599,6 +659,16 @@ function modelWithCollectedRecords(
 						analyzedLocaleReferences.get(reference.id) ?? reference,
 				),
 			),
+		),
+		dataAccesses: uniqueById([
+			...dataFlowInputs.flatMap((result) => result.dataAccesses),
+			...derivedDataAccesses,
+		]),
+		variableReads: uniqueById(
+			dataFlowInputs.flatMap((result) => result.variableReads),
+		),
+		renderArguments: uniqueById(
+			dataFlowInputs.flatMap((result) => result.renderArguments),
 		),
 	};
 }

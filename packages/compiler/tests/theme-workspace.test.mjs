@@ -441,6 +441,32 @@ test("workspace scheduler replaces locale keys and references by source", () => 
 	);
 });
 
+test("workspace scheduler replaces data-flow inputs by source", () => {
+	let files = [
+		{ path: "snippets/card.liquid", contents: "{{ title }}" },
+		{
+			path: "sections/main.liquid",
+			contents: "{% render 'card', title: section.settings.title %}",
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const snippet = {
+		path: "snippets/card.liquid",
+		contents: "{{ subtitle }}",
+	};
+	files = [...files.filter((file) => file.path !== snippet.path), snippet];
+	session.updateFile(snippet);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	assert.equal(
+		session.getGraph().nodes.some((node) => node.id.includes(":title")),
+		true,
+	);
+	assert.equal(
+		session.getGraph().nodes.some((node) => node.id.includes(":subtitle")),
+		true,
+	);
+});
+
 test("workspace session updates graph with stable revisions and deltas", () => {
 	const session = new ThemeWorkspaceSession([
 		{

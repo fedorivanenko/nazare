@@ -1,4 +1,5 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
+import { collectThemeDataFlowInputs } from "./theme-data-flow-pass.js";
 import {
 	createThemeDeclarationPass,
 	type ThemeDeclarationPassContext,
@@ -129,69 +130,27 @@ export function buildThemeSemanticModel(
 		translation: localeTranslationId,
 		reference: localeReferenceId,
 	});
-	const dataAccesses: ThemeDataAccessRecord[] = [];
-	const variableReads: ThemeVariableReadRecord[] = [];
-	const guardedObjects = new Set<string>();
-	const defaultedObjects = new Set<string>();
-	const docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[] = [];
-	const renderSiteFacts: Extract<ThemeFact, { kind: "rendersSnippet" }>[] = [];
-	const renderArguments: ThemeRenderArgumentRecord[] = [];
+	const dataFlowInputs = collectThemeDataFlowInputs(facts, {
+		dataAccess: dataAccessId,
+		variableRead: variableReadId,
+		renderArgument: renderArgumentId,
+	});
+	const dataAccesses = [...dataFlowInputs.dataAccesses];
+	const variableReads = dataFlowInputs.variableReads;
+	const guardedObjects = new Set(dataFlowInputs.guardedObjects);
+	const defaultedObjects = new Set(dataFlowInputs.defaultedObjects);
+	const docParams = dataFlowInputs.docParams;
+	const renderSiteFacts = dataFlowInputs.renderSiteFacts;
+	const renderArguments = dataFlowInputs.renderArguments;
 	const capabilitySignals: ThemeCapabilitySignalRecord[] = [];
 
 	for (const fact of facts) {
-		if (fact.kind === "rendersSnippet") {
-			renderSiteFacts.push(fact);
-		}
-		if (fact.kind === "readsFreeVariable") {
-			variableReads.push({
-				id: variableReadId(fact.fromPath, fact.name, fact.span),
-				fromPath: fact.fromPath,
-				name: fact.name,
-				propertyPath: fact.propertyPath,
-				expression: fact.expression,
-				usage: fact.usage,
-				span: fact.span,
-			});
-		}
-		if (fact.kind === "guardsObject") {
-			guardedObjects.add(`${fact.fromPath}:${fact.name}`);
-			if (fact.via === "default") {
-				defaultedObjects.add(`${fact.fromPath}:${fact.name}`);
-			}
-		}
-		if (fact.kind === "declaresDocParam") {
-			docParams.push(fact);
-		}
-		if (fact.kind === "readsShopifyData") {
-			dataAccesses.push({
-				id: dataAccessId(fact.fromPath, fact.expression, fact.span),
-				fromPath: fact.fromPath,
-				object: fact.object,
-				propertyPath: fact.propertyPath,
-				expression: fact.expression,
-				conditional: fact.conditional,
-				span: fact.span,
-			});
-		}
 		if (fact.kind === "detectsCapability") {
 			capabilitySignals.push({
 				id: capabilitySignalId(fact.path, fact.capability, fact.span),
 				path: fact.path,
 				capability: fact.capability,
 				confidence: fact.confidence,
-				span: fact.span,
-			});
-		}
-		if (fact.kind === "passesRenderArgument") {
-			renderArguments.push({
-				id: renderArgumentId(fact.siteId, fact.argumentName),
-				fromPath: fact.fromPath,
-				targetName: fact.targetName,
-				siteId: fact.siteId,
-				argumentName: fact.argumentName,
-				valueExpression: fact.valueExpression,
-				sourceObject: fact.sourceObject,
-				sourcePath: fact.sourcePath,
 				span: fact.span,
 			});
 		}

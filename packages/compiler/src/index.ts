@@ -150,6 +150,16 @@ export {
 	type ThemeCheckPolicyInput,
 } from "./theme-check-policy.js";
 export {
+	collectThemeDataFlowInputs,
+	createThemeDataFlowInputPass,
+	dataFlowWorkKey,
+	type ThemeDataFlowIds,
+	type ThemeDataFlowInputPassContext,
+	type ThemeDataFlowInputPassResult,
+	type ThemeDataFlowInputRecord,
+	type ThemeDataFlowWorkKey,
+} from "./theme-data-flow-pass.js";
+export {
 	collectThemeDeclarations,
 	createThemeDeclarationPass,
 	type ThemeDeclarationPassContext,
