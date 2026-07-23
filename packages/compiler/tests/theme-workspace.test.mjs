@@ -248,6 +248,9 @@ test("workspace session updates graph with stable revisions and deltas", () => {
 		"templates/index.json",
 	]);
 	assert.deepEqual(first.affectedPages, ["templates/index.json"]);
+	assert.deepEqual(session.getAffectedPages("snippets/card.liquid"), [
+		"templates/index.json",
+	]);
 	assert.deepEqual(first.changedPaths, ["snippets/card.liquid"]);
 	assert.deepEqual(first.addedNodeIds, []);
 	assert.deepEqual(first.removedNodeIds, []);

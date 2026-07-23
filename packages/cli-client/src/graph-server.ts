@@ -4,7 +4,6 @@ import { join, relative, sep } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import {
-	getThemeAffectedPages,
 	getThemeDependencies,
 	getThemeDependents,
 	getThemeNode,
@@ -164,7 +163,7 @@ async function handleRequest(
 		return getThemeDependencies(graph, nodeId);
 	if (request.method === "dependents") return getThemeDependents(graph, nodeId);
 	if (request.method === "affectedPages")
-		return getThemeAffectedPages(graph, nodeId);
+		return session.getAffectedPages(nodeId);
 	throw new Error(`Unknown graph server method ${request.method}`);
 }
 
