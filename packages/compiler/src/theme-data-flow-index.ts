@@ -3,6 +3,7 @@ import type { ThemeDeclaration, ThemeFact } from "./theme-facts.js";
 export class ThemeRenderDependencyIndex {
 	private readonly targetsBySource = new Map<string, Set<string>>();
 	private readonly sourcesByTarget = new Map<string, Set<string>>();
+	private readonly sourcesByDeclarationKey = new Map<string, Set<string>>();
 	private readonly groupByPath = new Map<string, string[]>();
 
 	constructor(
@@ -18,6 +19,11 @@ export class ThemeRenderDependencyIndex {
 		}
 		for (const fact of renderFacts) {
 			if (!fact.static || !fact.targetName) continue;
+			add(
+				this.sourcesByDeclarationKey,
+				`snippet:${fact.targetName}`,
+				fact.fromPath,
+			);
 			const targets = snippetPathsByName.get(fact.targetName) ?? [];
 			if (targets.length !== 1 || !targets[0]) continue;
 			add(this.targetsBySource, fact.fromPath, targets[0]);
@@ -34,6 +40,10 @@ export class ThemeRenderDependencyIndex {
 
 	getCallers(targetPath: string): string[] {
 		return sorted(this.sourcesByTarget.get(targetPath));
+	}
+
+	getCallersForDeclarationKey(key: string): string[] {
+		return sorted(this.sourcesByDeclarationKey.get(key));
 	}
 
 	getStronglyConnectedGroup(path: string): string[] {
