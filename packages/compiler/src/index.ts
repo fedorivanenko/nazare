@@ -153,6 +153,7 @@ export {
 	collectThemeDataFlowInputs,
 	createThemeDataFlowInputPass,
 	dataFlowWorkKey,
+	deriveThemeRenderSites,
 	type ThemeDataFlowIds,
 	type ThemeDataFlowInputPassContext,
 	type ThemeDataFlowInputPassResult,

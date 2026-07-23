@@ -1,5 +1,8 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
-import { collectThemeDataFlowInputs } from "./theme-data-flow-pass.js";
+import {
+	collectThemeDataFlowInputs,
+	deriveThemeRenderSites,
+} from "./theme-data-flow-pass.js";
 import {
 	createThemeDeclarationPass,
 	type ThemeDeclarationPassContext,
@@ -199,10 +202,11 @@ export function buildThemeSemanticModel(
 	modelIssues.push(
 		...docContractIssues(expectedInputs, docParams, defaultedObjects),
 	);
-	const renderSites = renderSiteRecords(
+	const renderSites = deriveThemeRenderSites(
 		renderSiteFacts,
 		byKindName,
 		renderArguments,
+		renderSiteId,
 	);
 	addInputDiagnostics(
 		modelIssues,
@@ -829,38 +833,6 @@ function docContractIssues(
 		}
 	}
 	return issues;
-}
-
-/**
- * One record per render call site — sites are identified by their siteId
- * (path@line:column), so two renders of the same target from one file keep
- * their own argument lists instead of sharing one.
- */
-function renderSiteRecords(
-	renderSiteFacts: Extract<ThemeFact, { kind: "rendersSnippet" }>[],
-	byKindName: Map<string, ThemeDeclaration>,
-	renderArguments: ThemeRenderArgumentRecord[],
-): ThemeRenderSiteRecord[] {
-	const argsBySiteId = new Map<string, ThemeRenderArgumentRecord[]>();
-	for (const argument of renderArguments) {
-		argsBySiteId.set(argument.siteId, [
-			...(argsBySiteId.get(argument.siteId) ?? []),
-			argument,
-		]);
-	}
-	return renderSiteFacts.map((fact) => ({
-		id: renderSiteId(fact.siteId),
-		fromPath: fact.fromPath,
-		targetName: fact.targetName,
-		invocationKind: fact.invocationKind,
-		resolvedDeclarationId: fact.targetName
-			? byKindName.get(`snippet:${fact.targetName}`)?.id
-			: undefined,
-		argumentIds: (argsBySiteId.get(fact.siteId) ?? []).map(
-			(argument) => argument.id,
-		),
-		span: fact.span,
-	}));
 }
 
 function deriveArgumentDataAccesses(

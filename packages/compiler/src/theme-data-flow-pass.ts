@@ -1,8 +1,10 @@
 import type { ThemeFactStore } from "./theme-fact-store.js";
 import type {
 	ThemeDataAccessRecord,
+	ThemeDeclaration,
 	ThemeFact,
 	ThemeRenderArgumentRecord,
+	ThemeRenderSiteRecord,
 	ThemeVariableReadRecord,
 } from "./theme-facts.js";
 import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
@@ -30,6 +32,33 @@ export type ThemeDataFlowInputRecord =
 	| ThemeDataAccessRecord
 	| ThemeVariableReadRecord
 	| ThemeRenderArgumentRecord;
+
+export function deriveThemeRenderSites(
+	renderSiteFacts: Extract<ThemeFact, { kind: "rendersSnippet" }>[],
+	declarationByKey: Map<string, ThemeDeclaration>,
+	renderArguments: ThemeRenderArgumentRecord[],
+	id: (siteId: string) => string,
+): ThemeRenderSiteRecord[] {
+	const argumentsBySiteId = new Map<string, ThemeRenderArgumentRecord[]>();
+	for (const argument of renderArguments) {
+		const siteArguments = argumentsBySiteId.get(argument.siteId) ?? [];
+		siteArguments.push(argument);
+		argumentsBySiteId.set(argument.siteId, siteArguments);
+	}
+	return renderSiteFacts.map((fact) => ({
+		id: id(fact.siteId),
+		fromPath: fact.fromPath,
+		targetName: fact.targetName,
+		invocationKind: fact.invocationKind,
+		resolvedDeclarationId: fact.targetName
+			? declarationByKey.get(`snippet:${fact.targetName}`)?.id
+			: undefined,
+		argumentIds: (argumentsBySiteId.get(fact.siteId) ?? []).map(
+			(argument) => argument.id,
+		),
+		span: fact.span,
+	}));
+}
 
 export type ThemeDataFlowIds = {
 	dataAccess(
