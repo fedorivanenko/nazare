@@ -262,6 +262,25 @@ test("incremental graph replay equals full rebuild", () => {
 	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
 });
 
+test("workspace scheduler preserves unresolved and resolved reference transitions", () => {
+	let files = [
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+	];
+	const session = new ThemeWorkspaceSession(files);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+
+	const card = { path: "snippets/card.liquid", contents: "Card" };
+	files = [...files, card];
+	const resolved = session.updateFile(card);
+	assert.ok(resolved.addedNodeIds.includes("file:snippets/card.liquid"));
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+
+	files = files.filter((file) => file.path !== card.path);
+	const unresolved = session.removeFile(card.path);
+	assert.ok(unresolved.removedNodeIds.includes("file:snippets/card.liquid"));
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+});
+
 test("workspace session updates graph with stable revisions and deltas", () => {
 	const session = new ThemeWorkspaceSession([
 		{

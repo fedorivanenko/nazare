@@ -1313,7 +1313,7 @@ function addInputDiagnostics(
 	}
 }
 
-function referenceId(reference: Omit<ThemeReference, "id">): string {
+export function referenceId(reference: Omit<ThemeReference, "id">): string {
 	return `ref:${reference.kind}:${reference.fromPath}:${reference.targetPath ?? reference.targetName ?? "dynamic"}:${occurrenceSuffix(reference.span)}`;
 }
 
