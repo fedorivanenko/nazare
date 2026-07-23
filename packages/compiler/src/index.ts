@@ -211,6 +211,14 @@ export {
 	type ThemeInstancePassResult,
 	type ThemeInstanceRecord,
 } from "./theme-instance-pass.js";
+export {
+	collectThemeLocales,
+	createThemeLocalePass,
+	type ThemeLocaleIds,
+	type ThemeLocalePassContext,
+	type ThemeLocalePassResult,
+	type ThemeLocaleRecord,
+} from "./theme-locale-pass.js";
 export { ThemeMetafieldIndex } from "./theme-metafield-index.js";
 export {
 	analyzeMetafields,

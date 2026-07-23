@@ -15,9 +15,7 @@ import type {
 	ThemeExpectedInputRecord,
 	ThemeFact,
 	ThemeFileRecord,
-	ThemeLocaleKeyRecord,
 	ThemeLocaleReferenceRecord,
-	ThemeLocaleTranslationRecord,
 	ThemePageRecord,
 	ThemeReference,
 	ThemeRenderArgumentRecord,
@@ -32,6 +30,7 @@ import type {
 import { inferCapabilities, inferClassifications } from "./theme-inference.js";
 import { CONTEXT_INPUT_OBJECTS } from "./theme-input-policy.js";
 import { collectThemeInstances } from "./theme-instance-pass.js";
+import { collectThemeLocales } from "./theme-locale-pass.js";
 import { analyzeMetafields } from "./theme-metafields.js";
 import {
 	incrementalThemePass,
@@ -113,9 +112,12 @@ export function buildThemeSemanticModel(
 		section: sectionInstanceId,
 		block: blockInstanceId,
 	});
-	const localeKeys: ThemeLocaleKeyRecord[] = [];
-	const localeTranslations: ThemeLocaleTranslationRecord[] = [];
-	const localeReferences: ThemeLocaleReferenceRecord[] = [];
+	const { localeKeys, localeTranslations, localeReferences } =
+		collectThemeLocales(facts, {
+			key: localeKeyId,
+			translation: localeTranslationId,
+			reference: localeReferenceId,
+		});
 	const dataAccesses: ThemeDataAccessRecord[] = [];
 	const variableReads: ThemeVariableReadRecord[] = [];
 	const guardedObjects = new Set<string>();
@@ -126,27 +128,6 @@ export function buildThemeSemanticModel(
 	const capabilitySignals: ThemeCapabilitySignalRecord[] = [];
 
 	for (const fact of facts) {
-		if (fact.kind === "definesLocaleKey") {
-			const keyId = localeKeyId(fact.key);
-			localeKeys.push({ id: keyId, key: fact.key });
-			localeTranslations.push({
-				id: localeTranslationId(fact.path, fact.key),
-				path: fact.path,
-				key: fact.key,
-				localeKeyId: keyId,
-				span: fact.span,
-			});
-		}
-		if (fact.kind === "referencesLocaleKey") {
-			localeReferences.push({
-				id: localeReferenceId(fact.fromPath, fact.key ?? "dynamic", fact.span),
-				fromPath: fact.fromPath,
-				key: fact.key,
-				resolvedLocaleKeyIds: [],
-				static: fact.static,
-				span: fact.span,
-			});
-		}
 		if (fact.kind === "rendersSnippet") {
 			renderSiteFacts.push(fact);
 		}
