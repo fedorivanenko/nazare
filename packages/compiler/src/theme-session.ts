@@ -15,6 +15,7 @@ export type ThemeGraphUpdate = {
 	revision: number;
 	graph: InspectNazareThemeResult;
 	changedPaths: string[];
+	changedSemanticRecordIds: string[];
 	invalidatedNodeIds: string[];
 	affectedPages: string[];
 	addedNodeIds: string[];
@@ -96,7 +97,8 @@ export class ThemeWorkspaceSession {
 			this.factIndex.replaceFileFacts(path, facts);
 		}
 		const transaction = this.semanticStore.beginUpdate(analysis.ir);
-		this.graph = themeGraphFromModel(transaction.commit());
+		const semanticUpdate = transaction.commit();
+		this.graph = themeGraphFromModel(semanticUpdate.model);
 		this.revision += 1;
 		return diffGraphs(
 			this.revision,
@@ -104,11 +106,19 @@ export class ThemeWorkspaceSession {
 			this.graph,
 			changedPaths,
 			this.factIndex.dependentsOfFiles(changedPaths),
+			semanticUpdate.changedRecordIds,
 		);
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
-		return diffGraphs(this.revision, this.graph, this.graph, changedPaths, []);
+		return diffGraphs(
+			this.revision,
+			this.graph,
+			this.graph,
+			changedPaths,
+			[],
+			[],
+		);
 	}
 
 	private files(): ThemeInputFile[] {
@@ -124,6 +134,7 @@ function diffGraphs(
 	current: InspectNazareThemeResult,
 	changedPaths: string[],
 	indexedInvalidation: string[],
+	changedSemanticRecordIds: string[],
 ): ThemeGraphUpdate {
 	const previousNodes = new Map(previous.nodes.map((node) => [node.id, node]));
 	const currentNodes = new Map(current.nodes.map((node) => [node.id, node]));
@@ -133,6 +144,7 @@ function diffGraphs(
 		revision,
 		graph: current,
 		changedPaths: [...new Set(changedPaths)].sort(),
+		changedSemanticRecordIds,
 		invalidatedNodeIds: [
 			...new Set([
 				...invalidationClosure(current, changedPaths),
