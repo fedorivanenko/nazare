@@ -467,6 +467,27 @@ test("workspace scheduler replaces data-flow inputs by source", () => {
 	);
 });
 
+test("workspace fixed-point data flow matches cold rebuild for render cycles", () => {
+	let files = [
+		{
+			path: "snippets/a.liquid",
+			contents: "{{ value }}{% render 'b', value: value %}",
+		},
+		{
+			path: "snippets/b.liquid",
+			contents: "{{ value }}{% render 'a', value: value %}",
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const updated = {
+		path: "snippets/b.liquid",
+		contents: "{{ value.title }}{% render 'a', value: value %}",
+	};
+	files = [...files.filter((file) => file.path !== updated.path), updated];
+	session.updateFile(updated);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+});
+
 test("workspace session updates graph with stable revisions and deltas", () => {
 	const session = new ThemeWorkspaceSession([
 		{

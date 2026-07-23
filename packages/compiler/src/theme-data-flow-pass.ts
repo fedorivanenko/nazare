@@ -58,9 +58,15 @@ export function createThemeDataFlowFixedPointPass(): FixedPointPass<
 			{ kind: "diagnosticsChanged", target: "diagnostics" },
 		],
 		seed(changes, context) {
-			const changedPaths = changes
-				.filter((change) => change.kind === "dataFlowChanged")
-				.map((change) => change.sourcePath);
+			const changedPaths = changes.flatMap((change) => {
+				if (change.kind === "dataFlowChanged") return [change.sourcePath];
+				if (change.kind === "declarationChanged") {
+					return context.renderDependencies.getCallersForDeclarationKey(
+						change.key,
+					);
+				}
+				return [];
+			});
 			return new Set(
 				context.renderDependencies
 					.getAffectedGroups(changedPaths)
