@@ -149,6 +149,7 @@ export {
 	type ThemeCheckPolicy,
 	type ThemeCheckPolicyInput,
 } from "./theme-check-policy.js";
+export { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 export {
 	collectThemeDataFlowInputs,
 	createThemeDataFlowInputPass,
