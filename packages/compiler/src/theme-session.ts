@@ -11,6 +11,7 @@ import {
 	shareThemeGraphRecords,
 	themeGraphFromModel,
 } from "./theme-graph-output.js";
+import { ThemeMetafieldIndex } from "./theme-metafield-index.js";
 import { ThemeResolverIndex } from "./theme-resolver-index.js";
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
 import { analyzeNazareTheme } from "./theme-workspace.js";
@@ -39,6 +40,7 @@ export class ThemeWorkspaceSession {
 	private readonly factIndex: ThemeFactIndex;
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
+	private metafieldIndex: ThemeMetafieldIndex;
 	private graph: InspectNazareThemeResult;
 	private externalFingerprint: string;
 	private revision = 0;
@@ -54,6 +56,7 @@ export class ThemeWorkspaceSession {
 		this.factIndex = new ThemeFactIndex(analysis.facts);
 		this.semanticStore = new ThemeSemanticStore(analysis.ir);
 		this.resolverIndex = new ThemeResolverIndex(analysis.ir);
+		this.metafieldIndex = new ThemeMetafieldIndex(analysis.ir);
 		this.graph = themeGraphFromModel(this.semanticStore.getModel());
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
@@ -106,6 +109,7 @@ export class ThemeWorkspaceSession {
 		const transaction = this.semanticStore.beginUpdate(resolvedModel);
 		const semanticUpdate = transaction.commit();
 		this.resolverIndex.apply(semanticUpdate);
+		this.metafieldIndex.apply(semanticUpdate);
 		this.graph = shareThemeGraphRecords(
 			this.graph,
 			themeGraphFromModel(semanticUpdate.model),
