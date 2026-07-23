@@ -2,8 +2,10 @@ import type { InspectNazareThemeResult } from "./theme-facts.js";
 
 export class ThemeImpactIndex {
 	private readonly dependentsByNode = new Map<string, Set<string>>();
+	private readonly dependenciesByNode = new Map<string, Set<string>>();
 	private readonly pagePathsByNode = new Map<string, string[]>();
 	private readonly nodeIdsByPath = new Map<string, Set<string>>();
+	private readonly pathByNodeId = new Map<string, string>();
 
 	constructor(graph: InspectNazareThemeResult) {
 		this.replaceGraph(graph);
@@ -11,9 +13,15 @@ export class ThemeImpactIndex {
 
 	replaceGraph(graph: InspectNazareThemeResult): void {
 		this.dependentsByNode.clear();
+		this.dependenciesByNode.clear();
 		this.pagePathsByNode.clear();
 		this.nodeIdsByPath.clear();
+		this.pathByNodeId.clear();
 		for (const edge of graph.edges) {
+			const dependencies =
+				this.dependenciesByNode.get(edge.from) ?? new Set<string>();
+			dependencies.add(edge.to);
+			this.dependenciesByNode.set(edge.from, dependencies);
 			const dependents =
 				this.dependentsByNode.get(edge.to) ?? new Set<string>();
 			dependents.add(edge.from);
@@ -21,6 +29,7 @@ export class ThemeImpactIndex {
 		}
 		for (const node of graph.nodes) {
 			if ("path" in node) {
+				this.pathByNodeId.set(node.id, node.path);
 				const ids = this.nodeIdsByPath.get(node.path) ?? new Set<string>();
 				ids.add(node.id);
 				this.nodeIdsByPath.set(node.path, ids);
@@ -29,6 +38,34 @@ export class ThemeImpactIndex {
 			const path = node.path;
 			this.pagePathsByNode.set(node.id, [path]);
 		}
+	}
+
+	getDependencies(nodeId: string): string[] {
+		return [
+			...new Set(
+				this.lookupNodeIds(nodeId).flatMap((id) =>
+					[...(this.dependenciesByNode.get(id) ?? [])].map(
+						(dependency) => this.pathByNodeId.get(dependency) ?? dependency,
+					),
+				),
+			),
+		].sort();
+	}
+
+	getDependents(nodeId: string): string[] {
+		return [
+			...new Set(
+				this.lookupNodeIds(nodeId).flatMap((id) =>
+					[...(this.dependentsByNode.get(id) ?? [])].map(
+						(dependent) => this.pathByNodeId.get(dependent) ?? dependent,
+					),
+				),
+			),
+		].sort();
+	}
+
+	private lookupNodeIds(nodeId: string): string[] {
+		return [nodeId, ...(this.nodeIdsByPath.get(nodeId) ?? [])];
 	}
 
 	getAffectedPages(nodeId: string): string[] {
