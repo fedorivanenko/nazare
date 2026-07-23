@@ -1,3 +1,4 @@
+import { ThemeFactStore, themeFactSourcePath } from "./theme-fact-store.js";
 import type {
 	InspectNazareThemeOptions,
 	InspectNazareThemeResult,
@@ -5,7 +6,8 @@ import type {
 	ThemeAnalysisMemo,
 	ThemeInputFile,
 } from "./theme-facts.js";
-import { inspectNazareTheme } from "./theme-workspace.js";
+import { themeGraphFromModel } from "./theme-graph-output.js";
+import { analyzeNazareTheme } from "./theme-workspace.js";
 
 export type ThemeGraphUpdate = {
 	revision: number;
@@ -26,6 +28,7 @@ export class ThemeWorkspaceSession {
 	private readonly options: InspectNazareThemeOptions;
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
 	private readonly memo = {} as ThemeAnalysisMemo;
+	private readonly factStore = new ThemeFactStore();
 	private graph: InspectNazareThemeResult;
 	private externalFingerprint: string;
 	private revision = 0;
@@ -36,7 +39,14 @@ export class ThemeWorkspaceSession {
 	) {
 		this.options = { ...options, cache: this.cache, memo: this.memo };
 		for (const file of files) this.filesByPath.set(file.path, file);
-		this.graph = inspectNazareTheme(this.files(), this.options);
+		const analysis = analyzeNazareTheme(this.files(), this.options);
+		this.factStore.replaceFile("", []);
+		for (const fact of analysis.facts)
+			this.factStore.replaceFile(themeFactSourcePath(fact), [
+				fact,
+				...this.factStore.getFile(themeFactSourcePath(fact)),
+			]);
+		this.graph = themeGraphFromModel(analysis.ir);
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
 
@@ -76,7 +86,14 @@ export class ThemeWorkspaceSession {
 
 	private rebuild(changedPaths: string[]): ThemeGraphUpdate {
 		const previous = this.graph;
-		this.graph = inspectNazareTheme(this.files(), this.options);
+		const analysis = analyzeNazareTheme(this.files(), this.options);
+		for (const path of changedPaths) {
+			const facts = analysis.facts.filter(
+				(fact) => themeFactSourcePath(fact) === path,
+			);
+			this.factStore.replaceFile(path, facts);
+		}
+		this.graph = themeGraphFromModel(analysis.ir);
 		this.revision += 1;
 		return diffGraphs(this.revision, previous, this.graph, changedPaths);
 	}

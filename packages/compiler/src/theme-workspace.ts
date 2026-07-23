@@ -346,6 +346,7 @@ function analyzeNormalizedThemeFiles(
 		return {
 			ir: options.memo.model,
 			artifacts,
+			facts,
 			issues: options.memo.model.issues,
 		};
 	}
@@ -366,7 +367,7 @@ function analyzeNormalizedThemeFiles(
 		options.memo.fingerprint = modelFingerprint;
 		options.memo.model = ir;
 	}
-	return { ir, artifacts, issues: filteredIssues };
+	return { ir, artifacts, facts, issues: filteredIssues };
 }
 
 function themeFileFingerprint(
