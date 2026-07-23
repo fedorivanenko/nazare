@@ -267,6 +267,11 @@ export {
 } from "./theme-resolution-pass.js";
 export { ThemeResolverIndex } from "./theme-resolver-index.js";
 export {
+	type ThemeRecordResolution,
+	ThemeSchemaIndex,
+	type ThemeSchemaIndexInput,
+} from "./theme-schema-index.js";
+export {
 	collectThemeSchemaSettings,
 	createThemeSchemaSettingPass,
 	type ThemeSchemaSettingIds,
