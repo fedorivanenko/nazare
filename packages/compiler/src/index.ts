@@ -251,6 +251,11 @@ export {
 } from "./theme-resolution-pass.js";
 export { ThemeResolverIndex } from "./theme-resolver-index.js";
 export {
+	collectThemeSchemaSettings,
+	type ThemeSchemaSettingIds,
+	type ThemeSchemaSettingPassResult,
+} from "./theme-schema-setting-pass.js";
+export {
 	ThemeSemanticStore,
 	ThemeSemanticTransaction,
 } from "./theme-semantic-store.js";
