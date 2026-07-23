@@ -194,6 +194,7 @@ export type {
 	ThemeSemanticModel,
 	ThemeSettingReadRecord,
 } from "./theme-facts.js";
+export { shareThemeGraphRecords } from "./theme-graph-output.js";
 export {
 	analyzeMetafields,
 	metafieldDefinitionId,
