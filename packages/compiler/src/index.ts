@@ -168,6 +168,12 @@ export {
 	type ThemeDeclarationPassResult,
 } from "./theme-declaration-pass.js";
 export { matchesThemeGlob } from "./theme-exclusions.js";
+export {
+	deriveThemeExpectedInputs,
+	docParamEvidenceId,
+	expectedInputId,
+	themeDocContractIssues,
+} from "./theme-expected-input-pass.js";
 export { ThemeFactIndex } from "./theme-fact-index.js";
 export {
 	ThemeFactStore,
