@@ -150,6 +150,7 @@ export {
 	type ThemeCheckPolicyInput,
 } from "./theme-check-policy.js";
 export { matchesThemeGlob } from "./theme-exclusions.js";
+export { ThemeFactStore } from "./theme-fact-store.js";
 export type {
 	AnalyzeNazareThemeOptions,
 	BuildNazareThemeWorkspaceOptions,
