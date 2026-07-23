@@ -11,12 +11,30 @@ import {
 	ThemeBuildSession,
 	ThemeFactIndex,
 	ThemeFactStore,
+	ThemeSemanticStore,
 	ThemeWorkspaceSession,
 	themeGraphToDot,
 } from "../dist/index.js";
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("semantic transaction shares unchanged identified records", () => {
+	const first = analyzeNazareTheme([
+		{ path: "sections/main.liquid", contents: "<section>Main</section>" },
+	]);
+	const second = analyzeNazareTheme([
+		{ path: "sections/main.liquid", contents: "<section>Main</section>" },
+		{ path: "assets/new.css", contents: ".new {}" },
+	]);
+	const store = new ThemeSemanticStore(first.ir);
+	const transaction = store.beginUpdate(second.ir);
+	const model = transaction.commit();
+	assert.equal(
+		model.files.find((file) => file.path === "sections/main.liquid"),
+		first.ir.files.find((file) => file.path === "sections/main.liquid"),
+	);
+});
 
 test("fact index replaces declarations and dependents transactionally", () => {
 	const index = new ThemeFactIndex([
