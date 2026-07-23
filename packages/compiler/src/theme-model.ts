@@ -1,4 +1,5 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
+import { collectThemeDeclarations } from "./theme-declaration-pass.js";
 import type {
 	ThemeBlockInstanceRecord,
 	ThemeBlockRecord,
@@ -9,7 +10,6 @@ import type {
 	ThemeEvidenceRecord,
 	ThemeExpectedInputRecord,
 	ThemeFact,
-	ThemeFileRecord,
 	ThemeLocaleKeyRecord,
 	ThemeLocaleReferenceRecord,
 	ThemeLocaleTranslationRecord,
@@ -36,8 +36,10 @@ export function buildThemeSemanticModel(
 		metafields?: import("./theme-metafields.js").ThemeMetafieldSnapshot;
 	} = {},
 ): ThemeSemanticModel {
-	const files = new Map<string, ThemeFileRecord>();
-	const declarations: ThemeDeclaration[] = [];
+	const { files, declarations } = collectThemeDeclarations(facts, {
+		file: fileId,
+		declaration: declarationId,
+	});
 	const schemas: ThemeSchemaRecord[] = [];
 	const settings: ThemeSettingRecord[] = [];
 	const blocks: ThemeBlockRecord[] = [];
@@ -58,43 +60,6 @@ export function buildThemeSemanticModel(
 	const capabilitySignals: ThemeCapabilitySignalRecord[] = [];
 
 	for (const fact of facts) {
-		if (fact.kind === "file") {
-			files.set(fact.path, {
-				id: fileId(fact.path),
-				path: fact.path,
-				fileKind: fact.fileKind,
-			});
-		}
-		if (fact.kind === "declaresSection") {
-			declarations.push(declaration("section", fact.path, fact.name));
-		}
-		if (fact.kind === "declaresSnippet") {
-			declarations.push(declaration("snippet", fact.path, fact.name));
-		}
-		if (fact.kind === "declaresTemplate") {
-			declarations.push(declaration("template", fact.path, fact.name));
-		}
-		if (fact.kind === "declaresLayout") {
-			declarations.push(declaration("layout", fact.path, fact.name));
-		}
-		if (fact.kind === "declaresLocale") {
-			declarations.push(declaration("locale", fact.path, fact.name));
-		}
-		if (fact.kind === "declaresAsset") {
-			declarations.push(declaration("asset", fact.path, fact.name));
-		}
-		if (fact.kind === "declaresSectionGroup") {
-			declarations.push(declaration("sectionGroup", fact.path, fact.name));
-		}
-		if (fact.kind === "declaresThemeBlock") {
-			declarations.push(declaration("themeBlock", fact.path, fact.name));
-		}
-		if (fact.kind === "declaresComponent") {
-			declarations.push({
-				...declaration("component", fact.path, fact.name),
-				componentKind: fact.componentKind,
-			});
-		}
 		if (fact.kind === "sectionInstance") {
 			sectionInstances.push({
 				id: sectionInstanceId(fact.templatePath, fact.instanceId),
@@ -1367,14 +1332,6 @@ function addInputDiagnostics(
 			phase: "resolve",
 		});
 	}
-}
-
-function declaration(
-	kind: ThemeDeclaration["kind"],
-	path: string,
-	name: string,
-): ThemeDeclaration {
-	return { id: declarationId(kind, path, name), kind, path, name };
 }
 
 function reference(options: {
