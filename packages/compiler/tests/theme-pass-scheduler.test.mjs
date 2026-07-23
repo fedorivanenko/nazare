@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	createThemeDataFlowFixedPointPass,
 	createThemeDeclarationPass,
 	createThemeReferencePass,
 	createThemeResolutionPass,
@@ -209,6 +210,42 @@ test("render dependency index partitions cycles deterministically", () => {
 	]);
 	assert.deepEqual(index.getStronglyConnectedGroup("a"), ["a", "b"]);
 	assert.deepEqual(index.getAffectedGroups(["c"]), [["a", "b"], ["c"]]);
+});
+
+test("data-flow fixed point recomputes one affected SCC per step", () => {
+	const declarations = [
+		{ id: "snippet:a:a", kind: "snippet", path: "a", name: "a" },
+		{ id: "snippet:b:b", kind: "snippet", path: "b", name: "b" },
+		{ id: "snippet:c:c", kind: "snippet", path: "c", name: "c" },
+	];
+	const render = (fromPath, targetName) => ({
+		kind: "rendersSnippet",
+		fromPath,
+		targetName,
+		siteId: `${fromPath}@1:1`,
+		invocationKind: "render",
+		static: true,
+	});
+	const groups = [];
+	const scheduler = new ThemePassScheduler([
+		fixedPointThemePass(createThemeDataFlowFixedPointPass()),
+	]);
+	const result = scheduler.execute(
+		[{ kind: "dataFlowChanged", sourcePath: "c" }],
+		{
+			renderDependencies: new ThemeRenderDependencyIndex(declarations, [
+				render("a", "b"),
+				render("b", "a"),
+				render("c", "a"),
+			]),
+			recomputeDataFlowGroup(paths) {
+				groups.push([...paths]);
+				return { records: [], changes: [] };
+			},
+		},
+	);
+	assert.deepEqual(groups, [["a", "b"], ["c"]]);
+	assert.equal(result.trace[0].iterations, 2);
 });
 
 test("theme pass scheduler rejects backward routes", () => {

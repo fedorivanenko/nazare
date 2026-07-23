@@ -1,3 +1,4 @@
+import type { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 import type { ThemeFactStore } from "./theme-fact-store.js";
 import type {
 	ThemeDataAccessRecord,
@@ -8,9 +9,100 @@ import type {
 	ThemeRenderSiteRecord,
 	ThemeVariableReadRecord,
 } from "./theme-facts.js";
-import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
+import type {
+	FixedPointPass,
+	FixedPointStep,
+	IncrementalPass,
+	PassChange,
+	PassDelta,
+} from "./theme-pass-scheduler.js";
 
 export type ThemeDataFlowWorkKey = string;
+export type ThemeDataFlowGroupKey = string;
+
+export type ThemeDataFlowDerivedRecord =
+	| ThemeExpectedInputRecord
+	| ThemeRenderSiteRecord
+	| ThemeDataAccessRecord;
+
+export type ThemeDataFlowGroupDelta = PassDelta<ThemeDataFlowDerivedRecord> & {
+	propagatePaths?: string[];
+};
+
+export type ThemeDataFlowFixedPointContext = {
+	renderDependencies: ThemeRenderDependencyIndex;
+	recomputeDataFlowGroup(paths: readonly string[]): ThemeDataFlowGroupDelta;
+};
+
+export function dataFlowGroupKey(
+	paths: readonly string[],
+): ThemeDataFlowGroupKey {
+	return JSON.stringify([...paths].sort((a, b) => a.localeCompare(b)));
+}
+
+export function createThemeDataFlowFixedPointPass(): FixedPointPass<
+	ThemeDataFlowGroupKey,
+	ThemeDataFlowDerivedRecord,
+	ThemeDataFlowFixedPointContext
+> {
+	return {
+		name: "data-flow-fixed-point",
+		stage: "dataFlow",
+		fixedPointGroup: "render-data-flow",
+		routes: [
+			{
+				kind: "dataFlowChanged",
+				target: "dataFlow",
+				fixedPointGroup: "render-data-flow",
+			},
+			{ kind: "diagnosticsChanged", target: "diagnostics" },
+		],
+		seed(changes, context) {
+			const changedPaths = changes
+				.filter((change) => change.kind === "dataFlowChanged")
+				.map((change) => change.sourcePath);
+			return new Set(
+				context.renderDependencies
+					.getAffectedGroups(changedPaths)
+					.map(dataFlowGroupKey),
+			);
+		},
+		step(pending, context) {
+			const ordered = [...pending].sort((a, b) => a.localeCompare(b));
+			const current = ordered[0];
+			if (!current) return { records: [], changes: [], pending: new Set() };
+			const nextPending = new Set(ordered.slice(1));
+			const paths = parseDataFlowGroupKey(current);
+			const delta = context.recomputeDataFlowGroup(paths);
+			if (delta.propagatePaths?.length) {
+				for (const group of context.renderDependencies.getAffectedGroups(
+					delta.propagatePaths,
+				)) {
+					nextPending.add(dataFlowGroupKey(group));
+				}
+			}
+			return {
+				records: delta.records,
+				changes: delta.changes,
+				pending: nextPending,
+			} satisfies FixedPointStep<
+				ThemeDataFlowGroupKey,
+				ThemeDataFlowDerivedRecord
+			>;
+		},
+	};
+}
+
+function parseDataFlowGroupKey(key: ThemeDataFlowGroupKey): string[] {
+	const parsed: unknown = JSON.parse(key);
+	if (
+		!Array.isArray(parsed) ||
+		parsed.some((path) => typeof path !== "string")
+	) {
+		throw new Error(`Invalid data-flow group key ${key}`);
+	}
+	return parsed;
+}
 
 export function dataFlowWorkKey(
 	sourcePath: string,
