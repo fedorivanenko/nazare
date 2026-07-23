@@ -150,6 +150,7 @@ export {
 	type ThemeCheckPolicyInput,
 } from "./theme-check-policy.js";
 export { matchesThemeGlob } from "./theme-exclusions.js";
+export { ThemeFactIndex } from "./theme-fact-index.js";
 export {
 	ThemeFactStore,
 	themeFactSourcePath,

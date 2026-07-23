@@ -9,6 +9,7 @@ import {
 	inspectNazareTheme,
 	summarizeThemeGraph,
 	ThemeBuildSession,
+	ThemeFactIndex,
 	ThemeFactStore,
 	ThemeWorkspaceSession,
 	themeGraphToDot,
@@ -16,6 +17,28 @@ import {
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("fact index replaces declarations and dependents transactionally", () => {
+	const index = new ThemeFactIndex([
+		{ kind: "declaresSnippet", path: "snippets/card.liquid", name: "card" },
+		{
+			kind: "rendersSnippet",
+			fromPath: "sections/main.liquid",
+			siteId: "main@1:1",
+			invocationKind: "render",
+			static: true,
+			targetName: "card",
+		},
+	]);
+	assert.deepEqual(index.getDeclarations("snippet:card"), [
+		"snippets/card.liquid",
+	]);
+	assert.deepEqual(index.getDependents("snippet:card"), [
+		"sections/main.liquid",
+	]);
+	index.replaceFileFacts("sections/main.liquid", []);
+	assert.deepEqual(index.getDependents("snippet:card"), []);
+});
 
 test("fact store replaces only one source bucket", () => {
 	const store = new ThemeFactStore([
