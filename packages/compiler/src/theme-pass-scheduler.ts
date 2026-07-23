@@ -22,7 +22,7 @@ export type PassChange =
 	| { kind: "referenceChanged"; id: string }
 	| { kind: "resolutionChanged"; id: string }
 	| { kind: "settingChanged"; id: string }
-	| { kind: "dataFlowChanged"; sourcePath: string }
+	| { kind: "dataFlowChanged"; sourcePath: string; targetName?: string }
 	| { kind: "metafieldReadChanged"; id: string }
 	| {
 			kind: "metafieldSnapshotChanged";
