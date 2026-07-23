@@ -31,6 +31,7 @@ import type {
 } from "./theme-facts.js";
 import { inferCapabilities, inferClassifications } from "./theme-inference.js";
 import { CONTEXT_INPUT_OBJECTS } from "./theme-input-policy.js";
+import { collectThemeInstances } from "./theme-instance-pass.js";
 import { analyzeMetafields } from "./theme-metafields.js";
 import {
 	incrementalThemePass,
@@ -108,8 +109,10 @@ export function buildThemeSemanticModel(
 			blockSetting: blockSettingId,
 			settingRead: settingReadId,
 		});
-	const sectionInstances: ThemeSectionInstanceRecord[] = [];
-	const blockInstances: ThemeBlockInstanceRecord[] = [];
+	const { sectionInstances, blockInstances } = collectThemeInstances(facts, {
+		section: sectionInstanceId,
+		block: blockInstanceId,
+	});
 	const localeKeys: ThemeLocaleKeyRecord[] = [];
 	const localeTranslations: ThemeLocaleTranslationRecord[] = [];
 	const localeReferences: ThemeLocaleReferenceRecord[] = [];
@@ -123,30 +126,6 @@ export function buildThemeSemanticModel(
 	const capabilitySignals: ThemeCapabilitySignalRecord[] = [];
 
 	for (const fact of facts) {
-		if (fact.kind === "sectionInstance") {
-			sectionInstances.push({
-				id: sectionInstanceId(fact.templatePath, fact.instanceId),
-				templatePath: fact.templatePath,
-				instanceId: fact.instanceId,
-				sectionType: fact.sectionType,
-				static: fact.static,
-			});
-		}
-		if (fact.kind === "blockInstance") {
-			blockInstances.push({
-				id: blockInstanceId(
-					fact.ownerPath,
-					fact.sectionInstanceId,
-					fact.instanceId,
-				),
-				ownerPath: fact.ownerPath,
-				sectionInstanceId: fact.sectionInstanceId,
-				instanceId: fact.instanceId,
-				blockType: fact.blockType,
-				parentInstanceId: fact.parentInstanceId,
-				static: fact.static,
-			});
-		}
 		if (fact.kind === "definesLocaleKey") {
 			const keyId = localeKeyId(fact.key);
 			localeKeys.push({ id: keyId, key: fact.key });

@@ -366,6 +366,44 @@ test("workspace scheduler replaces schema and setting records by source", () => 
 	);
 });
 
+test("workspace scheduler replaces section and block instances by source", () => {
+	let files = [
+		{
+			path: "templates/index.json",
+			contents: JSON.stringify({
+				sections: {
+					hero: {
+						type: "main",
+						blocks: { copy: { type: "text" } },
+					},
+				},
+				order: ["hero"],
+			}),
+		},
+		{
+			path: "sections/main.liquid",
+			contents:
+				'{% schema %}{"blocks":[{"type":"text","name":"Text"}]}{% endschema %}',
+		},
+		{ path: "sections/alternate.liquid", contents: "Alternate" },
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const updated = {
+		path: "templates/index.json",
+		contents: JSON.stringify({
+			sections: { hero: { type: "alternate" } },
+			order: ["hero"],
+		}),
+	};
+	files = [...files.filter((file) => file.path !== updated.path), updated];
+	session.updateFile(updated);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	assert.equal(
+		session.getGraph().nodes.some((node) => node.id.includes(":copy")),
+		false,
+	);
+});
+
 test("workspace session updates graph with stable revisions and deltas", () => {
 	const session = new ThemeWorkspaceSession([
 		{

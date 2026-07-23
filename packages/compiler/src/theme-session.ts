@@ -23,14 +23,22 @@ import {
 } from "./theme-graph-output.js";
 import { impactSummary } from "./theme-impact.js";
 import { ThemeImpactIndex } from "./theme-impact-index.js";
+import {
+	createThemeInstancePass,
+	type ThemeInstancePassContext,
+	type ThemeInstancePassResult,
+	type ThemeInstanceRecord,
+} from "./theme-instance-pass.js";
 import { ThemeMetafieldIndex } from "./theme-metafield-index.js";
 import {
 	blockId,
+	blockInstanceId,
 	blockSettingId,
 	declarationId,
 	fileId,
 	referenceId,
 	schemaId,
+	sectionInstanceId,
 	settingId,
 	settingReadId,
 } from "./theme-model.js";
@@ -96,6 +104,7 @@ export class ThemeWorkspaceSession {
 		string,
 		ThemeSchemaSettingPassResult
 	>();
+	private instanceResultsBySource = new Map<string, ThemeInstancePassResult>();
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
@@ -125,6 +134,7 @@ export class ThemeWorkspaceSession {
 			collection.declarations,
 			collection.resolvedReferencesById,
 			collection.schemaSettings,
+			collection.instances,
 		);
 		const model = new ThemeResolverIndex(collectedModel).resolveModel(
 			collectedModel,
@@ -236,6 +246,7 @@ export class ThemeWorkspaceSession {
 			collection.declarations,
 			collection.resolvedReferencesById,
 			collection.schemaSettings,
+			collection.instances,
 		);
 		const resolvedModel = this.resolverIndex.resolveModel(collectedModel);
 		const transaction = this.semanticStore.beginUpdate(resolvedModel);
@@ -284,6 +295,7 @@ export class ThemeWorkspaceSession {
 			referencesByTargetKey: this.referencesByTargetKey,
 			resolvedReferencesById: this.resolvedReferencesById,
 			schemaSettings: this.schemaSettingResultsBySource,
+			instances: this.instanceResultsBySource,
 		};
 	}
 
@@ -295,6 +307,7 @@ export class ThemeWorkspaceSession {
 		this.referencesByTargetKey = state.referencesByTargetKey;
 		this.resolvedReferencesById = state.resolvedReferencesById;
 		this.schemaSettingResultsBySource = state.schemaSettings;
+		this.instanceResultsBySource = state.instances;
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
@@ -319,7 +332,8 @@ export class ThemeWorkspaceSession {
 type ThemeCollectionContext = ThemeDeclarationPassContext &
 	ThemeReferencePassContext &
 	ThemeIncrementalResolutionContext &
-	ThemeSchemaSettingPassContext;
+	ThemeSchemaSettingPassContext &
+	ThemeInstancePassContext;
 
 type ThemeCollectionState = {
 	declarations: Map<string, ThemeDeclarationPassResult>;
@@ -329,6 +343,7 @@ type ThemeCollectionState = {
 	referencesByTargetKey: Map<string, Map<string, ThemeReference>>;
 	resolvedReferencesById: Map<string, ThemeReference>;
 	schemaSettings: Map<string, ThemeSchemaSettingPassResult>;
+	instances: Map<string, ThemeInstancePassResult>;
 };
 
 function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
@@ -349,6 +364,9 @@ function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext>
 			string,
 			ThemeSchemaSettingRecord
 		>(createThemeSchemaSettingPass()),
+		incrementalThemePass<ThemeCollectionContext, string, ThemeInstanceRecord>(
+			createThemeInstancePass(),
+		),
 	]);
 }
 
@@ -368,6 +386,11 @@ function runCollectionPasses(
 		referencesByTargetKey: state.referencesByTargetKey,
 		resolvedReferencesById: state.resolvedReferencesById,
 		schemaSettingResultsBySource: state.schemaSettings,
+		instanceResultsBySource: state.instances,
+		instanceIds: {
+			section: sectionInstanceId,
+			block: blockInstanceId,
+		},
 		ids: {
 			file: fileId,
 			declaration: declarationId,
@@ -401,6 +424,7 @@ function cloneCollectionState(
 		referencesByTargetKey: cloneRecordIndex(state.referencesByTargetKey),
 		resolvedReferencesById: new Map(state.resolvedReferencesById),
 		schemaSettings: cloneSchemaSettingResults(state.schemaSettings),
+		instances: cloneInstanceResults(state.instances),
 	};
 }
 
@@ -438,11 +462,26 @@ function cloneSchemaSettingResults(
 	);
 }
 
+function cloneInstanceResults(
+	results: Map<string, ThemeInstancePassResult>,
+): Map<string, ThemeInstancePassResult> {
+	return new Map(
+		[...results].map(([path, result]) => [
+			path,
+			{
+				sectionInstances: [...result.sectionInstances],
+				blockInstances: [...result.blockInstances],
+			},
+		]),
+	);
+}
+
 function modelWithCollectedRecords(
 	model: ThemeSemanticModel,
 	declarationsBySource: Map<string, ThemeDeclarationPassResult>,
 	resolvedReferencesById: Map<string, ThemeReference>,
 	schemaSettingsBySource: Map<string, ThemeSchemaSettingPassResult>,
+	instancesBySource: Map<string, ThemeInstancePassResult>,
 ): ThemeSemanticModel {
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
@@ -466,6 +505,16 @@ function modelWithCollectedRecords(
 	const analyzedSettingReads = new Map(
 		model.settingReads.map((read) => [read.id, read]),
 	);
+	const analyzedSectionInstances = new Map(
+		model.sectionInstances.map((instance) => [instance.id, instance]),
+	);
+	const analyzedBlockInstances = new Map(
+		model.blockInstances.map((instance) => [instance.id, instance]),
+	);
+	const instances = [...instancesBySource.keys()]
+		.sort((a, b) => a.localeCompare(b))
+		.map((path) => instancesBySource.get(path))
+		.filter((result): result is ThemeInstancePassResult => Boolean(result));
 	return {
 		...model,
 		files,
@@ -478,6 +527,16 @@ function modelWithCollectedRecords(
 		settingReads: schemaSettings.flatMap((result) =>
 			result.settingReads.map(
 				(read) => analyzedSettingReads.get(read.id) ?? read,
+			),
+		),
+		sectionInstances: instances.flatMap((result) =>
+			result.sectionInstances.map(
+				(instance) => analyzedSectionInstances.get(instance.id) ?? instance,
+			),
+		),
+		blockInstances: instances.flatMap((result) =>
+			result.blockInstances.map(
+				(instance) => analyzedBlockInstances.get(instance.id) ?? instance,
 			),
 		),
 	};
