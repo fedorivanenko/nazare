@@ -1,3 +1,4 @@
+import { ThemeFactIndex } from "./theme-fact-index.js";
 import { ThemeFactStore, themeFactSourcePath } from "./theme-fact-store.js";
 import type {
 	InspectNazareThemeOptions,
@@ -28,7 +29,8 @@ export class ThemeWorkspaceSession {
 	private readonly options: InspectNazareThemeOptions;
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
 	private readonly memo = {} as ThemeAnalysisMemo;
-	private readonly factStore = new ThemeFactStore();
+	private readonly factStore: ThemeFactStore;
+	private readonly factIndex: ThemeFactIndex;
 	private graph: InspectNazareThemeResult;
 	private externalFingerprint: string;
 	private revision = 0;
@@ -40,12 +42,8 @@ export class ThemeWorkspaceSession {
 		this.options = { ...options, cache: this.cache, memo: this.memo };
 		for (const file of files) this.filesByPath.set(file.path, file);
 		const analysis = analyzeNazareTheme(this.files(), this.options);
-		this.factStore.replaceFile("", []);
-		for (const fact of analysis.facts)
-			this.factStore.replaceFile(themeFactSourcePath(fact), [
-				fact,
-				...this.factStore.getFile(themeFactSourcePath(fact)),
-			]);
+		this.factStore = new ThemeFactStore(analysis.facts);
+		this.factIndex = new ThemeFactIndex(analysis.facts);
 		this.graph = themeGraphFromModel(analysis.ir);
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
@@ -92,6 +90,7 @@ export class ThemeWorkspaceSession {
 				(fact) => themeFactSourcePath(fact) === path,
 			);
 			this.factStore.replaceFile(path, facts);
+			this.factIndex.replaceFileFacts(path, facts);
 		}
 		this.graph = themeGraphFromModel(analysis.ir);
 		this.revision += 1;
