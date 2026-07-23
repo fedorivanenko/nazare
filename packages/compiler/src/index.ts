@@ -203,6 +203,14 @@ export type {
 } from "./theme-facts.js";
 export { shareThemeGraphRecords } from "./theme-graph-output.js";
 export { ThemeImpactIndex } from "./theme-impact-index.js";
+export {
+	collectThemeInstances,
+	createThemeInstancePass,
+	type ThemeInstanceIds,
+	type ThemeInstancePassContext,
+	type ThemeInstancePassResult,
+	type ThemeInstanceRecord,
+} from "./theme-instance-pass.js";
 export { ThemeMetafieldIndex } from "./theme-metafield-index.js";
 export {
 	analyzeMetafields,
