@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	createThemeCapabilityPass,
 	createThemeCapabilitySignalPass,
 	createThemeDataFlowFixedPointPass,
 	createThemeDeclarationPass,
@@ -153,6 +154,49 @@ test("capability signal pass replaces only changed source records", () => {
 	context.facts.replaceFile(first.path, []);
 	scheduler.execute([{ kind: "factsChanged", path: first.path }], context);
 	assert.equal(context.capabilitySignalsBySource.has(first.path), false);
+});
+
+test("capability pass preserves confidence and evidence by source", () => {
+	const path = "sections/main.liquid";
+	const context = {
+		dataAccessesBySource: new Map([
+			[
+				path,
+				[
+					{
+						id: "access:price",
+						fromPath: path,
+						object: "product",
+						propertyPath: "price",
+						expression: "product.price",
+						origin: "liquid",
+					},
+				],
+			],
+		]),
+		capabilitySignalsBySource: new Map(),
+		capabilitiesBySource: new Map(),
+	};
+	const scheduler = new ThemePassScheduler([
+		incrementalThemePass(createThemeCapabilityPass()),
+	]);
+	const result = scheduler.execute(
+		[{ kind: "dataFlowChanged", sourcePath: path }],
+		context,
+	);
+	assert.deepEqual(context.capabilitiesBySource.get(path), [
+		{
+			id: `capability:${path}:displaysProductPrice`,
+			path,
+			capability: "displaysProductPrice",
+			confidence: 0.95,
+			evidenceIds: ["access:price"],
+		},
+	]);
+	assert.equal(
+		result.changes.some((change) => change.kind === "capabilityChanged"),
+		true,
+	);
 });
 
 test("resolution pass recomputes only references under changed target keys", () => {
