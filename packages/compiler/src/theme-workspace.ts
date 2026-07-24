@@ -28,6 +28,7 @@ import type {
 	ThemeBuildResult,
 	ThemeFact,
 	ThemeInputFile,
+	ThemeSemanticModel,
 } from "./theme-facts.js";
 import {
 	classifyThemeFile,
@@ -340,32 +341,47 @@ function analyzeNormalizedThemeFiles(
 		facts,
 		issues,
 		metafields: options.metafields,
-		themeCheck: themeCheckPolicy,
 	});
-	if (options.memo?.fingerprint === modelFingerprint) {
+	let baseModel = options.memo?.model;
+	if (!baseModel || options.memo?.fingerprint !== modelFingerprint) {
+		baseModel = buildThemeSemanticModel(facts, issues, {
+			root: options.root,
+			metafields: options.metafields,
+		});
+		if (options.memo) {
+			options.memo.fingerprint = modelFingerprint;
+			options.memo.model = baseModel;
+			delete options.memo.projectionFingerprint;
+			delete options.memo.projectedModel;
+		}
+	}
+	const projectionFingerprint = JSON.stringify(themeCheckPolicy);
+	if (
+		options.memo?.projectionFingerprint === projectionFingerprint &&
+		options.memo.projectedModel
+	) {
 		return {
-			ir: options.memo.model,
+			ir: options.memo.projectedModel,
 			artifacts,
 			facts,
-			issues: options.memo.model.issues,
+			issues: options.memo.projectedModel.issues,
 		};
 	}
-	const ir = buildThemeSemanticModel(facts, issues, {
-		root: options.root,
-		metafields: options.metafields,
-	});
-	ir.themeCheck = {
-		path: themeCheckPolicy.path,
-		ignoredChecks: themeCheckPolicy.ignoredChecks,
-	};
 	const filteredIssues = filterThemeCheckIssues(
-		[...ir.issues, ...themeCheckPolicy.issues],
+		[...baseModel.issues, ...themeCheckPolicy.issues],
 		themeCheckPolicy,
 	);
-	ir.issues = filteredIssues;
+	const ir: ThemeSemanticModel = {
+		...baseModel,
+		themeCheck: {
+			path: themeCheckPolicy.path,
+			ignoredChecks: themeCheckPolicy.ignoredChecks,
+		},
+		issues: filteredIssues,
+	};
 	if (options.memo) {
-		options.memo.fingerprint = modelFingerprint;
-		options.memo.model = ir;
+		options.memo.projectionFingerprint = projectionFingerprint;
+		options.memo.projectedModel = ir;
 	}
 	return { ir, artifacts, facts, issues: filteredIssues };
 }
