@@ -164,65 +164,88 @@ async function handleRequest(
 	throw new Error(`Unknown graph server method ${request.method}`);
 }
 
+const WATCH_DEBOUNCE_MS = 40;
+
 function startWatcher(
 	root: string,
 	getSession: () => ThemeWorkspaceSession,
 	getBuildSession: () => ThemeBuildSession,
 	notify: (update: unknown) => void,
 ): () => void {
+	let closed = false;
 	let pending = Promise.resolve();
+	const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	const watcher = watchDirectory(
 		root,
 		{ recursive: true },
 		(_event, filename) => {
 			const relativePath = filename?.toString().split("\\").join("/");
 			if (!relativePath || !isWatchedPath(relativePath)) return;
-			pending = pending
-				.then(async () => {
-					const session = getSession();
-					if (isThemeFile(relativePath)) {
-						try {
-							const contents = await readFile(join(root, relativePath), "utf8");
-							const file = { path: relativePath, contents };
+			const previousTimer = debounceTimers.get(relativePath);
+			if (previousTimer) clearTimeout(previousTimer);
+			debounceTimers.set(
+				relativePath,
+				setTimeout(() => {
+					debounceTimers.delete(relativePath);
+					pending = pending
+						.then(() => processWatchedPath(relativePath))
+						.catch((error) => {
+							if (closed) return;
 							notify({
-								method: "graph/update",
-								params: session.updateFile(file),
+								method: "graph/error",
+								error: error instanceof Error ? error.message : String(error),
 							});
-							notify({
-								method: "build/update",
-								params: getBuildSession().updateFile(file),
-							});
-						} catch (error) {
-							if (isNotFound(error)) {
-								notify({
-									method: "graph/update",
-									params: session.removeFile(relativePath),
-								});
-								notify({
-									method: "build/update",
-									params: getBuildSession().removeFile(relativePath),
-								});
-								return;
-							}
-							throw error;
-						}
-						return;
-					}
-					const update = await session.updateExternalArtifacts({
-						metafields: await optionalFile(root, ".shopify/metafields.json"),
-						themeCheck: await optionalFile(root, ".theme-check.yml"),
-					});
-					notify({ method: "graph/update", params: update });
-				})
-				.catch((error) => {
-					notify({
-						method: "graph/error",
-						error: error instanceof Error ? error.message : String(error),
-					});
-				});
+						});
+				}, WATCH_DEBOUNCE_MS),
+			);
 		},
 	);
-	return () => watcher.close();
+
+	async function processWatchedPath(relativePath: string): Promise<void> {
+		if (closed) return;
+		const session = getSession();
+		if (isThemeFile(relativePath)) {
+			try {
+				const contents = await readFile(join(root, relativePath), "utf8");
+				const file = { path: relativePath, contents };
+				const graphUpdate = session.updateFile(file);
+				const buildUpdate = getBuildSession().updateFile(file);
+				if (closed) return;
+				if (graphUpdate.changedPaths.length > 0) {
+					notify({ method: "graph/update", params: graphUpdate });
+				}
+				if (buildUpdate.changedPaths.length > 0) {
+					notify({ method: "build/update", params: buildUpdate });
+				}
+			} catch (error) {
+				if (!isNotFound(error)) throw error;
+				const graphUpdate = session.removeFile(relativePath);
+				const buildUpdate = getBuildSession().removeFile(relativePath);
+				if (closed) return;
+				if (graphUpdate.changedPaths.length > 0) {
+					notify({ method: "graph/update", params: graphUpdate });
+				}
+				if (buildUpdate.changedPaths.length > 0) {
+					notify({ method: "build/update", params: buildUpdate });
+				}
+			}
+			return;
+		}
+		const update = await session.updateExternalArtifacts({
+			metafields: await optionalFile(root, ".shopify/metafields.json"),
+			themeCheck: await optionalFile(root, ".theme-check.yml"),
+		});
+		if (!closed && update.changedPaths.length > 0) {
+			notify({ method: "graph/update", params: update });
+		}
+	}
+
+	return () => {
+		closed = true;
+		for (const timer of debounceTimers.values()) clearTimeout(timer);
+		debounceTimers.clear();
+		watcher.close();
+	};
 }
 
 function isWatchedPath(path: string): boolean {
