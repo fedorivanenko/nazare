@@ -52,7 +52,11 @@ export function createThemeCapabilitySignalPass(): IncrementalPass<
 				else context.capabilitySignalsBySource.delete(path);
 				records.push(...next);
 				for (const id of changedIds(previous, next)) {
-					changes.push({ kind: "capabilitySignalChanged", id });
+					changes.push({
+						kind: "capabilitySignalChanged",
+						id,
+						sourcePath: path,
+					});
 				}
 			}
 			return { records, changes };
