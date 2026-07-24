@@ -785,13 +785,42 @@ test("workspace seeds snapshot-only metafield updates without reparsing Liquid",
 			{ owner: "product", namespace: "custom", key: "subtitle" },
 		]),
 	};
-	const update = session.updateExternalArtifacts({ metafields });
-	assert.equal(update.changedPaths.includes(".shopify/metafields.json"), true);
+	const added = session.updateExternalArtifacts({ metafields });
+	assert.equal(added.changedPaths.includes(".shopify/metafields.json"), true);
 	assert.strictEqual(session.cache.entries["sections/main.liquid"], cached);
 	assert.deepEqual(
 		session.getGraph(),
 		inspectNazareTheme(files, { metafields }),
 	);
+
+	const changedMetafields = {
+		contents: JSON.stringify([
+			{
+				owner: "product",
+				namespace: "custom",
+				key: "subtitle",
+				type: "single_line_text_field",
+			},
+		]),
+	};
+	session.updateExternalArtifacts({ metafields: changedMetafields });
+	assert.strictEqual(session.cache.entries["sections/main.liquid"], cached);
+	assert.deepEqual(
+		session.getGraph(),
+		inspectNazareTheme(files, { metafields: changedMetafields }),
+	);
+
+	const malformedMetafields = { contents: "{" };
+	session.updateExternalArtifacts({ metafields: malformedMetafields });
+	assert.strictEqual(session.cache.entries["sections/main.liquid"], cached);
+	assert.deepEqual(
+		session.getGraph(),
+		inspectNazareTheme(files, { metafields: malformedMetafields }),
+	);
+
+	session.updateExternalArtifacts({ metafields: undefined });
+	assert.strictEqual(session.cache.entries["sections/main.liquid"], cached);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
 });
 
 test("metafield definitions inherit affected pages through theme dependencies", () => {
