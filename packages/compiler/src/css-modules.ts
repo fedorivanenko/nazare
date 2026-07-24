@@ -77,6 +77,25 @@ export function cssClassTokens(source: string): CssClassToken[] {
 	return tokens;
 }
 
+export function cssParseError(source: string): string | undefined {
+	let root: postcss.Root;
+	try {
+		root = postcss.parse(source);
+	} catch (error) {
+		return error instanceof Error ? error.message : String(error);
+	}
+	let selectorError: string | undefined;
+	root.walkRules((rule) => {
+		if (selectorError) return;
+		try {
+			selectorParser().astSync(rule.selector);
+		} catch (error) {
+			selectorError = error instanceof Error ? error.message : String(error);
+		}
+	});
+	return selectorError;
+}
+
 /** Rewrites selector-position class names through `rename`. */
 export function rewriteCssClasses(
 	source: string,

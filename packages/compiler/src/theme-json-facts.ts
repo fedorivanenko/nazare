@@ -104,7 +104,16 @@ function collectTemplateFacts(
 		);
 		return;
 	}
-	if (!("sections" in parsed)) return;
+	if (!("sections" in parsed)) {
+		issues.push(
+			invalidJsonShape(
+				path,
+				"THEME_TEMPLATE_MISSING_SECTIONS",
+				'Template must contain a "sections" object',
+			),
+		);
+		return;
+	}
 	if (!isRecord(parsed.sections)) {
 		issues.push(
 			invalidJsonShape(
@@ -114,6 +123,48 @@ function collectTemplateFacts(
 			),
 		);
 		return;
+	}
+	if (!Array.isArray(parsed.order)) {
+		issues.push(
+			invalidJsonShape(
+				path,
+				"THEME_TEMPLATE_INVALID_ORDER",
+				'Template "order" must be an array of section instance ids',
+			),
+		);
+	} else {
+		const seenOrderIds = new Set<string>();
+		for (const [orderIndex, instanceId] of parsed.order.entries()) {
+			if (typeof instanceId !== "string" || !instanceId) {
+				issues.push(
+					invalidJsonShape(
+						path,
+						"THEME_TEMPLATE_INVALID_ORDER_ID",
+						`Template order entry ${orderIndex} must be a non-empty string`,
+					),
+				);
+				continue;
+			}
+			if (!(instanceId in parsed.sections)) {
+				issues.push(
+					invalidJsonShape(
+						path,
+						"THEME_TEMPLATE_UNKNOWN_ORDER_ID",
+						`Template order references missing section ${instanceId}`,
+					),
+				);
+			}
+			if (seenOrderIds.has(instanceId)) {
+				issues.push(
+					invalidJsonShape(
+						path,
+						"THEME_TEMPLATE_DUPLICATE_ORDER_ID",
+						`Template order repeats section ${instanceId}`,
+					),
+				);
+			}
+			seenOrderIds.add(instanceId);
+		}
 	}
 	for (const [instanceId, section] of Object.entries(parsed.sections)) {
 		if (!isRecord(section)) {

@@ -143,6 +143,7 @@ export function buildThemeSemanticModel(
 	const guardedObjects = new Set(dataFlowInputs.guardedObjects);
 	const defaultedObjects = new Set(dataFlowInputs.defaultedObjects);
 	const docParams = dataFlowInputs.docParams;
+	const declaredInputs = dataFlowInputs.declaredInputs;
 	const renderSiteFacts = dataFlowInputs.renderSiteFacts;
 	const renderArguments = dataFlowInputs.renderArguments;
 	const capabilitySignals = collectThemeCapabilitySignals(
@@ -186,7 +187,7 @@ export function buildThemeSemanticModel(
 		variableReads,
 		guardedObjects,
 		defaultedObjects,
-		docParams,
+		declaredInputs,
 		renderArguments,
 	);
 	modelIssues.push(
@@ -232,6 +233,10 @@ export function buildThemeSemanticModel(
 		renderArguments,
 		capabilitySignals,
 		docParams,
+		declaredInputs: declaredInputs.filter(
+			(input): input is Extract<ThemeFact, { kind: "declaresInput" }> =>
+				input.kind === "declaresInput",
+		),
 	});
 
 	modelIssues.push(...settingResolution.issues, ...localeResolution.issues);

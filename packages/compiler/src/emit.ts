@@ -16,11 +16,16 @@ import type {
 import { NodeTypes } from "@shopify/liquid-html-parser";
 import type { NazareAst } from "./ast.js";
 import { bundleScript, indent } from "./bundle.js";
-import { rewriteCssClasses, scopedClassName } from "./css-modules.js";
+import {
+	cssParseError,
+	rewriteCssClasses,
+	scopedClassName,
+} from "./css-modules.js";
 import { type DataBindingKind, dataChannelFromIR } from "./data-channel.js";
 import {
 	emitAmbiguousRoot,
 	emitImplicitRootElement,
+	emitInvalidCss,
 	emitMultipleRootMarkers,
 	emitOverlappingEdits,
 	emitScriptWithoutDefaultExport,
@@ -190,6 +195,13 @@ export function emitCssFiles(
 ): EmitResult {
 	const styles = compiled.ir.syntax.filter((node) => node.kind === "style");
 	if (styles.length === 0) return { files: [], issues: [] };
+	const issues = styles.flatMap((style) => {
+		const detail = cssParseError(style.source);
+		return detail
+			? [emitInvalidCss(options.name, detail, style.bodySpan ?? style.span)]
+			: [];
+	});
+	if (issues.length > 0) return { files: [], issues };
 
 	// Bound sheets (css modules) scope by class rewrite; unbound sheets pass
 	// through untouched, as vanilla Shopify would.

@@ -17,6 +17,10 @@ export function docParamEvidenceId(path: string, name: string): string {
 	return `doc-param:${path}:${name}`;
 }
 
+export function declaredInputEvidenceId(path: string, name: string): string {
+	return `declared-input:${path}:${name}`;
+}
+
 function fileSpan(path: string): SourceSpan {
 	const position = { line: 1, column: 1 };
 	return { file: path, start: position, end: position };
@@ -28,11 +32,14 @@ export function deriveThemeExpectedInputs(
 	variableReads: ThemeVariableReadRecord[],
 	guardedObjects: Set<string>,
 	defaultedObjects: Set<string>,
-	docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[],
+	declaredInputs: Extract<
+		ThemeFact,
+		{ kind: "declaresDocParam" | "declaresInput" }
+	>[],
 	renderArguments: ThemeRenderArgumentRecord[],
 ): ThemeExpectedInputRecord[] {
 	const declaredByPathAndName = new Map(
-		docParams.map((param) => [`${param.path}:${param.name}`, param]),
+		declaredInputs.map((param) => [`${param.path}:${param.name}`, param]),
 	);
 	const snippetPathsByName = new Map(
 		declarations
@@ -169,7 +176,12 @@ export function deriveThemeExpectedInputs(
 			declaredType: declared?.paramType,
 			propertyPaths: propertyPath ? [propertyPath] : [],
 			evidenceIds: declared
-				? [...evidenceIds, docParamEvidenceId(path, name)]
+				? [
+						...evidenceIds,
+						declared.kind === "declaresInput"
+							? declaredInputEvidenceId(path, name)
+							: docParamEvidenceId(path, name),
+					]
 				: evidenceIds,
 		};
 	};
@@ -196,11 +208,19 @@ export function deriveThemeExpectedInputs(
 	}
 	// A declared parameter is part of the interface whether or not the body
 	// happens to read it, so declarations seed inputs that no read produced.
-	for (const param of docParams) {
+	for (const param of declaredInputs) {
 		if (!componentPaths.has(param.path)) continue;
 		const id = expectedInputId(param.path, param.name);
 		if (byId.has(id)) continue;
-		byId.set(id, reconciledInput(param.path, param.name, "docParam", []));
+		byId.set(
+			id,
+			reconciledInput(
+				param.path,
+				param.name,
+				param.kind === "declaresInput" ? "nazareProp" : "docParam",
+				[],
+			),
+		);
 	}
 	return [...byId.values()];
 }

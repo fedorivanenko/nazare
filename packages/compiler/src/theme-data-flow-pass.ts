@@ -76,7 +76,8 @@ export function createThemeDataFlowFixedPointPass(): FixedPointPass<
 		step(pending, context) {
 			const ordered = [...pending].sort((a, b) => a.localeCompare(b));
 			const current = ordered[0];
-			if (!current) return { records: [], changes: [], pending: new Set() };
+			if (!current)
+				return { records: [], changes: [], pending: new Set(), work: 1 };
 			const nextPending = new Set(ordered.slice(1));
 			const paths = parseDataFlowGroupKey(current);
 			const delta = context.recomputeDataFlowGroup(paths);
@@ -124,6 +125,10 @@ export type ThemeDataFlowInputPassResult = {
 	guardedObjects: string[];
 	defaultedObjects: string[];
 	docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[];
+	declaredInputs: Extract<
+		ThemeFact,
+		{ kind: "declaresDocParam" | "declaresInput" }
+	>[];
 	renderSiteFacts: Extract<ThemeFact, { kind: "rendersSnippet" }>[];
 	renderArguments: ThemeRenderArgumentRecord[];
 };
@@ -308,6 +313,10 @@ export function collectThemeDataFlowInputs(
 	const guardedObjects = new Set<string>();
 	const defaultedObjects = new Set<string>();
 	const docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[] = [];
+	const declaredInputs: Extract<
+		ThemeFact,
+		{ kind: "declaresDocParam" | "declaresInput" }
+	>[] = [];
 	const renderSiteFacts: Extract<ThemeFact, { kind: "rendersSnippet" }>[] = [];
 	const renderArguments: ThemeRenderArgumentRecord[] = [];
 	for (const fact of facts) {
@@ -329,6 +338,8 @@ export function collectThemeDataFlowInputs(
 			if (fact.via === "default") defaultedObjects.add(key);
 		}
 		if (fact.kind === "declaresDocParam") docParams.push(fact);
+		if (fact.kind === "declaresDocParam" || fact.kind === "declaresInput")
+			declaredInputs.push(fact);
 		if (fact.kind === "readsShopifyData") {
 			dataAccesses.push({
 				id: ids.dataAccess(fact.fromPath, fact.expression, fact.span),
@@ -360,6 +371,7 @@ export function collectThemeDataFlowInputs(
 		guardedObjects: [...guardedObjects].sort(),
 		defaultedObjects: [...defaultedObjects].sort(),
 		docParams,
+		declaredInputs,
 		renderSiteFacts,
 		renderArguments,
 	};
@@ -371,7 +383,7 @@ function dataFlowInputCount(result: ThemeDataFlowInputPassResult): number {
 		result.variableReads.length +
 		result.guardedObjects.length +
 		result.defaultedObjects.length +
-		result.docParams.length +
+		result.declaredInputs.length +
 		result.renderSiteFacts.length +
 		result.renderArguments.length
 	);

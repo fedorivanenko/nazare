@@ -125,6 +125,32 @@ test("build session computes dependent closure without replacing unrelated outpu
 	]);
 });
 
+test("build session rebuilds components when imported source assets change", () => {
+	const component = {
+		path: "components/card.nz.liquid",
+		contents:
+			'{% import styles from "./card.css" %}<div class="{{ styles.card }}">Card</div>',
+	};
+	const session = new ThemeBuildSession([
+		component,
+		{ path: "components/card.css", contents: ".card { color: red; }" },
+	]);
+
+	const update = session.updateFile({
+		path: "components/card.css",
+		contents: ".card { color: blue; }",
+	});
+	assert.deepEqual(update.recomputedPaths, [
+		"components/card.css",
+		"components/card.nz.liquid",
+	]);
+	assert.deepEqual(update.changedOutputPaths, ["assets/card.css"]);
+	assert.match(
+		emittedFile(session.getBuild(), "assets/card.css").contents,
+		/blue/,
+	);
+});
+
 test("build session reference-counts shared runtime assets", () => {
 	const scripted = (label) =>
 		`<div ref="root">${label}</div>\n{% script %}\nexport default island(({ refs }) => refs.root.remove());\n{% endscript %}`;

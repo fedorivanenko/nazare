@@ -951,6 +951,12 @@ function evidenceInputsForSource(
 				(fact): fact is Extract<ThemeFact, { kind: "declaresDocParam" }> =>
 					fact.kind === "declaresDocParam",
 			),
+		declaredInputs: facts
+			.getFile(path)
+			.filter(
+				(fact): fact is Extract<ThemeFact, { kind: "declaresInput" }> =>
+					fact.kind === "declaresInput",
+			),
 	};
 }
 
@@ -1056,6 +1062,7 @@ function cloneDataFlowInputResults(
 				guardedObjects: [...result.guardedObjects],
 				defaultedObjects: [...result.defaultedObjects],
 				docParams: [...result.docParams],
+				declaredInputs: [...result.declaredInputs],
 				renderSiteFacts: [...result.renderSiteFacts],
 				renderArguments: [...result.renderArguments],
 			},
@@ -1169,6 +1176,7 @@ function allDataFlowInputs(
 		guardedObjects: values.flatMap((result) => result.guardedObjects),
 		defaultedObjects: values.flatMap((result) => result.defaultedObjects),
 		docParams: values.flatMap((result) => result.docParams),
+		declaredInputs: values.flatMap((result) => result.declaredInputs),
 		renderSiteFacts: values.flatMap((result) => result.renderSiteFacts),
 		renderArguments: values.flatMap((result) => result.renderArguments),
 	};
@@ -1192,7 +1200,7 @@ function deriveDataFlowSnapshot(
 		inputs.variableReads,
 		new Set(inputs.guardedObjects),
 		new Set(inputs.defaultedObjects),
-		inputs.docParams,
+		inputs.declaredInputs,
 		inputs.renderArguments,
 	);
 	const renderSites = deriveThemeRenderSites(

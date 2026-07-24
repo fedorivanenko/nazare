@@ -11,7 +11,8 @@ export type ThemeEvidenceRecord = {
 		| "renderArgument"
 		| "templateConfig"
 		| "dependency"
-		| "docParam";
+		| "docParam"
+		| "inputDeclaration";
 	file: string;
 	span?: SourceSpan;
 	extractor: string;

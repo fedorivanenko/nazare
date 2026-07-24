@@ -21,9 +21,7 @@ export function checkComponentScripts(
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const refs = ir.syntax.filter((node) => node.kind === "element-ref");
-	const scripts = ir.syntax.filter(
-		(node) => node.kind === "script" && node.lang === "ts",
-	);
+	const scripts = ir.syntax.filter((node) => node.kind === "script");
 	const componentFile =
 		ir.syntax.find((node) => node.kind === "file")?.path ?? "";
 
@@ -32,9 +30,11 @@ export function checkComponentScripts(
 
 	for (const script of scripts) {
 		if (script.kind !== "script") continue;
-		const prelude = preludeFor(refs, channel);
-		const virtualSource = `${prelude}\n${script.source}`;
-		const preludeLines = prelude.split("\n").length;
+		const prelude = script.lang === "ts" ? preludeFor(refs, channel) : "";
+		const virtualSource = prelude
+			? `${prelude}\n${script.source}`
+			: script.source;
+		const preludeLines = prelude ? prelude.split("\n").length : 0;
 		// The virtual entry lives in the script's own directory so its
 		// relative imports resolve exactly as the bundler resolves them.
 		const scriptDir = directoryOf(script.bodySpan?.file ?? componentFile);
@@ -42,6 +42,7 @@ export function checkComponentScripts(
 		for (const diagnostic of typescriptDiagnostics(
 			virtualSource,
 			scriptDir,
+			script.lang,
 			options.readFile,
 			sourceFileCache,
 		)) {
@@ -102,6 +103,7 @@ declare function island(
 function typescriptDiagnostics(
 	virtualSource: string,
 	scriptDir: string,
+	language: "js" | "ts",
 	readFile: ((path: string) => string | undefined) | undefined,
 	sourceFileCache: Map<string, ts.SourceFile>,
 ): readonly ts.Diagnostic[] {
@@ -109,12 +111,14 @@ function typescriptDiagnostics(
 	// resolution for rootless containing files, so the project is mirrored
 	// under the filesystem root: "/<project-relative-path>" for every file
 	// readFile can serve, with the virtual entry beside the real script.
-	const virtualFileName = `${scriptDir ? `/${scriptDir}` : ""}/__nazare_entry__.ts`;
+	const virtualFileName = `${scriptDir ? `/${scriptDir}` : ""}/__nazare_entry__.${language}`;
 	const options: ts.CompilerOptions = {
 		target: ts.ScriptTarget.ES2018,
 		module: ts.ModuleKind.ESNext,
 		moduleResolution: ts.ModuleResolutionKind.Bundler,
 		allowImportingTsExtensions: true,
+		allowJs: language === "js",
+		checkJs: false,
 		lib: ["lib.es2018.d.ts", "lib.dom.d.ts"],
 		strict: true,
 		noEmit: true,
@@ -164,9 +168,13 @@ function typescriptDiagnostics(
 	host.writeFile = () => undefined;
 
 	const program = ts.createProgram([virtualFileName], options, host);
-	return ts
-		.getPreEmitDiagnostics(program, virtualSourceFile)
-		.filter((diagnostic) => diagnostic.file?.fileName === virtualFileName);
+	const diagnostics =
+		language === "js"
+			? program.getSyntacticDiagnostics(virtualSourceFile)
+			: ts.getPreEmitDiagnostics(program, virtualSourceFile);
+	return diagnostics.filter(
+		(diagnostic) => diagnostic.file?.fileName === virtualFileName,
+	);
 }
 
 /**
