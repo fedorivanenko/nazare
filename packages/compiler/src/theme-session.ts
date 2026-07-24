@@ -1,3 +1,15 @@
+import {
+	createThemeCapabilityPass,
+	type ThemeCapabilityPassContext,
+} from "./theme-capability-pass.js";
+import {
+	createThemeCapabilitySignalPass,
+	type ThemeCapabilitySignalPassContext,
+} from "./theme-capability-signal-pass.js";
+import {
+	createThemeClassificationPass,
+	type ThemeClassificationPassContext,
+} from "./theme-classification-pass.js";
 import { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 import {
 	createThemeDataFlowFixedPointPass,
@@ -24,6 +36,9 @@ import type {
 	InspectNazareThemeResult,
 	ThemeAnalysisCache,
 	ThemeAnalysisMemo,
+	ThemeCapabilityRecord,
+	ThemeCapabilitySignalRecord,
+	ThemeClassificationRecord,
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
 	ThemeExpectedInputRecord,
@@ -155,6 +170,15 @@ export class ThemeWorkspaceSession {
 		ThemeDerivedDataFlowResult
 	>();
 	private metafieldResult = { current: emptyMetafieldAnalysis() };
+	private capabilitySignalsBySource = new Map<
+		string,
+		ThemeCapabilitySignalRecord[]
+	>();
+	private capabilitiesBySource = new Map<string, ThemeCapabilityRecord[]>();
+	private classificationsBySource = new Map<
+		string,
+		ThemeClassificationRecord[]
+	>();
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
@@ -190,6 +214,9 @@ export class ThemeWorkspaceSession {
 			collection.dataFlowInputs,
 			collection.derivedDataFlow,
 			collection.metafields.current,
+			collection.capabilitySignals,
+			collection.capabilities,
+			collection.classifications,
 		);
 		const model = new ThemeResolverIndex(collectedModel).resolveModel(
 			collectedModel,
@@ -312,6 +339,9 @@ export class ThemeWorkspaceSession {
 			collection.dataFlowInputs,
 			collection.derivedDataFlow,
 			collection.metafields.current,
+			collection.capabilitySignals,
+			collection.capabilities,
+			collection.classifications,
 		);
 		const resolvedModel = this.resolverIndex.resolveModel(collectedModel);
 		const transaction = this.semanticStore.beginUpdate(resolvedModel);
@@ -389,6 +419,9 @@ export class ThemeWorkspaceSession {
 			dataFlowInputs: this.dataFlowInputResultsBySource,
 			derivedDataFlow: this.derivedDataFlowBySource,
 			metafields: this.metafieldResult,
+			capabilitySignals: this.capabilitySignalsBySource,
+			capabilities: this.capabilitiesBySource,
+			classifications: this.classificationsBySource,
 		};
 	}
 
@@ -405,6 +438,9 @@ export class ThemeWorkspaceSession {
 		this.dataFlowInputResultsBySource = state.dataFlowInputs;
 		this.derivedDataFlowBySource = state.derivedDataFlow;
 		this.metafieldResult = state.metafields;
+		this.capabilitySignalsBySource = state.capabilitySignals;
+		this.capabilitiesBySource = state.capabilities;
+		this.classificationsBySource = state.classifications;
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
@@ -432,6 +468,9 @@ type ThemeCollectionContext = ThemeDeclarationPassContext &
 	ThemeSchemaSettingPassContext &
 	ThemeInstancePassContext &
 	ThemeLocalePassContext &
+	ThemeCapabilitySignalPassContext &
+	ThemeCapabilityPassContext &
+	ThemeClassificationPassContext &
 	ThemeMetafieldPassContext &
 	ThemeDataFlowInputPassContext &
 	ThemeDataFlowFixedPointContext;
@@ -455,6 +494,9 @@ type ThemeCollectionState = {
 	dataFlowInputs: Map<string, ThemeDataFlowInputPassResult>;
 	derivedDataFlow: Map<string, ThemeDerivedDataFlowResult>;
 	metafields: { current: ThemeMetafieldAnalysis };
+	capabilitySignals: Map<string, ThemeCapabilitySignalRecord[]>;
+	capabilities: Map<string, ThemeCapabilityRecord[]>;
+	classifications: Map<string, ThemeClassificationRecord[]>;
 };
 
 function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
@@ -491,9 +533,22 @@ function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext>
 			string,
 			ThemeDataFlowDerivedRecord
 		>(createThemeDataFlowFixedPointPass()),
+		incrementalThemePass<
+			ThemeCollectionContext,
+			string,
+			ThemeCapabilitySignalRecord
+		>(createThemeCapabilitySignalPass()),
 		incrementalThemePass<ThemeCollectionContext, string, ThemeMetafieldRecord>(
 			createThemeMetafieldPass(),
 		),
+		incrementalThemePass<ThemeCollectionContext, string, ThemeCapabilityRecord>(
+			createThemeCapabilityPass(),
+		),
+		incrementalThemePass<
+			ThemeCollectionContext,
+			string,
+			ThemeClassificationRecord
+		>(createThemeClassificationPass()),
 	]);
 }
 
@@ -532,6 +587,9 @@ function runCollectionPasses(
 		get dataAccessesBySource() {
 			return dataAccessesBySource(state);
 		},
+		capabilitySignalsBySource: state.capabilitySignals,
+		capabilitiesBySource: state.capabilities,
+		classificationsBySource: state.classifications,
 		metafieldResult: state.metafields,
 		dataFlowIds: {
 			dataAccess: dataAccessId,
@@ -613,6 +671,9 @@ function cloneCollectionState(
 		dataFlowInputs: cloneDataFlowInputResults(state.dataFlowInputs),
 		derivedDataFlow: cloneDerivedDataFlowResults(state.derivedDataFlow),
 		metafields: { current: cloneMetafieldAnalysis(state.metafields.current) },
+		capabilitySignals: cloneRecordsBySource(state.capabilitySignals),
+		capabilities: cloneRecordsBySource(state.capabilities),
+		classifications: cloneRecordsBySource(state.classifications),
 	};
 }
 
@@ -769,6 +830,10 @@ function metafieldSnapshotChanges(
 	];
 }
 
+function cloneRecordsBySource<T>(records: Map<string, T[]>): Map<string, T[]> {
+	return new Map(records);
+}
+
 function cloneDerivedDataFlowResults(
 	results: Map<string, ThemeDerivedDataFlowResult>,
 ): Map<string, ThemeDerivedDataFlowResult> {
@@ -866,6 +931,9 @@ function modelWithCollectedRecords(
 	dataFlowInputsBySource: Map<string, ThemeDataFlowInputPassResult>,
 	derivedDataFlowBySource: Map<string, ThemeDerivedDataFlowResult>,
 	metafields: ThemeMetafieldAnalysis,
+	capabilitySignalsBySource: Map<string, ThemeCapabilitySignalRecord[]>,
+	capabilitiesBySource: Map<string, ThemeCapabilityRecord[]>,
+	classificationsBySource: Map<string, ThemeClassificationRecord[]>,
 ): ThemeSemanticModel {
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
@@ -975,6 +1043,11 @@ function modelWithCollectedRecords(
 			path: metafields.path,
 			pulledAt: metafields.pulledAt ?? null,
 		},
+		capabilitySignals: uniqueById(
+			[...capabilitySignalsBySource.values()].flat(),
+		),
+		capabilities: uniqueById([...capabilitiesBySource.values()].flat()),
+		classifications: uniqueById([...classificationsBySource.values()].flat()),
 	};
 }
 
