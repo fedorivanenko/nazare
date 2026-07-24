@@ -7,6 +7,18 @@ type ImpactGraph = Pick<InspectNazareThemeResult, "nodes" | "edges">;
 type ImpactNode = InspectNazareThemeResult["nodes"][number];
 type ImpactEdge = InspectNazareThemeResult["edges"][number];
 
+export type ThemeImpactIndexDelta = {
+	addedNodeIds: string[];
+	removedNodeIds: string[];
+	changedNodeIds: string[];
+	addedEdgeIds: string[];
+	removedEdgeIds: string[];
+	changedEdgeIds: string[];
+	changedAffectedPageKeys: string[];
+	unusedFilesChanged: boolean;
+	unusedFileCount: number;
+};
+
 export class ThemeImpactIndex {
 	private readonly dependentsByNode = new Map<string, Set<string>>();
 	private readonly dependenciesByNode = new Map<string, Set<string>>();
@@ -51,9 +63,12 @@ export class ThemeImpactIndex {
 		return fork;
 	}
 
-	applyGraph(graph: InspectNazareThemeResult): void {
+	applyGraph(graph: InspectNazareThemeResult): ThemeImpactIndexDelta {
+		const previousSummary = this.summary;
 		const nextNodes = new Map(graph.nodes.map((node) => [node.id, node]));
 		const nextEdges = new Map(graph.edges.map((edge) => [edge.id, edge]));
+		const nodeDelta = recordDelta(this.nodesById, nextNodes);
+		const edgeDelta = recordDelta(this.edgesById, nextEdges);
 		for (const [id, edge] of this.edgesById) {
 			const next = nextEdges.get(id);
 			if (!next || !sameRecord(edge, next)) this.removeEdge(edge);
@@ -71,6 +86,23 @@ export class ThemeImpactIndex {
 			if (!previous || !sameRecord(previous, edge)) this.addEdge(edge);
 		}
 		this.refreshSummary();
+		return {
+			addedNodeIds: nodeDelta.added,
+			removedNodeIds: nodeDelta.removed,
+			changedNodeIds: nodeDelta.changed,
+			addedEdgeIds: edgeDelta.added,
+			removedEdgeIds: edgeDelta.removed,
+			changedEdgeIds: edgeDelta.changed,
+			changedAffectedPageKeys: changedRecordKeys(
+				previousSummary.affectedPages,
+				this.summary.affectedPages,
+			),
+			unusedFilesChanged: !sameRecord(
+				previousSummary.unusedFiles,
+				this.summary.unusedFiles,
+			),
+			unusedFileCount: this.summary.unusedFiles.length,
+		};
 	}
 
 	private addNode(node: ImpactNode): void {
@@ -111,13 +143,18 @@ export class ThemeImpactIndex {
 	}
 
 	private refreshSummary(): void {
-		this.summary = impactSummaryFromGraph(
+		const next = impactSummaryFromGraph(
 			{
 				nodes: [...this.nodesById.values()],
 				edges: [...this.edgesById.values()],
 			},
 			this.pathByNodeId,
 		);
+		this.summary = shareImpactSummary(this.summary, next);
+	}
+
+	getUnusedFileCount(): number {
+		return this.summary.unusedFiles.length;
 	}
 
 	toSummary(): ThemeImpactSummary {
@@ -312,6 +349,56 @@ function copySetMap(
 
 function sameRecord(a: unknown, b: unknown): boolean {
 	return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function recordDelta<T>(
+	previous: Map<string, T>,
+	next: Map<string, T>,
+): { added: string[]; removed: string[]; changed: string[] } {
+	return {
+		added: [...next.keys()].filter((id) => !previous.has(id)).sort(),
+		removed: [...previous.keys()].filter((id) => !next.has(id)).sort(),
+		changed: [...next.keys()]
+			.filter(
+				(id) => previous.has(id) && !sameRecord(previous.get(id), next.get(id)),
+			)
+			.sort(),
+	};
+}
+
+function changedRecordKeys(
+	previous: Record<string, string[]>,
+	next: Record<string, string[]>,
+): string[] {
+	return [...new Set([...Object.keys(previous), ...Object.keys(next)])]
+		.filter((key) => !sameRecord(previous[key], next[key]))
+		.sort();
+}
+
+function shareImpactSummary(
+	previous: ThemeImpactSummary,
+	next: ThemeImpactSummary,
+): ThemeImpactSummary {
+	return {
+		dependencies: shareRecord(previous.dependencies, next.dependencies),
+		dependents: shareRecord(previous.dependents, next.dependents),
+		affectedPages: shareRecord(previous.affectedPages, next.affectedPages),
+		unusedFiles: sameRecord(previous.unusedFiles, next.unusedFiles)
+			? previous.unusedFiles
+			: next.unusedFiles,
+	};
+}
+
+function shareRecord(
+	previous: Record<string, string[]>,
+	next: Record<string, string[]>,
+): Record<string, string[]> {
+	return Object.fromEntries(
+		Object.entries(next).map(([key, values]) => [
+			key,
+			sameRecord(previous[key], values) ? previous[key] : values,
+		]),
+	);
 }
 
 function sortedRecord(map: Map<string, Set<string>>): Record<string, string[]> {
