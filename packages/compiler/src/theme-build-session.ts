@@ -8,7 +8,10 @@ import type {
 	ThemeSemanticModel,
 } from "./theme-facts.js";
 import { normalizeThemePath } from "./theme-file-classifier.js";
-import { ThemeWorkspaceSession } from "./theme-session.js";
+import {
+	type ThemeUpdateTelemetry,
+	ThemeWorkspaceSession,
+} from "./theme-session.js";
 import { buildNazareThemeWorkspace } from "./theme-workspace.js";
 
 export type ThemeBuildUpdate = {
@@ -19,6 +22,7 @@ export type ThemeBuildUpdate = {
 	addedOutputPaths: string[];
 	removedOutputPaths: string[];
 	changedOutputPaths: string[];
+	telemetry: ThemeUpdateTelemetry;
 };
 
 class ThemeBuildState {
@@ -104,6 +108,8 @@ class ThemeBuildState {
 	}
 
 	private rebuild(changedPaths: string[]): ThemeBuildUpdate {
+		const startedAt = buildTelemetryNow();
+		const memoryAtStart = buildTelemetryMemory();
 		const previous = this.build;
 		const recomputedPaths = buildRecomputationClosure(
 			this.files(),
@@ -122,10 +128,13 @@ class ThemeBuildState {
 			new Set(recomputedPaths),
 			this.sourcePathsByOutputPath,
 		);
+		let semanticTelemetry: ThemeUpdateTelemetry | undefined;
 		for (const path of changedPaths) {
 			const file = this.filesByPath.get(path);
-			if (file) this.semanticSession.updateFile(file);
-			else this.semanticSession.removeFile(path);
+			const update = file
+				? this.semanticSession.updateFile(file)
+				: this.semanticSession.removeFile(path);
+			semanticTelemetry = update.telemetry;
 		}
 		for (const path of recomputedPaths) {
 			if (!this.filesByPath.has(path))
@@ -155,6 +164,16 @@ class ThemeBuildState {
 			this.build,
 			changedPaths,
 			recomputedPaths,
+			{
+				filesParsed: semanticTelemetry?.filesParsed ?? selectedPaths.length,
+				passKeysProcessed: semanticTelemetry?.passKeysProcessed ?? 0,
+				semanticRecordsReplaced:
+					semanticTelemetry?.semanticRecordsReplaced ?? 0,
+				graphRecordsReplaced: semanticTelemetry?.graphRecordsReplaced ?? 0,
+				outputsEmitted: rebuilt.emitted.files.length,
+				elapsedMs: buildTelemetryNow() - startedAt,
+				peakMemoryBytes: Math.max(memoryAtStart, buildTelemetryMemory()),
+			},
 		);
 	}
 
@@ -419,6 +438,7 @@ function diffBuilds(
 	current: ThemeBuildResult,
 	changedPaths: string[],
 	recomputedPaths: string[],
+	telemetry: ThemeUpdateTelemetry = emptyBuildTelemetry(),
 ): ThemeBuildUpdate {
 	const previousFiles = new Map(
 		previous.emitted.files.map((file) => [file.path, file.contents]),
@@ -444,5 +464,29 @@ function diffBuilds(
 					previousFiles.get(path) !== currentFiles.get(path),
 			)
 			.sort(),
+		telemetry,
 	};
+}
+
+function emptyBuildTelemetry(): ThemeUpdateTelemetry {
+	return {
+		filesParsed: 0,
+		passKeysProcessed: 0,
+		semanticRecordsReplaced: 0,
+		graphRecordsReplaced: 0,
+		outputsEmitted: 0,
+		elapsedMs: 0,
+		peakMemoryBytes: buildTelemetryMemory(),
+	};
+}
+
+function buildTelemetryNow(): number {
+	return globalThis.performance?.now() ?? Date.now();
+}
+
+function buildTelemetryMemory(): number {
+	const processLike = globalThis as typeof globalThis & {
+		process?: { memoryUsage?: () => { heapUsed: number } };
+	};
+	return processLike.process?.memoryUsage?.().heapUsed ?? 0;
 }
