@@ -593,9 +593,13 @@ test("cli: inspect can render a concise human report", async () => {
 				"text",
 			);
 			assert.equal(result.status, 0);
-			assert.match(result.stdout, /Theme graph: 2 files/);
-			assert.match(result.stdout, /Pages 0 · sections 1 · snippets 1/);
-			assert.match(result.stdout, /Issues 0/);
+			assert.deepEqual(result.stdout.trim().split("\n"), [
+				"Theme graph: 2 files",
+				"Pages 0 · sections 1 · snippets 1 · components 0",
+				"Unresolved 0 · metafield reads without definitions 0",
+				"Affected pages 0",
+				"Issues 0 (0 errors, 0 warnings)",
+			]);
 		},
 	);
 });
@@ -651,6 +655,27 @@ test("cli: inspect treats missing external artifacts as unknown", {
 			);
 			assert.equal(result.status, 0);
 			assert.equal(JSON.parse(result.stdout).metafields.state, "unknown");
+		},
+	);
+});
+
+test("cli: inspect rejects a malformed cache instead of silently replacing it", async () => {
+	await withProject(
+		{
+			"snippets/card.liquid": "{{ product.title }}",
+			".nazare-out/inspect-cache-v1.json": "{invalid",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 1);
+			assert.match(result.stderr, /Invalid JSON in theme analysis cache/);
 		},
 	);
 });

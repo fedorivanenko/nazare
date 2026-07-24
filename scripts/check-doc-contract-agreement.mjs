@@ -140,11 +140,57 @@ export function report(theme, score) {
 }
 
 export function readBaseline() {
+	let raw;
 	try {
-		return JSON.parse(readFileSync(baselinePath, "utf8"));
-	} catch {
-		return { version: 1, themes: {} };
+		raw = readFileSync(baselinePath, "utf8");
+	} catch (error) {
+		throw new Error(`Unable to read agreement baseline ${baselinePath}`, {
+			cause: error,
+		});
 	}
+	return parseBaseline(raw, baselinePath);
+}
+
+export function parseBaseline(raw, path = "agreement baseline") {
+	let parsed;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (error) {
+		throw new Error(`Invalid JSON in ${path}`, { cause: error });
+	}
+	if (
+		!parsed ||
+		typeof parsed !== "object" ||
+		Array.isArray(parsed) ||
+		parsed.version !== 1 ||
+		!parsed.themes ||
+		typeof parsed.themes !== "object" ||
+		Array.isArray(parsed.themes)
+	) {
+		throw new Error(`${path} must contain version 1 and a themes object`);
+	}
+	const scoreFields = [
+		"declared",
+		"compared",
+		"agree",
+		"declaredOptionalButInferredRequired",
+		"declaredRequiredButInferredOptional",
+		"declaredRequiredButInferredUnknown",
+		"other",
+	];
+	for (const [theme, score] of Object.entries(parsed.themes)) {
+		if (!score || typeof score !== "object" || Array.isArray(score)) {
+			throw new Error(`${path} theme ${theme} must contain a score object`);
+		}
+		for (const field of scoreFields) {
+			if (!Number.isSafeInteger(score[field]) || score[field] < 0) {
+				throw new Error(
+					`${path} theme ${theme} field ${field} must be a non-negative integer`,
+				);
+			}
+		}
+	}
+	return parsed;
 }
 
 function parseArguments(args) {

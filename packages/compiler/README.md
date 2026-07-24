@@ -138,7 +138,7 @@ Semantic output distinguishes:
 - direct source facts, carrying source evidence;
 - derived value-flow facts, such as a passed `product` becoming `product.price` inside a snippet;
 - inferred inputs, with `required`, `optional`, or `unknown` requirement state;
-- capabilities/classifications, carrying confidence and uncertainty;
+- capabilities/classifications, carrying categorical evidence strength and uncertainty;
 - unresolved dynamic or missing targets.
 
 Graph structure includes pages, templates, layouts, section groups, section and block instances, reusable theme blocks, render sites, render arguments, input satisfaction, Shopify data properties, settings, assets, locales, and optional Shopify metafield definitions. Render calls project explicitly as:

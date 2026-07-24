@@ -212,7 +212,7 @@ test("capability signal pass replaces only changed source records", () => {
 		kind: "detectsCapability",
 		path: "sections/main.liquid",
 		capability: "product-form",
-		confidence: 0.8,
+		evidenceStrength: "strong",
 	};
 	const context = {
 		facts: new ThemeFactStore([first]),
@@ -235,7 +235,7 @@ test("capability signal pass replaces only changed source records", () => {
 	assert.equal(context.capabilitySignalsBySource.has(first.path), false);
 });
 
-test("capability pass preserves confidence and evidence by source", () => {
+test("capability pass preserves evidence strength and sources by source", () => {
 	const path = "sections/main.liquid";
 	const context = {
 		dataAccessesBySource: new Map([
@@ -268,7 +268,7 @@ test("capability pass preserves confidence and evidence by source", () => {
 			id: `capability:${path}:displaysProductPrice`,
 			path,
 			capability: "displaysProductPrice",
-			confidence: 0.95,
+			evidenceStrength: "direct",
 			evidenceIds: ["access:price"],
 		},
 	]);
@@ -278,13 +278,13 @@ test("capability pass preserves confidence and evidence by source", () => {
 	);
 });
 
-test("classification pass preserves confidence uncertainty and evidence", () => {
+test("classification pass preserves evidence strength, uncertainty, and sources", () => {
 	const path = "snippets/card.liquid";
 	const priceCapability = {
 		id: `capability:${path}:displaysProductPrice`,
 		path,
 		capability: "displaysProductPrice",
-		confidence: 0.95,
+		evidenceStrength: "direct",
 		evidenceIds: ["access:price"],
 	};
 	const context = {
@@ -318,7 +318,7 @@ test("classification pass preserves confidence uncertainty and evidence", () => 
 			id: `classification:${path}:productCard`,
 			path,
 			label: "productCard",
-			confidence: 0.75,
+			evidenceStrength: "suggestive",
 			evidenceIds: ["access:price", "access:title"],
 			uncertainty: ["could be full product section"],
 		},

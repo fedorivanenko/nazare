@@ -1,3 +1,4 @@
+import type { ThemeEvidenceStrength } from "./theme-evidence-strength.js";
 import type { ThemeFileKind } from "./theme-file-classifier.js";
 
 export type SemanticThemeGraphNode =
@@ -122,14 +123,14 @@ export type SemanticThemeGraphNode =
 			id: string;
 			kind: "capability";
 			capability: string;
-			confidence: number;
+			evidenceStrength: ThemeEvidenceStrength;
 			evidenceIds: string[];
 	  }
 	| {
 			id: string;
 			kind: "classification";
 			label: string;
-			confidence: number;
+			evidenceStrength: ThemeEvidenceStrength;
 			evidenceIds: string[];
 			uncertainty: string[];
 	  }

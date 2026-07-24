@@ -738,7 +738,7 @@ export function themeGraphFromModel(
 			id: capability.id,
 			kind: "capability",
 			capability: capability.capability,
-			confidence: capability.confidence,
+			evidenceStrength: capability.evidenceStrength,
 			evidenceIds: capability.evidenceIds,
 		});
 		pushEdge({
@@ -754,7 +754,7 @@ export function themeGraphFromModel(
 			id: classification.id,
 			kind: "classification",
 			label: classification.label,
-			confidence: classification.confidence,
+			evidenceStrength: classification.evidenceStrength,
 			evidenceIds: classification.evidenceIds,
 			uncertainty: classification.uncertainty,
 		});

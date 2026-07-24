@@ -132,7 +132,7 @@ resolve. Relaxing the detection policy is therefore still the wrong trade.
 | Component inputs | Supported, conservative | Render sites, arguments, origins, expected inputs, requirement state, and inconsistent signatures are represented. Plain-Liquid requiredness remains inference. |
 | Configuration | Supported | Schema definitions, reads, selected resource types, influence, ambiguity, and unresolved reads are represented. |
 | Pages as compositions | Supported | Page, layout, section-group, section-instance, and reusable section/component concepts are distinct. |
-| Storefront concepts | Supported, heuristic | Classifications include confidence, evidence, and uncertainty; coverage is intentionally non-exhaustive. |
+| Storefront concepts | Supported, heuristic | Classifications include categorical evidence strength, evidence, and uncertainty; coverage is intentionally non-exhaustive. |
 | Capabilities | Supported, heuristic | Source signals produce evidence-backed capability records independent of filenames. |
 | Impact analysis | Supported | Dependencies, dependents, affected pages, Shopify-object consumers, and unused-file candidates are queryable. |
 | Evidence | Supported | Important semantic edges and classifications retain source evidence and spans. |

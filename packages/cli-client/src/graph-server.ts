@@ -1,6 +1,6 @@
 import { watch as watchDirectory } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import {
@@ -10,13 +10,23 @@ import {
 	type ThemeInputFile,
 	ThemeProgram,
 } from "@nazare/compiler";
+import {
+	collectThemeInputFiles,
+	isInspectThemeFile,
+	readInspectExcludePatterns,
+} from "./inspect-input.js";
+
+export type ThemeGraphServerOptions = {
+	projectRoot: string;
+};
 
 export async function serveThemeGraph(
 	root: string,
 	input: Readable,
 	output: Writable,
+	options: ThemeGraphServerOptions,
 ): Promise<void> {
-	const initial = await loadProgramState(root);
+	const initial = await loadProgramState(root, options.projectRoot);
 	let session = initial.program;
 	let buildSession = initial.buildSession;
 	let stopWatching: (() => void) | undefined;
@@ -63,6 +73,7 @@ export async function serveThemeGraph(
 			const result = await handleRequest(
 				request,
 				root,
+				options.projectRoot,
 				() => session,
 				(next) => {
 					session = next;
@@ -115,6 +126,7 @@ type GraphRequest = {
 async function handleRequest(
 	request: GraphRequest,
 	root: string,
+	projectRoot: string,
 	getSession: () => ThemeProgram,
 	setSession: (session: ThemeProgram) => void,
 	getBuildSession: () => ThemeBuildSession,
@@ -145,6 +157,7 @@ async function handleRequest(
 					params: args as Record<string, unknown> | undefined,
 				},
 				root,
+				projectRoot,
 				getSession,
 				setSession,
 				getBuildSession,
@@ -179,7 +192,7 @@ async function handleRequest(
 		};
 	}
 	if (request.method === "reload" || request.method === "inspect") {
-		const state = await loadProgramState(root);
+		const state = await loadProgramState(root, projectRoot);
 		setSession(state.program);
 		setBuildSession(state.buildSession);
 		return state.program.getGraph();
@@ -199,7 +212,9 @@ async function handleRequest(
 		return getBuildSession().removeFile(path).graphUpdate;
 	}
 	if (request.method === "watch") {
-		setWatcher(startWatcher(root, getSession, getBuildSession, notify));
+		setWatcher(
+			startWatcher(root, projectRoot, getSession, getBuildSession, notify),
+		);
 		return { watching: true };
 	}
 	if (request.method === "unwatch") {
@@ -227,6 +242,7 @@ const WATCH_DEBOUNCE_MS = 40;
 
 function startWatcher(
 	root: string,
+	projectRoot: string,
 	getSession: () => ThemeProgram,
 	getBuildSession: () => ThemeBuildSession,
 	notify: (update: unknown) => void,
@@ -234,39 +250,48 @@ function startWatcher(
 	let closed = false;
 	let pending = Promise.resolve();
 	const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-	const watcher = watchDirectory(
-		root,
-		{ recursive: true },
-		(_event, filename) => {
-			const relativePath = filename?.toString().split("\\").join("/");
-			if (!relativePath || !isWatchedPath(relativePath)) return;
-			const previousTimer = debounceTimers.get(relativePath);
-			if (previousTimer) clearTimeout(previousTimer);
-			debounceTimers.set(
-				relativePath,
-				setTimeout(() => {
-					debounceTimers.delete(relativePath);
-					pending = pending
-						.then(() => processWatchedPath(relativePath))
-						.catch((error) => {
-							if (closed) return;
-							notify({
-								method: "graph/error",
-								params: {
-									message:
-										error instanceof Error ? error.message : String(error),
-								},
-							});
+	const schedule = (relativePath: string): void => {
+		const previousTimer = debounceTimers.get(relativePath);
+		if (previousTimer) clearTimeout(previousTimer);
+		debounceTimers.set(
+			relativePath,
+			setTimeout(() => {
+				debounceTimers.delete(relativePath);
+				pending = pending
+					.then(() => processWatchedPath(relativePath))
+					.catch((error) => {
+						if (closed) return;
+						notify({
+							method: "graph/error",
+							params: {
+								message: error instanceof Error ? error.message : String(error),
+							},
 						});
-				}, WATCH_DEBOUNCE_MS),
-			);
-		},
-	);
+					});
+			}, WATCH_DEBOUNCE_MS),
+		);
+	};
+	const watchers = [
+		watchDirectory(root, { recursive: true }, (_event, filename) => {
+			const relativePath = filename?.toString().split("\\").join("/");
+			if (relativePath && isWatchedPath(relativePath)) schedule(relativePath);
+		}),
+	];
+	if (resolve(projectRoot) !== resolve(root)) {
+		watchers.push(
+			watchDirectory(projectRoot, { recursive: true }, (_event, filename) => {
+				const projectPath = filename?.toString().split("\\").join("/");
+				if (projectPath && isExternalInspectPath(projectPath)) {
+					schedule(projectPath);
+				}
+			}),
+		);
+	}
 
 	async function processWatchedPath(relativePath: string): Promise<void> {
 		if (closed) return;
 		const session = getSession();
-		if (isThemeFile(relativePath)) {
+		if (isInspectThemeFile(relativePath)) {
 			try {
 				const contents = await readFile(join(root, relativePath), "utf8");
 				const file = { path: relativePath, contents };
@@ -294,8 +319,9 @@ function startWatcher(
 			return;
 		}
 		const update = await session.updateExternalArtifacts({
-			metafields: await optionalFile(root, ".shopify/metafields.json"),
-			themeCheck: await optionalFile(root, ".theme-check.yml"),
+			exclude: await readInspectExcludePatterns(projectRoot),
+			metafields: await optionalFile(projectRoot, ".shopify/metafields.json"),
+			themeCheck: await optionalFile(projectRoot, ".theme-check.yml"),
 		});
 		if (!closed && update.changedPaths.length > 0) {
 			notify({ method: "graph/update", params: update });
@@ -306,15 +332,19 @@ function startWatcher(
 		closed = true;
 		for (const timer of debounceTimers.values()) clearTimeout(timer);
 		debounceTimers.clear();
-		watcher.close();
+		for (const watcher of watchers) watcher.close();
 	};
 }
 
 function isWatchedPath(path: string): boolean {
+	return isInspectThemeFile(path) || isExternalInspectPath(path);
+}
+
+function isExternalInspectPath(path: string): boolean {
 	return (
-		isThemeFile(path) ||
 		path === ".shopify/metafields.json" ||
-		path === ".theme-check.yml"
+		path === ".theme-check.yml" ||
+		path === "nazare.theme.json"
 	);
 }
 
@@ -326,49 +356,25 @@ function isNotFound(error: unknown): boolean {
 	);
 }
 
-async function loadProgramState(root: string): Promise<{
+async function loadProgramState(
+	root: string,
+	projectRoot: string,
+): Promise<{
 	program: ThemeProgram;
 	buildSession: ThemeBuildSession;
 }> {
-	const files = await collectThemeFiles(root);
-	const metafields = await optionalFile(root, ".shopify/metafields.json");
-	const themeCheck = await optionalFile(root, ".theme-check.yml");
-	const program = new ThemeProgram(files, { metafields, themeCheck });
+	const files = await collectThemeInputFiles(root, projectRoot);
+	const exclude = await readInspectExcludePatterns(projectRoot);
+	const metafields = await optionalFile(
+		projectRoot,
+		".shopify/metafields.json",
+	);
+	const themeCheck = await optionalFile(projectRoot, ".theme-check.yml");
+	const program = new ThemeProgram(files, { exclude, metafields, themeCheck });
 	return {
 		program,
 		buildSession: new ThemeBuildSession(files, {}, program),
 	};
-}
-
-async function collectThemeFiles(
-	root: string,
-): Promise<{ path: string; contents: string }[]> {
-	const files: { path: string; contents: string }[] = [];
-	async function walk(directory: string): Promise<void> {
-		for (const entry of await readdir(directory, { withFileTypes: true })) {
-			if ([".git", ".nazare-out", "node_modules"].includes(entry.name))
-				continue;
-			const absolute = join(directory, entry.name);
-			if (entry.isDirectory()) {
-				await walk(absolute);
-				continue;
-			}
-			if (!entry.isFile()) continue;
-			const path = relative(root, absolute).split(sep).join("/");
-			if (!isThemeFile(path)) continue;
-			files.push({ path, contents: await readFile(absolute, "utf8") });
-		}
-	}
-	await walk(root);
-	return files.sort((a, b) => a.path.localeCompare(b.path));
-}
-
-function isThemeFile(path: string): boolean {
-	return (
-		path.endsWith(".liquid") ||
-		path.endsWith(".json") ||
-		path.startsWith("assets/")
-	);
 }
 
 async function optionalFile(

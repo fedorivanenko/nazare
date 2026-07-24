@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
@@ -16,6 +16,12 @@ import {
 import { registryFromEnv } from "@nazare/registry";
 import { runThemeBuild } from "./build-command.js";
 import { serveThemeGraph } from "./graph-server.js";
+import {
+	collectThemeInputFiles,
+	isMissingFileError,
+	readOptionalInspectArtifact,
+	validateInspectConfiguration,
+} from "./inspect-input.js";
 import { diffComponent, installComponent, updateAll } from "./install.js";
 import { type CliOptions, parseCliOptions, printHelp } from "./options.js";
 import type { Output } from "./output.js";
@@ -54,8 +60,11 @@ export async function main(
 		const readProjectFile = (path: string): string | undefined => {
 			try {
 				return readFileSync(join(projectRoot, path), "utf8");
-			} catch {
-				return undefined;
+			} catch (error) {
+				if (isMissingFileError(error)) return undefined;
+				throw new Error(
+					`Unable to read project file ${path}: ${errorMessage(error)}`,
+				);
 			}
 		};
 
@@ -64,11 +73,22 @@ export async function main(
 		// below because it targets a directory (from the arg or nazare.theme.json
 		// build.sourceRoot) rather than one entry file.
 		if (command === "graph-server") {
-			await serveThemeGraph(
-				resolve(projectRoot, file ?? "."),
-				process.stdin,
-				process.stdout,
-			);
+			const manifest = await readProjectManifest(projectRoot);
+			const graphRoot = file ?? manifest.build?.sourceRoot;
+			if (!graphRoot) {
+				throw new Error(
+					'Graph server requires a directory argument or "build.sourceRoot" in nazare.theme.json',
+				);
+			}
+			const resolvedGraphRoot = resolve(projectRoot, graphRoot);
+			if (isOutsideRoot(projectRoot, resolvedGraphRoot)) {
+				throw new Error(
+					`${resolvedGraphRoot} is outside the project root ${projectRoot}`,
+				);
+			}
+			await serveThemeGraph(resolvedGraphRoot, process.stdin, process.stdout, {
+				projectRoot,
+			});
 			return 0;
 		}
 
@@ -339,8 +359,7 @@ async function runInspect(
 		return 1;
 	}
 	const manifest = await readProjectManifest(projectRoot);
-	const exclude = inspectExcludePatterns(manifest, output);
-	if (!exclude) return 1;
+	const exclude = validateInspectConfiguration(manifest.inspect);
 	const inspectRoot = dirArg ?? manifest.build?.sourceRoot;
 	if (!inspectRoot) {
 		output.error(
@@ -367,7 +386,7 @@ async function runInspect(
 		themeCheck,
 	});
 	await mkdir(join(projectRoot, ".nazare-out"), { recursive: true });
-	await writeFile(cachePath, JSON.stringify(cache));
+	await writeThemeAnalysisCache(cachePath, cache);
 	output.log(
 		format === "text"
 			? renderInspectReport(inspected)
@@ -402,31 +421,7 @@ function renderInspectReport(
 			lines.push(`- ... ${graph.issues.length - 10} more`);
 		}
 	}
-	return lines.join("\\n");
-}
-
-/**
- * Reads `inspect.exclude`. A malformed value is an error rather than an ignored
- * setting: silently inspecting files the user asked to skip, or silently
- * skipping none, both misrepresent what the graph covers. Returns undefined
- * only after reporting, so callers can fail.
- */
-function inspectExcludePatterns(
-	manifest: ProjectManifest,
-	output: Output,
-): string[] | undefined {
-	const configured = manifest.inspect?.exclude;
-	if (configured === undefined) return [];
-	if (
-		!Array.isArray(configured) ||
-		configured.some((pattern) => typeof pattern !== "string" || !pattern)
-	) {
-		output.error(
-			'"inspect.exclude" in nazare.theme.json must be an array of non-empty theme-relative glob strings',
-		);
-		return undefined;
-	}
-	return configured;
+	return lines.join("\n");
 }
 
 async function readThemeCheckPolicy(
@@ -441,28 +436,6 @@ async function readMetafieldSnapshot(
 	return readOptionalInspectArtifact(projectRoot, ".shopify/metafields.json");
 }
 
-async function readOptionalInspectArtifact(
-	projectRoot: string,
-	path: string,
-): Promise<{ path: string; contents: string } | undefined> {
-	try {
-		return { path, contents: await readFile(join(projectRoot, path), "utf8") };
-	} catch (error) {
-		if (isMissingFileError(error)) return undefined;
-		throw new Error(
-			`Unable to read inspect artifact ${path}: ${error instanceof Error ? error.message : String(error)}`,
-		);
-	}
-}
-
-function isMissingFileError(error: unknown): boolean {
-	return (
-		error instanceof Error &&
-		"code" in error &&
-		(error as NodeJS.ErrnoException).code === "ENOENT"
-	);
-}
-
 function isOutsideRoot(root: string, path: string): boolean {
 	const relativePath = relative(root, path);
 	return relativePath.startsWith("..") || relativePath.startsWith(sep);
@@ -471,105 +444,74 @@ function isOutsideRoot(root: string, path: string): boolean {
 async function readThemeAnalysisCache(
 	path: string,
 ): Promise<ThemeAnalysisCache> {
+	let raw: string;
 	try {
-		const parsed = JSON.parse(
-			await readFile(path, "utf8"),
-		) as Partial<ThemeAnalysisCache>;
-		if (
-			parsed.version === 1 &&
-			parsed.entries &&
-			typeof parsed.entries === "object" &&
-			!Array.isArray(parsed.entries) &&
-			Object.values(parsed.entries).every(
-				(entry) =>
-					!!entry &&
-					typeof entry.fingerprint === "string" &&
-					Array.isArray(entry.facts) &&
-					Array.isArray(entry.issues),
-			)
-		) {
-			return parsed as ThemeAnalysisCache;
-		}
-	} catch {
-		// Missing, stale, or malformed cache: rebuild from source.
-	}
-	return { version: 1, entries: {} };
-}
-
-async function collectThemeInputFiles(
-	root: string,
-	projectRoot: string,
-): Promise<{ path: string; contents: string }[]> {
-	const ignored = new Set(["node_modules", ".git", "dist", ".nazare-out"]);
-	const candidates: { path: string; absolutePath: string }[] = [];
-	async function walk(dir: string): Promise<void> {
-		const entries = await readdir(dir, { withFileTypes: true });
-		await Promise.all(
-			entries.map(async (entry) => {
-				if (ignored.has(entry.name)) return;
-				const absolutePath = join(dir, entry.name);
-				if (entry.isDirectory()) {
-					await walk(absolutePath);
-					return;
-				}
-				if (!entry.isFile()) return;
-				const path = relative(root, absolutePath).split(sep).join("/");
-				if (isInspectThemeFile(path)) candidates.push({ path, absolutePath });
-			}),
+		raw = await readFile(path, "utf8");
+	} catch (error) {
+		if (isMissingFileError(error)) return { version: 1, entries: {} };
+		throw new Error(
+			`Unable to read theme analysis cache ${path}: ${errorMessage(error)}`,
 		);
 	}
-	const rootStat = await stat(root);
-	if (rootStat.isFile()) {
-		const path = relative(projectRoot, root).split(sep).join("/");
-		if (isInspectThemeFile(path)) candidates.push({ path, absolutePath: root });
-	} else {
-		await walk(root);
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (error) {
+		throw new Error(
+			`Invalid JSON in theme analysis cache ${path}: ${errorMessage(error)}`,
+		);
 	}
-	candidates.sort((a, b) => a.path.localeCompare(b.path));
-	return mapConcurrent(candidates, 32, async ({ path, absolutePath }) => ({
-		path,
-		contents: shouldReadInspectContents(path)
-			? await readFile(absolutePath, "utf8")
-			: "",
-	}));
+	if (!isThemeAnalysisCache(parsed)) {
+		throw new Error(
+			`Invalid theme analysis cache ${path}: expected version 1 with fingerprinted fact and issue arrays`,
+		);
+	}
+	return parsed;
 }
 
-async function mapConcurrent<Input, OutputValue>(
-	values: Input[],
-	concurrency: number,
-	map: (value: Input) => Promise<OutputValue>,
-): Promise<OutputValue[]> {
-	const results = new Array<OutputValue>(values.length);
-	let nextIndex = 0;
-	const workers = Array.from(
-		{ length: Math.min(concurrency, values.length) },
-		async () => {
-			while (nextIndex < values.length) {
-				const index = nextIndex++;
-				results[index] = await map(values[index] as Input);
-			}
-		},
-	);
-	await Promise.all(workers);
-	return results;
-}
-
-function isInspectThemeFile(path: string): boolean {
-	return shouldReadInspectContents(path) || path.startsWith("assets/");
-}
-
-function shouldReadInspectContents(path: string): boolean {
+function isThemeAnalysisCache(value: unknown): value is ThemeAnalysisCache {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	const candidate = value as Partial<ThemeAnalysisCache>;
 	return (
-		path.endsWith(".nz.liquid") ||
-		/^sections\/[^/]+\.(json|liquid)$/.test(path) ||
-		/^snippets\/[^/]+\.liquid$/.test(path) ||
-		/^blocks\/[^/]+\.liquid$/.test(path) ||
-		/^templates\/.+\.(json|liquid)$/.test(path) ||
-		/^layout\/[^/]+\.liquid$/.test(path) ||
-		/^locales\/[^/]+\.json$/.test(path) ||
-		path === "config/settings_schema.json" ||
-		path === "config/settings_data.json"
+		candidate.version === 1 &&
+		!!candidate.entries &&
+		typeof candidate.entries === "object" &&
+		!Array.isArray(candidate.entries) &&
+		Object.values(candidate.entries).every(
+			(entry) =>
+				!!entry &&
+				typeof entry.fingerprint === "string" &&
+				Array.isArray(entry.facts) &&
+				Array.isArray(entry.issues),
+		)
 	);
+}
+
+async function writeThemeAnalysisCache(
+	path: string,
+	cache: ThemeAnalysisCache,
+): Promise<void> {
+	const temporaryPath = `${path}.${process.pid}.tmp`;
+	try {
+		await writeFile(temporaryPath, JSON.stringify(cache));
+		await rename(temporaryPath, path);
+	} catch (error) {
+		try {
+			await rm(temporaryPath, { force: true });
+		} catch (cleanupError) {
+			throw new AggregateError(
+				[error, cleanupError],
+				`Unable to write theme analysis cache ${path} and remove temporary file ${temporaryPath}`,
+			);
+		}
+		throw new Error(
+			`Unable to write theme analysis cache ${path}: ${errorMessage(error)}`,
+		);
+	}
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 async function writeDumpFiles(
@@ -839,11 +781,19 @@ function resolveRegistryUrl(url: string, projectRoot: string): string {
 async function readProjectManifest(
 	projectRoot: string,
 ): Promise<ProjectManifest> {
-	const raw = await readFile(join(projectRoot, THEME_MANIFEST), "utf8").catch(
-		() => undefined,
-	);
-	if (raw === undefined) return {};
-	return JSON.parse(raw) as ProjectManifest;
+	const path = join(projectRoot, THEME_MANIFEST);
+	let raw: string;
+	try {
+		raw = await readFile(path, "utf8");
+	} catch (error) {
+		if (isMissingFileError(error)) return {};
+		throw new Error(`Unable to read ${path}: ${errorMessage(error)}`);
+	}
+	try {
+		return JSON.parse(raw) as ProjectManifest;
+	} catch (error) {
+		throw new Error(`Invalid JSON in ${path}: ${errorMessage(error)}`);
+	}
 }
 
 async function writeProjectManifest(

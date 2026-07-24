@@ -450,9 +450,17 @@ test("theme graph DOT projection escapes identifiers and labels", () => {
 		{ path: "snippets/card.liquid", contents: "Card" },
 	]);
 	const dot = themeGraphToDot(graph);
-	assert.match(dot, /^digraph nazare_theme/);
+	assert.match(dot, /^digraph nazare_theme \{\n {2}rankdir=LR;\n/);
 	assert.match(dot, /snippet: card/);
 	assert.match(dot, /file:snippets\/card\.liquid/);
+	assert.match(dot, /\n\}$/);
+
+	const escaped = themeGraphToDot({
+		nodes: [{ id: "path\\name", kind: "file", path: "line\nbreak" }],
+		edges: [],
+	});
+	assert.match(escaped, /"path\\\\name"/);
+	assert.match(escaped, /label="file: line\\nbreak"/);
 });
 
 test("incremental graph replay equals full rebuild", () => {
