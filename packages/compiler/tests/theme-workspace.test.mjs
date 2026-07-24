@@ -764,6 +764,29 @@ test("metafield snapshot resolves reads and reports missing definitions", () => 
 	assert.equal(graph.metafields.unconsumedDefinitionIds.length, 0);
 });
 
+test("workspace seeds snapshot-only metafield updates without reparsing Liquid", () => {
+	const files = [
+		{
+			path: "sections/main.liquid",
+			contents: "{{ product.metafields.custom.subtitle }}",
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const cached = session.cache.entries["sections/main.liquid"];
+	const metafields = {
+		contents: JSON.stringify([
+			{ owner: "product", namespace: "custom", key: "subtitle" },
+		]),
+	};
+	const update = session.updateExternalArtifacts({ metafields });
+	assert.equal(update.changedPaths.includes(".shopify/metafields.json"), true);
+	assert.strictEqual(session.cache.entries["sections/main.liquid"], cached);
+	assert.deepEqual(
+		session.getGraph(),
+		inspectNazareTheme(files, { metafields }),
+	);
+});
+
 test("metafield definitions inherit affected pages through theme dependencies", () => {
 	const graph = inspectNazareTheme(
 		[
