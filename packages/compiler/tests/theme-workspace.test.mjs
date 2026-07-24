@@ -50,17 +50,31 @@ test("impact index propagates dependencies to pages", () => {
 });
 
 test("impact index applies graph edge and node deltas transactionally", () => {
+	const template = {
+		path: "templates/index.json",
+		contents: JSON.stringify({ sections: { main: { type: "main" } } }),
+	};
 	const first = inspectNazareTheme([
+		template,
 		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
 		{ path: "snippets/card.liquid", contents: "Card" },
 	]);
 	const second = inspectNazareTheme([
+		template,
 		{ path: "sections/main.liquid", contents: "{% render 'tile' %}" },
 		{ path: "snippets/tile.liquid", contents: "Tile" },
+		{ path: "snippets/unused.liquid", contents: "Unused" },
 	]);
 	const committed = new ThemeImpactIndex(first);
 	const staged = committed.fork();
-	staged.applyGraph(second);
+	const delta = staged.applyGraph(second);
+	assert.deepEqual(delta.changedAffectedPageKeys, [
+		"snippets/card.liquid",
+		"snippets/tile.liquid",
+	]);
+	assert.equal(delta.unusedFilesChanged, true);
+	assert.equal(delta.unusedFileCount, 1);
+	assert.equal(staged.getUnusedFileCount(), 1);
 	assert.deepEqual(committed.toSummary(), first.impact);
 	assert.deepEqual(staged.toSummary(), second.impact);
 	assert.equal(
