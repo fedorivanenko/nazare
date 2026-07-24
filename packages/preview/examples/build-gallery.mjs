@@ -11,6 +11,7 @@ import {
 	galleryPage,
 	previewComponentFromSource,
 	renderComponentStories,
+	snippetLibrary,
 	storiesFor,
 } from "../dist/index.js";
 
@@ -28,7 +29,10 @@ const readProjectFile = (path) => {
 	}
 };
 
-const rendered = [];
+// Two passes: compile everything first, because a component that composes
+// others (announcement-bar renders link) can only be rendered once the whole
+// snippet library exists.
+const previewed = [];
 const stylesheets = new Set();
 
 for (const folder of readdirSync(componentsRoot).sort()) {
@@ -48,11 +52,7 @@ for (const folder of readdirSync(componentsRoot).sort()) {
 		file,
 		{ readFile: readProjectFile, packageId: manifest.id },
 	);
-	// Authored stories from nazare.json when the component ships them; the
-	// contract-derived baseline otherwise.
-	rendered.push(
-		await renderComponentStories(component, storiesFor(component, manifest)),
-	);
+	previewed.push({ component, manifest });
 
 	for (const asset of component.assets) {
 		const name = asset.path.split("/").pop();
@@ -60,6 +60,19 @@ for (const folder of readdirSync(componentsRoot).sort()) {
 		writeFileSync(join(outDir, "assets", name), asset.contents);
 		if (name.endsWith(".css")) stylesheets.add(`./assets/${name}`);
 	}
+}
+
+const snippets = snippetLibrary(previewed.map((entry) => entry.component));
+
+const rendered = [];
+for (const { component, manifest } of previewed) {
+	// Authored stories from nazare.json when the component ships them; the
+	// contract-derived baseline otherwise.
+	rendered.push(
+		await renderComponentStories(component, storiesFor(component, manifest), {
+			snippets,
+		}),
+	);
 }
 
 // Behaviors are deliberately NOT wired here: the emitted template already ends

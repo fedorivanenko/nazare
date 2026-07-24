@@ -12,6 +12,7 @@ export {
 	type PreviewComponent,
 	type PreviewComponentOptions,
 	previewComponentFromSource,
+	snippetLibrary,
 } from "./component.js";
 export {
 	controlsFromContract,

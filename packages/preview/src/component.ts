@@ -38,6 +38,27 @@ export type PreviewComponentOptions = {
 const templateBaseName = (file: string): string =>
 	(file.split("/").pop() ?? file).replace(/\.nz\.liquid$|\.liquid$/, "");
 
+/**
+ * The snippets a composing component can render, keyed the way
+ * `{% render 'x' %}` addresses them. Emit lowers a component import to a bare
+ * snippet name, so previewing a component that composes others needs the whole
+ * library in scope — without it the render tag resolves nothing and the story
+ * fails. Sections and blocks are excluded: the theme editor places those, and
+ * `{% render %}` cannot target them.
+ */
+export function snippetLibrary(
+	components: PreviewComponent[],
+): Record<string, string> {
+	const snippets: Record<string, string> = {};
+	for (const component of components) {
+		if (component.componentKind && component.componentKind !== "snippet") {
+			continue;
+		}
+		if (component.template) snippets[component.name] = component.template;
+	}
+	return snippets;
+}
+
 function splitEmitted(files: { path: string; contents: string }[]): {
 	template: string;
 	assets: PreviewAsset[];

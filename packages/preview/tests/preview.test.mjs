@@ -8,6 +8,7 @@ import {
 	renderComponentStories,
 	renderPreview,
 	resolveFixtures,
+	snippetLibrary,
 	storiesFor,
 } from "../dist/index.js";
 
@@ -266,4 +267,33 @@ test("an unknown fixture name is left visible, not silently nil", () => {
 		a: { $fixture: "nope" },
 		b: 1,
 	});
+});
+
+test("a composing component needs the snippet library in scope", async () => {
+	const link = previewComponentFromSource(
+		'{% props { href: url.required(), text: string.required() } %}\n<a href="{{ props.href }}">{{ props.text }}</a>\n',
+		"link.nz.liquid",
+	);
+	const bar = previewComponentFromSource(
+		'{% component section %}\n{% import Link from "./link.nz.liquid" %}\n{% props { text: string.setting({ label: "Text", default: "Free shipping" }) } %}\n<section>{% render Link { href: "/x", text: props.text } %}</section>\n',
+		"bar.nz.liquid",
+		{
+			readFile: (path) =>
+				path === "link.nz.liquid" ? link.file && link.template : undefined,
+		},
+	);
+
+	// Sections cannot be rendered by {% render %}, so they stay out of the library.
+	const snippets = snippetLibrary([link, bar]);
+	assert.deepEqual(Object.keys(snippets), ["link"]);
+
+	const withLibrary = await renderComponentStories(bar, undefined, {
+		snippets,
+	});
+	assert.equal(withLibrary.stories[0].error, undefined);
+	assert.ok(withLibrary.stories[0].html.includes('<a href="/x">'));
+
+	// Without it the render tag resolves nothing, and the story says so.
+	const withoutLibrary = await renderComponentStories(bar);
+	assert.match(withoutLibrary.stories[0].error, /link/);
 });
