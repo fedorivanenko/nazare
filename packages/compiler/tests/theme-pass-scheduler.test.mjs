@@ -6,6 +6,7 @@ import {
 	createThemeClassificationPass,
 	createThemeDataFlowFixedPointPass,
 	createThemeDeclarationPass,
+	createThemeEvidencePass,
 	createThemeMetafieldPass,
 	createThemeReferencePass,
 	createThemeResolutionPass,
@@ -17,6 +18,58 @@ import {
 	ThemePassScheduler,
 	ThemeRenderDependencyIndex,
 } from "../dist/index.js";
+
+test("evidence pass replaces only changed source buckets", () => {
+	const retained = {
+		id: "evidence:b",
+		kind: "dependency",
+		file: "b.liquid",
+		extractor: "test",
+	};
+	const context = {
+		evidenceBySource: new Map([["b.liquid", [retained]]]),
+		evidenceInputsForSource(path) {
+			return {
+				references:
+					path === "a.liquid"
+						? [
+								{
+									id: "reference:a",
+									kind: "rendersSnippet",
+									fromPath: path,
+									targetKind: "snippet",
+									targetName: "card",
+									static: true,
+								},
+							]
+						: [],
+				sectionInstances: [],
+				blockInstances: [],
+				localeReferences: [],
+				schemas: [],
+				settings: [],
+				settingReads: [],
+				dataAccesses: [],
+				variableReads: [],
+				renderArguments: [],
+				capabilitySignals: [],
+				docParams: [],
+			};
+		},
+	};
+	const pass = createThemeEvidencePass();
+	const keys = pass.collectChanges(
+		[{ kind: "factsChanged", path: "a.liquid" }],
+		context,
+	);
+	const result = pass.run(keys, context);
+	assert.deepEqual([...keys], ["a.liquid"]);
+	assert.strictEqual(context.evidenceBySource.get("b.liquid")[0], retained);
+	assert.equal(context.evidenceBySource.get("a.liquid")[0].id, "reference:a");
+	assert.deepEqual(result.changes, [
+		{ kind: "diagnosticsChanged", pass: "evidence", owner: "a.liquid" },
+	]);
+});
 
 test("diagnostic store replaces only one pass and key owner", () => {
 	const original = new ThemeDiagnosticStore();
