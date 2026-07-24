@@ -19,11 +19,46 @@ export async function serveThemeGraph(
 	let session = await loadSession(root);
 	let buildSession = await loadBuildSession(root);
 	let stopWatching: (() => void) | undefined;
+	let mcpInitialized = false;
 	const readline = createInterface({ input, crlfDelay: Infinity });
 	for await (const line of readline) {
 		if (!line.trim()) continue;
-		const request = parseRequest(line);
+		let request: GraphRequest;
 		try {
+			request = parseRequest(line);
+		} catch (error) {
+			writeErrorResponse(output, undefined, rpcError(error));
+			continue;
+		}
+		const isMcpRequest = request.jsonrpc === "2.0";
+		try {
+			if (
+				isMcpRequest &&
+				!mcpInitialized &&
+				request.method !== "initialize" &&
+				request.method !== "ping"
+			) {
+				throw new RpcError(-32600, "Server not initialized");
+			}
+			if (request.method === "initialize") {
+				if (request.id === undefined) {
+					throw new RpcError(-32600, "initialize must be a request");
+				}
+				if (mcpInitialized) {
+					throw new RpcError(-32600, "Server already initialized");
+				}
+				validateInitializeParams(request.params);
+				mcpInitialized = true;
+			}
+			if (
+				request.method === "notifications/initialized" &&
+				request.id !== undefined
+			) {
+				throw new RpcError(
+					-32600,
+					"notifications/initialized must be a notification",
+				);
+			}
 			const result = await handleRequest(
 				request,
 				root,
@@ -41,23 +76,37 @@ export async function serveThemeGraph(
 				},
 				(update) => writeNotification(output, update),
 			);
-			writeResponse(output, request, { id: request.id, result });
+			if (request.id !== undefined) {
+				writeResponse(output, request, { id: request.id, result });
+			}
 		} catch (error) {
-			writeResponse(output, request, {
-				id: request.id,
-				error: {
-					code: "REQUEST_FAILED",
-					message: error instanceof Error ? error.message : String(error),
-				},
-			});
+			if (request.id !== undefined) {
+				writeErrorResponse(output, request, rpcError(error));
+			}
 		}
 	}
 	stopWatching?.();
 }
 
+const SUPPORTED_MCP_PROTOCOL_VERSIONS = [
+	"2025-11-25",
+	"2025-03-26",
+	"2024-11-05",
+] as const;
+
+class RpcError extends Error {
+	constructor(
+		readonly code: number,
+		message: string,
+		readonly data?: unknown,
+	) {
+		super(message);
+	}
+}
+
 type GraphRequest = {
 	jsonrpc?: "2.0";
-	id: string | number | null;
+	id?: string | number;
 	method: string;
 	params?: Record<string, unknown>;
 };
@@ -72,52 +121,60 @@ async function handleRequest(
 	setWatcher: (stop: () => void) => void,
 	notify: (update: unknown) => void,
 ): Promise<unknown> {
+	if (request.method === "ping") return {};
+	if (request.method === "notifications/initialized") return {};
 	if (request.method === "tools/list") return { tools: graphTools() };
 	if (request.method === "tools/call") {
 		const name = requiredString(request.params, "name");
-		const args = request.params?.arguments;
-		if (args !== undefined && (!args || typeof args !== "object")) {
-			throw new Error("tools/call arguments must be an object");
+		if (!graphTools().some((tool) => tool.name === name)) {
+			throw new RpcError(-32602, `Unknown tool: ${name}`);
 		}
-		const result = await handleRequest(
-			{
-				id: request.id,
-				method: name,
-				params: args as Record<string, unknown> | undefined,
-			},
-			root,
-			getSession,
-			setSession,
-			getBuildSession,
-			setBuildSession,
-			setWatcher,
-			notify,
-		);
-		return {
-			content: [{ type: "text", text: JSON.stringify(result) }],
-			structuredContent: result,
-		};
+		const args = request.params?.arguments;
+		if (
+			args !== undefined &&
+			(!args || typeof args !== "object" || Array.isArray(args))
+		) {
+			throw new RpcError(-32602, "tools/call arguments must be an object");
+		}
+		validateToolArguments(name, args as Record<string, unknown> | undefined);
+		try {
+			const result = await handleRequest(
+				{
+					method: name,
+					params: args as Record<string, unknown> | undefined,
+				},
+				root,
+				getSession,
+				setSession,
+				getBuildSession,
+				setBuildSession,
+				setWatcher,
+				notify,
+			);
+			return {
+				content: [{ type: "text", text: JSON.stringify(result) }],
+				...(isObject(result) ? { structuredContent: result } : {}),
+				isError: false,
+			};
+		} catch (error) {
+			if (error instanceof RpcError) throw error;
+			const message = error instanceof Error ? error.message : String(error);
+			return {
+				content: [{ type: "text", text: message }],
+				isError: true,
+			};
+		}
 	}
 	if (request.method === "initialize") {
+		const requestedVersion = requiredString(request.params, "protocolVersion");
 		return {
-			protocolVersion: "2024-11-05",
+			protocolVersion: SUPPORTED_MCP_PROTOCOL_VERSIONS.includes(
+				requestedVersion as (typeof SUPPORTED_MCP_PROTOCOL_VERSIONS)[number],
+			)
+				? requestedVersion
+				: SUPPORTED_MCP_PROTOCOL_VERSIONS[0],
 			capabilities: { tools: {} },
 			serverInfo: { name: "nazare-theme-graph", version: "1" },
-			methods: [
-				"inspect",
-				"reload",
-				"updateFile",
-				"removeFile",
-				"watch",
-				"unwatch",
-				"summary",
-				"node",
-				"dependencies",
-				"dependents",
-				"affectedPages",
-				"build",
-				"buildUpdate",
-			],
 		};
 	}
 	if (request.method === "reload" || request.method === "inspect") {
@@ -155,13 +212,19 @@ async function handleRequest(
 	}
 	const graph = session.getGraph();
 	if (request.method === "summary") return summarizeThemeGraph(graph);
-	const nodeId = requiredString(request.params, "nodeId");
-	if (request.method === "node") return getThemeNode(graph, nodeId) ?? null;
-	if (request.method === "dependencies") return session.getDependencies(nodeId);
-	if (request.method === "dependents") return session.getDependents(nodeId);
-	if (request.method === "affectedPages")
+	if (
+		["node", "dependencies", "dependents", "affectedPages"].includes(
+			request.method,
+		)
+	) {
+		const nodeId = requiredString(request.params, "nodeId");
+		if (request.method === "node") return getThemeNode(graph, nodeId) ?? null;
+		if (request.method === "dependencies")
+			return session.getDependencies(nodeId);
+		if (request.method === "dependents") return session.getDependents(nodeId);
 		return session.getAffectedPages(nodeId);
-	throw new Error(`Unknown graph server method ${request.method}`);
+	}
+	throw new RpcError(-32601, `Method not found: ${request.method}`);
 }
 
 const WATCH_DEBOUNCE_MS = 40;
@@ -193,7 +256,10 @@ function startWatcher(
 							if (closed) return;
 							notify({
 								method: "graph/error",
-								error: error instanceof Error ? error.message : String(error),
+								params: {
+									message:
+										error instanceof Error ? error.message : String(error),
+								},
 							});
 						});
 				}, WATCH_DEBOUNCE_MS),
@@ -324,18 +390,81 @@ async function optionalFile(
 }
 
 function parseRequest(line: string): GraphRequest {
-	const value: unknown = JSON.parse(line);
-	if (!value || typeof value !== "object")
-		throw new Error("Request must be an object");
-	const request = value as Partial<GraphRequest>;
-	if (typeof request.method !== "string" || request.method.length === 0)
-		throw new Error("Request method must be a non-empty string");
+	let value: unknown;
+	try {
+		value = JSON.parse(line);
+	} catch {
+		throw new RpcError(-32700, "Parse error");
+	}
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		throw new RpcError(-32600, "Invalid Request");
+	}
+	const request = value as Record<string, unknown>;
+	if (request.jsonrpc !== undefined && request.jsonrpc !== "2.0") {
+		throw new RpcError(-32600, 'Invalid Request: jsonrpc must be "2.0"');
+	}
+	if (typeof request.method !== "string" || request.method.length === 0) {
+		throw new RpcError(-32600, "Invalid Request: method must be non-empty");
+	}
+	if (
+		request.id !== undefined &&
+		typeof request.id !== "string" &&
+		typeof request.id !== "number"
+	) {
+		throw new RpcError(
+			-32600,
+			"Invalid Request: id must be a string or number",
+		);
+	}
+	if (
+		request.params !== undefined &&
+		(!request.params ||
+			typeof request.params !== "object" ||
+			Array.isArray(request.params))
+	) {
+		throw new RpcError(-32602, "Invalid params: expected an object");
+	}
 	return {
-		jsonrpc: request.jsonrpc,
-		id: request.id ?? null,
+		jsonrpc: request.jsonrpc as "2.0" | undefined,
+		id: request.id as string | number | undefined,
 		method: request.method,
-		params: request.params,
+		params: request.params as Record<string, unknown> | undefined,
 	};
+}
+
+function validateInitializeParams(
+	params: Record<string, unknown> | undefined,
+): void {
+	requiredString(params, "protocolVersion");
+	if (!isObject(params?.capabilities)) {
+		throw new RpcError(-32602, "Invalid initialize capabilities");
+	}
+	const clientInfo = params?.clientInfo;
+	if (!isObject(clientInfo)) {
+		throw new RpcError(-32602, "Invalid initialize clientInfo");
+	}
+	requiredString(clientInfo, "name");
+	requiredString(clientInfo, "version");
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function validateToolArguments(
+	name: string,
+	args: Record<string, unknown> | undefined,
+): void {
+	const allowedKeys = name === "summary" ? [] : ["nodeId"];
+	const unknownKeys = Object.keys(args ?? {}).filter(
+		(key) => !allowedKeys.includes(key),
+	);
+	if (unknownKeys.length > 0) {
+		throw new RpcError(
+			-32602,
+			`Unknown tool argument: ${unknownKeys.sort()[0]}`,
+		);
+	}
 }
 
 function requiredFile(
@@ -344,7 +473,7 @@ function requiredFile(
 	const path = requiredString(params, "path");
 	const contents = params?.contents;
 	if (typeof contents !== "string") {
-		throw new Error("Missing string parameter contents");
+		throw new RpcError(-32602, "Missing string parameter contents");
 	}
 	return { path, contents };
 }
@@ -355,7 +484,7 @@ function requiredString(
 ): string {
 	const value = params?.[key];
 	if (typeof value !== "string" || value.length === 0)
-		throw new Error(`Missing string parameter ${key}`);
+		throw new RpcError(-32602, `Missing string parameter ${key}`);
 	return value;
 }
 
@@ -368,12 +497,13 @@ function graphTools(): {
 		type: "object",
 		properties: { nodeId: { type: "string" } },
 		required: ["nodeId"],
+		additionalProperties: false,
 	};
 	return [
 		{
 			name: "summary",
 			description: "Summarize the current theme graph.",
-			inputSchema: { type: "object" },
+			inputSchema: { type: "object", additionalProperties: false },
 		},
 		{ name: "node", description: "Get one graph node.", inputSchema: nodeId },
 		{
@@ -395,15 +525,46 @@ function graphTools(): {
 }
 
 function writeNotification(output: Writable, notification: unknown): void {
-	output.write(`${JSON.stringify(notification)}\n`);
+	output.write(
+		`${JSON.stringify(
+			isObject(notification)
+				? { jsonrpc: "2.0", ...notification }
+				: notification,
+		)}\n`,
+	);
 }
 
 function writeResponse(
 	output: Writable,
 	request: GraphRequest,
-	response: { id: string | number | null; result?: unknown; error?: unknown },
+	response: { id: string | number; result: unknown },
 ): void {
 	const payload =
 		request.jsonrpc === "2.0" ? { jsonrpc: "2.0", ...response } : response;
 	output.write(`${JSON.stringify(payload)}\n`);
+}
+
+function writeErrorResponse(
+	output: Writable,
+	request: GraphRequest | undefined,
+	error: RpcError,
+): void {
+	const payload = {
+		jsonrpc: "2.0",
+		id: request?.id ?? null,
+		error: {
+			code: error.code,
+			message: error.message,
+			...(error.data === undefined ? {} : { data: error.data }),
+		},
+	};
+	output.write(`${JSON.stringify(payload)}\n`);
+}
+
+function rpcError(error: unknown): RpcError {
+	if (error instanceof RpcError) return error;
+	return new RpcError(
+		-32603,
+		error instanceof Error ? error.message : String(error),
+	);
 }
