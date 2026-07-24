@@ -149,7 +149,39 @@ export {
 	type ThemeCheckPolicy,
 	type ThemeCheckPolicyInput,
 } from "./theme-check-policy.js";
+export { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
+export {
+	collectThemeDataFlowInputs,
+	createThemeDataFlowFixedPointPass,
+	createThemeDataFlowInputPass,
+	dataFlowGroupKey,
+	dataFlowWorkKey,
+	deriveRenderArgumentDataAccesses,
+	deriveThemeRenderSites,
+	type ThemeDataFlowDerivedRecord,
+	type ThemeDataFlowFixedPointContext,
+	type ThemeDataFlowGroupDelta,
+	type ThemeDataFlowGroupKey,
+	type ThemeDataFlowIds,
+	type ThemeDataFlowInputPassContext,
+	type ThemeDataFlowInputPassResult,
+	type ThemeDataFlowInputRecord,
+	type ThemeDataFlowWorkKey,
+} from "./theme-data-flow-pass.js";
+export {
+	collectThemeDeclarations,
+	createThemeDeclarationPass,
+	type ThemeDeclarationPassContext,
+	type ThemeDeclarationPassRecord,
+	type ThemeDeclarationPassResult,
+} from "./theme-declaration-pass.js";
 export { matchesThemeGlob } from "./theme-exclusions.js";
+export {
+	deriveThemeExpectedInputs,
+	docParamEvidenceId,
+	expectedInputId,
+	themeDocContractIssues,
+} from "./theme-expected-input-pass.js";
 export { ThemeFactIndex } from "./theme-fact-index.js";
 export {
 	ThemeFactStore,
@@ -196,13 +228,57 @@ export type {
 } from "./theme-facts.js";
 export { shareThemeGraphRecords } from "./theme-graph-output.js";
 export { ThemeImpactIndex } from "./theme-impact-index.js";
+export {
+	collectThemeInstances,
+	createThemeInstancePass,
+	type ThemeInstanceIds,
+	type ThemeInstancePassContext,
+	type ThemeInstancePassResult,
+	type ThemeInstanceRecord,
+} from "./theme-instance-pass.js";
+export {
+	collectThemeLocales,
+	createThemeLocalePass,
+	type ThemeLocaleIds,
+	type ThemeLocalePassContext,
+	type ThemeLocalePassResult,
+	type ThemeLocaleRecord,
+} from "./theme-locale-pass.js";
 export { ThemeMetafieldIndex } from "./theme-metafield-index.js";
 export {
+	createThemeMetafieldPass,
+	type ThemeMetafieldPassContext,
+	type ThemeMetafieldRecord,
+} from "./theme-metafield-pass.js";
+export {
 	analyzeMetafields,
+	collectMetafieldDefinitions,
+	collectMetafieldReads,
+	joinMetafieldReads,
 	metafieldDefinitionId,
+	metafieldJoinKey,
 	type ThemeMetafieldAnalysis,
+	type ThemeMetafieldDefinitionCollection,
 	type ThemeMetafieldSnapshot,
 } from "./theme-metafields.js";
+export {
+	type FixedPointPass,
+	type FixedPointStep,
+	fixedPointThemePass,
+	type IncrementalPass,
+	incrementalThemePass,
+	type PassChange,
+	type PassChangeKind,
+	type PassDelta,
+	type PassRoute,
+	THEME_PASS_ORDER,
+	type ThemePassConvergenceDiagnostic,
+	ThemePassConvergenceError,
+	ThemePassScheduler,
+	type ThemePassStage,
+	type ThemePassTrace,
+	type ThemeSchedulerResult,
+} from "./theme-pass-scheduler.js";
 export {
 	getThemeAffectedPages,
 	getThemeDependencies,
@@ -214,7 +290,32 @@ export {
 	type ThemeGraphSummary,
 	themeGraphToDot,
 } from "./theme-queries.js";
+export {
+	collectThemeReferences,
+	createThemeReferencePass,
+	referenceTargetKeys,
+	type ThemeReferencePassContext,
+} from "./theme-reference-pass.js";
+export {
+	createThemeResolutionPass,
+	resolveThemeDeclarationsAndReferences,
+	type ThemeIncrementalResolutionContext,
+	type ThemeResolutionPassResult,
+} from "./theme-resolution-pass.js";
 export { ThemeResolverIndex } from "./theme-resolver-index.js";
+export {
+	type ThemeRecordResolution,
+	ThemeSchemaIndex,
+	type ThemeSchemaIndexInput,
+} from "./theme-schema-index.js";
+export {
+	collectThemeSchemaSettings,
+	createThemeSchemaSettingPass,
+	type ThemeSchemaSettingIds,
+	type ThemeSchemaSettingPassContext,
+	type ThemeSchemaSettingPassResult,
+	type ThemeSchemaSettingRecord,
+} from "./theme-schema-setting-pass.js";
 export {
 	ThemeSemanticStore,
 	ThemeSemanticTransaction,

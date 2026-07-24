@@ -3,6 +3,7 @@ import type {
 	ThemeReference,
 	ThemeSemanticModel,
 } from "./theme-facts.js";
+import { resolveThemeDeclarationsAndReferences } from "./theme-resolution-pass.js";
 import type { ThemeSemanticUpdate } from "./theme-semantic-store.js";
 
 export class ThemeResolverIndex {
@@ -34,28 +35,11 @@ export class ThemeResolverIndex {
 	}
 
 	resolveModel(model: ThemeSemanticModel): ThemeSemanticModel {
-		const declarationsByKey = new Map<string, string[]>();
-		for (const declaration of model.declarations) {
-			const key = `${declaration.kind}:${declaration.name}`;
-			const ids = declarationsByKey.get(key) ?? [];
-			ids.push(declaration.id);
-			declarationsByKey.set(key, ids);
-		}
-		return {
-			...model,
-			references: model.references.map((reference) => {
-				const key = reference.targetPath
-					? `${reference.targetKind}:${reference.targetPath}`
-					: reference.targetName
-						? `${reference.targetKind}:${reference.targetName}`
-						: undefined;
-				const ids = key ? (declarationsByKey.get(key) ?? []) : [];
-				const resolvedDeclarationId = ids.length === 1 ? ids[0] : undefined;
-				return resolvedDeclarationId === reference.resolvedDeclarationId
-					? reference
-					: { ...reference, resolvedDeclarationId };
-			}),
-		};
+		const resolution = resolveThemeDeclarationsAndReferences(
+			model.declarations,
+			model.references,
+		);
+		return { ...model, references: resolution.references };
 	}
 
 	getDependents(declarationId: string): string[] {

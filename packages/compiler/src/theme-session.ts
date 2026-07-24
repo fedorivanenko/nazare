@@ -1,3 +1,22 @@
+import { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
+import {
+	createThemeDataFlowFixedPointPass,
+	createThemeDataFlowInputPass,
+	deriveRenderArgumentDataAccesses,
+	deriveThemeRenderSites,
+	type ThemeDataFlowDerivedRecord,
+	type ThemeDataFlowFixedPointContext,
+	type ThemeDataFlowInputPassContext,
+	type ThemeDataFlowInputPassResult,
+	type ThemeDataFlowInputRecord,
+} from "./theme-data-flow-pass.js";
+import {
+	createThemeDeclarationPass,
+	type ThemeDeclarationPassContext,
+	type ThemeDeclarationPassRecord,
+	type ThemeDeclarationPassResult,
+} from "./theme-declaration-pass.js";
+import { deriveThemeExpectedInputs } from "./theme-expected-input-pass.js";
 import { ThemeFactIndex } from "./theme-fact-index.js";
 import { ThemeFactStore, themeFactSourcePath } from "./theme-fact-store.js";
 import type {
@@ -5,7 +24,14 @@ import type {
 	InspectNazareThemeResult,
 	ThemeAnalysisCache,
 	ThemeAnalysisMemo,
+	ThemeDataAccessRecord,
+	ThemeDeclaration,
+	ThemeExpectedInputRecord,
+	ThemeFileRecord,
 	ThemeInputFile,
+	ThemeReference,
+	ThemeRenderSiteRecord,
+	ThemeSemanticModel,
 } from "./theme-facts.js";
 import {
 	shareThemeGraphRecords,
@@ -13,8 +39,69 @@ import {
 } from "./theme-graph-output.js";
 import { impactSummary } from "./theme-impact.js";
 import { ThemeImpactIndex } from "./theme-impact-index.js";
+import {
+	createThemeInstancePass,
+	type ThemeInstancePassContext,
+	type ThemeInstancePassResult,
+	type ThemeInstanceRecord,
+} from "./theme-instance-pass.js";
+import {
+	createThemeLocalePass,
+	type ThemeLocalePassContext,
+	type ThemeLocalePassResult,
+	type ThemeLocaleRecord,
+} from "./theme-locale-pass.js";
 import { ThemeMetafieldIndex } from "./theme-metafield-index.js";
+import {
+	createThemeMetafieldPass,
+	type ThemeMetafieldPassContext,
+	type ThemeMetafieldRecord,
+} from "./theme-metafield-pass.js";
+import {
+	collectMetafieldDefinitions,
+	metafieldJoinKey,
+	type ThemeMetafieldAnalysis,
+} from "./theme-metafields.js";
+import {
+	blockId,
+	blockInstanceId,
+	blockSettingId,
+	dataAccessId,
+	declarationId,
+	fileId,
+	localeKeyId,
+	localeReferenceId,
+	localeTranslationId,
+	referenceId,
+	renderArgumentId,
+	renderSiteId,
+	schemaId,
+	sectionInstanceId,
+	settingId,
+	settingReadId,
+	variableReadId,
+} from "./theme-model.js";
+import {
+	fixedPointThemePass,
+	incrementalThemePass,
+	type PassChange,
+	ThemePassScheduler,
+} from "./theme-pass-scheduler.js";
+import {
+	createThemeReferencePass,
+	type ThemeReferencePassContext,
+} from "./theme-reference-pass.js";
+import {
+	createThemeResolutionPass,
+	type ThemeIncrementalResolutionContext,
+} from "./theme-resolution-pass.js";
 import { ThemeResolverIndex } from "./theme-resolver-index.js";
+import {
+	createThemeSchemaSettingPass,
+	type ThemeSchemaSettingPassContext,
+	type ThemeSchemaSettingPassResult,
+	type ThemeSchemaSettingRecord,
+} from "./theme-schema-setting-pass.js";
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
 import { analyzeNazareTheme } from "./theme-workspace.js";
 
@@ -38,8 +125,36 @@ export class ThemeWorkspaceSession {
 	private readonly options: InspectNazareThemeOptions;
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
 	private readonly memo = {} as ThemeAnalysisMemo;
-	private readonly factStore: ThemeFactStore;
-	private readonly factIndex: ThemeFactIndex;
+	private factStore: ThemeFactStore;
+	private factIndex: ThemeFactIndex;
+	private readonly collectionScheduler = createCollectionScheduler();
+	private declarationResultsBySource = new Map<
+		string,
+		ThemeDeclarationPassResult
+	>();
+	private referencesBySource = new Map<string, ThemeReference[]>();
+	private declarationsByKey = new Map<string, Map<string, ThemeDeclaration>>();
+	private referencesById = new Map<string, ThemeReference>();
+	private referencesByTargetKey = new Map<
+		string,
+		Map<string, ThemeReference>
+	>();
+	private resolvedReferencesById = new Map<string, ThemeReference>();
+	private schemaSettingResultsBySource = new Map<
+		string,
+		ThemeSchemaSettingPassResult
+	>();
+	private instanceResultsBySource = new Map<string, ThemeInstancePassResult>();
+	private localeResultsBySource = new Map<string, ThemeLocalePassResult>();
+	private dataFlowInputResultsBySource = new Map<
+		string,
+		ThemeDataFlowInputPassResult
+	>();
+	private derivedDataFlowBySource = new Map<
+		string,
+		ThemeDerivedDataFlowResult
+	>();
+	private metafieldResult = { current: emptyMetafieldAnalysis() };
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
@@ -57,9 +172,31 @@ export class ThemeWorkspaceSession {
 		const analysis = analyzeNazareTheme(this.files(), this.options);
 		this.factStore = new ThemeFactStore(analysis.facts);
 		this.factIndex = new ThemeFactIndex(analysis.facts);
-		this.semanticStore = new ThemeSemanticStore(analysis.ir);
-		this.resolverIndex = new ThemeResolverIndex(analysis.ir);
-		this.metafieldIndex = new ThemeMetafieldIndex(analysis.ir);
+		const collection = runCollectionPasses(
+			this.collectionScheduler,
+			this.factStore,
+			this.collectionState(),
+			this.factStore.files(),
+			this.options.metafields,
+		);
+		this.applyCollectionState(collection);
+		const collectedModel = modelWithCollectedRecords(
+			analysis.ir,
+			collection.declarations,
+			collection.resolvedReferencesById,
+			collection.schemaSettings,
+			collection.instances,
+			collection.locales,
+			collection.dataFlowInputs,
+			collection.derivedDataFlow,
+			collection.metafields.current,
+		);
+		const model = new ThemeResolverIndex(collectedModel).resolveModel(
+			collectedModel,
+		);
+		this.semanticStore = new ThemeSemanticStore(model);
+		this.resolverIndex = new ThemeResolverIndex(model);
+		this.metafieldIndex = new ThemeMetafieldIndex(model);
 		this.graph = themeGraphFromModel(this.semanticStore.getModel(), {
 			impact: impactSummary(this.semanticStore.getModel()),
 		});
@@ -83,20 +220,36 @@ export class ThemeWorkspaceSession {
 		return this.impactIndex.getAffectedPages(nodeId);
 	}
 
+	getMetafieldAffectedSources(definitionId: string): string[] {
+		return this.metafieldIndex.getAffectedSources(definitionId);
+	}
+
 	updateFile(file: ThemeInputFile): ThemeGraphUpdate {
 		const previous = this.filesByPath.get(file.path);
 		if (previous?.contents === file.contents) {
 			return this.emptyUpdate([]);
 		}
 		this.filesByPath.set(file.path, file);
-		return this.rebuild([file.path]);
+		try {
+			return this.rebuild([file.path], [file.path]);
+		} catch (error) {
+			if (previous) this.filesByPath.set(file.path, previous);
+			else this.filesByPath.delete(file.path);
+			throw error;
+		}
 	}
 
 	removeFile(path: string): ThemeGraphUpdate {
-		if (!this.filesByPath.delete(path)) {
+		const previous = this.filesByPath.get(path);
+		if (!previous || !this.filesByPath.delete(path)) {
 			return this.emptyUpdate([]);
 		}
-		return this.rebuild([path]);
+		try {
+			return this.rebuild([path], [path]);
+		} catch (error) {
+			this.filesByPath.set(path, previous);
+			throw error;
+		}
 	}
 
 	updateExternalArtifacts(
@@ -108,37 +261,101 @@ export class ThemeWorkspaceSession {
 			return this.emptyUpdate([]);
 		}
 		const changedPaths = externalChangedPaths(this.options, options);
+		const previousOptions = {
+			metafields: this.options.metafields,
+			themeCheck: this.options.themeCheck,
+		};
 		Object.assign(this.options, options);
-		this.externalFingerprint = nextFingerprint;
-		return this.rebuild(changedPaths);
+		try {
+			const update = this.rebuild(changedPaths, []);
+			this.externalFingerprint = nextFingerprint;
+			return update;
+		} catch (error) {
+			Object.assign(this.options, previousOptions);
+			throw error;
+		}
 	}
 
-	private rebuild(changedPaths: string[]): ThemeGraphUpdate {
+	private rebuild(
+		changedPaths: string[],
+		factChangedPaths: string[],
+	): ThemeGraphUpdate {
 		const previous = this.graph;
 		const analysis = analyzeNazareTheme(this.files(), this.options);
-		for (const path of changedPaths) {
+		const nextFactStore = new ThemeFactStore(this.factStore.all());
+		for (const path of factChangedPaths) {
 			const facts = analysis.facts.filter(
 				(fact) => themeFactSourcePath(fact) === path,
 			);
-			this.factStore.replaceFile(path, facts);
-			this.factIndex.replaceFileFacts(path, facts);
+			nextFactStore.replaceFile(path, facts);
 		}
-		const resolvedModel = this.resolverIndex.resolveModel(analysis.ir);
+		const nextFactIndex = new ThemeFactIndex(nextFactStore.all());
+		const collection = runCollectionPasses(
+			this.collectionScheduler,
+			nextFactStore,
+			this.collectionState(),
+			factChangedPaths,
+			this.options.metafields,
+			metafieldSnapshotChanges(
+				changedPaths,
+				this.metafieldResult.current,
+				this.options.metafields,
+			),
+		);
+		const collectedModel = modelWithCollectedRecords(
+			analysis.ir,
+			collection.declarations,
+			collection.resolvedReferencesById,
+			collection.schemaSettings,
+			collection.instances,
+			collection.locales,
+			collection.dataFlowInputs,
+			collection.derivedDataFlow,
+			collection.metafields.current,
+		);
+		const resolvedModel = this.resolverIndex.resolveModel(collectedModel);
 		const transaction = this.semanticStore.beginUpdate(resolvedModel);
-		const semanticUpdate = transaction.commit();
-		this.resolverIndex.apply(semanticUpdate);
-		this.metafieldIndex.apply(semanticUpdate);
-		this.graph = shareThemeGraphRecords(
+		const semanticUpdate = transaction.update;
+		const nextResolverIndex = new ThemeResolverIndex(semanticUpdate.model);
+		const nextMetafieldIndex = new ThemeMetafieldIndex(semanticUpdate.model);
+		const nextGraph = shareThemeGraphRecords(
 			this.graph,
 			themeGraphFromModel(semanticUpdate.model, {
 				impact: impactSummary(semanticUpdate.model),
 			}),
 		);
-		this.impactIndex.replaceGraph(this.graph);
-		this.revision += 1;
-		const resolverDependents = semanticUpdate.changedRecordIds.flatMap((id) =>
-			this.resolverIndex.getDependents(id),
+		const nextImpactIndex = new ThemeImpactIndex(nextGraph);
+		const metafieldDefinitionIds = new Set([
+			...this.semanticStore
+				.getModel()
+				.metafieldDefinitions.map((definition) => definition.id),
+			...semanticUpdate.model.metafieldDefinitions.map(
+				(definition) => definition.id,
+			),
+		]);
+		const changedMetafieldDefinitionIds = [
+			...semanticUpdate.addedRecordIds,
+			...semanticUpdate.changedRecordIds,
+			...semanticUpdate.removedRecordIds,
+		].filter((id) => metafieldDefinitionIds.has(id));
+		const metafieldAffectedPages = changedMetafieldDefinitionIds.flatMap(
+			(id) => [
+				...this.impactIndex.getAffectedPages(id),
+				...nextImpactIndex.getAffectedPages(id),
+			],
 		);
+		const resolverDependents = semanticUpdate.changedRecordIds.flatMap((id) =>
+			nextResolverIndex.getDependents(id),
+		);
+		transaction.commit();
+		this.factStore = nextFactStore;
+		this.factIndex = nextFactIndex;
+		this.applyCollectionState(collection);
+		this.resolverIndex = nextResolverIndex;
+		this.metafieldIndex = nextMetafieldIndex;
+		this.graph = nextGraph;
+		this.impactIndex = nextImpactIndex;
+		this.revision += 1;
 		return diffGraphs(
 			this.revision,
 			previous,
@@ -149,8 +366,45 @@ export class ThemeWorkspaceSession {
 				...resolverDependents,
 			],
 			semanticUpdate.changedRecordIds,
-			changedPaths.flatMap((path) => this.impactIndex.getAffectedPages(path)),
+			[
+				...changedPaths.flatMap((path) =>
+					this.impactIndex.getAffectedPages(path),
+				),
+				...metafieldAffectedPages,
+			],
 		);
+	}
+
+	private collectionState(): ThemeCollectionState {
+		return {
+			declarations: this.declarationResultsBySource,
+			references: this.referencesBySource,
+			declarationsByKey: this.declarationsByKey,
+			referencesById: this.referencesById,
+			referencesByTargetKey: this.referencesByTargetKey,
+			resolvedReferencesById: this.resolvedReferencesById,
+			schemaSettings: this.schemaSettingResultsBySource,
+			instances: this.instanceResultsBySource,
+			locales: this.localeResultsBySource,
+			dataFlowInputs: this.dataFlowInputResultsBySource,
+			derivedDataFlow: this.derivedDataFlowBySource,
+			metafields: this.metafieldResult,
+		};
+	}
+
+	private applyCollectionState(state: ThemeCollectionState): void {
+		this.declarationResultsBySource = state.declarations;
+		this.referencesBySource = state.references;
+		this.declarationsByKey = state.declarationsByKey;
+		this.referencesById = state.referencesById;
+		this.referencesByTargetKey = state.referencesByTargetKey;
+		this.resolvedReferencesById = state.resolvedReferencesById;
+		this.schemaSettingResultsBySource = state.schemaSettings;
+		this.instanceResultsBySource = state.instances;
+		this.localeResultsBySource = state.locales;
+		this.dataFlowInputResultsBySource = state.dataFlowInputs;
+		this.derivedDataFlowBySource = state.derivedDataFlow;
+		this.metafieldResult = state.metafields;
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
@@ -170,6 +424,566 @@ export class ThemeWorkspaceSession {
 			a.path.localeCompare(b.path),
 		);
 	}
+}
+
+type ThemeCollectionContext = ThemeDeclarationPassContext &
+	ThemeReferencePassContext &
+	ThemeIncrementalResolutionContext &
+	ThemeSchemaSettingPassContext &
+	ThemeInstancePassContext &
+	ThemeLocalePassContext &
+	ThemeMetafieldPassContext &
+	ThemeDataFlowInputPassContext &
+	ThemeDataFlowFixedPointContext;
+
+type ThemeDerivedDataFlowResult = {
+	expectedInputs: ThemeExpectedInputRecord[];
+	renderSites: ThemeRenderSiteRecord[];
+	dataAccesses: ThemeDataAccessRecord[];
+};
+
+type ThemeCollectionState = {
+	declarations: Map<string, ThemeDeclarationPassResult>;
+	references: Map<string, ThemeReference[]>;
+	declarationsByKey: Map<string, Map<string, ThemeDeclaration>>;
+	referencesById: Map<string, ThemeReference>;
+	referencesByTargetKey: Map<string, Map<string, ThemeReference>>;
+	resolvedReferencesById: Map<string, ThemeReference>;
+	schemaSettings: Map<string, ThemeSchemaSettingPassResult>;
+	instances: Map<string, ThemeInstancePassResult>;
+	locales: Map<string, ThemeLocalePassResult>;
+	dataFlowInputs: Map<string, ThemeDataFlowInputPassResult>;
+	derivedDataFlow: Map<string, ThemeDerivedDataFlowResult>;
+	metafields: { current: ThemeMetafieldAnalysis };
+};
+
+function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
+	return new ThemePassScheduler<ThemeCollectionContext>([
+		incrementalThemePass<
+			ThemeCollectionContext,
+			string,
+			ThemeDeclarationPassRecord
+		>(createThemeDeclarationPass()),
+		incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
+			createThemeReferencePass(),
+		),
+		incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
+			createThemeResolutionPass(),
+		),
+		incrementalThemePass<
+			ThemeCollectionContext,
+			string,
+			ThemeSchemaSettingRecord
+		>(createThemeSchemaSettingPass()),
+		incrementalThemePass<ThemeCollectionContext, string, ThemeInstanceRecord>(
+			createThemeInstancePass(),
+		),
+		incrementalThemePass<ThemeCollectionContext, string, ThemeLocaleRecord>(
+			createThemeLocalePass(),
+		),
+		incrementalThemePass<
+			ThemeCollectionContext,
+			string,
+			ThemeDataFlowInputRecord
+		>(createThemeDataFlowInputPass()),
+		fixedPointThemePass<
+			ThemeCollectionContext,
+			string,
+			ThemeDataFlowDerivedRecord
+		>(createThemeDataFlowFixedPointPass()),
+		incrementalThemePass<ThemeCollectionContext, string, ThemeMetafieldRecord>(
+			createThemeMetafieldPass(),
+		),
+	]);
+}
+
+function runCollectionPasses(
+	scheduler: ThemePassScheduler<ThemeCollectionContext>,
+	facts: ThemeFactStore,
+	previous: ThemeCollectionState,
+	changedPaths: string[],
+	metafieldSnapshot: InspectNazareThemeOptions["metafields"],
+	additionalChanges: PassChange[] = [],
+): ThemeCollectionState {
+	const state = cloneCollectionState(previous);
+	let derivedSnapshot: Map<string, ThemeDerivedDataFlowResult> | undefined;
+	const context: ThemeCollectionContext = {
+		facts,
+		resultsBySource: state.declarations,
+		referencesBySource: state.references,
+		declarationsByKey: state.declarationsByKey,
+		referencesById: state.referencesById,
+		referencesByTargetKey: state.referencesByTargetKey,
+		resolvedReferencesById: state.resolvedReferencesById,
+		schemaSettingResultsBySource: state.schemaSettings,
+		instanceResultsBySource: state.instances,
+		instanceIds: {
+			section: sectionInstanceId,
+			block: blockInstanceId,
+		},
+		localeResultsBySource: state.locales,
+		localeIds: {
+			key: localeKeyId,
+			translation: localeTranslationId,
+			reference: localeReferenceId,
+		},
+		dataFlowInputResultsBySource: state.dataFlowInputs,
+		metafieldSnapshot,
+		get dataAccessesBySource() {
+			return dataAccessesBySource(state);
+		},
+		metafieldResult: state.metafields,
+		dataFlowIds: {
+			dataAccess: dataAccessId,
+			variableRead: variableReadId,
+			renderArgument: renderArgumentId,
+		},
+		get renderDependencies() {
+			const inputs = allDataFlowInputs(state.dataFlowInputs);
+			return new ThemeRenderDependencyIndex(
+				allDeclarations(state.declarations),
+				inputs.renderSiteFacts,
+			);
+		},
+		recomputeDataFlowGroup(paths) {
+			derivedSnapshot ??= deriveDataFlowSnapshot(state);
+			const records: ThemeDataFlowDerivedRecord[] = [];
+			const changed = new Set<string>();
+			for (const path of paths) {
+				const previousResult = state.derivedDataFlow.get(path);
+				const nextResult = derivedSnapshot.get(path);
+				if (JSON.stringify(previousResult) === JSON.stringify(nextResult))
+					continue;
+				changed.add(path);
+				if (nextResult) {
+					state.derivedDataFlow.set(path, nextResult);
+					records.push(
+						...nextResult.expectedInputs,
+						...nextResult.renderSites,
+						...nextResult.dataAccesses,
+					);
+				} else {
+					state.derivedDataFlow.delete(path);
+				}
+			}
+			return {
+				records,
+				changes: [...changed]
+					.sort()
+					.map((owner): PassChange => ({ kind: "diagnosticsChanged", owner })),
+				propagatePaths: [...changed],
+			};
+		},
+		ids: {
+			file: fileId,
+			declaration: declarationId,
+			schema: schemaId,
+			setting: settingId,
+			block: blockId,
+			blockSetting: blockSettingId,
+			settingRead: settingReadId,
+		},
+		id: referenceId,
+	};
+	scheduler.execute(
+		[...new Set(changedPaths)]
+			.sort((a, b) => a.localeCompare(b))
+			.map((path): PassChange => ({ kind: "factsChanged", path }))
+			.concat(additionalChanges),
+		context,
+	);
+	return state;
+}
+
+function cloneCollectionState(
+	state: ThemeCollectionState,
+): ThemeCollectionState {
+	return {
+		declarations: cloneDeclarationResults(state.declarations),
+		references: new Map(
+			[...state.references].map(([path, records]) => [path, [...records]]),
+		),
+		declarationsByKey: cloneRecordIndex(state.declarationsByKey),
+		referencesById: new Map(state.referencesById),
+		referencesByTargetKey: cloneRecordIndex(state.referencesByTargetKey),
+		resolvedReferencesById: new Map(state.resolvedReferencesById),
+		schemaSettings: cloneSchemaSettingResults(state.schemaSettings),
+		instances: cloneInstanceResults(state.instances),
+		locales: cloneLocaleResults(state.locales),
+		dataFlowInputs: cloneDataFlowInputResults(state.dataFlowInputs),
+		derivedDataFlow: cloneDerivedDataFlowResults(state.derivedDataFlow),
+		metafields: { current: cloneMetafieldAnalysis(state.metafields.current) },
+	};
+}
+
+function cloneRecordIndex<RecordValue>(
+	index: Map<string, Map<string, RecordValue>>,
+): Map<string, Map<string, RecordValue>> {
+	return new Map([...index].map(([key, records]) => [key, new Map(records)]));
+}
+
+function cloneDeclarationResults(
+	results: Map<string, ThemeDeclarationPassResult>,
+): Map<string, ThemeDeclarationPassResult> {
+	return new Map(
+		[...results].map(([path, result]) => [
+			path,
+			{ files: new Map(result.files), declarations: [...result.declarations] },
+		]),
+	);
+}
+
+function cloneSchemaSettingResults(
+	results: Map<string, ThemeSchemaSettingPassResult>,
+): Map<string, ThemeSchemaSettingPassResult> {
+	return new Map(
+		[...results].map(([path, result]) => [
+			path,
+			{
+				schemas: [...result.schemas],
+				settings: [...result.settings],
+				blocks: [...result.blocks],
+				blockSettings: [...result.blockSettings],
+				settingReads: [...result.settingReads],
+			},
+		]),
+	);
+}
+
+function cloneInstanceResults(
+	results: Map<string, ThemeInstancePassResult>,
+): Map<string, ThemeInstancePassResult> {
+	return new Map(
+		[...results].map(([path, result]) => [
+			path,
+			{
+				sectionInstances: [...result.sectionInstances],
+				blockInstances: [...result.blockInstances],
+			},
+		]),
+	);
+}
+
+function cloneLocaleResults(
+	results: Map<string, ThemeLocalePassResult>,
+): Map<string, ThemeLocalePassResult> {
+	return new Map(
+		[...results].map(([path, result]) => [
+			path,
+			{
+				localeKeys: [...result.localeKeys],
+				localeTranslations: [...result.localeTranslations],
+				localeReferences: [...result.localeReferences],
+			},
+		]),
+	);
+}
+
+function cloneDataFlowInputResults(
+	results: Map<string, ThemeDataFlowInputPassResult>,
+): Map<string, ThemeDataFlowInputPassResult> {
+	return new Map(
+		[...results].map(([path, result]) => [
+			path,
+			{
+				dataAccesses: [...result.dataAccesses],
+				variableReads: [...result.variableReads],
+				guardedObjects: [...result.guardedObjects],
+				defaultedObjects: [...result.defaultedObjects],
+				docParams: [...result.docParams],
+				renderSiteFacts: [...result.renderSiteFacts],
+				renderArguments: [...result.renderArguments],
+			},
+		]),
+	);
+}
+
+function emptyMetafieldAnalysis(): ThemeMetafieldAnalysis {
+	return {
+		definitions: [],
+		reads: [],
+		issues: [],
+		state: "unknown",
+		path: ".shopify/metafields.json",
+	};
+}
+
+function cloneMetafieldAnalysis(
+	analysis: ThemeMetafieldAnalysis,
+): ThemeMetafieldAnalysis {
+	return {
+		...analysis,
+		definitions: [...analysis.definitions],
+		reads: [...analysis.reads],
+		issues: [...analysis.issues],
+	};
+}
+
+function dataAccessesBySource(
+	state: ThemeCollectionState,
+): Map<string, ThemeDataAccessRecord[]> {
+	const accesses = new Map<string, ThemeDataAccessRecord[]>();
+	for (const [path, result] of state.dataFlowInputs) {
+		accesses.set(path, [...result.dataAccesses]);
+	}
+	for (const [path, result] of state.derivedDataFlow) {
+		accesses.set(path, [...(accesses.get(path) ?? []), ...result.dataAccesses]);
+	}
+	return accesses;
+}
+
+function metafieldSnapshotChanges(
+	changedPaths: string[],
+	previous: ThemeMetafieldAnalysis,
+	snapshot: InspectNazareThemeOptions["metafields"],
+): PassChange[] {
+	if (!changedPaths.includes(".shopify/metafields.json")) return [];
+	const next = collectMetafieldDefinitions(snapshot);
+	const previousByKey = new Map(
+		previous.definitions.map((definition) => [
+			metafieldJoinKey(definition.owner, definition.namespace, definition.key),
+			definition,
+		]),
+	);
+	const nextByKey = new Map(
+		next.definitions.map((definition) => [
+			metafieldJoinKey(definition.owner, definition.namespace, definition.key),
+			definition,
+		]),
+	);
+	const changedKeys = [
+		...new Set([...previousByKey.keys(), ...nextByKey.keys()]),
+	]
+		.filter(
+			(key) =>
+				JSON.stringify(previousByKey.get(key)) !==
+				JSON.stringify(nextByKey.get(key)),
+		)
+		.sort();
+	return [
+		{
+			kind: "metafieldSnapshotChanged",
+			changedKeys,
+			state: next.state,
+		},
+	];
+}
+
+function cloneDerivedDataFlowResults(
+	results: Map<string, ThemeDerivedDataFlowResult>,
+): Map<string, ThemeDerivedDataFlowResult> {
+	return new Map(
+		[...results].map(([path, result]) => [
+			path,
+			{
+				expectedInputs: [...result.expectedInputs],
+				renderSites: [...result.renderSites],
+				dataAccesses: [...result.dataAccesses],
+			},
+		]),
+	);
+}
+
+function allDeclarations(
+	results: Map<string, ThemeDeclarationPassResult>,
+): ThemeDeclaration[] {
+	return [...results.values()].flatMap((result) => result.declarations);
+}
+
+function allDataFlowInputs(
+	results: Map<string, ThemeDataFlowInputPassResult>,
+): ThemeDataFlowInputPassResult {
+	const values = [...results.values()];
+	return {
+		dataAccesses: values.flatMap((result) => result.dataAccesses),
+		variableReads: values.flatMap((result) => result.variableReads),
+		guardedObjects: values.flatMap((result) => result.guardedObjects),
+		defaultedObjects: values.flatMap((result) => result.defaultedObjects),
+		docParams: values.flatMap((result) => result.docParams),
+		renderSiteFacts: values.flatMap((result) => result.renderSiteFacts),
+		renderArguments: values.flatMap((result) => result.renderArguments),
+	};
+}
+
+function deriveDataFlowSnapshot(
+	state: ThemeCollectionState,
+): Map<string, ThemeDerivedDataFlowResult> {
+	const declarations = allDeclarations(state.declarations);
+	const inputs = allDataFlowInputs(state.dataFlowInputs);
+	const declarationByKey = new Map<string, ThemeDeclaration>();
+	for (const [key, candidates] of state.declarationsByKey) {
+		if (candidates.size === 1) {
+			const declaration = candidates.values().next().value;
+			if (declaration) declarationByKey.set(key, declaration);
+		}
+	}
+	const expectedInputs = deriveThemeExpectedInputs(
+		declarations,
+		inputs.dataAccesses,
+		inputs.variableReads,
+		new Set(inputs.guardedObjects),
+		new Set(inputs.defaultedObjects),
+		inputs.docParams,
+		inputs.renderArguments,
+	);
+	const renderSites = deriveThemeRenderSites(
+		inputs.renderSiteFacts,
+		declarationByKey,
+		inputs.renderArguments,
+		renderSiteId,
+	);
+	const dataAccesses = deriveRenderArgumentDataAccesses(
+		renderSites,
+		inputs.renderArguments,
+		expectedInputs,
+		declarations,
+		inputs.variableReads,
+	);
+	const paths = new Set([
+		...expectedInputs.map((record) => record.path),
+		...renderSites.map((record) => record.fromPath),
+		...dataAccesses.map((record) => record.fromPath),
+	]);
+	return new Map(
+		[...paths].sort().map((path) => [
+			path,
+			{
+				expectedInputs: expectedInputs.filter((record) => record.path === path),
+				renderSites: renderSites.filter((record) => record.fromPath === path),
+				dataAccesses: dataAccesses.filter((record) => record.fromPath === path),
+			},
+		]),
+	);
+}
+
+function modelWithCollectedRecords(
+	model: ThemeSemanticModel,
+	declarationsBySource: Map<string, ThemeDeclarationPassResult>,
+	resolvedReferencesById: Map<string, ThemeReference>,
+	schemaSettingsBySource: Map<string, ThemeSchemaSettingPassResult>,
+	instancesBySource: Map<string, ThemeInstancePassResult>,
+	localesBySource: Map<string, ThemeLocalePassResult>,
+	dataFlowInputsBySource: Map<string, ThemeDataFlowInputPassResult>,
+	derivedDataFlowBySource: Map<string, ThemeDerivedDataFlowResult>,
+	metafields: ThemeMetafieldAnalysis,
+): ThemeSemanticModel {
+	const files: ThemeFileRecord[] = [];
+	const declarations: ThemeDeclaration[] = [];
+	for (const path of [...declarationsBySource.keys()].sort((a, b) =>
+		a.localeCompare(b),
+	)) {
+		const result = declarationsBySource.get(path);
+		if (!result) continue;
+		files.push(...result.files.values());
+		declarations.push(...result.declarations);
+	}
+	const references = [...resolvedReferencesById.values()].sort((a, b) =>
+		a.id.localeCompare(b.id),
+	);
+	const schemaSettings = [...schemaSettingsBySource.keys()]
+		.sort((a, b) => a.localeCompare(b))
+		.map((path) => schemaSettingsBySource.get(path))
+		.filter((result): result is ThemeSchemaSettingPassResult =>
+			Boolean(result),
+		);
+	const analyzedSettingReads = new Map(
+		model.settingReads.map((read) => [read.id, read]),
+	);
+	const analyzedSectionInstances = new Map(
+		model.sectionInstances.map((instance) => [instance.id, instance]),
+	);
+	const analyzedBlockInstances = new Map(
+		model.blockInstances.map((instance) => [instance.id, instance]),
+	);
+	const instances = [...instancesBySource.keys()]
+		.sort((a, b) => a.localeCompare(b))
+		.map((path) => instancesBySource.get(path))
+		.filter((result): result is ThemeInstancePassResult => Boolean(result));
+	const locales = [...localesBySource.keys()]
+		.sort((a, b) => a.localeCompare(b))
+		.map((path) => localesBySource.get(path))
+		.filter((result): result is ThemeLocalePassResult => Boolean(result));
+	const analyzedLocaleReferences = new Map(
+		model.localeReferences.map((reference) => [reference.id, reference]),
+	);
+	const dataFlowInputs = [...dataFlowInputsBySource.keys()]
+		.sort((a, b) => a.localeCompare(b))
+		.map((path) => dataFlowInputsBySource.get(path))
+		.filter((result): result is ThemeDataFlowInputPassResult =>
+			Boolean(result),
+		);
+	const derivedDataFlow = [...derivedDataFlowBySource.values()];
+	const derivedDataAccesses = derivedDataFlow.flatMap(
+		(result) => result.dataAccesses,
+	);
+	return {
+		...model,
+		files,
+		declarations,
+		references,
+		schemas: schemaSettings.flatMap((result) => result.schemas),
+		settings: schemaSettings.flatMap((result) => result.settings),
+		blocks: schemaSettings.flatMap((result) => result.blocks),
+		blockSettings: schemaSettings.flatMap((result) => result.blockSettings),
+		settingReads: schemaSettings.flatMap((result) =>
+			result.settingReads.map(
+				(read) => analyzedSettingReads.get(read.id) ?? read,
+			),
+		),
+		sectionInstances: instances.flatMap((result) =>
+			result.sectionInstances.map(
+				(instance) => analyzedSectionInstances.get(instance.id) ?? instance,
+			),
+		),
+		blockInstances: instances.flatMap((result) =>
+			result.blockInstances.map(
+				(instance) => analyzedBlockInstances.get(instance.id) ?? instance,
+			),
+		),
+		localeKeys: uniqueById(locales.flatMap((result) => result.localeKeys)),
+		localeTranslations: uniqueById(
+			locales.flatMap((result) => result.localeTranslations),
+		),
+		localeReferences: uniqueById(
+			locales.flatMap((result) =>
+				result.localeReferences.map(
+					(reference) =>
+						analyzedLocaleReferences.get(reference.id) ?? reference,
+				),
+			),
+		),
+		dataAccesses: uniqueById([
+			...dataFlowInputs.flatMap((result) => result.dataAccesses),
+			...derivedDataAccesses,
+		]),
+		variableReads: uniqueById(
+			dataFlowInputs.flatMap((result) => result.variableReads),
+		),
+		renderArguments: uniqueById(
+			dataFlowInputs.flatMap((result) => result.renderArguments),
+		),
+		expectedInputs: uniqueById(
+			derivedDataFlow.flatMap((result) => result.expectedInputs),
+		),
+		renderSites: uniqueById(
+			derivedDataFlow.flatMap((result) => result.renderSites),
+		),
+		metafieldDefinitions: metafields.definitions,
+		metafieldReads: metafields.reads,
+		metafieldSchema: {
+			state: metafields.state,
+			path: metafields.path,
+			pulledAt: metafields.pulledAt ?? null,
+		},
+	};
+}
+
+function uniqueById<RecordValue extends { id: string }>(
+	records: RecordValue[],
+): RecordValue[] {
+	return [
+		...new Map(records.map((record) => [record.id, record])).values(),
+	].sort((a, b) => a.id.localeCompare(b.id));
 }
 
 function diffGraphs(

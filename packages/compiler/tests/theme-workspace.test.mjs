@@ -53,7 +53,8 @@ test("metafield index serves reads by definition", () => {
 		[
 			{
 				path: "snippets/card.liquid",
-				contents: "{{ product.metafields.custom.subtitle }}",
+				contents:
+					"{{ product.metafields.custom.subtitle }} {{ product.metafields.custom.missing }}",
 			},
 		],
 		{
@@ -66,6 +67,7 @@ test("metafield index serves reads by definition", () => {
 						key: "subtitle",
 						type: "single_line_text_field",
 					},
+					{ owner: "product", namespace: "custom", key: "unused" },
 				]),
 			},
 		},
@@ -77,6 +79,11 @@ test("metafield index serves reads by definition", () => {
 	assert.deepEqual(index.getAffectedSources(definition.id), [
 		"snippets/card.liquid",
 	]);
+	assert.deepEqual(index.getConsumedDefinitionIds(), [definition.id]);
+	assert.deepEqual(index.getUnconsumedDefinitionIds(), [
+		"metafield:product:custom:unused",
+	]);
+	assert.equal(index.getBrokenReadIds().length, 1);
 });
 
 test("resolver index serves declaration dependents", () => {
@@ -260,6 +267,252 @@ test("incremental graph replay equals full rebuild", () => {
 	files = files.filter((file) => file.path !== "snippets/card.liquid");
 	session.removeFile("snippets/card.liquid");
 	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+});
+
+test("workspace scheduler preserves unresolved and resolved reference transitions", () => {
+	let files = [
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+	];
+	const session = new ThemeWorkspaceSession(files);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+
+	const card = { path: "snippets/card.liquid", contents: "Card" };
+	files = [...files, card];
+	const resolved = session.updateFile(card);
+	assert.ok(resolved.addedNodeIds.includes("file:snippets/card.liquid"));
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+
+	files = files.filter((file) => file.path !== card.path);
+	const unresolved = session.removeFile(card.path);
+	assert.ok(unresolved.removedNodeIds.includes("file:snippets/card.liquid"));
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+});
+
+test("workspace scheduler preserves resolved and ambiguous transitions", () => {
+	let files = [
+		{ path: "sections/main.liquid", contents: "{% render 'button' %}" },
+		{ path: "snippets/button.liquid", contents: "Button" },
+	];
+	const session = new ThemeWorkspaceSession(files);
+	assert.equal(
+		hasIssue(session.getGraph(), "THEME_AMBIGUOUS_REFERENCE"),
+		false,
+	);
+
+	const duplicate = {
+		path: "components/button.nz.liquid",
+		contents: "<button>NZ</button>",
+	};
+	files = [...files, duplicate];
+	session.updateFile(duplicate);
+	assert.equal(hasIssue(session.getGraph(), "THEME_AMBIGUOUS_REFERENCE"), true);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+
+	files = files.filter((file) => file.path !== duplicate.path);
+	session.removeFile(duplicate.path);
+	assert.equal(
+		hasIssue(session.getGraph(), "THEME_AMBIGUOUS_REFERENCE"),
+		false,
+	);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+});
+
+test("workspace scheduler treats declaration rename as delete plus add", () => {
+	let files = [
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	];
+	const session = new ThemeWorkspaceSession(files);
+
+	files = files.filter((file) => file.path !== "snippets/card.liquid");
+	session.removeFile("snippets/card.liquid");
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+
+	const tile = { path: "snippets/tile.liquid", contents: "Tile" };
+	files = [...files, tile];
+	session.updateFile(tile);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+
+	const caller = {
+		path: "sections/main.liquid",
+		contents: "{% render 'tile' %}",
+	};
+	files = [...files.filter((file) => file.path !== caller.path), caller];
+	session.updateFile(caller);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	assert.equal(
+		hasIssue(session.getGraph(), "THEME_UNRESOLVED_REFERENCE"),
+		false,
+	);
+});
+
+test("workspace scheduler replaces schema and setting records by source", () => {
+	let files = [
+		{
+			path: "sections/main.liquid",
+			contents:
+				'{{ block.settings.heading }}{% schema %}{"blocks":[{"type":"feature","settings":[{"type":"text","id":"heading"}]}]}{% endschema %}',
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const updated = {
+		path: "sections/main.liquid",
+		contents:
+			'{{ block.settings.title }}{% schema %}{"blocks":[{"type":"feature","settings":[{"type":"text","id":"title"}]}]}{% endschema %}',
+	};
+	files = [updated];
+	session.updateFile(updated);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	assert.equal(
+		hasIssue(session.getGraph(), "THEME_UNRESOLVED_SETTING_READ"),
+		false,
+	);
+	assert.equal(
+		session.getGraph().nodes.some((node) => node.id.includes(":heading")),
+		false,
+	);
+});
+
+test("workspace scheduler replaces section and block instances by source", () => {
+	let files = [
+		{
+			path: "templates/index.json",
+			contents: JSON.stringify({
+				sections: {
+					hero: {
+						type: "main",
+						blocks: { copy: { type: "text" } },
+					},
+				},
+				order: ["hero"],
+			}),
+		},
+		{
+			path: "sections/main.liquid",
+			contents:
+				'{% schema %}{"blocks":[{"type":"text","name":"Text"}]}{% endschema %}',
+		},
+		{ path: "sections/alternate.liquid", contents: "Alternate" },
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const updated = {
+		path: "templates/index.json",
+		contents: JSON.stringify({
+			sections: { hero: { type: "alternate" } },
+			order: ["hero"],
+		}),
+	};
+	files = [...files.filter((file) => file.path !== updated.path), updated];
+	session.updateFile(updated);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	assert.equal(
+		session.getGraph().nodes.some((node) => node.id.includes(":copy")),
+		false,
+	);
+});
+
+test("workspace scheduler replaces locale keys and references by source", () => {
+	let files = [
+		{
+			path: "locales/en.default.json",
+			contents: JSON.stringify({ general: { hello: "Hello" } }),
+		},
+		{
+			path: "sections/main.liquid",
+			contents: "{{ 'general.hello' | t }}",
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const locale = {
+		path: "locales/en.default.json",
+		contents: JSON.stringify({ general: { goodbye: "Goodbye" } }),
+	};
+	files = [...files.filter((file) => file.path !== locale.path), locale];
+	session.updateFile(locale);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	assert.equal(
+		hasIssue(session.getGraph(), "THEME_UNRESOLVED_LOCALE_KEY"),
+		true,
+	);
+
+	const section = {
+		path: "sections/main.liquid",
+		contents: "{{ 'general.goodbye' | t }}",
+	};
+	files = [...files.filter((file) => file.path !== section.path), section];
+	session.updateFile(section);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	assert.equal(
+		hasIssue(session.getGraph(), "THEME_UNRESOLVED_LOCALE_KEY"),
+		false,
+	);
+});
+
+test("workspace scheduler replaces data-flow inputs by source", () => {
+	let files = [
+		{ path: "snippets/card.liquid", contents: "{{ title }}" },
+		{
+			path: "sections/main.liquid",
+			contents: "{% render 'card', title: section.settings.title %}",
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const snippet = {
+		path: "snippets/card.liquid",
+		contents: "{{ subtitle }}",
+	};
+	files = [...files.filter((file) => file.path !== snippet.path), snippet];
+	session.updateFile(snippet);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	assert.equal(
+		session.getGraph().nodes.some((node) => node.id.includes(":title")),
+		true,
+	);
+	assert.equal(
+		session.getGraph().nodes.some((node) => node.id.includes(":subtitle")),
+		true,
+	);
+});
+
+test("workspace fixed-point data flow matches cold rebuild for render cycles", () => {
+	let files = [
+		{
+			path: "snippets/a.liquid",
+			contents: "{{ value }}{% render 'b', value: value %}",
+		},
+		{
+			path: "snippets/b.liquid",
+			contents: "{{ value }}{% render 'a', value: value %}",
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const updated = {
+		path: "snippets/b.liquid",
+		contents: "{{ value.title }}{% render 'a', value: value %}",
+	};
+	files = [...files.filter((file) => file.path !== updated.path), updated];
+	session.updateFile(updated);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+});
+
+test("workspace rolls back a fixed-point work-budget failure", () => {
+	const files = [
+		{ path: "snippets/a.liquid", contents: "{% render 'b' %}" },
+		{ path: "snippets/b.liquid", contents: "{% render 'a' %}" },
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const previousGraph = session.getGraph();
+	const updated = {
+		path: "snippets/a.liquid",
+		contents: "{{ value }}{% render 'b' %}",
+	};
+	session.collectionScheduler.maximumFixedPointWork = 1;
+	assert.throws(() => session.updateFile(updated), /after 1 work units/);
+	assert.equal(session.getGraph(), previousGraph);
+	session.collectionScheduler.maximumFixedPointWork = 100_000;
+	const result = session.updateFile(updated);
+	assert.equal(result.revision, 1);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme([files[1], updated]));
 });
 
 test("workspace session updates graph with stable revisions and deltas", () => {
@@ -518,6 +771,29 @@ test("metafield snapshot resolves reads and reports missing definitions", () => 
 	assert.equal(graph.metafields.unconsumedDefinitionIds.length, 0);
 });
 
+test("workspace seeds snapshot-only metafield updates without reparsing Liquid", () => {
+	const files = [
+		{
+			path: "sections/main.liquid",
+			contents: "{{ product.metafields.custom.subtitle }}",
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const cached = session.cache.entries["sections/main.liquid"];
+	const metafields = {
+		contents: JSON.stringify([
+			{ owner: "product", namespace: "custom", key: "subtitle" },
+		]),
+	};
+	const update = session.updateExternalArtifacts({ metafields });
+	assert.equal(update.changedPaths.includes(".shopify/metafields.json"), true);
+	assert.strictEqual(session.cache.entries["sections/main.liquid"], cached);
+	assert.deepEqual(
+		session.getGraph(),
+		inspectNazareTheme(files, { metafields }),
+	);
+});
+
 test("metafield definitions inherit affected pages through theme dependencies", () => {
 	const graph = inspectNazareTheme(
 		[
@@ -551,6 +827,32 @@ test("metafield definitions inherit affected pages through theme dependencies", 
 	assert.ok(
 		graph.impact.dependents[definitionId].includes("snippets/price.liquid"),
 	);
+});
+
+test("workspace propagates changed metafield definitions to affected pages", () => {
+	const files = [
+		{
+			path: "templates/product.json",
+			contents: JSON.stringify({
+				sections: { main: { type: "main-product" } },
+			}),
+		},
+		{
+			path: "sections/main-product.liquid",
+			contents: "{{ product.metafields.custom.subtitle }}",
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const metafields = {
+		contents: JSON.stringify([
+			{ owner: "product", namespace: "custom", key: "subtitle" },
+		]),
+	};
+	const added = session.updateExternalArtifacts({ metafields });
+	assert.deepEqual(added.affectedPages, ["templates/product.json"]);
+	const removed = session.updateExternalArtifacts({ metafields: undefined });
+	assert.deepEqual(removed.affectedPages, ["templates/product.json"]);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
 });
 
 test("metafield parser does not infer arbitrary nested objects", () => {
