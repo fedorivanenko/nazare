@@ -78,24 +78,17 @@ export class ThemeSemanticTransaction {
 		previous: ThemeSemanticModel,
 		model: ThemeSemanticModel,
 	) {
-		const old = new Map(
-			records(previous)
-				.filter(identified)
-				.map((record) => [record.id, record]),
-		);
-		const next = new Map(
-			records(model)
-				.filter(identified)
-				.map((record) => [record.id, record]),
-		);
+		const old = groupRecordsById(previous);
+		const next = groupRecordsById(model);
 		const addedRecordIds = [...next.keys()].filter((id) => !old.has(id)).sort();
 		const removedRecordIds = [...old.keys()]
 			.filter((id) => !next.has(id))
 			.sort();
 		const changedRecordIds = [...next.entries()]
 			.filter(
-				([id, record]) =>
-					old.has(id) && JSON.stringify(old.get(id)) !== JSON.stringify(record),
+				([id, groupedRecords]) =>
+					old.has(id) &&
+					JSON.stringify(old.get(id)) !== JSON.stringify(groupedRecords),
 			)
 			.map(([id]) => id)
 			.sort();
@@ -135,6 +128,17 @@ function shareRecords(previous: unknown[], current: unknown[]): unknown[] {
 			? old
 			: record;
 	});
+}
+
+function groupRecordsById(model: ThemeSemanticModel): Map<string, unknown[]> {
+	const grouped = new Map<string, unknown[]>();
+	for (const record of records(model)) {
+		if (!identified(record)) continue;
+		const values = grouped.get(record.id) ?? [];
+		values.push(record);
+		grouped.set(record.id, values);
+	}
+	return grouped;
 }
 
 function records(model: ThemeSemanticModel): unknown[] {

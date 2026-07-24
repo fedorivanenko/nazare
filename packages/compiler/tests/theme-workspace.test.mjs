@@ -250,6 +250,25 @@ test("semantic transaction shares unchanged identified records", () => {
 	);
 });
 
+test("semantic transaction detects changed records sharing evidence IDs", () => {
+	const files = [
+		{ path: "sections/main.liquid", contents: "{% render 'button' %}" },
+		{ path: "snippets/button.liquid", contents: "Button" },
+	];
+	const first = analyzeNazareTheme(files).ir;
+	const second = analyzeNazareTheme([
+		...files,
+		{ path: "components/button.nz.liquid", contents: "<button>NZ</button>" },
+	]).ir;
+	const referenceId = first.references[0].id;
+	assert.equal(
+		first.evidence.some((record) => record.id === referenceId),
+		true,
+	);
+	const update = new ThemeSemanticStore(first).beginUpdate(second).update;
+	assert.equal(update.changedRecordIds.includes(referenceId), true);
+});
+
 test("fact index replaces declarations and dependents transactionally", () => {
 	const index = new ThemeFactIndex([
 		{ kind: "declaresSnippet", path: "snippets/card.liquid", name: "card" },
