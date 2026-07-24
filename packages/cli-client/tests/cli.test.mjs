@@ -5,6 +5,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -663,7 +664,7 @@ test("cli: inspect rejects a malformed cache instead of silently replacing it", 
 	await withProject(
 		{
 			"snippets/card.liquid": "{{ product.title }}",
-			".nazare-out/inspect-cache-v1.json": "{invalid",
+			".nazare-out/inspect-cache-v2.json": "{invalid",
 		},
 		async (cwd) => {
 			const result = await runCli(
@@ -678,6 +679,59 @@ test("cli: inspect rejects a malformed cache instead of silently replacing it", 
 			assert.match(result.stderr, /Invalid JSON in theme analysis cache/);
 		},
 	);
+});
+
+test("cli: inspect rejects roots whose symlink target escapes the project", async () => {
+	const outside = mkdtempSync(join(tmpdir(), "nazare-cli-outside-"));
+	try {
+		writeFileSync(join(outside, "secret.liquid"), "outside");
+		await withProject({}, async (cwd) => {
+			symlinkSync(outside, join(cwd, "linked-theme"), "dir");
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				"linked-theme",
+				"--format",
+				"json",
+			);
+
+			assert.equal(result.status, 1);
+			assert.match(result.stderr, /resolves outside the project root/);
+			assert.doesNotMatch(result.stdout, /secret/);
+		});
+	} finally {
+		await rm(outside, { recursive: true, force: true });
+	}
+});
+
+test("cli: inspect rejects malformed nested cache records", async () => {
+	await withProject({ "snippets/card.liquid": "{{ title }}" }, async (cwd) => {
+		const first = await runCli(
+			cwd,
+			"inspect",
+			"theme",
+			".",
+			"--format",
+			"json",
+		);
+		assert.equal(first.status, 0, first.stderr);
+		const cachePath = join(cwd, ".nazare-out", "inspect-cache-v2.json");
+		const cache = JSON.parse(readFileSync(cachePath, "utf8"));
+		cache.entries["snippets/card.liquid"].facts = [null];
+		writeFileSync(cachePath, JSON.stringify(cache));
+
+		const second = await runCli(
+			cwd,
+			"inspect",
+			"theme",
+			".",
+			"--format",
+			"json",
+		);
+		assert.equal(second.status, 1);
+		assert.match(second.stderr, /Invalid theme analysis cache/);
+	});
 });
 
 test("cli: inspect rejects a malformed inspect.exclude instead of ignoring it", async () => {

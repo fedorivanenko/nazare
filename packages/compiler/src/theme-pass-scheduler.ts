@@ -120,6 +120,18 @@ export type ThemeSchedulerResult = {
 	trace: ThemePassTrace[];
 };
 
+export type ThemePassConvergenceBudget = {
+	maximumFixedPointIterations: number;
+	maximumFixedPointWork: number;
+};
+
+/** Explicit production safety budget for every built-in semantic scheduler. */
+export const THEME_PASS_CONVERGENCE_BUDGET: ThemePassConvergenceBudget =
+	Object.freeze({
+		maximumFixedPointIterations: 10_000,
+		maximumFixedPointWork: 100_000,
+	});
+
 export class ThemePassScheduler<Context> {
 	private readonly passes: RegisteredPass<Context>[];
 	private readonly maximumFixedPointIterations: number;
@@ -127,19 +139,23 @@ export class ThemePassScheduler<Context> {
 
 	constructor(
 		passes: RegisteredPass<Context>[],
-		options: {
-			maximumFixedPointIterations?: number;
-			maximumFixedPointWork?: number;
-		} = {},
+		budget?: ThemePassConvergenceBudget,
 	) {
 		this.passes = [...passes].sort(comparePasses);
-		this.maximumFixedPointIterations =
-			options.maximumFixedPointIterations ?? 10_000;
-		this.maximumFixedPointWork = options.maximumFixedPointWork ?? 100_000;
-		if (this.maximumFixedPointIterations < 1) {
+		if (
+			this.passes.some((registration) => registration.kind === "fixedPoint") &&
+			!budget
+		) {
+			throw new Error(
+				"Fixed-point theme passes require an explicit convergence budget",
+			);
+		}
+		this.maximumFixedPointIterations = budget?.maximumFixedPointIterations ?? 0;
+		this.maximumFixedPointWork = budget?.maximumFixedPointWork ?? 0;
+		if (budget && this.maximumFixedPointIterations < 1) {
 			throw new Error("maximumFixedPointIterations must be at least 1");
 		}
-		if (this.maximumFixedPointWork < 1) {
+		if (budget && this.maximumFixedPointWork < 1) {
 			throw new Error("maximumFixedPointWork must be at least 1");
 		}
 		this.validateRoutes();

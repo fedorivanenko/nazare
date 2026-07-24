@@ -9,8 +9,8 @@ import { collectSourceThemeFacts } from "./theme-source-facts.js";
 export function collectPlainLiquidThemeFacts(
 	path: string,
 	contents: string,
-	options: { parseMode: "strict" | "tolerant" } = {
-		parseMode: "tolerant",
+	options: { parseMode: "strict" | "liquid-only" } = {
+		parseMode: "liquid-only",
 	},
 ): { facts: ThemeFact[]; issues: Diagnostic[] } {
 	const ast = parsePlainLiquid(contents, path, {

@@ -39,7 +39,8 @@ export interface ThemeAnalysisMemo {
 export interface AnalyzeNazareThemeOptions {
 	root?: string;
 	strictness?: "strict" | "loose";
-	plainLiquidParseMode?: "strict" | "tolerant";
+	/** strict validates HTML and Liquid; liquid-only masks HTML but validates Liquid structure. */
+	plainLiquidParseMode?: "strict" | "liquid-only";
 	/** Mutable per-file fact and component artifact cache. */
 	cache?: ThemeAnalysisCache;
 	/** @internal Skip canonical semantic construction for persistent warm sessions. */
