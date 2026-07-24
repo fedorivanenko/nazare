@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "kind": "section",
   "entry": "counter.nz.liquid",
+  "license": "MIT",
   "dependencies": {
     "@nazare/cn": "0.1.0"
   },

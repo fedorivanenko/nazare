@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "kind": "snippet",
   "entry": "price.nz.liquid",
+  "license": "MIT",
   "dependencies": {},
   "files": [
     "price.nz.liquid",

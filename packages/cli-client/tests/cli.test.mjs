@@ -461,6 +461,7 @@ test("cli: pack is available on the main nazare command", {
 				id: "@acme/button",
 				version: "0.1.0",
 				entry: "button.ts",
+				license: "MIT",
 				dependencies: {},
 				files: ["button.ts"],
 			}),

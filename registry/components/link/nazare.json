@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "kind": "snippet",
   "entry": "link.nz.liquid",
+  "license": "MIT",
   "dependencies": {},
   "files": [
     "link.nz.liquid"

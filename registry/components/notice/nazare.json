@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "kind": "block",
   "entry": "notice.nz.liquid",
+  "license": "MIT",
   "dependencies": {},
   "files": [
     "notice.nz.liquid"
