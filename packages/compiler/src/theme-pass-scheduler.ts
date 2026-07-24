@@ -8,6 +8,7 @@ export const THEME_PASS_ORDER = [
 	"dataFlow",
 	"metafields",
 	"capabilities",
+	"classifications",
 	"diagnostics",
 	"impact",
 	"projection",
@@ -25,7 +26,8 @@ export type PassChange =
 	| { kind: "dataFlowChanged"; sourcePath: string; targetName?: string }
 	| { kind: "metafieldDefinitionChanged"; id: string }
 	| { kind: "metafieldReadChanged"; id: string }
-	| { kind: "capabilitySignalChanged"; id: string }
+	| { kind: "capabilitySignalChanged"; id: string; sourcePath: string }
+	| { kind: "capabilityChanged"; id: string; sourcePath: string }
 	| {
 			kind: "metafieldSnapshotChanged";
 			changedKeys: string[];

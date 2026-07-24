@@ -144,6 +144,11 @@ export {
 	type ThemeBuildUpdate,
 } from "./theme-build-session.js";
 export {
+	createThemeCapabilityPass,
+	deriveThemeCapabilities,
+	type ThemeCapabilityPassContext,
+} from "./theme-capability-pass.js";
+export {
 	capabilitySignalId,
 	collectThemeCapabilitySignals,
 	createThemeCapabilitySignalPass,
