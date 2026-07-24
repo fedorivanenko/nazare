@@ -8,6 +8,10 @@ import {
 	type ThemeCapabilitySignalPassContext,
 } from "./theme-capability-signal-pass.js";
 import {
+	filterThemeCheckIssues,
+	parseThemeCheckPolicy,
+} from "./theme-check-policy.js";
+import {
 	createThemeClassificationPass,
 	type ThemeClassificationPassContext,
 } from "./theme-classification-pass.js";
@@ -104,6 +108,7 @@ import {
 	localeKeyId,
 	localeReferenceId,
 	localeTranslationId,
+	pageId,
 	referenceId,
 	renderArgumentId,
 	renderSiteId,
@@ -358,7 +363,10 @@ export class ThemeProgram {
 		const startedAt = telemetryNow();
 		const memoryAtStart = telemetryMemory();
 		const previous = this.graph;
-		const analysis = analyzeNazareTheme(this.files(), this.options);
+		const analysis = analyzeNazareTheme(this.files(), {
+			...this.options,
+			factsOnly: true,
+		});
 		const nextFactStore = new ThemeFactStore(this.factStore.all());
 		for (const path of factChangedPaths) {
 			const facts = analysis.facts.filter(
@@ -393,10 +401,17 @@ export class ThemeProgram {
 			collection.capabilities,
 			collection.classifications,
 		);
-		const ownedIssues = deriveOwnedSemanticIssues(
-			collectedBaseModel,
-			collection,
-			analysis.ir.issues,
+		const themeCheckPolicy = parseThemeCheckPolicy(this.options.themeCheck);
+		const ownedIssues = filterThemeCheckIssues(
+			[
+				...deriveOwnedSemanticIssues(
+					collectedBaseModel,
+					collection,
+					analysis.issues,
+				),
+				...themeCheckPolicy.issues,
+			],
+			themeCheckPolicy,
 		);
 		const collectedModel = {
 			...collectedBaseModel,
@@ -404,6 +419,10 @@ export class ThemeProgram {
 				.flat()
 				.sort((a, b) => a.id.localeCompare(b.id)),
 			issues: ownedIssues,
+			themeCheck: {
+				path: themeCheckPolicy.path,
+				ignoredChecks: themeCheckPolicy.ignoredChecks,
+			},
 		};
 		const transaction = this.semanticStore.beginUpdate(collectedModel);
 		const semanticUpdate = transaction.update;
@@ -853,44 +872,12 @@ function deriveOwnedSemanticIssues(
 				.issues,
 		},
 	];
-	const canonicalCounts = diagnosticCounts(canonicalIssues);
-	const ownedKeys = new Map<string, number>();
 	const owned: Diagnostic[] = [];
 	for (const category of categories) {
-		const filtered = category.issues.filter((issue) => {
-			const key = JSON.stringify(issue);
-			const used = ownedKeys.get(key) ?? 0;
-			if (used >= (canonicalCounts.get(key) ?? 0)) return false;
-			ownedKeys.set(key, used + 1);
-			return true;
-		});
-		replaceOwnedDiagnostics(state.diagnostics, category.pass, filtered);
-		owned.push(...filtered);
+		replaceOwnedDiagnostics(state.diagnostics, category.pass, category.issues);
+		owned.push(...category.issues);
 	}
-	const consumed = new Map<string, number>();
-	const sourceIssues = canonicalIssues.filter((issue) => {
-		const key = JSON.stringify(issue);
-		const used = consumed.get(key) ?? 0;
-		if (used >= (ownedKeys.get(key) ?? 0)) return true;
-		consumed.set(key, used + 1);
-		return false;
-	});
-	const policyIssues = sourceIssues.filter((issue) =>
-		issue.code.startsWith("THEME_CHECK_"),
-	);
-	const extractionIssues = sourceIssues.filter(
-		(issue) => !issue.code.startsWith("THEME_CHECK_"),
-	);
-	return [...extractionIssues, ...owned, ...policyIssues];
-}
-
-function diagnosticCounts(issues: Diagnostic[]): Map<string, number> {
-	const counts = new Map<string, number>();
-	for (const issue of issues) {
-		const key = JSON.stringify(issue);
-		counts.set(key, (counts.get(key) ?? 0) + 1);
-	}
-	return counts;
+	return [...canonicalIssues, ...owned];
 }
 
 function replaceOwnedDiagnostics(
@@ -1263,15 +1250,7 @@ function modelWithCollectedRecords(
 		.filter((result): result is ThemeSchemaSettingPassResult =>
 			Boolean(result),
 		);
-	const analyzedSettingReads = new Map(
-		model.settingReads.map((read) => [read.id, read]),
-	);
-	const analyzedSectionInstances = new Map(
-		model.sectionInstances.map((instance) => [instance.id, instance]),
-	);
-	const analyzedBlockInstances = new Map(
-		model.blockInstances.map((instance) => [instance.id, instance]),
-	);
+
 	const instances = [...instancesBySource.keys()]
 		.sort((a, b) => a.localeCompare(b))
 		.map((path) => instancesBySource.get(path))
@@ -1280,9 +1259,7 @@ function modelWithCollectedRecords(
 		.sort((a, b) => a.localeCompare(b))
 		.map((path) => localesBySource.get(path))
 		.filter((result): result is ThemeLocalePassResult => Boolean(result));
-	const analyzedLocaleReferences = new Map(
-		model.localeReferences.map((reference) => [reference.id, reference]),
-	);
+
 	const dataFlowInputs = [...dataFlowInputsBySource.keys()]
 		.sort((a, b) => a.localeCompare(b))
 		.map((path) => dataFlowInputsBySource.get(path))
@@ -1293,42 +1270,53 @@ function modelWithCollectedRecords(
 	const derivedDataAccesses = derivedDataFlow.flatMap(
 		(result) => result.dataAccesses,
 	);
+	const schemas = schemaSettings.flatMap((result) => result.schemas);
+	const settings = schemaSettings.flatMap((result) => result.settings);
+	const blocks = schemaSettings.flatMap((result) => result.blocks);
+	const blockSettings = schemaSettings.flatMap(
+		(result) => result.blockSettings,
+	);
+	const schemaIndex = new ThemeSchemaIndex({
+		declarations,
+		blocks,
+		settings,
+		blockSettings,
+		localeKeys: uniqueById(locales.flatMap((result) => result.localeKeys)),
+	});
+	const resolvedInstances = schemaIndex.resolveInstances(
+		instances.flatMap((result) => result.sectionInstances),
+		instances.flatMap((result) => result.blockInstances),
+	);
 	return {
 		...model,
 		files,
+		pages: declarations
+			.filter((declaration) => declaration.kind === "template")
+			.map((declaration) => ({
+				id: pageId(declaration.path),
+				path: declaration.path,
+				name: declaration.name,
+				pageType: declaration.name.split(".")[0] || "unknown",
+				templateDeclarationId: declaration.id,
+			})),
 		declarations,
 		references,
-		schemas: schemaSettings.flatMap((result) => result.schemas),
-		settings: schemaSettings.flatMap((result) => result.settings),
-		blocks: schemaSettings.flatMap((result) => result.blocks),
-		blockSettings: schemaSettings.flatMap((result) => result.blockSettings),
-		settingReads: schemaSettings.flatMap((result) =>
-			result.settingReads.map(
-				(read) => analyzedSettingReads.get(read.id) ?? read,
-			),
-		),
-		sectionInstances: instances.flatMap((result) =>
-			result.sectionInstances.map(
-				(instance) => analyzedSectionInstances.get(instance.id) ?? instance,
-			),
-		),
-		blockInstances: instances.flatMap((result) =>
-			result.blockInstances.map(
-				(instance) => analyzedBlockInstances.get(instance.id) ?? instance,
-			),
-		),
+		schemas,
+		settings,
+		blocks,
+		blockSettings,
+		settingReads: schemaIndex.resolveSettingReads(
+			schemaSettings.flatMap((result) => result.settingReads),
+		).records,
+		sectionInstances: resolvedInstances.sectionInstances,
+		blockInstances: resolvedInstances.blockInstances,
 		localeKeys: uniqueById(locales.flatMap((result) => result.localeKeys)),
 		localeTranslations: uniqueById(
 			locales.flatMap((result) => result.localeTranslations),
 		),
-		localeReferences: uniqueById(
-			locales.flatMap((result) =>
-				result.localeReferences.map(
-					(reference) =>
-						analyzedLocaleReferences.get(reference.id) ?? reference,
-				),
-			),
-		),
+		localeReferences: schemaIndex.resolveLocaleReferences(
+			locales.flatMap((result) => result.localeReferences),
+		).records,
 		dataAccesses: uniqueById([
 			...dataFlowInputs.flatMap((result) => result.dataAccesses),
 			...derivedDataAccesses,
