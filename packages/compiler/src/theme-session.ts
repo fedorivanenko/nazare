@@ -632,9 +632,13 @@ function runCollectionPasses(
 			}
 			return {
 				records,
-				changes: [...changed]
-					.sort()
-					.map((owner): PassChange => ({ kind: "diagnosticsChanged", owner })),
+				changes: [...changed].sort().map(
+					(owner): PassChange => ({
+						kind: "diagnosticsChanged",
+						pass: "render-data-flow",
+						owner,
+					}),
+				),
 				propagatePaths: [...changed],
 			};
 		},

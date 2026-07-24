@@ -36,7 +36,7 @@ export type PassChange =
 	  }
 	| { kind: "themeCheckPolicyChanged" }
 	| { kind: "exclusionPolicyChanged"; changedPatterns: string[] }
-	| { kind: "diagnosticsChanged"; owner: string };
+	| { kind: "diagnosticsChanged"; pass: string; owner: string };
 
 export type PassChangeKind = PassChange["kind"];
 export type PassRoute = {

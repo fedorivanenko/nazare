@@ -605,7 +605,13 @@ test("metafield snapshot changes can seed a snapshot-only pass", () => {
 				),
 			run: (keys) => ({
 				records: [...keys],
-				changes: [{ kind: "diagnosticsChanged", owner: "metafields" }],
+				changes: [
+					{
+						kind: "diagnosticsChanged",
+						pass: "metafields",
+						owner: "snapshot",
+					},
+				],
 			}),
 		}),
 	]);
