@@ -46,6 +46,7 @@ test("impact index propagates dependencies to pages", () => {
 	assert.deepEqual(index.getAffectedPages("snippets/card.liquid"), [
 		"templates/index.json",
 	]);
+	assert.deepEqual(index.toSummary(), graph.impact);
 });
 
 test("metafield index serves reads by definition", () => {
