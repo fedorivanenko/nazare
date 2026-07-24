@@ -160,6 +160,11 @@ export {
 	type ThemeCheckPolicy,
 	type ThemeCheckPolicyInput,
 } from "./theme-check-policy.js";
+export {
+	createThemeClassificationPass,
+	deriveThemeClassifications,
+	type ThemeClassificationPassContext,
+} from "./theme-classification-pass.js";
 export { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 export {
 	collectThemeDataFlowInputs,
