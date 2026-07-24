@@ -150,6 +150,11 @@ export {
 	type ThemeCheckPolicyInput,
 } from "./theme-check-policy.js";
 export { matchesThemeGlob } from "./theme-exclusions.js";
+export { ThemeFactIndex } from "./theme-fact-index.js";
+export {
+	ThemeFactStore,
+	themeFactSourcePath,
+} from "./theme-fact-store.js";
 export type {
 	AnalyzeNazareThemeOptions,
 	BuildNazareThemeWorkspaceOptions,
@@ -189,6 +194,9 @@ export type {
 	ThemeSemanticModel,
 	ThemeSettingReadRecord,
 } from "./theme-facts.js";
+export { shareThemeGraphRecords } from "./theme-graph-output.js";
+export { ThemeImpactIndex } from "./theme-impact-index.js";
+export { ThemeMetafieldIndex } from "./theme-metafield-index.js";
 export {
 	analyzeMetafields,
 	metafieldDefinitionId,
@@ -206,6 +214,11 @@ export {
 	type ThemeGraphSummary,
 	themeGraphToDot,
 } from "./theme-queries.js";
+export { ThemeResolverIndex } from "./theme-resolver-index.js";
+export {
+	ThemeSemanticStore,
+	ThemeSemanticTransaction,
+} from "./theme-semantic-store.js";
 export {
 	type ThemeGraphUpdate,
 	ThemeWorkspaceSession,

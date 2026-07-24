@@ -3,6 +3,7 @@ import type {
 	SemanticThemeGraphEdge,
 	SemanticThemeGraphNode,
 	ThemeGraphViews,
+	ThemeImpactSummary,
 	ThemeReference,
 	ThemeSemanticModel,
 } from "./theme-facts.js";
@@ -16,8 +17,28 @@ import {
 	schemaId,
 } from "./theme-model.js";
 
+export function shareThemeGraphRecords(
+	previous: InspectNazareThemeResult,
+	next: InspectNazareThemeResult,
+): InspectNazareThemeResult {
+	const previousNodes = new Map(previous.nodes.map((node) => [node.id, node]));
+	const previousEdges = new Map(previous.edges.map((edge) => [edge.id, edge]));
+	return {
+		...next,
+		nodes: next.nodes.map((node) => {
+			const old = previousNodes.get(node.id);
+			return old && JSON.stringify(old) === JSON.stringify(node) ? old : node;
+		}),
+		edges: next.edges.map((edge) => {
+			const old = previousEdges.get(edge.id);
+			return old && JSON.stringify(old) === JSON.stringify(edge) ? old : edge;
+		}),
+	};
+}
+
 export function themeGraphFromModel(
 	model: ThemeSemanticModel,
+	options: { impact?: ThemeImpactSummary } = {},
 ): InspectNazareThemeResult {
 	const nodes: SemanticThemeGraphNode[] = [];
 	const edges: SemanticThemeGraphEdge[] = [];
@@ -778,7 +799,7 @@ export function themeGraphFromModel(
 		nodes: sortedNodes,
 		edges: sortedEdges,
 		evidence: model.evidence,
-		impact: impactSummary(model),
+		impact: options.impact ?? impactSummary(model),
 		metafields: metafieldQueries(model),
 		themeCheck: model.themeCheck,
 		views,

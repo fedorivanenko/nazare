@@ -7,14 +7,179 @@ import {
 	getThemeDependencies,
 	getThemeNode,
 	inspectNazareTheme,
+	shareThemeGraphRecords,
 	summarizeThemeGraph,
 	ThemeBuildSession,
+	ThemeFactIndex,
+	ThemeFactStore,
+	ThemeImpactIndex,
+	ThemeMetafieldIndex,
+	ThemeResolverIndex,
+	ThemeSemanticStore,
 	ThemeWorkspaceSession,
 	themeGraphToDot,
 } from "../dist/index.js";
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("impact index propagates dependencies to pages", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "templates/index.json",
+			contents: JSON.stringify({ sections: { main: { type: "main" } } }),
+		},
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const index = new ThemeImpactIndex(graph);
+	assert.ok(
+		index
+			.getDependencies("sections/main.liquid")
+			.includes("snippets/card.liquid"),
+	);
+	assert.ok(
+		index
+			.getDependents("snippets/card.liquid")
+			.includes("sections/main.liquid"),
+	);
+	assert.deepEqual(index.getAffectedPages("snippets/card.liquid"), [
+		"templates/index.json",
+	]);
+});
+
+test("metafield index serves reads by definition", () => {
+	const model = analyzeNazareTheme(
+		[
+			{
+				path: "snippets/card.liquid",
+				contents: "{{ product.metafields.custom.subtitle }}",
+			},
+		],
+		{
+			metafields: {
+				path: ".shopify/metafields.json",
+				contents: JSON.stringify([
+					{
+						owner: "product",
+						namespace: "custom",
+						key: "subtitle",
+						type: "single_line_text_field",
+					},
+				]),
+			},
+		},
+	).ir;
+	const index = new ThemeMetafieldIndex(model);
+	const definition = model.metafieldDefinitions[0];
+	assert.ok(definition);
+	assert.equal(index.getReads(definition.id).length, 1);
+	assert.deepEqual(index.getAffectedSources(definition.id), [
+		"snippets/card.liquid",
+	]);
+});
+
+test("resolver index serves declaration dependents", () => {
+	const model = analyzeNazareTheme([
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]).ir;
+	const index = new ThemeResolverIndex(model);
+	const declarationId = index.getDeclarations("snippet:card")[0];
+	assert.ok(declarationId);
+	assert.deepEqual(index.getDependents(declarationId), [
+		"sections/main.liquid",
+	]);
+	assert.equal(
+		index
+			.resolveModel(model)
+			.references.find((reference) => reference.kind === "rendersSnippet")
+			?.resolvedDeclarationId,
+		declarationId,
+	);
+});
+
+test("graph projection shares unchanged nodes and edges", () => {
+	const first = inspectNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const second = inspectNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+		{ path: "assets/new.css", contents: ".new {}" },
+	]);
+	const shared = shareThemeGraphRecords(first, second);
+	const firstFile = first.nodes.find(
+		(node) => node.id === "file:snippets/card.liquid",
+	);
+	const sharedFile = shared.nodes.find(
+		(node) => node.id === "file:snippets/card.liquid",
+	);
+	assert.equal(sharedFile, firstFile);
+});
+
+test("semantic transaction shares unchanged identified records", () => {
+	const first = analyzeNazareTheme([
+		{ path: "sections/main.liquid", contents: "<section>Main</section>" },
+	]);
+	const second = analyzeNazareTheme([
+		{ path: "sections/main.liquid", contents: "<section>Main</section>" },
+		{ path: "assets/new.css", contents: ".new {}" },
+	]);
+	const store = new ThemeSemanticStore(first.ir);
+	const transaction = store.beginUpdate(second.ir);
+	const update = transaction.commit();
+	assert.equal(
+		update.model.files.find((file) => file.path === "sections/main.liquid"),
+		first.ir.files.find((file) => file.path === "sections/main.liquid"),
+	);
+});
+
+test("fact index replaces declarations and dependents transactionally", () => {
+	const index = new ThemeFactIndex([
+		{ kind: "declaresSnippet", path: "snippets/card.liquid", name: "card" },
+		{
+			kind: "rendersSnippet",
+			fromPath: "sections/main.liquid",
+			siteId: "main@1:1",
+			invocationKind: "render",
+			static: true,
+			targetName: "card",
+		},
+	]);
+	assert.deepEqual(index.getDeclarations("snippet:card"), [
+		"snippets/card.liquid",
+	]);
+	assert.deepEqual(index.getDependents("snippet:card"), [
+		"sections/main.liquid",
+	]);
+	assert.deepEqual(index.dependentsOfFiles(["snippets/card.liquid"]), [
+		"sections/main.liquid",
+		"snippets/card.liquid",
+	]);
+	index.replaceFileFacts("sections/main.liquid", []);
+	assert.deepEqual(index.getDependents("snippet:card"), []);
+});
+
+test("fact store replaces only one source bucket", () => {
+	const store = new ThemeFactStore([
+		{ kind: "file", path: "a.liquid", fileKind: "other" },
+		{
+			kind: "rendersSnippet",
+			fromPath: "a.liquid",
+			siteId: "a@1:1",
+			invocationKind: "render",
+			static: true,
+			targetName: "card",
+		},
+		{ kind: "file", path: "b.liquid", fileKind: "other" },
+	]);
+	store.replaceFile("a.liquid", [
+		{ kind: "file", path: "a.liquid", fileKind: "other" },
+	]);
+	assert.deepEqual(store.files(), ["a.liquid", "b.liquid"]);
+	assert.equal(store.getFile("a.liquid").length, 1);
+	assert.equal(store.all().length, 2);
+});
 
 test("build session reports emitted output deltas", () => {
 	const session = new ThemeBuildSession([
@@ -73,6 +238,30 @@ test("theme graph DOT projection escapes identifiers and labels", () => {
 	assert.match(dot, /file:snippets\/card\.liquid/);
 });
 
+test("incremental graph replay equals full rebuild", () => {
+	let files = [
+		{
+			path: "templates/index.json",
+			contents: JSON.stringify({ sections: { main: { type: "main" } } }),
+		},
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const edits = [
+		{ path: "snippets/card.liquid", contents: "Updated" },
+		{ path: "snippets/extra.liquid", contents: "Extra" },
+	];
+	for (const edit of edits) {
+		files = [...files.filter((file) => file.path !== edit.path), edit];
+		session.updateFile(edit);
+		assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+	}
+	files = files.filter((file) => file.path !== "snippets/card.liquid");
+	session.removeFile("snippets/card.liquid");
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+});
+
 test("workspace session updates graph with stable revisions and deltas", () => {
 	const session = new ThemeWorkspaceSession([
 		{
@@ -93,6 +282,9 @@ test("workspace session updates graph with stable revisions and deltas", () => {
 		"templates/index.json",
 	]);
 	assert.deepEqual(first.affectedPages, ["templates/index.json"]);
+	assert.deepEqual(session.getAffectedPages("snippets/card.liquid"), [
+		"templates/index.json",
+	]);
 	assert.deepEqual(first.changedPaths, ["snippets/card.liquid"]);
 	assert.deepEqual(first.addedNodeIds, []);
 	assert.deepEqual(first.removedNodeIds, []);

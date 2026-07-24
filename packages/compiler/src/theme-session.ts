@@ -1,3 +1,5 @@
+import { ThemeFactIndex } from "./theme-fact-index.js";
+import { ThemeFactStore, themeFactSourcePath } from "./theme-fact-store.js";
 import type {
 	InspectNazareThemeOptions,
 	InspectNazareThemeResult,
@@ -5,12 +7,22 @@ import type {
 	ThemeAnalysisMemo,
 	ThemeInputFile,
 } from "./theme-facts.js";
-import { inspectNazareTheme } from "./theme-workspace.js";
+import {
+	shareThemeGraphRecords,
+	themeGraphFromModel,
+} from "./theme-graph-output.js";
+import { impactSummary } from "./theme-impact.js";
+import { ThemeImpactIndex } from "./theme-impact-index.js";
+import { ThemeMetafieldIndex } from "./theme-metafield-index.js";
+import { ThemeResolverIndex } from "./theme-resolver-index.js";
+import { ThemeSemanticStore } from "./theme-semantic-store.js";
+import { analyzeNazareTheme } from "./theme-workspace.js";
 
 export type ThemeGraphUpdate = {
 	revision: number;
 	graph: InspectNazareThemeResult;
 	changedPaths: string[];
+	changedSemanticRecordIds: string[];
 	invalidatedNodeIds: string[];
 	affectedPages: string[];
 	addedNodeIds: string[];
@@ -26,6 +38,12 @@ export class ThemeWorkspaceSession {
 	private readonly options: InspectNazareThemeOptions;
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
 	private readonly memo = {} as ThemeAnalysisMemo;
+	private readonly factStore: ThemeFactStore;
+	private readonly factIndex: ThemeFactIndex;
+	private semanticStore: ThemeSemanticStore;
+	private resolverIndex: ThemeResolverIndex;
+	private metafieldIndex: ThemeMetafieldIndex;
+	private impactIndex: ThemeImpactIndex;
 	private graph: InspectNazareThemeResult;
 	private externalFingerprint: string;
 	private revision = 0;
@@ -36,12 +54,33 @@ export class ThemeWorkspaceSession {
 	) {
 		this.options = { ...options, cache: this.cache, memo: this.memo };
 		for (const file of files) this.filesByPath.set(file.path, file);
-		this.graph = inspectNazareTheme(this.files(), this.options);
+		const analysis = analyzeNazareTheme(this.files(), this.options);
+		this.factStore = new ThemeFactStore(analysis.facts);
+		this.factIndex = new ThemeFactIndex(analysis.facts);
+		this.semanticStore = new ThemeSemanticStore(analysis.ir);
+		this.resolverIndex = new ThemeResolverIndex(analysis.ir);
+		this.metafieldIndex = new ThemeMetafieldIndex(analysis.ir);
+		this.graph = themeGraphFromModel(this.semanticStore.getModel(), {
+			impact: impactSummary(this.semanticStore.getModel()),
+		});
+		this.impactIndex = new ThemeImpactIndex(this.graph);
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
 
 	getGraph(): InspectNazareThemeResult {
 		return this.graph;
+	}
+
+	getDependencies(nodeId: string): string[] {
+		return this.impactIndex.getDependencies(nodeId);
+	}
+
+	getDependents(nodeId: string): string[] {
+		return this.impactIndex.getDependents(nodeId);
+	}
+
+	getAffectedPages(nodeId: string): string[] {
+		return this.impactIndex.getAffectedPages(nodeId);
 	}
 
 	updateFile(file: ThemeInputFile): ThemeGraphUpdate {
@@ -76,13 +115,54 @@ export class ThemeWorkspaceSession {
 
 	private rebuild(changedPaths: string[]): ThemeGraphUpdate {
 		const previous = this.graph;
-		this.graph = inspectNazareTheme(this.files(), this.options);
+		const analysis = analyzeNazareTheme(this.files(), this.options);
+		for (const path of changedPaths) {
+			const facts = analysis.facts.filter(
+				(fact) => themeFactSourcePath(fact) === path,
+			);
+			this.factStore.replaceFile(path, facts);
+			this.factIndex.replaceFileFacts(path, facts);
+		}
+		const resolvedModel = this.resolverIndex.resolveModel(analysis.ir);
+		const transaction = this.semanticStore.beginUpdate(resolvedModel);
+		const semanticUpdate = transaction.commit();
+		this.resolverIndex.apply(semanticUpdate);
+		this.metafieldIndex.apply(semanticUpdate);
+		this.graph = shareThemeGraphRecords(
+			this.graph,
+			themeGraphFromModel(semanticUpdate.model, {
+				impact: impactSummary(semanticUpdate.model),
+			}),
+		);
+		this.impactIndex.replaceGraph(this.graph);
 		this.revision += 1;
-		return diffGraphs(this.revision, previous, this.graph, changedPaths);
+		const resolverDependents = semanticUpdate.changedRecordIds.flatMap((id) =>
+			this.resolverIndex.getDependents(id),
+		);
+		return diffGraphs(
+			this.revision,
+			previous,
+			this.graph,
+			changedPaths,
+			[
+				...this.factIndex.dependentsOfFiles(changedPaths),
+				...resolverDependents,
+			],
+			semanticUpdate.changedRecordIds,
+			changedPaths.flatMap((path) => this.impactIndex.getAffectedPages(path)),
+		);
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
-		return diffGraphs(this.revision, this.graph, this.graph, changedPaths);
+		return diffGraphs(
+			this.revision,
+			this.graph,
+			this.graph,
+			changedPaths,
+			[],
+			[],
+			[],
+		);
 	}
 
 	private files(): ThemeInputFile[] {
@@ -97,6 +177,9 @@ function diffGraphs(
 	previous: InspectNazareThemeResult,
 	current: InspectNazareThemeResult,
 	changedPaths: string[],
+	indexedInvalidation: string[],
+	changedSemanticRecordIds: string[],
+	indexedAffectedPages: string[],
 ): ThemeGraphUpdate {
 	const previousNodes = new Map(previous.nodes.map((node) => [node.id, node]));
 	const currentNodes = new Map(current.nodes.map((node) => [node.id, node]));
@@ -106,8 +189,19 @@ function diffGraphs(
 		revision,
 		graph: current,
 		changedPaths: [...new Set(changedPaths)].sort(),
-		invalidatedNodeIds: invalidationClosure(current, changedPaths),
-		affectedPages: affectedPages(current, changedPaths),
+		changedSemanticRecordIds,
+		invalidatedNodeIds: [
+			...new Set([
+				...invalidationClosure(current, changedPaths),
+				...indexedInvalidation,
+			]),
+		].sort(),
+		affectedPages: [
+			...new Set([
+				...affectedPages(current, changedPaths),
+				...indexedAffectedPages,
+			]),
+		].sort(),
 		addedNodeIds: addedIds(previousNodes, currentNodes),
 		removedNodeIds: addedIds(currentNodes, previousNodes),
 		changedNodeIds: changedIds(previousNodes, currentNodes),
