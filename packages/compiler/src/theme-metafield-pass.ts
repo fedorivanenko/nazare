@@ -30,6 +30,7 @@ export function createThemeMetafieldPass(): IncrementalPass<
 		name: "metafields",
 		stage: "metafields",
 		routes: [
+			{ kind: "metafieldDefinitionChanged", target: "impact" },
 			{ kind: "metafieldReadChanged", target: "capabilities" },
 			{ kind: "diagnosticsChanged", target: "diagnostics" },
 		],
@@ -104,12 +105,22 @@ export function createThemeMetafieldPass(): IncrementalPass<
 				pulledAt: collection.pulledAt,
 			};
 			context.metafieldResult.current = next;
+			const changedDefinitionIds = changedIds(
+				previous.definitions,
+				next.definitions,
+			);
 			const changedReadIds = changedIds(previous.reads, next.reads);
 			const diagnosticsChanged =
 				JSON.stringify(previous.issues) !== JSON.stringify(next.issues);
 			return {
 				records: [...next.definitions, ...next.reads],
 				changes: [
+					...changedDefinitionIds.map(
+						(id): PassChange => ({
+							kind: "metafieldDefinitionChanged",
+							id,
+						}),
+					),
 					...changedReadIds.map(
 						(id): PassChange => ({ kind: "metafieldReadChanged", id }),
 					),
@@ -162,9 +173,9 @@ function metafieldIssues(
 		}));
 }
 
-function changedIds(
-	previous: ThemeMetafieldReadRecord[],
-	next: ThemeMetafieldReadRecord[],
+function changedIds<T extends { id: string }>(
+	previous: T[],
+	next: T[],
 ): string[] {
 	const previousById = new Map(previous.map((record) => [record.id, record]));
 	const nextById = new Map(next.map((record) => [record.id, record]));
