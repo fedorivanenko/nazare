@@ -215,6 +215,31 @@ test("semantic model memo reuses unchanged resolved models", () => {
 	assert.equal(first.ir, second.ir);
 });
 
+test("theme check policy changes are projection-only", () => {
+	const memo = {};
+	const cache = { version: 1, entries: {} };
+	const files = [
+		{ path: "sections/main.liquid", contents: "{% render 'missing' %}" },
+	];
+	const first = analyzeNazareTheme(files, { memo, cache });
+	const baseModel = memo.model;
+	const cached = cache.entries["sections/main.liquid"];
+	const second = analyzeNazareTheme(files, {
+		memo,
+		cache,
+		themeCheck: { contents: "ignore: [" },
+	});
+	assert.strictEqual(memo.model, baseModel);
+	assert.strictEqual(cache.entries["sections/main.liquid"], cached);
+	assert.notStrictEqual(second.ir, first.ir);
+	assert.equal(
+		second.ir.issues.some(
+			(issue) => issue.code === "THEME_CHECK_CONFIG_INVALID",
+		),
+		true,
+	);
+});
+
 test("component artifacts reuse only affected dependency cache entries", () => {
 	const cache = { version: 1, entries: {} };
 	const firstFiles = [
