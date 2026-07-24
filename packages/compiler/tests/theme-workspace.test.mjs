@@ -3,6 +3,7 @@ import test from "node:test";
 import {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
+	deriveThemeEvidence,
 	getThemeAffectedPages,
 	getThemeDependencies,
 	getThemeNode,
@@ -262,6 +263,31 @@ test("graph store applies stable-ID records transactionally", () => {
 		/missing evidence missing:evidence/,
 	);
 	assert.strictEqual(validationStore.getGraph(), previousGraph);
+});
+
+test("evidence derivation is canonical and preserves unchanged owners", () => {
+	const files = [
+		{ path: "snippets/card.liquid", contents: "{{ product.title }}" },
+		{ path: "snippets/other.liquid", contents: "{% render 'card' %}" },
+	];
+	const analysis = analyzeNazareTheme(files);
+	assert.deepEqual(
+		deriveThemeEvidence(analysis.ir, analysis.facts),
+		analysis.ir.evidence,
+	);
+	const program = new ThemeProgram(files);
+	const cardEvidence = program
+		.getModel()
+		.evidence.find((record) => record.file === "snippets/card.liquid");
+	assert.ok(cardEvidence);
+	program.updateFile({
+		path: "snippets/other.liquid",
+		contents: "{% render 'card' %} Updated",
+	});
+	assert.strictEqual(
+		program.getModel().evidence.find((record) => record.id === cardEvidence.id),
+		cardEvidence,
+	);
 });
 
 test("semantic transaction shares unchanged identified records", () => {
