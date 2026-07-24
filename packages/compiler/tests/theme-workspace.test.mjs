@@ -208,12 +208,22 @@ test("graph store applies stable-ID records transactionally", () => {
 	const tileSemanticIds = [...secondModel.files, ...secondModel.declarations]
 		.filter((record) => record.path === "snippets/tile.liquid")
 		.map((record) => record.id);
+	const candidate = new ThemeGraphStore(second);
+	candidate.replaceOwnership(secondModel);
+	const projectedNodeIds = new Set(
+		tileSemanticIds.flatMap((id) => candidate.getOwnedNodeIds(id)),
+	);
+	const projectedEdgeIds = new Set(
+		tileSemanticIds.flatMap((id) => candidate.getOwnedEdgeIds(id)),
+	);
 	const selective = committed.fork();
-	const selectiveDelta = selective.applyOwnedGraph(
-		second,
-		secondModel,
+	const composed = selective.composeOwnedRecords(
+		second.nodes.filter((node) => projectedNodeIds.has(node.id)),
+		second.edges.filter((edge) => projectedEdgeIds.has(edge.id)),
 		tileSemanticIds,
 	);
+	const selectiveDelta = selective.applyGraph({ ...second, ...composed });
+	selective.replaceOwnership(secondModel);
 	assert.ok(selectiveDelta.addedNodeIds.includes("file:snippets/tile.liquid"));
 	assert.strictEqual(selective.getNode(cardId), card);
 	assert.deepEqual(selective.getGraph(), second);
