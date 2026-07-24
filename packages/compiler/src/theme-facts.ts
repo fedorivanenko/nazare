@@ -53,6 +53,8 @@ export interface AnalyzeNazareThemeOptions {
 	metafields?: ThemeMetafieldSnapshot;
 	/** Shopify Theme Check configuration. */
 	themeCheck?: ThemeCheckPolicyInput;
+	/** Debug-only cadence for canonical index and cold replay validation. */
+	incrementalValidationInterval?: number;
 }
 
 export type InspectNazareThemeOptions = AnalyzeNazareThemeOptions;

@@ -124,7 +124,7 @@ import {
 	type ThemeSchemaSettingRecord,
 } from "./theme-schema-setting-pass.js";
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
-import { analyzeNazareTheme } from "./theme-workspace.js";
+import { analyzeNazareTheme, inspectNazareTheme } from "./theme-workspace.js";
 
 export type ThemeGraphUpdate = {
 	revision: number;
@@ -435,6 +435,23 @@ export class ThemeProgram {
 		const resolverDependents = semanticUpdate.changedRecordIds.flatMap((id) =>
 			nextResolverIndex.getDependents(id),
 		);
+		validateStagedProgram({
+			model: semanticUpdate.model,
+			graph: nextGraph,
+			factStore: nextFactStore,
+			factIndex: nextFactIndex,
+			diagnostics: collection.diagnostics,
+			analysisFacts: analysis.facts,
+			factChangedPaths,
+		});
+		if (shouldRunCanonicalValidation(this.options, this.revision + 1)) {
+			validateCanonicalProgram(
+				this.files(),
+				this.options,
+				semanticUpdate.model,
+				nextGraph,
+			);
+		}
 		transaction.commit();
 		this.factStore = nextFactStore;
 		this.factIndex = nextFactIndex;
@@ -1226,6 +1243,83 @@ function externalChangedPaths(
 		paths.push(".theme-check.yml");
 	}
 	return paths;
+}
+
+function validateStagedProgram(input: {
+	model: ThemeSemanticModel;
+	graph: InspectNazareThemeResult;
+	factStore: ThemeFactStore;
+	factIndex: ThemeFactIndex;
+	diagnostics: ThemeDiagnosticStore;
+	analysisFacts: ThemeFact[];
+	factChangedPaths: string[];
+}): void {
+	const declarationIds = new Set(
+		input.model.declarations.map((declaration) => declaration.id),
+	);
+	for (const record of [
+		...input.model.references,
+		...input.model.sectionInstances,
+		...input.model.renderSites,
+	]) {
+		if (
+			record.resolvedDeclarationId &&
+			!declarationIds.has(record.resolvedDeclarationId)
+		) {
+			throw new Error(
+				`Staged resolved target ${record.resolvedDeclarationId} is missing for ${record.id}`,
+			);
+		}
+	}
+	input.diagnostics.validateOwnership();
+	for (const path of input.factChangedPaths) {
+		const expected = input.analysisFacts.filter(
+			(fact) => themeFactSourcePath(fact) === path,
+		);
+		if (
+			JSON.stringify(input.factStore.getFile(path)) !== JSON.stringify(expected)
+		) {
+			throw new Error(`Staged fact ownership mismatch for ${path}`);
+		}
+	}
+	const canonicalFactIndex = new ThemeFactIndex(
+		input.factStore.all(),
+	).snapshot();
+	if (
+		JSON.stringify(canonicalFactIndex) !==
+		JSON.stringify(input.factIndex.snapshot())
+	) {
+		throw new Error("Staged fact index differs from canonical fact store");
+	}
+	const canonicalImpact = new ThemeImpactIndex(input.graph).toSummary();
+	if (JSON.stringify(canonicalImpact) !== JSON.stringify(input.graph.impact)) {
+		throw new Error("Staged impact index differs from canonical graph impact");
+	}
+}
+
+function shouldRunCanonicalValidation(
+	options: InspectNazareThemeOptions,
+	revision: number,
+): boolean {
+	const interval = options.incrementalValidationInterval;
+	return interval !== undefined && interval > 0 && revision % interval === 0;
+}
+
+function validateCanonicalProgram(
+	files: ThemeInputFile[],
+	options: InspectNazareThemeOptions,
+	model: ThemeSemanticModel,
+	graph: InspectNazareThemeResult,
+): void {
+	const coldOptions = { ...options, cache: undefined, memo: undefined };
+	const coldAnalysis = analyzeNazareTheme(files, coldOptions);
+	if (JSON.stringify(coldAnalysis.ir) !== JSON.stringify(model)) {
+		throw new Error("Incremental semantic model differs from cold rebuild");
+	}
+	const coldGraph = inspectNazareTheme(files, coldOptions);
+	if (JSON.stringify(coldGraph) !== JSON.stringify(graph)) {
+		throw new Error("Incremental graph differs from cold rebuild");
+	}
 }
 
 function invalidationClosure(

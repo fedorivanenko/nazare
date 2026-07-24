@@ -704,6 +704,14 @@ test("workspace rolls back a fixed-point work-budget failure", () => {
 	];
 	const session = new ThemeWorkspaceSession(files);
 	const previousGraph = session.getGraph();
+	const previousModel = session.getModel();
+	const previousFacts = session.getFacts();
+	const previousQueries = previousGraph.nodes.map((node) => [
+		node.id,
+		session.getDependencies(node.id),
+		session.getDependents(node.id),
+		session.getAffectedPages(node.id),
+	]);
 	const updated = {
 		path: "snippets/a.liquid",
 		contents: "{{ value }}{% render 'b' %}",
@@ -711,10 +719,30 @@ test("workspace rolls back a fixed-point work-budget failure", () => {
 	session.collectionScheduler.maximumFixedPointWork = 1;
 	assert.throws(() => session.updateFile(updated), /after 1 work units/);
 	assert.equal(session.getGraph(), previousGraph);
+	assert.equal(session.getModel(), previousModel);
+	assert.deepEqual(session.getFacts(), previousFacts);
+	assert.deepEqual(
+		previousGraph.nodes.map((node) => [
+			node.id,
+			session.getDependencies(node.id),
+			session.getDependents(node.id),
+			session.getAffectedPages(node.id),
+		]),
+		previousQueries,
+	);
 	session.collectionScheduler.maximumFixedPointWork = 100_000;
 	const result = session.updateFile(updated);
 	assert.equal(result.revision, 1);
 	assert.deepEqual(session.getGraph(), inspectNazareTheme([files[1], updated]));
+});
+
+test("ThemeProgram periodically validates canonical indexes and cold rebuilds", () => {
+	const files = [{ path: "snippets/card.liquid", contents: "Card" }];
+	const program = new ThemeProgram(files, { incrementalValidationInterval: 1 });
+	const updated = { path: "snippets/card.liquid", contents: "Updated" };
+	const result = program.updateFile(updated);
+	assert.equal(result.revision, 1);
+	assert.deepEqual(program.getGraph(), inspectNazareTheme([updated]));
 });
 
 test("ThemeProgram owns committed incremental workspace state", () => {
