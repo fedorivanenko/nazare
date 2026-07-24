@@ -53,7 +53,6 @@ import {
 	shareThemeGraphRecords,
 	themeGraphFromModel,
 } from "./theme-graph-output.js";
-import { impactSummary } from "./theme-impact.js";
 import { ThemeImpactIndex } from "./theme-impact-index.js";
 import {
 	createThemeInstancePass,
@@ -226,10 +225,9 @@ export class ThemeWorkspaceSession {
 		this.semanticStore = new ThemeSemanticStore(model);
 		this.resolverIndex = new ThemeResolverIndex(model);
 		this.metafieldIndex = new ThemeMetafieldIndex(model);
-		this.graph = themeGraphFromModel(this.semanticStore.getModel(), {
-			impact: impactSummary(this.semanticStore.getModel()),
-		});
-		this.impactIndex = new ThemeImpactIndex(this.graph);
+		const indexedGraph = graphWithIndexedImpact(this.semanticStore.getModel());
+		this.graph = indexedGraph.graph;
+		this.impactIndex = indexedGraph.index;
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
 
@@ -350,12 +348,8 @@ export class ThemeWorkspaceSession {
 		const semanticUpdate = transaction.update;
 		const nextResolverIndex = new ThemeResolverIndex(semanticUpdate.model);
 		const nextMetafieldIndex = new ThemeMetafieldIndex(semanticUpdate.model);
-		const nextGraph = shareThemeGraphRecords(
-			this.graph,
-			themeGraphFromModel(semanticUpdate.model, {
-				impact: impactSummary(semanticUpdate.model),
-			}),
-		);
+		const indexedGraph = graphWithIndexedImpact(semanticUpdate.model);
+		const nextGraph = shareThemeGraphRecords(this.graph, indexedGraph.graph);
 		const nextImpactIndex = new ThemeImpactIndex(nextGraph);
 		const metafieldDefinitionIds = new Set([
 			...this.semanticStore
@@ -1107,6 +1101,23 @@ function diffGraphs(
 		removedEdgeIds: addedIds(currentEdges, previousEdges),
 		changedEdgeIds: changedIds(previousEdges, currentEdges),
 	};
+}
+
+function graphWithIndexedImpact(model: ThemeSemanticModel): {
+	graph: InspectNazareThemeResult;
+	index: ThemeImpactIndex;
+} {
+	const graph = themeGraphFromModel(model, {
+		impact: {
+			dependencies: {},
+			dependents: {},
+			affectedPages: {},
+			unusedFiles: [],
+		},
+	});
+	const index = new ThemeImpactIndex(graph);
+	graph.impact = index.toSummary();
+	return { graph, index };
 }
 
 function fingerprintExternalArtifacts(
