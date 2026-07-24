@@ -488,6 +488,26 @@ test("workspace fixed-point data flow matches cold rebuild for render cycles", (
 	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
 });
 
+test("workspace rolls back a fixed-point work-budget failure", () => {
+	const files = [
+		{ path: "snippets/a.liquid", contents: "{% render 'b' %}" },
+		{ path: "snippets/b.liquid", contents: "{% render 'a' %}" },
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const previousGraph = session.getGraph();
+	const updated = {
+		path: "snippets/a.liquid",
+		contents: "{{ value }}{% render 'b' %}",
+	};
+	session.collectionScheduler.maximumFixedPointWork = 1;
+	assert.throws(() => session.updateFile(updated), /after 1 work units/);
+	assert.equal(session.getGraph(), previousGraph);
+	session.collectionScheduler.maximumFixedPointWork = 100_000;
+	const result = session.updateFile(updated);
+	assert.equal(result.revision, 1);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme([files[1], updated]));
+});
+
 test("workspace session updates graph with stable revisions and deltas", () => {
 	const session = new ThemeWorkspaceSession([
 		{

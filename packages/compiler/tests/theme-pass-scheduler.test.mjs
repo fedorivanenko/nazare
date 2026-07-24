@@ -8,6 +8,7 @@ import {
 	fixedPointThemePass,
 	incrementalThemePass,
 	ThemeFactStore,
+	ThemePassConvergenceError,
 	ThemePassScheduler,
 	ThemeRenderDependencyIndex,
 } from "../dist/index.js";
@@ -290,7 +291,46 @@ test("theme pass scheduler bounds fixed-point convergence", () => {
 	);
 	assert.throws(
 		() => scheduler.execute([{ kind: "sourceChanged", path: "card" }], {}),
-		/did not converge after 2 iterations/,
+		(error) => {
+			assert.ok(error instanceof ThemePassConvergenceError);
+			assert.deepEqual(error.diagnostic, {
+				code: "fixed-point-budget-exceeded",
+				pass: "data-flow",
+				budget: "iterations",
+				limit: 2,
+				observed: 3,
+				pendingKeyCount: 1,
+			});
+			return true;
+		},
+	);
+});
+
+test("theme pass scheduler bounds fixed-point work", () => {
+	const scheduler = new ThemePassScheduler(
+		[
+			fixedPointThemePass({
+				name: "data-flow",
+				stage: "dataFlow",
+				fixedPointGroup: "render-flow",
+				routes: [],
+				seed: () => new Set(["cycle"]),
+				step: () => ({
+					records: [],
+					changes: [],
+					pending: new Set(),
+					work: 3,
+				}),
+			}),
+		],
+		{ maximumFixedPointWork: 2 },
+	);
+	assert.throws(
+		() => scheduler.execute([{ kind: "sourceChanged", path: "card" }], {}),
+		(error) =>
+			error instanceof ThemePassConvergenceError &&
+			error.diagnostic.budget === "work" &&
+			error.diagnostic.observed === 3,
 	);
 });
 
