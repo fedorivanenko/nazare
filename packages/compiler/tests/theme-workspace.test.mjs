@@ -182,6 +182,17 @@ test("graph store applies stable-ID records transactionally", () => {
 	const staged = committed.fork();
 	const delta = staged.applyGraph(second);
 	assert.strictEqual(staged.getNode(cardId), card);
+	const viewStore = committed.fork();
+	const configurationView = viewStore.getGraph().views.configuration;
+	viewStore.applyGraph(
+		inspectNazareTheme([
+			{ path: "snippets/card.liquid", contents: "Updated card" },
+		]),
+	);
+	assert.strictEqual(
+		viewStore.getGraph().views.configuration,
+		configurationView,
+	);
 	assert.equal(committed.getNode("file:snippets/tile.liquid"), undefined);
 	assert.ok(delta.addedNodeIds.includes("file:snippets/tile.liquid"));
 	assert.deepEqual(staged.getGraph(), second);
