@@ -3,6 +3,7 @@ import test from "node:test";
 import {
 	createThemeCapabilityPass,
 	createThemeCapabilitySignalPass,
+	createThemeClassificationPass,
 	createThemeDataFlowFixedPointPass,
 	createThemeDeclarationPass,
 	createThemeMetafieldPass,
@@ -197,6 +198,53 @@ test("capability pass preserves confidence and evidence by source", () => {
 		result.changes.some((change) => change.kind === "capabilityChanged"),
 		true,
 	);
+});
+
+test("classification pass preserves confidence uncertainty and evidence", () => {
+	const path = "snippets/card.liquid";
+	const priceCapability = {
+		id: `capability:${path}:displaysProductPrice`,
+		path,
+		capability: "displaysProductPrice",
+		confidence: 0.95,
+		evidenceIds: ["access:price"],
+	};
+	const context = {
+		dataAccessesBySource: new Map([
+			[
+				path,
+				[
+					{
+						id: "access:title",
+						fromPath: path,
+						object: "product",
+						propertyPath: "title",
+						expression: "product.title",
+						origin: "liquid",
+					},
+				],
+			],
+		]),
+		capabilitiesBySource: new Map([[path, [priceCapability]]]),
+		classificationsBySource: new Map(),
+	};
+	const scheduler = new ThemePassScheduler([
+		incrementalThemePass(createThemeClassificationPass()),
+	]);
+	scheduler.execute(
+		[{ kind: "capabilityChanged", id: priceCapability.id, sourcePath: path }],
+		context,
+	);
+	assert.deepEqual(context.classificationsBySource.get(path), [
+		{
+			id: `classification:${path}:productCard`,
+			path,
+			label: "productCard",
+			confidence: 0.75,
+			evidenceIds: ["access:price", "access:title"],
+			uncertainty: ["could be full product section"],
+		},
+	]);
 });
 
 test("resolution pass recomputes only references under changed target keys", () => {
