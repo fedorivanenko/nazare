@@ -116,7 +116,6 @@ import {
 	createThemeResolutionPass,
 	type ThemeIncrementalResolutionContext,
 } from "./theme-resolution-pass.js";
-import { ThemeResolverIndex } from "./theme-resolver-index.js";
 import {
 	createThemeSchemaSettingPass,
 	type ThemeSchemaSettingPassContext,
@@ -124,7 +123,7 @@ import {
 	type ThemeSchemaSettingRecord,
 } from "./theme-schema-setting-pass.js";
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
-import { analyzeNazareTheme, inspectNazareTheme } from "./theme-workspace.js";
+import { analyzeNazareTheme } from "./theme-workspace.js";
 
 export type ThemeUpdateTelemetry = {
 	filesParsed: number;
@@ -198,7 +197,6 @@ export class ThemeProgram {
 	>();
 	private diagnosticStore = new ThemeDiagnosticStore();
 	private semanticStore: ThemeSemanticStore;
-	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
 	private impactIndex: ThemeImpactIndex;
 	private graph: InspectNazareThemeResult;
@@ -237,11 +235,8 @@ export class ThemeProgram {
 			collection.capabilities,
 			collection.classifications,
 		);
-		const model = new ThemeResolverIndex(collectedModel).resolveModel(
-			collectedModel,
-		);
+		const model = collectedModel;
 		this.semanticStore = new ThemeSemanticStore(model);
-		this.resolverIndex = new ThemeResolverIndex(model);
 		this.metafieldIndex = new ThemeMetafieldIndex(model);
 		const indexedGraph = graphWithIndexedImpact(this.semanticStore.getModel());
 		this.graph = indexedGraph.graph;
@@ -383,10 +378,8 @@ export class ThemeProgram {
 			collection.capabilities,
 			collection.classifications,
 		);
-		const resolvedModel = this.resolverIndex.resolveModel(collectedModel);
-		const transaction = this.semanticStore.beginUpdate(resolvedModel);
+		const transaction = this.semanticStore.beginUpdate(collectedModel);
 		const semanticUpdate = transaction.update;
-		const nextResolverIndex = new ThemeResolverIndex(semanticUpdate.model);
 		const nextMetafieldIndex = new ThemeMetafieldIndex(semanticUpdate.model);
 		const changedSemanticIds = [
 			...semanticUpdate.addedRecordIds,
@@ -445,9 +438,15 @@ export class ThemeProgram {
 				...nextImpactIndex.getAffectedPages(id),
 			],
 		);
-		const resolverDependents = semanticUpdate.changedRecordIds.flatMap((id) =>
-			nextResolverIndex.getDependents(id),
-		);
+		const changedRecordIds = new Set(changedSemanticIds);
+		const resolverDependents = semanticUpdate.model.references
+			.filter(
+				(reference) =>
+					reference.resolvedDeclarationId &&
+					changedRecordIds.has(reference.resolvedDeclarationId),
+			)
+			.map((reference) => reference.fromPath)
+			.sort();
 		validateStagedProgram({
 			model: semanticUpdate.model,
 			graph: nextGraph,
@@ -469,7 +468,6 @@ export class ThemeProgram {
 		this.factStore = nextFactStore;
 		this.factIndex = nextFactIndex;
 		this.applyCollectionState(collection);
-		this.resolverIndex = nextResolverIndex;
 		this.metafieldIndex = nextMetafieldIndex;
 		this.graph = nextGraph;
 		this.graphStore = nextGraphStore;
@@ -1369,7 +1367,7 @@ function validateCanonicalProgram(
 	if (JSON.stringify(coldAnalysis.ir) !== JSON.stringify(model)) {
 		throw new Error("Incremental semantic model differs from cold rebuild");
 	}
-	const coldGraph = inspectNazareTheme(files, coldOptions);
+	const coldGraph = graphWithIndexedImpact(coldAnalysis.ir).graph;
 	if (JSON.stringify(coldGraph) !== JSON.stringify(graph)) {
 		throw new Error("Incremental graph differs from cold rebuild");
 	}
