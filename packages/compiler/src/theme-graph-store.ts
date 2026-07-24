@@ -42,6 +42,68 @@ export class ThemeGraphStore {
 		return fork;
 	}
 
+	expandSemanticIds(semanticIds: Iterable<string>): Set<string> {
+		const expanded = new Set(semanticIds);
+		let changed = true;
+		while (changed) {
+			changed = false;
+			const ownedGraphIds = new Set<string>();
+			for (const semanticId of expanded) {
+				for (const id of this.getOwnedNodeIds(semanticId))
+					ownedGraphIds.add(id);
+				for (const id of this.getOwnedEdgeIds(semanticId))
+					ownedGraphIds.add(id);
+			}
+			for (const [semanticId, nodeIds] of this.nodeIdsBySemanticId) {
+				if (
+					!expanded.has(semanticId) &&
+					[...nodeIds].some((id) => ownedGraphIds.has(id))
+				) {
+					expanded.add(semanticId);
+					changed = true;
+				}
+			}
+			for (const [semanticId, edgeIds] of this.edgeIdsBySemanticId) {
+				if (
+					!expanded.has(semanticId) &&
+					[...edgeIds].some((id) => ownedGraphIds.has(id))
+				) {
+					expanded.add(semanticId);
+					changed = true;
+				}
+			}
+		}
+		return expanded;
+	}
+
+	composeOwnedRecords(
+		nodes: ThemeGraphNode[],
+		edges: ThemeGraphEdge[],
+		semanticIds: Iterable<string>,
+	): { nodes: ThemeGraphNode[]; edges: ThemeGraphEdge[] } {
+		const selected = this.expandSemanticIds(semanticIds);
+		const nodesById = new Map(this.nodesById);
+		const edgesById = new Map(this.edgesById);
+		for (const semanticId of selected) {
+			for (const id of this.getOwnedNodeIds(semanticId)) {
+				if (!hasUnselectedOwner(this.nodeIdsBySemanticId, id, selected)) {
+					nodesById.delete(id);
+				}
+			}
+			for (const id of this.getOwnedEdgeIds(semanticId)) {
+				if (!hasUnselectedOwner(this.edgeIdsBySemanticId, id, selected)) {
+					edgesById.delete(id);
+				}
+			}
+		}
+		for (const node of nodes) nodesById.set(node.id, node);
+		for (const edge of edges) edgesById.set(edge.id, edge);
+		return {
+			nodes: [...nodesById.values()],
+			edges: [...edgesById.values()],
+		};
+	}
+
 	applyOwnedGraph(
 		graph: InspectNazareThemeResult,
 		model: ThemeSemanticModel,
@@ -269,6 +331,17 @@ function isOwnerDerivedNode(node: ThemeGraphNode): boolean {
 		node.kind === "unresolved" ||
 		node.kind === "shopifyObject" ||
 		node.kind === "shopifyProperty"
+	);
+}
+
+function hasUnselectedOwner(
+	graphIdsBySemanticId: Map<string, Set<string>>,
+	graphId: string,
+	selected: Set<string>,
+): boolean {
+	return [...graphIdsBySemanticId].some(
+		([semanticId, graphIds]) =>
+			!selected.has(semanticId) && graphIds.has(graphId),
 	);
 }
 

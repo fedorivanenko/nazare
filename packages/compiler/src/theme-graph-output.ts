@@ -36,14 +36,40 @@ export function shareThemeGraphRecords(
 	};
 }
 
+export function themeGraphRecordsFromModel(
+	model: ThemeSemanticModel,
+	semanticIds: ReadonlySet<string>,
+): {
+	nodes: SemanticThemeGraphNode[];
+	edges: SemanticThemeGraphEdge[];
+} {
+	const graph = themeGraphFromModel(model, {
+		impact: {
+			dependencies: {},
+			dependents: {},
+			affectedPages: {},
+			unusedFiles: [],
+		},
+		selectedSemanticIds: semanticIds,
+		validate: false,
+	});
+	return { nodes: graph.nodes, edges: graph.edges };
+}
+
 export function themeGraphFromModel(
 	model: ThemeSemanticModel,
-	options: { impact?: ThemeImpactSummary } = {},
+	options: {
+		impact?: ThemeImpactSummary;
+		selectedSemanticIds?: ReadonlySet<string>;
+		validate?: boolean;
+	} = {},
 ): InspectNazareThemeResult {
 	const nodes: SemanticThemeGraphNode[] = [];
 	const edges: SemanticThemeGraphEdge[] = [];
 	const nodeIds = new Set<string>();
 	const edgeIds = new Set<string>();
+	const projects = (id: string): boolean =>
+		!options.selectedSemanticIds || options.selectedSemanticIds.has(id);
 
 	const pushNode = (node: SemanticThemeGraphNode) => {
 		if (nodeIds.has(node.id)) return;
@@ -57,6 +83,7 @@ export function themeGraphFromModel(
 	};
 
 	for (const file of model.files) {
+		if (!projects(file.id)) continue;
 		pushNode({
 			id: file.id,
 			kind: "file",
@@ -65,6 +92,7 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const declaration of model.declarations) {
+		if (!projects(declaration.id)) continue;
 		if (declaration.kind === "section") {
 			pushNode({
 				id: declaration.id,
@@ -152,6 +180,7 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const page of model.pages) {
+		if (!projects(page.id)) continue;
 		pushNode({
 			id: page.id,
 			kind: "page",
@@ -167,6 +196,7 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const schema of model.schemas) {
+		if (!projects(schema.id)) continue;
 		pushNode({
 			id: schema.id,
 			kind: "schema",
@@ -182,12 +212,14 @@ export function themeGraphFromModel(
 	}
 	const translationPathsByLocaleKeyId = new Map<string, string[]>();
 	for (const translation of model.localeTranslations) {
+		if (!projects(translation.id)) continue;
 		translationPathsByLocaleKeyId.set(translation.localeKeyId, [
 			...(translationPathsByLocaleKeyId.get(translation.localeKeyId) ?? []),
 			translation.path,
 		]);
 	}
 	for (const localeKey of model.localeKeys) {
+		if (!projects(localeKey.id)) continue;
 		pushNode({
 			id: localeKey.id,
 			kind: "localeKey",
@@ -198,6 +230,7 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const localeReference of model.localeReferences) {
+		if (!projects(localeReference.id)) continue;
 		const targets =
 			localeReference.resolvedLocaleKeyIds.length > 0
 				? localeReference.resolvedLocaleKeyIds
@@ -222,6 +255,7 @@ export function themeGraphFromModel(
 		}
 	}
 	for (const setting of model.settings) {
+		if (!projects(setting.id)) continue;
 		pushNode({
 			id: setting.id,
 			kind: "setting",
@@ -238,6 +272,7 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const block of model.blocks) {
+		if (!projects(block.id)) continue;
 		pushNode({
 			id: block.id,
 			kind: "block",
@@ -258,6 +293,7 @@ export function themeGraphFromModel(
 			.map((declaration) => [declaration.path, declaration]),
 	);
 	for (const setting of model.blockSettings) {
+		if (!projects(setting.id)) continue;
 		pushNode({
 			id: setting.id,
 			kind: "blockSetting",
@@ -283,6 +319,7 @@ export function themeGraphFromModel(
 			.map((declaration) => [declaration.path, declaration]),
 	);
 	for (const instance of model.sectionInstances) {
+		if (!projects(instance.id)) continue;
 		pushNode({
 			id: instance.id,
 			kind: "sectionInstance",
@@ -330,6 +367,7 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const instance of model.blockInstances) {
+		if (!projects(instance.id)) continue;
 		pushNode({
 			id: instance.id,
 			kind: "blockInstance",
@@ -375,6 +413,7 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const settingRead of model.settingReads) {
+		if (!projects(settingRead.id)) continue;
 		const targets = settingRead.resolvedSettingId
 			? [settingRead.resolvedSettingId]
 			: (settingRead.candidateSettingIds ?? []);
@@ -399,14 +438,16 @@ export function themeGraphFromModel(
 		}
 	}
 	const storeSchemaNodeId = `store-schema:${model.metafieldSchema.path}`;
-	pushNode({
-		id: storeSchemaNodeId,
-		kind: "storeSchema",
-		path: model.metafieldSchema.path,
-		state: model.metafieldSchema.state,
-		pulledAt: model.metafieldSchema.pulledAt,
-	});
+	if (projects("projection:metafield-schema"))
+		pushNode({
+			id: storeSchemaNodeId,
+			kind: "storeSchema",
+			path: model.metafieldSchema.path,
+			state: model.metafieldSchema.state,
+			pulledAt: model.metafieldSchema.pulledAt,
+		});
 	for (const definition of model.metafieldDefinitions) {
+		if (!projects(definition.id)) continue;
 		pushNode({
 			id: definition.id,
 			kind: "metafieldDefinition",
@@ -423,6 +464,7 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const read of model.metafieldReads) {
+		if (!projects(read.id)) continue;
 		const target =
 			read.definitionId ??
 			`unresolved:metafield:${read.owner}:${read.namespace}:${read.key}`;
@@ -461,6 +503,7 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const dataAccess of model.dataAccesses) {
+		if (!projects(dataAccess.id)) continue;
 		const objectId = dataObjectId(dataAccess.object);
 		pushNode({
 			id: objectId,
@@ -511,6 +554,7 @@ export function themeGraphFromModel(
 			]),
 	);
 	for (const site of model.renderSites) {
+		if (!projects(site.id)) continue;
 		const renderEvidenceId = renderEvidenceByLocation.get(
 			`${site.fromPath}:${site.span?.start.line}:${site.span?.start.column}`,
 		);
@@ -576,6 +620,7 @@ export function themeGraphFromModel(
 		}
 	}
 	for (const argument of model.renderArguments) {
+		if (!projects(argument.id)) continue;
 		pushNode({
 			id: argument.id,
 			kind: "renderArgument",
@@ -665,6 +710,7 @@ export function themeGraphFromModel(
 		}
 	}
 	for (const input of model.expectedInputs) {
+		if (!projects(input.id)) continue;
 		pushNode({
 			id: input.id,
 			kind: "expectedInput",
@@ -687,6 +733,7 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const capability of model.capabilities) {
+		if (!projects(capability.id)) continue;
 		pushNode({
 			id: capability.id,
 			kind: "capability",
@@ -702,6 +749,7 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const classification of model.classifications) {
+		if (!projects(classification.id)) continue;
 		pushNode({
 			id: classification.id,
 			kind: "classification",
@@ -718,6 +766,7 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const reference of model.references) {
+		if (!projects(reference.id)) continue;
 		const to = reference.resolvedDeclarationId ?? unresolvedNodeId(reference);
 		if (!reference.resolvedDeclarationId) {
 			pushNode({
@@ -789,10 +838,24 @@ export function themeGraphFromModel(
 		}
 	}
 
-	const sortedNodes = nodes.sort((a, b) => a.id.localeCompare(b.id));
-	const sortedEdges = edges.sort((a, b) => a.id.localeCompare(b.id));
+	return themeGraphFromRecords(model, nodes, edges, {
+		impact: options.impact,
+		validate: options.validate,
+	});
+}
+
+export function themeGraphFromRecords(
+	model: ThemeSemanticModel,
+	nodes: SemanticThemeGraphNode[],
+	edges: SemanticThemeGraphEdge[],
+	options: { impact?: ThemeImpactSummary; validate?: boolean } = {},
+): InspectNazareThemeResult {
+	const sortedNodes = [...nodes].sort((a, b) => a.id.localeCompare(b.id));
+	const sortedEdges = [...edges].sort((a, b) => a.id.localeCompare(b.id));
 	const views = graphViews(sortedNodes, sortedEdges);
-	assertGraphIntegrity(sortedNodes, sortedEdges, views, model.evidence);
+	if (options.validate !== false) {
+		assertGraphIntegrity(sortedNodes, sortedEdges, views, model.evidence);
+	}
 	return {
 		version: 2,
 		root: model.root,

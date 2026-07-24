@@ -49,7 +49,11 @@ import type {
 	ThemeRenderSiteRecord,
 	ThemeSemanticModel,
 } from "./theme-facts.js";
-import { themeGraphFromModel } from "./theme-graph-output.js";
+import {
+	themeGraphFromModel,
+	themeGraphFromRecords,
+	themeGraphRecordsFromModel,
+} from "./theme-graph-output.js";
 import {
 	THEME_GRAPH_METAFIELD_SCHEMA_OWNER,
 	ThemeGraphStore,
@@ -361,12 +365,32 @@ export class ThemeWorkspaceSession {
 			changedSemanticIds.push(THEME_GRAPH_METAFIELD_SCHEMA_OWNER);
 		}
 		const nextGraphStore = this.graphStore.fork();
-		nextGraphStore.applyOwnedGraph(
-			graphWithoutImpact(semanticUpdate.model),
+		const selectedSemanticIds =
+			nextGraphStore.expandSemanticIds(changedSemanticIds);
+		const projectedRecords = themeGraphRecordsFromModel(
 			semanticUpdate.model,
-			changedSemanticIds,
+			selectedSemanticIds,
 		);
-		const nextGraph = nextGraphStore.getGraph();
+		const composedRecords = nextGraphStore.composeOwnedRecords(
+			projectedRecords.nodes,
+			projectedRecords.edges,
+			selectedSemanticIds,
+		);
+		const nextGraph = themeGraphFromRecords(
+			semanticUpdate.model,
+			composedRecords.nodes,
+			composedRecords.edges,
+			{
+				impact: {
+					dependencies: {},
+					dependents: {},
+					affectedPages: {},
+					unusedFiles: [],
+				},
+			},
+		);
+		nextGraphStore.applyGraph(nextGraph);
+		nextGraphStore.replaceOwnership(semanticUpdate.model);
 		const nextImpactIndex = this.impactIndex.fork();
 		nextImpactIndex.applyGraph(nextGraph);
 		nextGraph.impact = nextImpactIndex.toSummary();
