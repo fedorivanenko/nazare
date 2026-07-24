@@ -246,9 +246,19 @@ export {
 } from "./theme-locale-pass.js";
 export { ThemeMetafieldIndex } from "./theme-metafield-index.js";
 export {
+	createThemeMetafieldPass,
+	type ThemeMetafieldPassContext,
+	type ThemeMetafieldRecord,
+} from "./theme-metafield-pass.js";
+export {
 	analyzeMetafields,
+	collectMetafieldDefinitions,
+	collectMetafieldReads,
+	joinMetafieldReads,
 	metafieldDefinitionId,
+	metafieldJoinKey,
 	type ThemeMetafieldAnalysis,
+	type ThemeMetafieldDefinitionCollection,
 	type ThemeMetafieldSnapshot,
 } from "./theme-metafields.js";
 export {
