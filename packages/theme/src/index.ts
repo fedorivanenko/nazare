@@ -27,7 +27,7 @@ import {
 	parseNazareLiquid,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
-import type { Diagnostic } from "@nazare/core";
+import type { Diagnostic, NazareManifest } from "@nazare/core";
 import { mergeLocale } from "./locales.js";
 import {
 	applyMigrationsToData,
@@ -65,6 +65,8 @@ const DEFAULT_MIGRATIONS_LEDGER = "nazare.migrations-applied.json";
 // Committed alongside the source: the source locale strings as of the last
 // build, the common ancestor for the 3-way locale merge.
 const DEFAULT_LOCALE_BASE = "nazare.locales-base.json";
+// The per-component manifest written by `nazare add` into <sourceRoot>/<folder>/.
+const COMPONENT_MANIFEST = "nazare.json";
 const THEME_DIRS = new Set([
 	"layout",
 	"templates",
@@ -144,6 +146,15 @@ export async function buildTheme(
 			return undefined;
 		}
 	};
+
+	// Installed plain-Liquid components carry no in-source kind, so their theme
+	// directory comes from the manifest next to them. Read before the file loop:
+	// a component's files can be visited before its manifest.
+	const plainComponents = readPlainComponentFolders(
+		sourceFiles,
+		sourceRoot,
+		readProjectFile,
+	);
 
 	const planned = new Map<string, PlannedFile>();
 	// Merchant-owned data files (settings values, section instances, block
@@ -235,7 +246,9 @@ export async function buildTheme(
 			if (invalid) issues.push(invalid);
 		}
 
-		const outputPath = outputPathForSource(sourceRelative);
+		const outputPath =
+			outputPathForSource(sourceRelative) ??
+			plainComponentOutputPath(sourceRelative, plainComponents);
 		if (outputPath) {
 			if (isMerchantDataPath(outputPath)) {
 				seeds.set(outputPath, { contents, from: file });
@@ -720,6 +733,88 @@ function isPlainLiquidThemeFile(sourceRelative: string): boolean {
 	return (
 		sourceRelative.endsWith(".liquid") && !sourceRelative.endsWith(".nz.liquid")
 	);
+}
+
+/**
+ * An installed plain-Liquid registry component: a `<folder>/nazare.json` whose
+ * entry is a plain `.liquid` file. A `.nz.liquid` entry declares its own kind in
+ * source and is placed by the compiler, so those folders are skipped here — for
+ * plain Liquid there is no in-source kind, so the manifest's `kind` decides the
+ * theme directory.
+ */
+type PlainComponentFolder = {
+	kind: NonNullable<NazareManifest["kind"]>;
+	entry?: string;
+	files: Set<string>;
+};
+
+const PLAIN_COMPONENT_KIND_DIRS: Record<string, string | undefined> = {
+	snippet: "snippets",
+	section: "sections",
+	block: "blocks",
+	function: undefined,
+};
+
+function readPlainComponentFolders(
+	sourceFiles: string[],
+	sourceRoot: string,
+	readProjectFile: (path: string) => string | undefined,
+): Map<string, PlainComponentFolder> {
+	const folders = new Map<string, PlainComponentFolder>();
+	for (const file of sourceFiles) {
+		const sourceRelative = relativeSourcePath(sourceRoot, file);
+		const segments = sourceRelative.split("/");
+		if (segments.length !== 2 || segments[1] !== COMPONENT_MANIFEST) continue;
+		const folder = segments[0];
+		if (!folder) continue;
+		const raw = readProjectFile(file);
+		if (raw === undefined) continue;
+		let manifest: NazareManifest;
+		try {
+			manifest = JSON.parse(raw) as NazareManifest;
+		} catch {
+			// A malformed manifest is already reported by the JSON validation pass.
+			continue;
+		}
+		const entry = manifest.entry;
+		if (!entry || !isPlainLiquidThemeFile(entry)) continue;
+		folders.set(folder, {
+			kind: manifest.kind ?? "snippet",
+			entry,
+			files: new Set([entry, ...(manifest.files ?? [])]),
+		});
+	}
+	return folders;
+}
+
+/**
+ * Output path for a file inside an installed plain-Liquid component folder.
+ * The entry lands in the directory its declared kind names; any other declared
+ * `.liquid` file is a partial and lands in `snippets/`; declared stylesheets and
+ * scripts land in `assets/`. Everything else (the manifest, sources the theme
+ * does not serve) stays out of the output.
+ */
+function plainComponentOutputPath(
+	sourceRelative: string,
+	folders: Map<string, PlainComponentFolder>,
+): string | undefined {
+	const segments = sourceRelative.split("/");
+	if (segments.length !== 2) return undefined;
+	const [folder, name] = segments;
+	if (!folder || !name) return undefined;
+	const component = folders.get(folder);
+	if (!component?.files.has(name)) return undefined;
+	if (isPlainLiquidThemeFile(name)) {
+		const directory =
+			name === component.entry
+				? PLAIN_COMPONENT_KIND_DIRS[component.kind]
+				: "snippets";
+		return directory ? `${directory}/${name}` : undefined;
+	}
+	if (name.endsWith(".css") || name.endsWith(".js") || name.endsWith(".mjs")) {
+		return `assets/${name}`;
+	}
+	return undefined;
 }
 
 function relativeSourcePath(sourceRoot: string, file: string): string {

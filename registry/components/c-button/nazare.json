@@ -1,0 +1,12 @@
+{
+  "id": "@nazare/c-button",
+  "version": "0.1.0",
+  "kind": "snippet",
+  "entry": "c-button.liquid",
+  "license": "MIT",
+  "dependencies": {},
+  "files": [
+    "c-button.liquid",
+    "c-button.css"
+  ]
+}
