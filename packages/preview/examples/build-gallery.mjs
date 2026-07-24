@@ -11,6 +11,7 @@ import {
 	galleryPage,
 	previewComponentFromSource,
 	renderComponentStories,
+	storiesFor,
 } from "../dist/index.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -47,7 +48,11 @@ for (const folder of readdirSync(componentsRoot).sort()) {
 		file,
 		{ readFile: readProjectFile, packageId: manifest.id },
 	);
-	rendered.push(await renderComponentStories(component));
+	// Authored stories from nazare.json when the component ships them; the
+	// contract-derived baseline otherwise.
+	rendered.push(
+		await renderComponentStories(component, storiesFor(component, manifest)),
+	);
 
 	for (const asset of component.assets) {
 		const name = asset.path.split("/").pop();

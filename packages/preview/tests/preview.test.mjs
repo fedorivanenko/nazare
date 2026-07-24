@@ -7,7 +7,23 @@ import {
 	previewComponentFromSource,
 	renderComponentStories,
 	renderPreview,
+	resolveFixtures,
+	storiesFor,
 } from "../dist/index.js";
+
+const PRICE = `{% props {
+  price: Money.required(),
+  compare_at_price: Money.optional(),
+  show_compare_at: boolean.default(true),
+} %}
+
+<span class="price">
+  <span class="price__current">{{ props.price | money }}</span>
+  {% if props.show_compare_at and props.compare_at_price and props.compare_at_price > props.price %}
+    <s class="price__compare">{{ props.compare_at_price | money }}</s>
+  {% endif %}
+</span>
+`;
 
 const BUTTON = `{% component snippet %}
 
@@ -191,4 +207,63 @@ test("each component gets a props table and a code tab of the emitted Liquid", a
 	// Both the enum members and the derived default reach the table.
 	assert.ok(page.includes("&quot;solid&quot; | &quot;outline&quot;"));
 	assert.ok(page.includes("badge--required"));
+});
+
+test("manifest stories replace the derived set and resolve fixtures", async () => {
+	const component = previewComponentFromSource(PRICE, "price.nz.liquid");
+	const manifest = {
+		id: "@nazare/price",
+		version: "0.1.0",
+		entry: "price.nz.liquid",
+		files: ["price.nz.liquid"],
+		preview: {
+			stories: [
+				{
+					name: "on sale",
+					props: {
+						price: { $fixture: "price" },
+						compare_at_price: { $fixture: "compare_at_price" },
+						show_compare_at: true,
+					},
+				},
+			],
+		},
+	};
+	const stories = storiesFor(component, manifest);
+
+	assert.deepEqual(
+		stories.map((story) => story.name),
+		["on sale"],
+	);
+	// The reference resolved to shared stand-in data, and the story says so.
+	assert.equal(stories[0].props.price, 2400);
+	assert.equal(stories[0].fixtures, true);
+
+	const rendered = await renderComponentStories(component, stories);
+	// Money is minor units, formatted by the preview's `money` filter.
+	assert.ok(rendered.stories[0].html.includes("$24.00"));
+	assert.ok(rendered.stories[0].html.includes("<s"));
+	assert.ok(rendered.stories[0].html.includes("$40.00"));
+});
+
+test("a component with no authored stories still previews", () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const manifest = {
+		id: "@nazare/button",
+		version: "0.1.0",
+		entry: "button.nz.liquid",
+		files: ["button.nz.liquid"],
+	};
+
+	assert.deepEqual(
+		storiesFor(component, manifest).map((story) => story.name),
+		generatedStories(component).map((story) => story.name),
+	);
+});
+
+test("an unknown fixture name is left visible, not silently nil", () => {
+	assert.deepEqual(resolveFixtures({ a: { $fixture: "nope" }, b: 1 }), {
+		a: { $fixture: "nope" },
+		b: 1,
+	});
 });

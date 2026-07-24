@@ -35,6 +35,38 @@ what the gallery shows, so a lowering bug is visible here rather than only on a
 store. Emitted stylesheets and behavior modules come back as assets; wiring the
 behaviors into the page makes island components genuinely interactive.
 
+## Fixtures and authored stories
+
+Storefront data lives in the preview, not in the components: one canonical mock
+product, collection, image, and shop in `fixtures.ts`, plus the `money` and
+`img_url` filters. If each component shipped its own mock product, forty
+components would disagree about the shop they belong to.
+
+Cases a type cannot express belong with the component, in its `nazare.json`:
+
+```json
+"preview": {
+  "stories": [
+    {
+      "name": "on sale",
+      "props": {
+        "price": { "$fixture": "price" },
+        "compare_at_price": { "$fixture": "compare_at_price" },
+        "show_compare_at": true
+      },
+      "note": "Compare-at above the price, so the strikethrough shows."
+    }
+  ]
+}
+```
+
+`{ "$fixture": "name" }` addresses the shared data. Authored stories replace the
+derived set — an author who writes them has said what is worth showing — and a
+component with no `preview` block is still previewable from its contract alone.
+Stories drawing on fixtures are badged in the gallery, because a fixture is tidy
+in ways a real catalogue is not: no missing compare-at price, no 60-character
+title, no sold-out variant.
+
 ## What it is not
 
 liquidjs implements the Liquid *language*; Shopify's runtime adds tags, filters,

@@ -8,6 +8,7 @@
 // and visibly. Treat the output as a design-system workbench, never as proof a
 // template will behave on a store.
 import { Liquid, type TopLevelToken } from "liquidjs";
+import { formatMoney } from "./fixtures.js";
 
 export type PreviewEngineOptions = {
 	/** Emitted snippets by name (no extension), so `{% render 'x' %}` resolves. */
@@ -123,6 +124,27 @@ export function createPreviewEngine(
 	// `t` without a locale bundle: echo the key so a missing translation is
 	// obvious in the preview rather than blank.
 	engine.registerFilter("t", (value: string) => value);
+
+	// Money filters. Storefront formatting is per-shop and locale-aware; these
+	// are USD-shaped and fixed — enough to read a price and a strikethrough, not
+	// a formatting reference. See fixtures.ts.
+	engine.registerFilter("money", (value: unknown) => formatMoney(value));
+	engine.registerFilter("money_with_currency", (value: unknown) =>
+		formatMoney(value, true),
+	);
+	engine.registerFilter("money_without_currency", (value: unknown) =>
+		formatMoney(value).replace("$", ""),
+	);
+
+	// Image URL filters take a size argument on a storefront; the fixture images
+	// are a single placeholder, so the size is accepted and ignored.
+	const imageSource = (value: unknown): string => {
+		if (typeof value === "string") return value;
+		const source = (value as { src?: unknown } | undefined)?.src;
+		return typeof source === "string" ? source : "";
+	};
+	engine.registerFilter("img_url", imageSource);
+	engine.registerFilter("image_url", imageSource);
 
 	return engine;
 }

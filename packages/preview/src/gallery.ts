@@ -142,7 +142,11 @@ function renderStory(rendered: RenderedStory): string {
           <figure class="story">
             <div class="story-stage">${body}</div>
             <figcaption class="story-caption">
-              <span class="story-name">${escapeHtml(rendered.story.name)}</span>
+              <span class="story-name">${escapeHtml(rendered.story.name)}${
+								rendered.story.fixtures
+									? ' <span class="badge badge--fixture" title="Rendered against shared stand-in data, not storefront data">fixture</span>'
+									: ""
+							}</span>
               ${rendered.story.note ? `<span class="story-note">${escapeHtml(rendered.story.note)}</span>` : ""}
               <code>${escapeHtml(formatProps(rendered.story.props))}</code>
             </figcaption>
@@ -298,6 +302,7 @@ const PAGE_STYLES = `
     color: var(--foreground);
   }
   .badge--muted { color: var(--muted-foreground); background: transparent; }
+  .badge--fixture { font-size: .62rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted-foreground); background: transparent; }
   .badge--required { border-color: transparent; background: #fee2e2; color: #991b1b; }
   :root[data-theme="dark"] .badge--required { background: #450a0a; color: #fca5a5; }
   .install {
@@ -471,8 +476,10 @@ ${links}
         <p>
           Each story is the <strong>emitted</strong> Liquid rendered by liquidjs and styled by the
           emitted CSS — the Code tab shows exactly what a storefront receives. liquidjs is not
-          Shopify's Liquid runtime and storefront objects are stubbed, so this is a design-system
-          workbench, not a substitute for a theme preview.
+          Shopify's Liquid runtime, so this is a design-system workbench, not a substitute for a
+          theme preview. Stories marked <span class="badge badge--fixture">fixture</span> render
+          against shared stand-in data — a tidy catalogue with no missing fields and no long titles,
+          which a real one will have.
         </p>
       </div>
       ${components.map(renderComponent).join("")}
