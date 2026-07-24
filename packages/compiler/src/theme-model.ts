@@ -194,12 +194,13 @@ export function buildThemeSemanticModel(
 		renderArguments,
 		renderSiteId,
 	);
-	addInputDiagnostics(
-		modelIssues,
-		renderSites,
-		expectedInputs,
-		renderArguments,
-		declarations,
+	modelIssues.push(
+		...deriveThemeInputDiagnostics(
+			renderSites,
+			expectedInputs,
+			renderArguments,
+			declarations,
+		),
 	);
 	dataAccesses.push(
 		...deriveRenderArgumentDataAccesses(
@@ -461,13 +462,13 @@ function pageTypeFromTemplateName(name: string): string {
  * forward a render argument remains unknown because forwarding alone does not
  * prove the downstream snippet requires it.
  */
-function addInputDiagnostics(
-	issues: Diagnostic[],
+export function deriveThemeInputDiagnostics(
 	renderSites: ThemeRenderSiteRecord[],
 	expectedInputs: ThemeExpectedInputRecord[],
 	renderArguments: ThemeRenderArgumentRecord[],
 	declarations: ThemeDeclaration[],
-): void {
+): Diagnostic[] {
+	const issues: Diagnostic[] = [];
 	const expectedByDeclaration = new Map<string, ThemeExpectedInputRecord[]>();
 	for (const input of expectedInputs) {
 		expectedByDeclaration.set(input.path, [
@@ -566,6 +567,7 @@ function addInputDiagnostics(
 			phase: "resolve",
 		});
 	}
+	return issues;
 }
 
 export function referenceId(reference: Omit<ThemeReference, "id">): string {

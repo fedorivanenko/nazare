@@ -772,6 +772,24 @@ test("workspace rolls back a fixed-point work-budget failure", () => {
 	assert.deepEqual(session.getGraph(), inspectNazareTheme([files[1], updated]));
 });
 
+test("ThemeProgram stores canonical semantic diagnostics by pass and owner", () => {
+	const program = new ThemeProgram([
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	program.removeFile("snippets/card.liquid");
+	const owned = program.diagnosticStore.getOwned({ pass: "model-resolution" });
+	assert.equal(owned.length, 1);
+	assert.equal(owned[0].owner, "sections/main.liquid");
+	assert.equal(owned[0].diagnostic.code, "THEME_UNRESOLVED_REFERENCE");
+	assert.deepEqual(
+		program
+			.getModel()
+			.issues.filter((issue) => issue.code === owned[0].diagnostic.code),
+		[owned[0].diagnostic],
+	);
+});
+
 test("ThemeProgram periodically validates canonical indexes and cold rebuilds", () => {
 	const files = [{ path: "snippets/card.liquid", contents: "Card" }];
 	const program = new ThemeProgram(files, { incrementalValidationInterval: 1 });
