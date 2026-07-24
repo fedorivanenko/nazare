@@ -141,7 +141,7 @@ Semantic output distinguishes:
 - capabilities/classifications, carrying confidence and uncertainty;
 - unresolved dynamic or missing targets.
 
-Graph structure includes pages, templates, layouts, section groups, section and block instances, reusable theme blocks, render sites, render arguments, input satisfaction, Shopify data properties, settings, assets, and locales. Render calls project explicitly as:
+Graph structure includes pages, templates, layouts, section groups, section and block instances, reusable theme blocks, render sites, render arguments, input satisfaction, Shopify data properties, settings, assets, locales, and optional Shopify metafield definitions. Render calls project explicitly as:
 
 ```txt
 caller file → render site → target snippet
@@ -149,7 +149,7 @@ caller file → render site → target snippet
                                       → Shopify data or setting origin
 ```
 
-Theme analysis uses tolerant plain-Liquid parsing by default. A failed parse emits diagnostics and never fabricates skipped facts.
+Theme analysis uses tolerant plain-Liquid parsing by default. A failed parse emits diagnostics and never fabricates skipped facts. Pass `.shopify/metafields.json` through `options.metafields` to join store definitions with theme reads; missing snapshots remain `unknown`, never proof of absence. Inspect output exposes consumed, unconsumed, broken, and page-impact queries. Pass `.theme-check.yml` through `options.themeCheck` to validate and expose the configured ignore list. Shopify rule names are not assumed to match Inspect diagnostics.
 
 ### `buildNazareThemeWorkspace(files, options)`
 

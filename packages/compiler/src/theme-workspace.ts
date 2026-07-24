@@ -11,6 +11,14 @@ import {
 	createDependencyResolver,
 	type DependencyResolver,
 } from "./resolver.js";
+import {
+	filterThemeCheckIssues,
+	parseThemeCheckPolicy,
+} from "./theme-check-policy.js";
+import {
+	partitionExcludedThemeFiles,
+	themeExclusionIssues,
+} from "./theme-exclusions.js";
 import type {
 	AnalyzeNazareThemeOptions,
 	BuildNazareThemeWorkspaceOptions,
@@ -21,10 +29,6 @@ import type {
 	ThemeFact,
 	ThemeInputFile,
 } from "./theme-facts.js";
-import {
-	partitionExcludedThemeFiles,
-	themeExclusionIssues,
-} from "./theme-exclusions.js";
 import {
 	classifyThemeFile,
 	isUnsafeThemePath,
@@ -315,10 +319,23 @@ function analyzeNormalizedThemeFiles(
 		saveCacheEntry();
 	}
 
-	const ir = buildThemeSemanticModel(facts, issues, { root: options.root });
-	return { ir, artifacts, issues: ir.issues };
+	const ir = buildThemeSemanticModel(facts, issues, {
+		root: options.root,
+		metafields: options.metafields,
+	});
+	const themeCheckPolicy = parseThemeCheckPolicy(options.themeCheck);
+	ir.themeCheck = {
+		path: themeCheckPolicy.path,
+		ignoredChecks: themeCheckPolicy.ignoredChecks,
+	};
+	const policyIssues = themeCheckPolicy.issues;
+	const filteredIssues = filterThemeCheckIssues(
+		[...ir.issues, ...policyIssues],
+		themeCheckPolicy,
+	);
+	ir.issues = filteredIssues;
+	return { ir, artifacts, issues: filteredIssues };
 }
-
 
 function themeFileFingerprint(
 	file: ThemeInputFile,

@@ -2,11 +2,35 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
 	buildNazareThemeWorkspace,
+	getThemeAffectedPages,
+	getThemeDependencies,
+	getThemeNode,
 	inspectNazareTheme,
+	summarizeThemeGraph,
 } from "../dist/index.js";
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("theme query API reads canonical graph and impact indexes", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "templates/index.json",
+			contents: JSON.stringify({ sections: { main: { type: "main" } } }),
+		},
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const section = getThemeNode(graph, "section:sections/main.liquid:main");
+	assert.equal(section?.kind, "section");
+	assert.deepEqual(getThemeDependencies(graph, "templates/index.json"), [
+		"sections/main.liquid",
+	]);
+	assert.deepEqual(getThemeAffectedPages(graph, "snippets/card.liquid"), [
+		"templates/index.json",
+	]);
+	assert.equal(summarizeThemeGraph(graph).pageCount, 1);
+});
 
 test("inspectNazareTheme keeps unresolved references navigable", () => {
 	const graph = inspectNazareTheme([
@@ -108,6 +132,213 @@ test("impact summary follows template dependencies and Shopify-owned entries", (
 		),
 	);
 	assert.deepEqual(graph.impact.unusedFiles, ["snippets/unused.liquid"]);
+});
+
+test("theme check ignore policy does not suppress unrelated Inspect findings", () => {
+	const result = inspectNazareTheme(
+		[{ path: "sections/main.liquid", contents: "{% render 'missing' %}" }],
+		{ themeCheck: { contents: "ignore:\n  - UnresolvedReference\n" } },
+	);
+	assert.equal(
+		result.issues.some((issue) => issue.code === "THEME_UNRESOLVED_REFERENCE"),
+		true,
+	);
+});
+
+test("unsupported theme check policy keys are reported", () => {
+	const result = inspectNazareTheme(
+		[{ path: "sections/main.liquid", contents: "{% render 'missing' %}" }],
+		{ themeCheck: { contents: "severity: warning\n" } },
+	);
+	assert.equal(
+		result.issues.some(
+			(issue) => issue.code === "THEME_CHECK_CONFIG_UNSUPPORTED",
+		),
+		true,
+	);
+});
+
+test("malformed theme check policy is reported", () => {
+	const result = inspectNazareTheme(
+		[{ path: "sections/main.liquid", contents: "{% render 'missing' %}" }],
+		{ themeCheck: { contents: "ignore: [" } },
+	);
+	assert.equal(
+		result.issues.some((issue) => issue.code === "THEME_CHECK_CONFIG_INVALID"),
+		true,
+	);
+});
+
+test("metafield snapshot resolves reads and reports missing definitions", () => {
+	const files = [
+		{
+			path: "snippets/card.liquid",
+			contents: "{{ product.metafields.custom.subtitle }}",
+		},
+		{
+			path: "sections/main.liquid",
+			contents: "{{ product.metafields.custom.missing }}",
+		},
+	];
+	const graph = inspectNazareTheme(files, {
+		metafields: {
+			path: ".shopify/metafields.json",
+			contents: JSON.stringify([
+				{
+					owner: "product",
+					namespace: "custom",
+					key: "subtitle",
+					type: "single_line_text_field",
+				},
+			]),
+		},
+	});
+	assert.equal(hasIssue(graph, "THEME_METAFIELD_UNRESOLVED"), true);
+	assert.equal(
+		graph.nodes.some(
+			(node) => node.kind === "metafieldDefinition" && node.key === "subtitle",
+		),
+		true,
+	);
+	assert.equal(
+		graph.edges.some((edge) => edge.kind === "resolvesMetafieldDefinition"),
+		true,
+	);
+	assert.equal(
+		graph.edges.some((edge) => edge.kind === "missingMetafieldDefinition"),
+		true,
+	);
+	assert.equal(graph.metafields.consumedDefinitionIds.length, 1);
+	assert.equal(graph.metafields.brokenReadIds.length, 1);
+	assert.equal(graph.metafields.unconsumedDefinitionIds.length, 0);
+});
+
+test("metafield definitions inherit affected pages through theme dependencies", () => {
+	const graph = inspectNazareTheme(
+		[
+			{
+				path: "templates/product.json",
+				contents: JSON.stringify({
+					sections: { main: { type: "main-product" } },
+				}),
+			},
+			{
+				path: "sections/main-product.liquid",
+				contents: "{% render 'price' %}",
+			},
+			{
+				path: "snippets/price.liquid",
+				contents: "{{ product.metafields.custom.subtitle }}",
+			},
+		],
+		{
+			metafields: {
+				contents: JSON.stringify([
+					{ owner: "product", namespace: "custom", key: "subtitle" },
+				]),
+			},
+		},
+	);
+	const definitionId = "metafield:product:custom:subtitle";
+	assert.deepEqual(graph.impact.affectedPages[definitionId], [
+		"templates/product.json",
+	]);
+	assert.ok(
+		graph.impact.dependents[definitionId].includes("snippets/price.liquid"),
+	);
+});
+
+test("metafield parser does not infer arbitrary nested objects", () => {
+	const graph = inspectNazareTheme(
+		[
+			{
+				path: "snippets/card.liquid",
+				contents: "{{ product.metafields.custom.subtitle }}",
+			},
+		],
+		{
+			metafields: {
+				contents: JSON.stringify({
+					settings: { custom: { subtitle: { enabled: true } } },
+				}),
+			},
+		},
+	);
+	assert.equal(graph.metafields.consumedDefinitionIds.length, 0);
+	assert.equal(graph.metafields.brokenReadIds.length, 1);
+});
+
+test("global metafield reads keep owner unknown", () => {
+	const graph = inspectNazareTheme(
+		[
+			{
+				path: "snippets/card.liquid",
+				contents: "{{ metafields.custom.subtitle }}",
+			},
+		],
+		{
+			metafields: {
+				contents: JSON.stringify([
+					{ owner: "product", namespace: "custom", key: "subtitle" },
+				]),
+			},
+		},
+	);
+	assert.equal(graph.metafields.consumedDefinitionIds.length, 0);
+	assert.equal(
+		graph.nodes.some(
+			(node) => node.kind === "metafieldRead" && node.owner === "unknown",
+		),
+		true,
+	);
+});
+
+test("metafield parser accepts nested owner maps and normalizes owner types", () => {
+	const graph = inspectNazareTheme(
+		[
+			{
+				path: "snippets/card.liquid",
+				contents: "{{ product.metafields.custom.subtitle }}",
+			},
+		],
+		{
+			metafields: {
+				contents: JSON.stringify({
+					PRODUCT: {
+						custom: { subtitle: { type: { name: "single_line_text_field" } } },
+					},
+				}),
+			},
+		},
+	);
+	assert.equal(graph.metafields.brokenReadIds.length, 0);
+	assert.equal(
+		graph.nodes.some(
+			(node) => node.kind === "metafieldDefinition" && node.owner === "product",
+		),
+		true,
+	);
+});
+
+test("missing metafield snapshot keeps schema state unknown", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "snippets/card.liquid",
+			contents: "{{ product.metafields.custom.subtitle }}",
+		},
+	]);
+	assert.equal(
+		graph.issues.some((issue) => issue.code === "THEME_METAFIELD_UNRESOLVED"),
+		false,
+	);
+	assert.equal(
+		graph.nodes.some(
+			(node) => node.kind === "storeSchema" && node.state === "unknown",
+		),
+		true,
+	);
+	assert.equal(graph.metafields.state, "unknown");
+	assert.deepEqual(graph.metafields.unconsumedDefinitionIds, []);
 });
 
 test("buildNazareThemeWorkspace reports invalid file scopes", () => {

@@ -139,6 +139,13 @@ export {
 	contractFromIR,
 } from "./symbols.js";
 export { syntaxFromAst } from "./syntax.js";
+export {
+	filterThemeCheckIssues,
+	parseThemeCheckPolicy,
+	type ThemeCheckPolicy,
+	type ThemeCheckPolicyInput,
+} from "./theme-check-policy.js";
+export { matchesThemeGlob } from "./theme-exclusions.js";
 export type {
 	AnalyzeNazareThemeOptions,
 	BuildNazareThemeWorkspaceOptions,
@@ -168,6 +175,9 @@ export type {
 	ThemeLocaleKeyRecord,
 	ThemeLocaleReferenceRecord,
 	ThemeLocaleTranslationRecord,
+	ThemeMetafieldDefinitionRecord,
+	ThemeMetafieldQueries,
+	ThemeMetafieldReadRecord,
 	ThemePageRecord,
 	ThemeRenderArgumentRecord,
 	ThemeRenderSiteRecord,
@@ -175,7 +185,22 @@ export type {
 	ThemeSemanticModel,
 	ThemeSettingReadRecord,
 } from "./theme-facts.js";
-export { matchesThemeGlob } from "./theme-exclusions.js";
+export {
+	analyzeMetafields,
+	metafieldDefinitionId,
+	type ThemeMetafieldAnalysis,
+	type ThemeMetafieldSnapshot,
+} from "./theme-metafields.js";
+export {
+	getThemeAffectedPages,
+	getThemeDependencies,
+	getThemeDependents,
+	getThemeEdgesFrom,
+	getThemeEdgesTo,
+	getThemeNode,
+	summarizeThemeGraph,
+	type ThemeGraphSummary,
+} from "./theme-queries.js";
 export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,

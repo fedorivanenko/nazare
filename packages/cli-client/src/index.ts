@@ -340,6 +340,8 @@ async function runInspect(
 		return 1;
 	}
 	const files = await collectThemeInputFiles(root, projectRoot);
+	const metafields = await readMetafieldSnapshot(projectRoot);
+	const themeCheck = await readThemeCheckPolicy(projectRoot);
 	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v1.json");
 	const cache = await readThemeAnalysisCache(cachePath);
 	const inspected = inspectNazareTheme(files, {
@@ -347,6 +349,8 @@ async function runInspect(
 		strictness: cliOptions.strictness,
 		cache,
 		exclude,
+		metafields,
+		themeCheck,
 	});
 	await mkdir(join(projectRoot, ".nazare-out"), { recursive: true });
 	await writeFile(cachePath, JSON.stringify(cache));
@@ -380,6 +384,40 @@ function inspectExcludePatterns(
 		return undefined;
 	}
 	return configured;
+}
+
+async function readThemeCheckPolicy(
+	projectRoot: string,
+): Promise<{ path: string; contents: string } | undefined> {
+	return readOptionalInspectArtifact(projectRoot, ".theme-check.yml");
+}
+
+async function readMetafieldSnapshot(
+	projectRoot: string,
+): Promise<{ path: string; contents: string } | undefined> {
+	return readOptionalInspectArtifact(projectRoot, ".shopify/metafields.json");
+}
+
+async function readOptionalInspectArtifact(
+	projectRoot: string,
+	path: string,
+): Promise<{ path: string; contents: string } | undefined> {
+	try {
+		return { path, contents: await readFile(join(projectRoot, path), "utf8") };
+	} catch (error) {
+		if (isMissingFileError(error)) return undefined;
+		throw new Error(
+			`Unable to read inspect artifact ${path}: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
+}
+
+function isMissingFileError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		"code" in error &&
+		(error as NodeJS.ErrnoException).code === "ENOENT"
+	);
 }
 
 function isOutsideRoot(root: string, path: string): boolean {

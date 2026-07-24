@@ -3,10 +3,10 @@ import type {
 	SemanticThemeGraphEdge,
 	SemanticThemeGraphNode,
 	ThemeGraphViews,
-	ThemeImpactSummary,
 	ThemeReference,
 	ThemeSemanticModel,
 } from "./theme-facts.js";
+import { impactSummary } from "./theme-impact.js";
 import {
 	blockId,
 	blockInstanceId,
@@ -377,6 +377,68 @@ export function themeGraphFromModel(
 			});
 		}
 	}
+	const storeSchemaNodeId = `store-schema:${model.metafieldSchema.path}`;
+	pushNode({
+		id: storeSchemaNodeId,
+		kind: "storeSchema",
+		path: model.metafieldSchema.path,
+		state: model.metafieldSchema.state,
+		pulledAt: model.metafieldSchema.pulledAt,
+	});
+	for (const definition of model.metafieldDefinitions) {
+		pushNode({
+			id: definition.id,
+			kind: "metafieldDefinition",
+			owner: definition.owner,
+			namespace: definition.namespace,
+			key: definition.key,
+			type: definition.type,
+		});
+		pushEdge({
+			id: `edge:schemaFor:${model.metafieldSchema.path}->${definition.id}`,
+			kind: "schemaFor",
+			from: storeSchemaNodeId,
+			to: definition.id,
+		});
+	}
+	for (const read of model.metafieldReads) {
+		const target =
+			read.definitionId ??
+			`unresolved:metafield:${read.owner}:${read.namespace}:${read.key}`;
+		if (!read.definitionId)
+			pushNode({
+				id: target,
+				kind: "unresolved",
+				targetKind: "metafield",
+				name: `${read.owner}.metafields.${read.namespace}.${read.key}`,
+			});
+		pushNode({
+			id: read.id,
+			kind: "metafieldRead",
+			fromPath: read.fromPath,
+			owner: read.owner,
+			namespace: read.namespace,
+			key: read.key,
+		});
+		pushEdge({
+			id: `edge:readsMetafield:${read.id}`,
+			kind: "readsMetafield",
+			from: fileId(read.fromPath),
+			to: read.id,
+			namespace: read.namespace,
+			key: read.key,
+			evidenceIds: [read.dataAccessId],
+		});
+		pushEdge({
+			id: `edge:${read.definitionId ? "resolves" : "missing"}Metafield:${read.id}->${target}`,
+			kind: read.definitionId
+				? "resolvesMetafieldDefinition"
+				: "missingMetafieldDefinition",
+			from: read.id,
+			to: target,
+			evidenceIds: [read.dataAccessId],
+		});
+	}
 	for (const dataAccess of model.dataAccesses) {
 		const objectId = dataObjectId(dataAccess.object);
 		pushNode({
@@ -717,8 +779,38 @@ export function themeGraphFromModel(
 		edges: sortedEdges,
 		evidence: model.evidence,
 		impact: impactSummary(model),
+		metafields: metafieldQueries(model),
+		themeCheck: model.themeCheck,
 		views,
 		issues: model.issues,
+	};
+}
+
+function metafieldQueries(model: ThemeSemanticModel) {
+	const consumedDefinitionIds = new Set(
+		model.metafieldReads.flatMap((read) =>
+			read.definitionId ? [read.definitionId] : [],
+		),
+	);
+	return {
+		path: model.metafieldSchema.path,
+		state: model.metafieldSchema.state,
+		pulledAt: model.metafieldSchema.pulledAt,
+		consumedDefinitionIds: [...consumedDefinitionIds].sort(),
+		unconsumedDefinitionIds:
+			model.metafieldSchema.state === "present"
+				? model.metafieldDefinitions
+						.filter((definition) => !consumedDefinitionIds.has(definition.id))
+						.map((definition) => definition.id)
+						.sort()
+				: [],
+		brokenReadIds:
+			model.metafieldSchema.state === "present"
+				? model.metafieldReads
+						.filter((read) => !read.definitionId)
+						.map((read) => read.id)
+						.sort()
+				: [],
 	};
 }
 
@@ -896,118 +988,6 @@ function graphViews(
 			new Set(edges.map((edge) => edge.kind)),
 		),
 	};
-}
-
-function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
-	const declarationPathById = new Map(
-		model.declarations.map((declaration) => [declaration.id, declaration.path]),
-	);
-	const dependencies = new Map<string, Set<string>>();
-	const dependents = new Map<string, Set<string>>();
-	const add = (from: string, to: string | undefined) => {
-		if (!to || from === to) return;
-		dependencies.set(from, dependencies.get(from) ?? new Set());
-		dependencies.get(from)?.add(to);
-		dependents.set(to, dependents.get(to) ?? new Set());
-		dependents.get(to)?.add(from);
-	};
-	for (const reference of model.references) {
-		add(
-			reference.fromPath,
-			reference.resolvedDeclarationId
-				? declarationPathById.get(reference.resolvedDeclarationId)
-				: undefined,
-		);
-	}
-	for (const instance of model.sectionInstances) {
-		add(
-			instance.templatePath,
-			instance.resolvedDeclarationId
-				? declarationPathById.get(instance.resolvedDeclarationId)
-				: undefined,
-		);
-	}
-	for (const instance of model.blockInstances) {
-		add(
-			instance.ownerPath,
-			instance.resolvedBlockId
-				? declarationPathById.get(instance.resolvedBlockId)
-				: undefined,
-		);
-	}
-	const affectedPages = new Map<string, Set<string>>();
-	for (const page of model.pages) {
-		const visited = new Set<string>();
-		const stack = [page.path];
-		while (stack.length > 0) {
-			const path = stack.pop();
-			if (!path || visited.has(path)) continue;
-			visited.add(path);
-			affectedPages.set(path, affectedPages.get(path) ?? new Set());
-			affectedPages.get(path)?.add(page.path);
-			for (const dependency of dependencies.get(path) ?? [])
-				stack.push(dependency);
-		}
-	}
-	const declaredFiles = new Set(model.files.map((file) => file.path));
-	// Entry points nothing references by name but Shopify itself consumes:
-	// pages (templates), layout, locales, and the config files.
-	const entryFiles = new Set([
-		...model.pages.map((page) => page.path),
-		...model.declarations
-			.filter(
-				(declaration) =>
-					declaration.kind === "layout" || declaration.kind === "locale",
-			)
-			.map((declaration) => declaration.path),
-		...model.files
-			.filter(
-				(file) =>
-					file.fileKind === "settingsSchema" ||
-					file.fileKind === "settingsData",
-			)
-			.map((file) => file.path),
-	]);
-	const referencedFiles = new Set([...dependents.keys(), ...entryFiles]);
-	const hasDynamicSnippetReference = model.references.some(
-		(reference) => reference.kind === "rendersSnippet" && !reference.static,
-	);
-	const unusedCandidates = new Set(
-		model.declarations
-			.filter(
-				(declaration) =>
-					declaration.kind === "section" ||
-					declaration.kind === "snippet" ||
-					declaration.kind === "themeBlock" ||
-					declaration.kind === "component",
-			)
-			.filter(
-				(declaration) =>
-					!(hasDynamicSnippetReference && declaration.kind === "snippet"),
-			)
-			.map((declaration) => declaration.path),
-	);
-	return {
-		dependencies: sortedRecord(dependencies),
-		dependents: sortedRecord(dependents),
-		affectedPages: sortedRecord(affectedPages),
-		unusedFiles: [...declaredFiles]
-			.filter(
-				(path) => unusedCandidates.has(path) && !referencedFiles.has(path),
-			)
-			.sort((a, b) => a.localeCompare(b)),
-	};
-}
-
-function sortedRecord(map: Map<string, Set<string>>): Record<string, string[]> {
-	return Object.fromEntries(
-		[...map.entries()]
-			.sort(([a], [b]) => a.localeCompare(b))
-			.map(([key, values]) => [
-				key,
-				[...values].sort((a, b) => a.localeCompare(b)),
-			]),
-	);
 }
 
 function unresolvedNodeId(reference: ThemeReference): string {

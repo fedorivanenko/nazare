@@ -6,6 +6,9 @@ import type {
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
 import type { EmitResult } from "./emit.js";
+import type { ThemeCheckPolicyInput } from "./theme-check-policy.js";
+import type { ThemeEvidenceRecord } from "./theme-evidence-types.js";
+import type { ThemeMetafieldSnapshot } from "./theme-external-types.js";
 import type { ThemeFileKind } from "./theme-file-classifier.js";
 
 export interface ThemeInputFile {
@@ -36,6 +39,10 @@ export interface AnalyzeNazareThemeOptions {
 	 * THEME_FILE_EXCLUDED so the graph never omits a file silently.
 	 */
 	exclude?: string[];
+	/** Store schema snapshot from Shopify CLI. Missing snapshot means unknown. */
+	metafields?: ThemeMetafieldSnapshot;
+	/** Shopify Theme Check configuration. */
+	themeCheck?: ThemeCheckPolicyInput;
 }
 
 export type InspectNazareThemeOptions = AnalyzeNazareThemeOptions;
@@ -197,6 +204,8 @@ export type ThemeFact =
 			object: string;
 			propertyPath?: string;
 			expression: string;
+			/** True when the read is reachable only inside a branch or loop. */
+			conditional?: boolean;
 			span?: SourceSpan;
 	  }
 	| {
@@ -228,6 +237,12 @@ export type ThemeFact =
 			kind: "guardsObject";
 			fromPath: string;
 			name: string;
+			/**
+			 * `default` means a fallback value is supplied when the caller omits
+			 * the input, which proves it may be omitted. `guard` means only that
+			 * reads are protected, which proves tolerance and not optionality.
+			 */
+			via: "guard" | "default";
 	  }
 	| {
 			/** A `@param` in a `{% doc %}` block: the author's own statement of
@@ -388,6 +403,24 @@ export type ThemeSettingReadRecord = {
 	span?: SourceSpan;
 };
 
+export type ThemeMetafieldDefinitionRecord = {
+	id: string;
+	owner: string;
+	namespace: string;
+	key: string;
+	type?: string;
+};
+
+export type ThemeMetafieldReadRecord = {
+	id: string;
+	fromPath: string;
+	owner: string;
+	namespace: string;
+	key: string;
+	definitionId?: string;
+	dataAccessId: string;
+};
+
 export type ThemeDataAccessRecord = {
 	id: string;
 	fromPath: string;
@@ -397,6 +430,8 @@ export type ThemeDataAccessRecord = {
 	origin?: "direct" | "renderArgument";
 	sourceRenderArgumentId?: string;
 	inputName?: string;
+	/** True when the read is reachable only inside a branch or loop. */
+	conditional?: boolean;
 	span?: SourceSpan;
 };
 
@@ -448,22 +483,7 @@ export type ThemeClassificationRecord = {
 	uncertainty: string[];
 };
 
-export type ThemeEvidenceRecord = {
-	id: string;
-	kind:
-		| "schema"
-		| "schemaSetting"
-		| "settingRead"
-		| "dataRead"
-		| "renderCall"
-		| "renderArgument"
-		| "templateConfig"
-		| "dependency"
-		| "docParam";
-	file: string;
-	span?: SourceSpan;
-	extractor: string;
-};
+export type { ThemeEvidenceRecord } from "./theme-evidence-types.js";
 
 export type ThemeExpectedInputRecord = {
 	id: string;
@@ -516,6 +536,17 @@ export interface ThemeSemanticModel {
 	localeReferences: ThemeLocaleReferenceRecord[];
 	settingReads: ThemeSettingReadRecord[];
 	dataAccesses: ThemeDataAccessRecord[];
+	metafieldDefinitions: ThemeMetafieldDefinitionRecord[];
+	metafieldReads: ThemeMetafieldReadRecord[];
+	metafieldSchema: {
+		state: "unknown" | "present" | "invalid";
+		path: string;
+		pulledAt: string | null;
+	};
+	themeCheck: {
+		path: string;
+		ignoredChecks: string[];
+	};
 	variableReads: ThemeVariableReadRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
 	expectedInputs: ThemeExpectedInputRecord[];
@@ -554,268 +585,15 @@ export interface ThemeBuildResult {
 	emittedOnError: boolean;
 }
 
-export type SemanticThemeGraphNode =
-	| { id: string; kind: "file"; path: string; fileKind: ThemeFileKind }
-	| { id: string; kind: "section"; name: string; path: string }
-	| { id: string; kind: "snippet"; name: string; path: string }
-	| { id: string; kind: "template"; name: string; path: string }
-	| { id: string; kind: "page"; name: string; path: string; pageType: string }
-	| { id: string; kind: "layout"; name: string; path: string }
-	| { id: string; kind: "locale"; name: string; path: string }
-	| { id: string; kind: "localeKey"; key: string; translationPaths: string[] }
-	| { id: string; kind: "asset"; name: string; path: string }
-	| { id: string; kind: "sectionGroup"; name: string; path: string }
-	| { id: string; kind: "themeBlock"; name: string; path: string }
-	| {
-			id: string;
-			kind: "sectionInstance";
-			templatePath: string;
-			instanceId: string;
-			sectionType?: string;
-	  }
-	| {
-			id: string;
-			kind: "blockInstance";
-			ownerPath: string;
-			sectionInstanceId: string;
-			instanceId: string;
-			blockType?: string;
-			parentInstanceId?: string;
-	  }
-	| {
-			id: string;
-			kind: "renderSite";
-			fromPath: string;
-			targetName?: string;
-			invocationKind: "render" | "include";
-	  }
-	| {
-			id: string;
-			kind: "component";
-			name: string;
-			path: string;
-			componentKind?: string;
-	  }
-	| { id: string; kind: "schema"; path: string; schemaPath: string }
-	| {
-			id: string;
-			kind: "block";
-			path: string;
-			blockType: string;
-			name?: string;
-	  }
-	| {
-			id: string;
-			kind: "blockSetting";
-			path: string;
-			blockType: string;
-			settingId: string;
-			settingType?: string;
-	  }
-	| {
-			id: string;
-			kind: "setting";
-			path: string;
-			schemaPath: string;
-			settingId: string;
-			settingType?: string;
-	  }
-	| { id: string; kind: "shopifyObject"; object: string }
-	| {
-			id: string;
-			kind: "shopifyProperty";
-			object: string;
-			propertyPath: string;
-	  }
-	| {
-			id: string;
-			kind: "renderArgument";
-			argumentName: string;
-			valueExpression: string;
-			fromPath: string;
-			targetName: string;
-	  }
-	| {
-			id: string;
-			kind: "expectedInput";
-			path: string;
-			name: string;
-			required: boolean;
-			requirement: "required" | "optional" | "unknown";
-			provenance: "declared" | "inferred";
-			inferredRequirement: "required" | "optional" | "unknown";
-			declaredType?: string;
-			origin: "freeVariable" | "ambientShopifyContext" | "docParam";
-			propertyPaths: string[];
-			evidenceIds: string[];
-	  }
-	| {
-			id: string;
-			kind: "capability";
-			capability: string;
-			confidence: number;
-			evidenceIds: string[];
-	  }
-	| {
-			id: string;
-			kind: "classification";
-			label: string;
-			confidence: number;
-			evidenceIds: string[];
-			uncertainty: string[];
-	  }
-	| {
-			id: string;
-			kind: "unresolved";
-			targetKind:
-				| "snippet"
-				| "section"
-				| "sectionGroup"
-				| "layout"
-				| "themeBlock"
-				| "asset"
-				| "component"
-				| "setting"
-				| "localeKey";
-			name?: string;
-	  };
+export type {
+	SemanticThemeGraphEdge,
+	SemanticThemeGraphNode,
+} from "./theme-graph-types.js";
 
-export type SemanticThemeGraphEdge = (
-	| { id: string; kind: "declares"; from: string; to: string }
-	| { id: string; kind: "implementedBy"; from: string; to: string }
-	| { id: string; kind: "invokes"; from: string; to: string }
-	| { id: string; kind: "resolvesRenderTarget"; from: string; to: string }
-	| { id: string; kind: "hasArgument"; from: string; to: string }
-	| { id: string; kind: "satisfiesInput"; from: string; to: string }
-	| {
-			id: string;
-			kind: "renders";
-			from: string;
-			to: string;
-			targetName?: string;
-	  }
-	| { id: string; kind: "imports"; from: string; to: string; specifier: string }
-	| {
-			id: string;
-			kind: "referencesAsset";
-			from: string;
-			to: string;
-			targetName?: string;
-	  }
-	| {
-			id: string;
-			kind: "containsSectionGroup";
-			from: string;
-			to: string;
-			targetName?: string;
-	  }
-	| {
-			id: string;
-			kind: "usesLayout";
-			from: string;
-			to: string;
-			targetName?: string;
-	  }
-	| {
-			id: string;
-			kind: "referencesLocaleKey";
-			from: string;
-			to: string;
-			key?: string;
-	  }
-	| { id: string; kind: "definesSchema"; from: string; to: string }
-	| { id: string; kind: "definesSetting"; from: string; to: string }
-	| { id: string; kind: "definesBlock"; from: string; to: string }
-	| { id: string; kind: "definesBlockSetting"; from: string; to: string }
-	| { id: string; kind: "pageUsesTemplate"; from: string; to: string }
-	| {
-			id: string;
-			kind: "pageContainsSectionInstance";
-			from: string;
-			to: string;
-	  }
-	| {
-			id: string;
-			kind: "sectionInstanceContainsBlockInstance";
-			from: string;
-			to: string;
-	  }
-	| {
-			id: string;
-			kind: "blockInstanceContainsBlockInstance";
-			from: string;
-			to: string;
-	  }
-	| { id: string; kind: "instanceOfBlock"; from: string; to: string }
-	| { id: string; kind: "readsSetting"; from: string; to: string }
-	| { id: string; kind: "argumentReadsSetting"; from: string; to: string }
-	| {
-			id: string;
-			kind: "accessesData";
-			from: string;
-			to: string;
-			expression: string;
-	  }
-	| {
-			id: string;
-			kind: "passesArgument";
-			from: string;
-			to: string;
-			argumentName: string;
-			valueExpression: string;
-	  }
-	| { id: string; kind: "hasCapability"; from: string; to: string }
-	| { id: string; kind: "classifiedAs"; from: string; to: string }
-	| { id: string; kind: "expectsInput"; from: string; to: string }
-	| {
-			id: string;
-			kind: "templateContainsSection";
-			from: string;
-			to: string;
-			targetName?: string;
-	  }
-	| {
-			id: string;
-			kind: "templateContainsSectionInstance";
-			from: string;
-			to: string;
-	  }
-	| {
-			id: string;
-			kind: "instanceOf";
-			from: string;
-			to: string;
-			targetName?: string;
-	  }
-) & { evidenceIds?: string[] };
-
-export type ThemeGraphView = {
-	nodeIds: string[];
-	edgeIds: string[];
-};
-
-export type ThemeGraphViews = {
-	themeStructure: ThemeGraphView;
-	shopifyData: ThemeGraphView;
-	storefrontArchitecture: ThemeGraphView;
-	configuration: ThemeGraphView;
-	changeImpact: ThemeGraphView;
-};
-
-export type ThemeImpactSummary = {
-	dependencies: Record<string, string[]>;
-	dependents: Record<string, string[]>;
-	affectedPages: Record<string, string[]>;
-	unusedFiles: string[];
-};
-
-export interface InspectNazareThemeResult {
-	version: 2;
-	root: string;
-	nodes: SemanticThemeGraphNode[];
-	edges: SemanticThemeGraphEdge[];
-	evidence: ThemeEvidenceRecord[];
-	impact: ThemeImpactSummary;
-	views: ThemeGraphViews;
-	issues: Diagnostic[];
-}
+export type {
+	InspectNazareThemeResult,
+	ThemeGraphView,
+	ThemeGraphViews,
+	ThemeImpactSummary,
+	ThemeMetafieldQueries,
+} from "./theme-inspect-types.js";
