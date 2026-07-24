@@ -19,7 +19,7 @@ export function collectThemeCapabilitySignals(
 			id: capabilitySignalId(fact.path, fact.capability, fact.span),
 			path: fact.path,
 			capability: fact.capability,
-			confidence: fact.confidence,
+			evidenceStrength: fact.evidenceStrength,
 			span: fact.span,
 		});
 	}

@@ -203,6 +203,10 @@ export {
 	type ThemeEvidenceInputs,
 	type ThemeEvidencePassContext,
 } from "./theme-evidence-pass.js";
+export {
+	strongerThemeEvidence,
+	type ThemeEvidenceStrength,
+} from "./theme-evidence-strength.js";
 export { matchesThemeGlob } from "./theme-exclusions.js";
 export {
 	deriveThemeExpectedInputs,

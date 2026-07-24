@@ -191,7 +191,7 @@ Examples:
 
 Classifications must expose:
 
-- confidence;
+- evidence strength (`direct`, `strong`, or `suggestive`);
 - supporting evidence;
 - uncertainty.
 
@@ -425,7 +425,7 @@ Expand deterministic rules for:
 - media gallery:
   - product media iteration, thumbnails, media ids.
 
-Each capability must include confidence and evidence ids.
+Each capability must include categorical evidence strength and evidence ids.
 
 ### Phase 6 — Storefront concept classifiers
 
@@ -452,7 +452,7 @@ Each classification:
   id: string;
   targetId: string;
   label: string;
-  confidence: number;
+  evidenceStrength: "direct" | "strong" | "suggestive";
   evidenceIds: string[];
   uncertainty: string[];
 }
