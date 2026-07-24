@@ -337,6 +337,14 @@ function analyzeNormalizedThemeFiles(
 	}
 
 	const themeCheckPolicy = parseThemeCheckPolicy(options.themeCheck);
+	if (options.factsOnly && options.memo?.model) {
+		return {
+			ir: options.memo.model,
+			artifacts,
+			facts,
+			issues,
+		};
+	}
 	const modelFingerprint = JSON.stringify({
 		root: options.root,
 		facts,

@@ -41,6 +41,8 @@ export interface AnalyzeNazareThemeOptions {
 	plainLiquidParseMode?: "strict" | "tolerant";
 	/** Mutable per-file fact and component artifact cache. */
 	cache?: ThemeAnalysisCache;
+	/** @internal Skip canonical semantic construction for persistent warm sessions. */
+	factsOnly?: boolean;
 	/** Session-local semantic model memo. Do not persist this value. */
 	memo?: ThemeAnalysisMemo;
 	/**
