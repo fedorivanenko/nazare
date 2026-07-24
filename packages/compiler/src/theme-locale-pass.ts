@@ -64,7 +64,11 @@ export function createThemeLocalePass(): IncrementalPass<
 					context.localeResultsBySource.set(path, next);
 				}
 				records.push(...localeRecords(next));
-				changes.push({ kind: "diagnosticsChanged", owner: path });
+				changes.push({
+					kind: "diagnosticsChanged",
+					pass: "locales",
+					owner: path,
+				});
 			}
 			return { records, changes };
 		},

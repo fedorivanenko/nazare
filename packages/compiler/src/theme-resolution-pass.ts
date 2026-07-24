@@ -62,7 +62,11 @@ export function createThemeResolutionPass(): IncrementalPass<
 					});
 					changes.push(
 						{ kind: "resolutionChanged", id },
-						{ kind: "diagnosticsChanged", owner: `resolution:reference:${id}` },
+						{
+							kind: "diagnosticsChanged",
+							pass: "resolution",
+							owner: `reference:${id}`,
+						},
 					);
 					continue;
 				}
@@ -75,7 +79,11 @@ export function createThemeResolutionPass(): IncrementalPass<
 				records.push(resolved);
 				changes.push(
 					{ kind: "resolutionChanged", id },
-					{ kind: "diagnosticsChanged", owner: `resolution:reference:${id}` },
+					{
+						kind: "diagnosticsChanged",
+						pass: "resolution",
+						owner: `reference:${id}`,
+					},
 				);
 			}
 			return { records, changes };
