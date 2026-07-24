@@ -1,4 +1,5 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
+import { collectThemeCapabilitySignals } from "./theme-capability-signal-pass.js";
 import {
 	collectThemeDataFlowInputs,
 	deriveRenderArgumentDataAccesses,
@@ -150,19 +151,9 @@ export function buildThemeSemanticModel(
 	const docParams = dataFlowInputs.docParams;
 	const renderSiteFacts = dataFlowInputs.renderSiteFacts;
 	const renderArguments = dataFlowInputs.renderArguments;
-	const capabilitySignals: ThemeCapabilitySignalRecord[] = [];
-
-	for (const fact of facts) {
-		if (fact.kind === "detectsCapability") {
-			capabilitySignals.push({
-				id: capabilitySignalId(fact.path, fact.capability, fact.span),
-				path: fact.path,
-				capability: fact.capability,
-				confidence: fact.confidence,
-				span: fact.span,
-			});
-		}
-	}
+	const capabilitySignals = collectThemeCapabilitySignals(
+		new ThemeFactStore(facts),
+	);
 
 	const modelIssues = [...issues];
 	const resolution = resolveThemeDeclarationsAndReferences(
@@ -813,14 +804,6 @@ export function variableReadId(
 	span?: SourceSpan,
 ): string {
 	return `variable-read:${path}:${name}:${occurrenceSuffix(span)}`;
-}
-
-export function capabilitySignalId(
-	path: string,
-	capability: string,
-	span?: SourceSpan,
-): string {
-	return `capability-signal:${path}:${capability}:${occurrenceSuffix(span)}`;
 }
 
 function occurrenceSuffix(span: SourceSpan | undefined): string {

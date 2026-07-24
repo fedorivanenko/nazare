@@ -25,6 +25,7 @@ export type PassChange =
 	| { kind: "dataFlowChanged"; sourcePath: string; targetName?: string }
 	| { kind: "metafieldDefinitionChanged"; id: string }
 	| { kind: "metafieldReadChanged"; id: string }
+	| { kind: "capabilitySignalChanged"; id: string }
 	| {
 			kind: "metafieldSnapshotChanged";
 			changedKeys: string[];
