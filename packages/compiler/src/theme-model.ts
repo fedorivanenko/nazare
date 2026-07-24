@@ -1,10 +1,8 @@
-import type { Diagnostic } from "@nazare/core";
+import type { Diagnostic, SourceSpan } from "@nazare/core";
 import type {
 	ThemeBlockRecord,
 	ThemeBlockSettingRecord,
-	ThemeCapabilityRecord,
 	ThemeCapabilitySignalRecord,
-	ThemeClassificationRecord,
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
 	ThemeEvidenceRecord,
@@ -22,7 +20,10 @@ import type {
 	ThemeSemanticModel,
 	ThemeSettingReadRecord,
 	ThemeSettingRecord,
+	ThemeVariableReadRecord,
 } from "./theme-facts.js";
+import { inferCapabilities, inferClassifications } from "./theme-inference.js";
+import { CONTEXT_INPUT_OBJECTS } from "./theme-input-policy.js";
 
 export function buildThemeSemanticModel(
 	facts: ThemeFact[],
@@ -40,6 +41,9 @@ export function buildThemeSemanticModel(
 	const localeReferences: ThemeLocaleReferenceRecord[] = [];
 	const settingReads: ThemeSettingReadRecord[] = [];
 	const dataAccesses: ThemeDataAccessRecord[] = [];
+	const variableReads: ThemeVariableReadRecord[] = [];
+	const guardedObjects = new Set<string>();
+	const renderSiteFacts: Extract<ThemeFact, { kind: "rendersSnippet" }>[] = [];
 	const renderArguments: ThemeRenderArgumentRecord[] = [];
 	const capabilitySignals: ThemeCapabilitySignalRecord[] = [];
 
@@ -112,7 +116,7 @@ export function buildThemeSemanticModel(
 		}
 		if (fact.kind === "referencesLocaleKey") {
 			localeReferences.push({
-				id: localeReferenceId(fact.fromPath, fact.key ?? "dynamic"),
+				id: localeReferenceId(fact.fromPath, fact.key ?? "dynamic", fact.span),
 				fromPath: fact.fromPath,
 				key: fact.key,
 				resolvedLocaleKeyIds: [],
@@ -141,16 +145,35 @@ export function buildThemeSemanticModel(
 		}
 		if (fact.kind === "readsSetting") {
 			settingReads.push({
-				id: settingReadId(fact.fromPath, fact.settingObject, fact.settingId),
+				id: settingReadId(
+					fact.fromPath,
+					fact.settingObject,
+					fact.settingId,
+					fact.span,
+				),
 				fromPath: fact.fromPath,
 				settingObject: fact.settingObject,
 				settingId: fact.settingId,
 				span: fact.span,
 			});
 		}
+		if (fact.kind === "rendersSnippet") {
+			renderSiteFacts.push(fact);
+		}
+		if (fact.kind === "readsFreeVariable") {
+			variableReads.push({
+				id: variableReadId(fact.fromPath, fact.name, fact.span),
+				fromPath: fact.fromPath,
+				name: fact.name,
+				span: fact.span,
+			});
+		}
+		if (fact.kind === "guardsObject") {
+			guardedObjects.add(`${fact.fromPath}:${fact.name}`);
+		}
 		if (fact.kind === "readsShopifyData") {
 			dataAccesses.push({
-				id: dataAccessId(fact.fromPath, fact.expression),
+				id: dataAccessId(fact.fromPath, fact.expression, fact.span),
 				fromPath: fact.fromPath,
 				object: fact.object,
 				propertyPath: fact.propertyPath,
@@ -160,7 +183,7 @@ export function buildThemeSemanticModel(
 		}
 		if (fact.kind === "detectsCapability") {
 			capabilitySignals.push({
-				id: capabilitySignalId(fact.path, fact.capability),
+				id: capabilitySignalId(fact.path, fact.capability, fact.span),
 				path: fact.path,
 				capability: fact.capability,
 				confidence: fact.confidence,
@@ -169,9 +192,10 @@ export function buildThemeSemanticModel(
 		}
 		if (fact.kind === "passesRenderArgument") {
 			renderArguments.push({
-				id: renderArgumentId(fact.fromPath, fact.targetName, fact.argumentName),
+				id: renderArgumentId(fact.siteId, fact.argumentName),
 				fromPath: fact.fromPath,
 				targetName: fact.targetName,
+				siteId: fact.siteId,
 				argumentName: fact.argumentName,
 				valueExpression: fact.valueExpression,
 				sourceObject: fact.sourceObject,
@@ -212,11 +236,13 @@ export function buildThemeSemanticModel(
 			.map(([key]) => key),
 	);
 	const byKindName = new Map<string, ThemeDeclaration>();
-	const byPath = new Map<string, ThemeDeclaration>();
+	const componentByPath = new Map<string, ThemeDeclaration>();
 	for (const declaration of declarations) {
 		const key = `${declaration.kind}:${declaration.name}`;
 		if (!ambiguousDeclarationKeys.has(key)) byKindName.set(key, declaration);
-		byPath.set(declaration.path, declaration);
+		if (declaration.kind === "component") {
+			componentByPath.set(declaration.path, declaration);
+		}
 		if (declaration.kind === "asset")
 			byKindName.set(`asset:${declaration.path}`, declaration);
 	}
@@ -280,7 +306,7 @@ export function buildThemeSemanticModel(
 					targetPath: fact.targetPath,
 					static: true,
 					span: fact.span,
-					declaration: byPath.get(fact.targetPath),
+					declaration: componentByPath.get(fact.targetPath),
 				}),
 			);
 		}
@@ -293,24 +319,34 @@ export function buildThemeSemanticModel(
 	}
 
 	const pages = pageRecords(declarations);
-	const expectedInputs = expectedInputRecords(declarations, dataAccesses);
-	const renderSites = renderSiteRecords(references, renderArguments);
+	const expectedInputs = expectedInputRecords(
+		declarations,
+		dataAccesses,
+		variableReads,
+		guardedObjects,
+	);
+	const renderSites = renderSiteRecords(
+		renderSiteFacts,
+		byKindName,
+		renderArguments,
+	);
 	addInputDiagnostics(
 		modelIssues,
 		renderSites,
 		expectedInputs,
-		references,
 		renderArguments,
 		declarations,
 	);
-	const capabilities = capabilityRecords(dataAccesses, capabilitySignals);
-	const classifications = classificationRecords(capabilities, dataAccesses);
+	const capabilities = inferCapabilities(dataAccesses, capabilitySignals);
+	const classifications = inferClassifications(capabilities, dataAccesses);
 	const evidence = evidenceRecords({
 		references,
+		localeReferences,
 		schemas,
 		settings,
 		settingReads,
 		dataAccesses,
+		variableReads,
 		renderArguments,
 		capabilitySignals,
 	});
@@ -321,11 +357,60 @@ export function buildThemeSemanticModel(
 			setting,
 		]),
 	);
+	const globalSettingById = new Map(
+		settings
+			.filter((setting) => setting.path === "config/settings_schema.json")
+			.map((setting) => [setting.settingId, setting]),
+	);
+	const blockSettingsByPathAndId = new Map<string, ThemeBlockSettingRecord[]>();
+	for (const setting of blockSettings) {
+		const key = `${setting.path}:${setting.settingId}`;
+		blockSettingsByPathAndId.set(key, [
+			...(blockSettingsByPathAndId.get(key) ?? []),
+			setting,
+		]);
+	}
 	for (const read of settingReads) {
-		const setting = settingByPathAndId.get(
-			`${read.fromPath}:${read.settingId}`,
-		);
-		if (setting) read.resolvedSettingId = setting.id;
+		if (read.settingObject === "settings") {
+			read.resolvedSettingId = globalSettingById.get(read.settingId)?.id;
+			continue;
+		}
+		if (read.settingObject === "section") {
+			read.resolvedSettingId = settingByPathAndId.get(
+				`${read.fromPath}:${read.settingId}`,
+			)?.id;
+			continue;
+		}
+		const candidates =
+			blockSettingsByPathAndId.get(`${read.fromPath}:${read.settingId}`) ?? [];
+		if (candidates.length === 1) {
+			read.resolvedSettingId = candidates[0]?.id;
+			continue;
+		}
+		if (candidates.length > 1) {
+			read.candidateSettingIds = candidates
+				.map((candidate) => candidate.id)
+				.sort((a, b) => a.localeCompare(b));
+			modelIssues.push({
+				severity: "warning",
+				code: "THEME_AMBIGUOUS_SETTING_READ",
+				message: `Block setting read ${read.settingId} from ${read.fromPath} matches multiple block types`,
+				phase: "resolve",
+				span: read.span,
+			});
+		}
+	}
+	for (const read of settingReads) {
+		if (read.resolvedSettingId || (read.candidateSettingIds?.length ?? 0) > 0) {
+			continue;
+		}
+		modelIssues.push({
+			severity: "warning",
+			code: "THEME_UNRESOLVED_SETTING_READ",
+			message: `Unresolved ${read.settingObject} setting ${read.settingId} from ${read.fromPath}`,
+			phase: "resolve",
+			span: read.span,
+		});
 	}
 
 	const localeKeysByKey = new Map<string, ThemeLocaleKeyRecord[]>();
@@ -375,7 +460,7 @@ export function buildThemeSemanticModel(
 		});
 	}
 
-	return {
+	const model: ThemeSemanticModel = {
 		version: 1,
 		root: options.root ?? ".",
 		files: [...files.values()].sort((a, b) => a.path.localeCompare(b.path)),
@@ -403,6 +488,9 @@ export function buildThemeSemanticModel(
 		dataAccesses: dedupeById(dataAccesses).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
+		variableReads: dedupeById(variableReads).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
 		renderArguments: dedupeById(renderArguments).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
@@ -424,6 +512,120 @@ export function buildThemeSemanticModel(
 		evidence: dedupeById(evidence).sort((a, b) => a.id.localeCompare(b.id)),
 		issues: modelIssues,
 	};
+	assertThemeSemanticModel(model);
+	return model;
+}
+
+function assertThemeSemanticModel(model: ThemeSemanticModel): void {
+	const declarationIds = new Set(model.declarations.map((item) => item.id));
+	const settingIds = new Set([
+		...model.settings.map((item) => item.id),
+		...model.blockSettings.map((item) => item.id),
+	]);
+	const localeKeyIds = new Set(model.localeKeys.map((item) => item.id));
+	const renderArgumentIds = new Set(
+		model.renderArguments.map((item) => item.id),
+	);
+
+	for (const reference of model.references) {
+		if (
+			reference.resolvedDeclarationId &&
+			!declarationIds.has(reference.resolvedDeclarationId)
+		) {
+			throw new Error(
+				`Theme reference ${reference.id} resolves to missing declaration ${reference.resolvedDeclarationId}`,
+			);
+		}
+	}
+	for (const instance of model.sectionInstances) {
+		if (
+			instance.resolvedDeclarationId &&
+			!declarationIds.has(instance.resolvedDeclarationId)
+		) {
+			throw new Error(
+				`Theme section instance ${instance.id} resolves to missing declaration ${instance.resolvedDeclarationId}`,
+			);
+		}
+	}
+	for (const read of model.settingReads) {
+		if (read.resolvedSettingId && (read.candidateSettingIds?.length ?? 0) > 0) {
+			throw new Error(
+				`Theme setting read ${read.id} has both resolved and candidate settings`,
+			);
+		}
+		if (read.candidateSettingIds) {
+			assertUniqueSorted(
+				read.candidateSettingIds,
+				`Theme setting read ${read.id} candidate settings`,
+			);
+		}
+		if (read.resolvedSettingId && !settingIds.has(read.resolvedSettingId)) {
+			throw new Error(
+				`Theme setting read ${read.id} resolves to missing setting ${read.resolvedSettingId}`,
+			);
+		}
+		for (const candidateId of read.candidateSettingIds ?? []) {
+			if (!settingIds.has(candidateId)) {
+				throw new Error(
+					`Theme setting read ${read.id} has missing candidate ${candidateId}`,
+				);
+			}
+		}
+	}
+	for (const reference of model.localeReferences) {
+		for (const localeKeyId of reference.resolvedLocaleKeyIds) {
+			if (!localeKeyIds.has(localeKeyId)) {
+				throw new Error(
+					`Theme locale reference ${reference.id} resolves to missing locale key ${localeKeyId}`,
+				);
+			}
+		}
+	}
+	for (const site of model.renderSites) {
+		assertUnique(site.argumentIds, `Theme render site ${site.id} arguments`);
+		for (const argumentId of site.argumentIds) {
+			if (!renderArgumentIds.has(argumentId)) {
+				throw new Error(
+					`Theme render site ${site.id} points to missing argument ${argumentId}`,
+				);
+			}
+		}
+	}
+	const evidenceIds = new Set(model.evidence.map((item) => item.id));
+	for (const record of [
+		...model.expectedInputs,
+		...model.capabilities,
+		...model.classifications,
+	]) {
+		if (record.evidenceIds.length === 0) {
+			throw new Error(`Theme semantic record ${record.id} has no evidence`);
+		}
+		assertUnique(
+			record.evidenceIds,
+			`Theme semantic record ${record.id} evidence`,
+		);
+		for (const evidenceId of record.evidenceIds) {
+			if (!evidenceIds.has(evidenceId)) {
+				throw new Error(
+					`Theme semantic record ${record.id} points to missing evidence ${evidenceId}`,
+				);
+			}
+		}
+	}
+}
+
+function assertUnique(values: string[], label: string): void {
+	if (values.length !== new Set(values).size) {
+		throw new Error(`${label} must be unique`);
+	}
+}
+
+function assertUniqueSorted(values: string[], label: string): void {
+	assertUnique(values, label);
+	const sorted = [...values].sort((a, b) => a.localeCompare(b));
+	if (values.some((value, index) => value !== sorted[index])) {
+		throw new Error(`${label} must be sorted`);
+	}
 }
 
 function pageRecords(declarations: ThemeDeclaration[]): ThemePageRecord[] {
@@ -445,20 +647,32 @@ function pageTypeFromTemplateName(name: string): string {
 
 function evidenceRecords(records: {
 	references: ThemeReference[];
+	localeReferences: ThemeLocaleReferenceRecord[];
 	schemas: ThemeSchemaRecord[];
 	settings: ThemeSettingRecord[];
 	settingReads: ThemeSettingReadRecord[];
 	dataAccesses: ThemeDataAccessRecord[];
+	variableReads: ThemeVariableReadRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
 	capabilitySignals: ThemeCapabilitySignalRecord[];
 }): ThemeEvidenceRecord[] {
 	return [
 		...records.references.map((reference) => ({
 			id: reference.id,
-			kind: "dependency" as const,
+			kind:
+				reference.kind === "rendersSnippet"
+					? ("renderCall" as const)
+					: ("dependency" as const),
 			file: reference.fromPath,
 			span: reference.span,
 			extractor: "theme-liquid-dependencies",
+		})),
+		...records.localeReferences.map((reference) => ({
+			id: reference.id,
+			kind: "dependency" as const,
+			file: reference.fromPath,
+			span: reference.span,
+			extractor: "theme-source-facts",
 		})),
 		...records.schemas.map((schema) => ({
 			id: schema.id,
@@ -488,6 +702,13 @@ function evidenceRecords(records: {
 			span: access.span,
 			extractor: "theme-source-facts",
 		})),
+		...records.variableReads.map((read) => ({
+			id: read.id,
+			kind: "dataRead" as const,
+			file: read.fromPath,
+			span: read.span,
+			extractor: "theme-source-facts",
+		})),
 		...records.renderArguments.map((argument) => ({
 			id: argument.id,
 			kind: "renderArgument" as const,
@@ -505,9 +726,18 @@ function evidenceRecords(records: {
 	];
 }
 
+/**
+ * What a snippet expects its caller to pass: reads of page-context objects
+ * ({% render %} isolates scope, so product/collection/... must be passed)
+ * plus free variable reads (bare names that are neither Liquid globals nor
+ * assigned in the file). An input is required unless the file guards the
+ * name in a condition — a guarded read tolerates absence.
+ */
 function expectedInputRecords(
 	declarations: ThemeDeclaration[],
 	dataAccesses: ThemeDataAccessRecord[],
+	variableReads: ThemeVariableReadRecord[],
+	guardedObjects: Set<string>,
 ): ThemeExpectedInputRecord[] {
 	const componentPaths = new Set(
 		declarations
@@ -518,69 +748,81 @@ function expectedInputRecords(
 			.map((declaration) => declaration.path),
 	);
 	const byId = new Map<string, ThemeExpectedInputRecord>();
-	for (const access of dataAccesses) {
-		if (!componentPaths.has(access.fromPath)) continue;
-		const id = expectedInputId(access.fromPath, access.object);
+	const addInput = (path: string, name: string, evidenceId: string): void => {
+		const id = expectedInputId(path, name);
 		const existing = byId.get(id);
 		if (existing) {
-			existing.evidenceIds = [...new Set([...existing.evidenceIds, access.id])];
-			continue;
+			existing.evidenceIds = [
+				...new Set([...existing.evidenceIds, evidenceId]),
+			];
+			return;
 		}
 		byId.set(id, {
 			id,
-			path: access.fromPath,
-			name: access.object,
-			required: true,
-			evidenceIds: [access.id],
+			path,
+			name,
+			required: !guardedObjects.has(`${path}:${name}`),
+			evidenceIds: [evidenceId],
 		});
+	};
+	for (const access of dataAccesses) {
+		if (!componentPaths.has(access.fromPath)) continue;
+		if (!CONTEXT_INPUT_OBJECTS.has(access.object)) continue;
+		addInput(access.fromPath, access.object, access.id);
+	}
+	for (const read of variableReads) {
+		if (!componentPaths.has(read.fromPath)) continue;
+		addInput(read.fromPath, read.name, read.id);
 	}
 	return [...byId.values()];
 }
 
+/**
+ * One record per render call site — sites are identified by their siteId
+ * (path@line:column), so two renders of the same target from one file keep
+ * their own argument lists instead of sharing one.
+ */
 function renderSiteRecords(
-	references: ThemeReference[],
+	renderSiteFacts: Extract<ThemeFact, { kind: "rendersSnippet" }>[],
+	byKindName: Map<string, ThemeDeclaration>,
 	renderArguments: ThemeRenderArgumentRecord[],
 ): ThemeRenderSiteRecord[] {
-	const argsBySite = new Map<string, ThemeRenderArgumentRecord[]>();
+	const argsBySiteId = new Map<string, ThemeRenderArgumentRecord[]>();
 	for (const argument of renderArguments) {
-		const key = `${argument.fromPath}:${argument.targetName}`;
-		argsBySite.set(key, [...(argsBySite.get(key) ?? []), argument]);
+		argsBySiteId.set(argument.siteId, [
+			...(argsBySiteId.get(argument.siteId) ?? []),
+			argument,
+		]);
 	}
-	return references
-		.filter((reference) => reference.kind === "rendersSnippet")
-		.map((reference) => ({
-			id: renderSiteId(reference.id),
-			fromPath: reference.fromPath,
-			targetName: reference.targetName,
-			resolvedDeclarationId: reference.resolvedDeclarationId,
-			argumentIds: (reference.targetName
-				? (argsBySite.get(`${reference.fromPath}:${reference.targetName}`) ??
-					[])
-				: []
-			).map((argument) => argument.id),
-			span: reference.span,
-		}));
+	return renderSiteFacts.map((fact) => ({
+		id: renderSiteId(fact.siteId),
+		fromPath: fact.fromPath,
+		targetName: fact.targetName,
+		invocationKind: fact.invocationKind,
+		resolvedDeclarationId: fact.targetName
+			? byKindName.get(`snippet:${fact.targetName}`)?.id
+			: undefined,
+		argumentIds: (argsBySiteId.get(fact.siteId) ?? []).map(
+			(argument) => argument.id,
+		),
+		span: fact.span,
+	}));
 }
 
 function addInputDiagnostics(
 	issues: Diagnostic[],
 	renderSites: ThemeRenderSiteRecord[],
 	expectedInputs: ThemeExpectedInputRecord[],
-	references: ThemeReference[],
 	renderArguments: ThemeRenderArgumentRecord[],
 	declarations: ThemeDeclaration[],
 ): void {
 	const expectedByDeclaration = new Map<string, ThemeExpectedInputRecord[]>();
 	for (const input of expectedInputs) {
-		const key = input.path;
-		expectedByDeclaration.set(key, [
-			...(expectedByDeclaration.get(key) ?? []),
+		expectedByDeclaration.set(input.path, [
+			...(expectedByDeclaration.get(input.path) ?? []),
 			input,
 		]);
 	}
-	const referenceById = new Map(
-		references.map((reference) => [renderSiteId(reference.id), reference]),
-	);
 	const argumentById = new Map(
 		renderArguments.map((argument) => [argument.id, argument]),
 	);
@@ -589,10 +831,14 @@ function addInputDiagnostics(
 	);
 	const argumentNamesByTarget = new Map<string, Set<string>[]>();
 	for (const site of renderSites) {
-		const reference = referenceById.get(site.id);
-		if (!reference?.resolvedDeclarationId || !reference.targetName) continue;
+		if (
+			site.invocationKind !== "render" ||
+			!site.resolvedDeclarationId ||
+			!site.targetName
+		)
+			continue;
 		const declarationPath = declarationById.get(
-			reference.resolvedDeclarationId,
+			site.resolvedDeclarationId,
 		)?.path;
 		if (!declarationPath) continue;
 		const expected = expectedByDeclaration.get(declarationPath) ?? [];
@@ -601,8 +847,8 @@ function addInputDiagnostics(
 				.map((id) => argumentById.get(id)?.argumentName)
 				.filter((name): name is string => typeof name === "string"),
 		);
-		argumentNamesByTarget.set(reference.targetName, [
-			...(argumentNamesByTarget.get(reference.targetName) ?? []),
+		argumentNamesByTarget.set(site.targetName, [
+			...(argumentNamesByTarget.get(site.targetName) ?? []),
 			argumentNames,
 		]);
 		const expectedNames = new Set(expected.map((input) => input.name));
@@ -611,22 +857,20 @@ function addInputDiagnostics(
 			issues.push({
 				severity: "warning",
 				code: "THEME_RENDER_ARGUMENT_MISSING",
-				message: `Render of ${reference.targetName} from ${site.fromPath} does not pass inferred required input ${input.name}`,
+				message: `Render of ${site.targetName} from ${site.fromPath} does not pass inferred required input ${input.name}`,
 				phase: "resolve",
 				span: site.span,
 			});
 		}
-		if (expectedNames.size > 0) {
-			for (const argumentName of argumentNames) {
-				if (expectedNames.has(argumentName)) continue;
-				issues.push({
-					severity: "warning",
-					code: "THEME_RENDER_ARGUMENT_UNKNOWN",
-					message: `Render of ${reference.targetName} from ${site.fromPath} passes argument ${argumentName}, but the target does not read it as an inferred input`,
-					phase: "resolve",
-					span: site.span,
-				});
-			}
+		for (const argumentName of argumentNames) {
+			if (expectedNames.has(argumentName)) continue;
+			issues.push({
+				severity: "warning",
+				code: "THEME_RENDER_ARGUMENT_UNKNOWN",
+				message: `Render of ${site.targetName} from ${site.fromPath} passes argument ${argumentName}, but the target does not read it as an inferred input`,
+				phase: "resolve",
+				span: site.span,
+			});
 		}
 	}
 	for (const [targetName, sets] of argumentNamesByTarget) {
@@ -641,149 +885,6 @@ function addInputDiagnostics(
 			phase: "resolve",
 		});
 	}
-}
-
-function capabilityRecords(
-	dataAccesses: ThemeDataAccessRecord[],
-	capabilitySignals: ThemeCapabilitySignalRecord[],
-): ThemeCapabilityRecord[] {
-	const byPathCapability = new Map<string, ThemeCapabilityRecord>();
-	for (const signal of capabilitySignals) {
-		byPathCapability.set(signal.id.replace("capability-signal", "capability"), {
-			id: capabilityId(signal.path, signal.capability),
-			path: signal.path,
-			capability: signal.capability,
-			confidence: signal.confidence,
-			evidenceIds: [signal.id],
-		});
-	}
-	for (const access of dataAccesses) {
-		for (const capability of capabilitiesForAccess(access)) {
-			const id = capabilityId(access.fromPath, capability.name);
-			const existing = byPathCapability.get(id);
-			if (existing) {
-				existing.evidenceIds = [
-					...new Set([...existing.evidenceIds, access.id]),
-				];
-				existing.confidence = Math.max(
-					existing.confidence,
-					capability.confidence,
-				);
-				continue;
-			}
-			byPathCapability.set(id, {
-				id,
-				path: access.fromPath,
-				capability: capability.name,
-				confidence: capability.confidence,
-				evidenceIds: [access.id],
-			});
-		}
-	}
-	return [...byPathCapability.values()];
-}
-
-function classificationRecords(
-	capabilities: ThemeCapabilityRecord[],
-	dataAccesses: ThemeDataAccessRecord[],
-): ThemeClassificationRecord[] {
-	const capabilitiesByPath = new Map<string, Set<string>>();
-	for (const capability of capabilities) {
-		capabilitiesByPath.set(
-			capability.path,
-			capabilitiesByPath.get(capability.path) ?? new Set(),
-		);
-		capabilitiesByPath.get(capability.path)?.add(capability.capability);
-	}
-	const dataByPath = new Map<string, Set<string>>();
-	for (const access of dataAccesses) {
-		dataByPath.set(
-			access.fromPath,
-			dataByPath.get(access.fromPath) ?? new Set(),
-		);
-		dataByPath
-			.get(access.fromPath)
-			?.add(`${access.object}.${access.propertyPath ?? ""}`);
-	}
-	const records: ThemeClassificationRecord[] = [];
-	for (const [path, caps] of capabilitiesByPath) {
-		const data = dataByPath.get(path) ?? new Set();
-		const labels: Array<{
-			label: string;
-			confidence: number;
-			uncertainty?: string;
-		}> = [];
-		if (caps.has("addsToCart") && caps.has("selectsVariants"))
-			labels.push({ label: "productForm", confidence: 0.9 });
-		if (
-			caps.has("displaysProductPrice") &&
-			(caps.has("displaysProductMedia") || data.has("product.title"))
-		)
-			labels.push({
-				label: "productCard",
-				confidence: 0.75,
-				uncertainty: "could be full product section",
-			});
-		if (caps.has("updatesCart") || caps.has("displaysCartItems"))
-			labels.push({
-				label: "cartDrawer",
-				confidence: 0.65,
-				uncertainty: "cart page and drawer share signals",
-			});
-		if (caps.has("performsPredictiveSearch"))
-			labels.push({ label: "searchOverlay", confidence: 0.8 });
-		if (caps.has("filtersCollections"))
-			labels.push({ label: "collectionGrid", confidence: 0.75 });
-		if (caps.has("usesLocalization"))
-			labels.push({ label: "localizationSelector", confidence: 0.7 });
-		for (const label of labels) {
-			const evidenceIds = capabilities
-				.filter((capability) => capability.path === path)
-				.flatMap((capability) => capability.evidenceIds);
-			records.push({
-				id: classificationId(path, label.label),
-				path,
-				label: label.label,
-				confidence: label.confidence,
-				evidenceIds: [...new Set(evidenceIds)].sort((a, b) =>
-					a.localeCompare(b),
-				),
-				uncertainty: label.uncertainty ? [label.uncertainty] : [],
-			});
-		}
-	}
-	return records;
-}
-
-function capabilitiesForAccess(
-	access: ThemeDataAccessRecord,
-): { name: string; confidence: number }[] {
-	const path = access.propertyPath ?? "";
-	if (access.object === "product" && path === "price") {
-		return [{ name: "displaysProductPrice", confidence: 0.95 }];
-	}
-	if (
-		access.object === "product" &&
-		/(^|\.)(featured_image|media|images)$/.test(path)
-	) {
-		return [{ name: "displaysProductMedia", confidence: 0.85 }];
-	}
-	if (access.object === "cart" && /(^|\.)items/.test(path)) {
-		return [{ name: "displaysCartItems", confidence: 0.9 }];
-	}
-	if (access.object === "cart") {
-		return [{ name: "usesCart", confidence: 0.75 }];
-	}
-	if (access.object === "search") {
-		return [{ name: "usesSearch", confidence: 0.75 }];
-	}
-	if (access.object === "recommendations") {
-		return [{ name: "displaysRecommendations", confidence: 0.85 }];
-	}
-	if (access.object === "localization") {
-		return [{ name: "usesLocalization", confidence: 0.85 }];
-	}
-	return [];
 }
 
 function declaration(
@@ -805,7 +906,7 @@ function reference(options: {
 	declaration?: ThemeDeclaration;
 }): ThemeReference {
 	return {
-		id: `ref:${options.kind}:${options.fromPath}:${options.targetPath ?? options.targetName ?? "dynamic"}`,
+		id: `ref:${options.kind}:${options.fromPath}:${options.targetPath ?? options.targetName ?? "dynamic"}:${occurrenceSuffix(options.span)}`,
 		kind: options.kind,
 		fromPath: options.fromPath,
 		targetKind: options.targetKind,
@@ -823,6 +924,9 @@ function dedupeById<T extends { id: string }>(items: T[]): T[] {
 	return [...seen.values()];
 }
 
+// Single owner of every theme-graph ID format (the artifact-layer namespace
+// lives in ids.ts). IDs are opaque: construct them here, never parse data
+// back out of one.
 export function fileId(path: string): string {
 	return `file:${path}`;
 }
@@ -867,8 +971,12 @@ export function localeKeyId(path: string, key: string): string {
 	return `locale-key:${path}:${key}`;
 }
 
-export function localeReferenceId(path: string, key: string): string {
-	return `locale-reference:${path}:${key}`;
+export function localeReferenceId(
+	path: string,
+	key: string,
+	span?: SourceSpan,
+): string {
+	return `locale-reference:${path}:${key}:${occurrenceSuffix(span)}`;
 }
 
 export function sectionInstanceId(
@@ -882,8 +990,9 @@ export function settingReadId(
 	path: string,
 	settingObject: string,
 	settingId: string,
+	span?: SourceSpan,
 ): string {
-	return `setting-read:${path}:${settingObject}:${settingId}`;
+	return `setting-read:${path}:${settingObject}:${settingId}:${occurrenceSuffix(span)}`;
 }
 
 export function dataObjectId(object: string): string {
@@ -894,34 +1003,43 @@ export function dataPropertyId(object: string, propertyPath: string): string {
 	return `shopify-property:${object}.${propertyPath}`;
 }
 
-export function dataAccessId(path: string, expression: string): string {
-	return `data-access:${path}:${expression}`;
-}
-
-export function renderArgumentId(
+export function dataAccessId(
 	path: string,
-	targetName: string,
-	argumentName: string,
+	expression: string,
+	span?: SourceSpan,
 ): string {
-	return `render-argument:${path}:${targetName}:${argumentName}`;
+	return `data-access:${path}:${expression}:${occurrenceSuffix(span)}`;
 }
 
-export function renderSiteId(referenceId: string): string {
-	return `render-site:${referenceId}`;
+export function renderArgumentId(siteId: string, argumentName: string): string {
+	return `render-argument:${siteId}:${argumentName}`;
+}
+
+export function renderSiteId(siteId: string): string {
+	return `render-site:${siteId}`;
+}
+
+export function variableReadId(
+	path: string,
+	name: string,
+	span?: SourceSpan,
+): string {
+	return `variable-read:${path}:${name}:${occurrenceSuffix(span)}`;
 }
 
 export function expectedInputId(path: string, name: string): string {
 	return `expected-input:${path}:${name}`;
 }
 
-export function capabilityId(path: string, capability: string): string {
-	return `capability:${path}:${capability}`;
+export function capabilitySignalId(
+	path: string,
+	capability: string,
+	span?: SourceSpan,
+): string {
+	return `capability-signal:${path}:${capability}:${occurrenceSuffix(span)}`;
 }
 
-export function capabilitySignalId(path: string, capability: string): string {
-	return `capability-signal:${path}:${capability}`;
-}
-
-export function classificationId(path: string, label: string): string {
-	return `classification:${path}:${label}`;
+function occurrenceSuffix(span: SourceSpan | undefined): string {
+	if (!span) return "unlocated";
+	return `${span.start.line}:${span.start.column}-${span.end.line}:${span.end.column}`;
 }

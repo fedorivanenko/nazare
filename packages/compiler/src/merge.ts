@@ -59,8 +59,21 @@ export function mergeArtifactIR(irs: ArtifactIR[]): ArtifactIR {
 	};
 }
 
+// Structural equality must not depend on property insertion order — two
+// equal nodes built by different code paths (or a serialization round-trip)
+// are still the same fact — so keys are sorted before comparing.
 function sameSyntaxNode(a: ArtifactSyntaxNode, b: ArtifactSyntaxNode): boolean {
-	return JSON.stringify(a) === JSON.stringify(b);
+	return stableStringify(a) === stableStringify(b);
+}
+
+function stableStringify(value: unknown): string {
+	return JSON.stringify(value, (_key, entry: unknown) =>
+		entry && typeof entry === "object" && !Array.isArray(entry)
+			? Object.fromEntries(
+					Object.entries(entry).sort(([a], [b]) => (a < b ? -1 : 1)),
+				)
+			: entry,
+	);
 }
 
 // A resolution's identity is its kind plus its referenced ids. Explicit per

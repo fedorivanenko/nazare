@@ -391,6 +391,10 @@ function settingSymbolForPropDeclaration(
 	};
 }
 
+// Merge policy for a re-added symbol id: the first copy's facts win, an
+// external-unresolved stub upgrades to external-resolved when the contract
+// arrives, and declaration sites always union — a duplicate declaration
+// (diagnosed at parse) must not vanish from the symbol table.
 function addSymbol(
 	symbols: Map<Id, ArtifactSymbol>,
 	symbol: ArtifactSymbol,
@@ -401,16 +405,15 @@ function addSymbol(
 		return;
 	}
 
-	if (
+	const upgraded =
 		existing.resolution === "external-unresolved" &&
 		symbol.resolution === "external-resolved"
-	) {
-		symbols.set(symbol.id, {
-			...existing,
-			...symbol,
-			declarations: Array.from(
-				new Set([...existing.declarations, ...symbol.declarations]),
-			),
-		});
-	}
+			? { ...existing, ...symbol }
+			: existing;
+	symbols.set(symbol.id, {
+		...upgraded,
+		declarations: Array.from(
+			new Set([...existing.declarations, ...symbol.declarations]),
+		),
+	});
 }

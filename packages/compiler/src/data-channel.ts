@@ -20,13 +20,25 @@ export type DataBindingResolution = ResolvedDataBinding & {
 
 export type DataChannel = Map<string, Map<string, ResolvedDataBinding>>;
 
-export function dataChannelFromIR(ir: ArtifactIR): DataChannel {
+/**
+ * The one expression form a data binding resolves: `props.<name>`, looked up
+ * by exact (trimmed) source text. Both the channel and the check pass use
+ * this map so they cannot disagree on what a binding's type is.
+ */
+export function propTypesByExpression(
+	ir: ArtifactIR,
+): Map<string, SemanticType> {
 	const propTypes = new Map<string, SemanticType>();
 	for (const node of ir.syntax) {
 		if (node.kind === "prop-declaration") {
 			propTypes.set(`props.${node.name}`, node.typeInfo.valueType);
 		}
 	}
+	return propTypes;
+}
+
+export function dataChannelFromIR(ir: ArtifactIR): DataChannel {
+	const propTypes = propTypesByExpression(ir);
 
 	const channel: DataChannel = new Map();
 	for (const node of ir.syntax) {
@@ -101,17 +113,7 @@ function parseKindForType(
 	) {
 		return "string";
 	}
-	if (type.kind === "literal") return parseKindForLiteralValue(type.value);
 	if (type.kind === "unknown") return "unknown";
-	return "unsupported";
-}
-
-function parseKindForLiteralValue(
-	value: unknown,
-): DataBindingKind | "unsupported" {
-	if (typeof value === "string") return "string";
-	if (typeof value === "number") return "number";
-	if (typeof value === "boolean") return "boolean";
 	return "unsupported";
 }
 

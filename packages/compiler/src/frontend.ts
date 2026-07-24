@@ -6,13 +6,19 @@ import type {
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
 import type { CompilerMode } from "./check.js";
-import type { ReadFile } from "./resolver.js";
+import type { DependencyResolver, ReadFile } from "./resolver.js";
 
 export type CompileInput = {
 	source: string;
 	file: string;
 	/** Without a reader, every import diagnoses as unreadable. */
 	readFile?: ReadFile;
+	/**
+	 * Caller-owned dependency caches. A build creates one resolver and passes
+	 * it here and to checkDependencies so dependencies parse once, not per
+	 * phase; omitted, the frontend creates a private one.
+	 */
+	dependencyResolver?: DependencyResolver;
 	/** strict is package-author behavior; loose keeps migration checks minimal. */
 	strictness?: CompilerMode;
 	/** Frontend-owned options, validated by the selected frontend. */

@@ -1,8 +1,13 @@
 import type { Diagnostic } from "@nazare/core";
+import { checkComponentScripts } from "./check-script.js";
 import { type EmitResult, emitTheme } from "./emit.js";
 import { parseNazareLiquid } from "./parser.js";
-import { checkDependencies } from "./resolver.js";
-
+import { markDiagnostics } from "./pipeline.js";
+import {
+	checkDependencies,
+	createDependencyResolver,
+	type DependencyResolver,
+} from "./resolver.js";
 import type {
 	AnalyzeNazareThemeOptions,
 	BuildNazareThemeWorkspaceOptions,
@@ -24,7 +29,20 @@ import { collectJsonThemeFacts } from "./theme-json-facts.js";
 import { collectPlainLiquidThemeFacts } from "./theme-liquid-facts.js";
 import { buildThemeSemanticModel } from "./theme-model.js";
 import { collectNazareThemeFacts } from "./theme-nazare-facts.js";
-import { collectSourceThemeFacts } from "./theme-source-facts.js";
+
+export const THEME_ANALYSIS_DEFAULTS = {
+	root: ".",
+	strictness: "strict",
+	plainLiquidParseMode: "tolerant",
+} as const;
+
+export const THEME_BUILD_DEFAULTS = {
+	root: ".",
+	strictness: "strict",
+	plainLiquidParseMode: "strict",
+	scope: { kind: "workspace" },
+	emitOnError: false,
+} as const;
 
 export function analyzeNazareTheme(
 	files: ThemeInputFile[],
@@ -32,6 +50,7 @@ export function analyzeNazareTheme(
 ): ThemeAnalysis {
 	const normalized = normalizeInputFiles(files);
 	return analyzeNormalizedThemeFiles(normalized.files, normalized.byPath, {
+		...THEME_ANALYSIS_DEFAULTS,
 		...options,
 		initialIssues: normalized.issues,
 	});
@@ -48,58 +67,125 @@ export function buildNazareThemeWorkspace(
 	files: ThemeInputFile[],
 	options: BuildNazareThemeWorkspaceOptions = {},
 ): ThemeBuildResult {
+	const buildOptions = { ...THEME_BUILD_DEFAULTS, ...options };
 	const normalized = normalizeInputFiles(files);
-	const scopeIssues = buildScopeIssues(options.scope, normalized.byPath);
+	const scopeIssues = buildScopeIssues(buildOptions.scope, normalized.byPath);
 	const scopePaths = hasErrors(scopeIssues)
 		? new Set<string>()
-		: buildScopePaths(options.scope, normalized.byPath);
+		: buildScopePaths(buildOptions.scope, normalized.byPath);
 	const filesToAnalyze =
-		options.scope?.kind === "file"
-			? normalized.files.filter((file) => scopePaths.has(file.path))
-			: normalized.files;
+		buildOptions.scope.kind === "workspace"
+			? normalized.files
+			: normalized.files.filter((file) => scopePaths.has(file.path));
 	const analysis = analyzeNormalizedThemeFiles(
 		filesToAnalyze,
 		normalized.byPath,
 		{
-			...options,
+			...buildOptions,
 			initialIssues: [...normalized.issues, ...scopeIssues],
 		},
 	);
 	const readFile = (path: string): string | undefined =>
 		normalized.byPath.get(normalizeThemePath(path));
-	const selected = buildScopeArtifacts(analysis.artifacts, options.scope);
+	// One resolver for every artifact's dependency check: the workspace's
+	// components import each other, so the parse/contract caches are shared.
+	const dependencyResolver = createDependencyResolver(readFile);
+	let selected = buildScopeArtifacts(
+		analysis.artifacts,
+		buildOptions.scope,
+		scopePaths,
+	);
 	const allIssues: Diagnostic[] = [...analysis.issues];
 	const emitted: EmitResult = { files: [], issues: [] };
-	const artifacts: ThemeBuildResult["artifacts"] = [];
-
+	const dependencyIssuesByPath = new Map<string, Diagnostic[]>();
 	for (const artifact of selected) {
-		artifacts.push(artifact);
 		const dependencyIssues = checkDependencies(artifact.ast, readFile, {
-			mode: options.strictness,
+			mode: buildOptions.strictness,
+			resolver: dependencyResolver,
 		});
+		dependencyIssuesByPath.set(artifact.path, dependencyIssues);
 		pushUniqueDiagnostics(allIssues, dependencyIssues);
-		const canEmit =
-			(artifact.canEmit && !hasErrors(dependencyIssues)) ||
-			options.emitOnError === true;
-		if (!canEmit) continue;
+	}
+
+	const scriptErrorPaths = new Set<string>();
+	for (const artifact of analysis.artifacts) {
+		const scriptIssues = markDiagnostics(
+			checkComponentScripts(artifact.ir, { readFile }),
+			"check",
+		);
+		if (hasErrors(scriptIssues)) scriptErrorPaths.add(artifact.path);
+		pushUniqueDiagnostics(allIssues, scriptIssues);
+	}
+	const checkedAnalysisArtifacts = analysis.artifacts.map((artifact) =>
+		scriptErrorPaths.has(artifact.path)
+			? { ...artifact, canEmit: false }
+			: artifact,
+	);
+	selected = selected.map(
+		(artifact) =>
+			checkedAnalysisArtifacts.find(
+				(candidate) => candidate.path === artifact.path,
+			) ?? artifact,
+	);
+
+	const workspaceCanEmit =
+		!hasErrors(allIssues) || buildOptions.emitOnError === true;
+	const scopedEntryPath =
+		buildOptions.scope.kind === "workspace"
+			? undefined
+			: normalizeThemePath(buildOptions.scope.path);
+	let artifacts = selected.map((artifact) => {
+		const dependencyIssues = dependencyIssuesByPath.get(artifact.path) ?? [];
+		if (
+			!workspaceCanEmit ||
+			(!artifact.canEmit && buildOptions.emitOnError !== true) ||
+			(hasErrors(dependencyIssues) && buildOptions.emitOnError !== true)
+		) {
+			return artifact;
+		}
 		const result = emitTheme(
 			artifact.source,
 			{ ast: artifact.ast, ir: artifact.ir, contracts: artifact.contracts },
 			{
-				name: options.name ?? themeNameFromPath(artifact.path),
+				name:
+					artifact.path === scopedEntryPath && buildOptions.name
+						? buildOptions.name
+						: themeNameFromPath(artifact.path),
 				readFile,
 			},
 		);
 		emitted.files.push(...result.files);
 		emitted.issues.push(...result.issues);
 		pushUniqueDiagnostics(allIssues, result.issues);
+		return {
+			...artifact,
+			canEmit: artifact.canEmit && !hasErrors(result.issues),
+			emitted: result,
+		};
+	});
+	if (hasErrors(allIssues) && !buildOptions.emitOnError) {
+		emitted.files = [];
+		artifacts = artifacts.map((artifact) => {
+			if (!artifact.emitted) return artifact;
+			const { emitted: _discarded, ...withoutEmission } = artifact;
+			return withoutEmission;
+		});
 	}
+	const artifactByPath = new Map(
+		artifacts.map((artifact) => [artifact.path, artifact]),
+	);
+	const resultAnalysis: ThemeAnalysis = {
+		...analysis,
+		artifacts: checkedAnalysisArtifacts.map(
+			(artifact) => artifactByPath.get(artifact.path) ?? artifact,
+		),
+	};
 	return {
-		analysis,
+		analysis: resultAnalysis,
 		artifacts,
 		emitted,
 		issues: allIssues,
-		emittedOnError: options.emitOnError === true && hasErrors(allIssues),
+		emittedOnError: emitted.files.length > 0 && hasErrors(allIssues),
 	};
 }
 
@@ -115,20 +201,22 @@ function analyzeNormalizedThemeFiles(
 	const issues: Diagnostic[] = [...(options.initialIssues ?? [])];
 	const readFile = (path: string): string | undefined =>
 		byPath.get(normalizeThemePath(path));
+	// Shared across every component in the workspace: without it each
+	// component re-parses its whole import closure from scratch.
+	const dependencyResolver: DependencyResolver =
+		createDependencyResolver(readFile);
 
 	for (const file of files) {
 		const fileKind = classifyThemeFile(file.path);
 		facts.push({ kind: "file", path: file.path, fileKind });
-		if (file.path.endsWith(".liquid")) {
-			facts.push(...collectSourceThemeFacts(file.path, file.contents));
-		}
 		if (fileKind === "asset") {
+			// One declaration per asset; the model additionally indexes assets by
+			// path, so references by filename or by full path both resolve to it.
 			facts.push({
 				kind: "declaresAsset",
 				path: file.path,
 				name: themeNameFromPath(file.path),
 			});
-			facts.push({ kind: "declaresAsset", path: file.path, name: file.path });
 			continue;
 		}
 		if (fileKind === "layout") {
@@ -148,6 +236,7 @@ function analyzeNormalizedThemeFiles(
 		if (fileKind === "nazareComponent") {
 			const result = collectNazareThemeFacts(file.path, file.contents, {
 				readFile,
+				dependencyResolver,
 				strictness: options.strictness,
 			});
 			facts.push(...result.facts);
@@ -156,7 +245,9 @@ function analyzeNormalizedThemeFiles(
 			continue;
 		}
 		if (file.path.endsWith(".liquid")) {
-			const result = collectPlainLiquidThemeFacts(file.path, file.contents);
+			const result = collectPlainLiquidThemeFacts(file.path, file.contents, {
+				parseMode: options.plainLiquidParseMode ?? "tolerant",
+			});
 			facts.push(...result.facts);
 			issues.push(...result.issues);
 			continue;
@@ -212,7 +303,7 @@ function buildScopeIssues(
 }
 
 function buildScopePaths(
-	scope: BuildNazareThemeWorkspaceOptions["scope"] = { kind: "workspace" },
+	scope: NonNullable<BuildNazareThemeWorkspaceOptions["scope"]>,
 	byPath: Map<string, string>,
 ): Set<string> {
 	if (scope.kind === "workspace") return new Set(byPath.keys());
@@ -246,9 +337,13 @@ function scopedNazareClosure(
 
 function buildScopeArtifacts(
 	artifacts: ThemeBuildResult["artifacts"],
-	scope: BuildNazareThemeWorkspaceOptions["scope"] = { kind: "workspace" },
+	scope: NonNullable<BuildNazareThemeWorkspaceOptions["scope"]>,
+	scopePaths: Set<string>,
 ): ThemeBuildResult["artifacts"] {
 	if (scope.kind === "workspace") return artifacts;
+	if (scope.kind === "closure") {
+		return artifacts.filter((artifact) => scopePaths.has(artifact.path));
+	}
 	const path = normalizeThemePath(scope.path);
 	return artifacts.filter((artifact) => artifact.path === path);
 }
@@ -261,6 +356,19 @@ function normalizeInputFiles(files: ThemeInputFile[]): {
 	const byPath = new Map<string, string>();
 	const issues: Diagnostic[] = [];
 	for (const file of files) {
+		if (
+			!file ||
+			typeof file.path !== "string" ||
+			typeof file.contents !== "string"
+		) {
+			issues.push({
+				severity: "error",
+				code: "THEME_INVALID_INPUT_FILE",
+				message: "Theme input files require string path and contents fields",
+				phase: "parse",
+			});
+			continue;
+		}
 		const path = normalizeThemePath(file.path);
 		if (isUnsafeThemePath(path)) {
 			issues.push({

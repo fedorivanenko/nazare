@@ -55,7 +55,6 @@ export type {
 	NazareAst,
 	NazareImportNode,
 	NazareNode,
-	NazareOpaqueNode,
 	NazarePassedProp,
 	NazarePropDeclaration,
 	NazarePropsNode,
@@ -63,6 +62,7 @@ export type {
 	NazareRootMarkerNode,
 	ParseDiagnostic,
 } from "./ast.js";
+export { importSpecifiers } from "./bundle.js";
 export {
 	CHECK_RULES,
 	type CheckArtifactIROptions,
@@ -109,6 +109,7 @@ export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
 export { mergeArtifactIR } from "./merge.js";
 export { parseNazareLiquid } from "./parser.js";
+export { baseNameOf, resolveImportPath } from "./paths.js";
 export {
 	type BuildPlainLiquidOptions,
 	type BuildPlainLiquidResult,
@@ -122,6 +123,8 @@ export {
 } from "./plain-liquid.js";
 export {
 	checkDependencies,
+	createDependencyResolver,
+	type DependencyResolver,
 	type ReadFile,
 	resolveAssetImports,
 	resolveComponentContracts,
@@ -172,12 +175,14 @@ export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
 	inspectNazareTheme,
+	THEME_ANALYSIS_DEFAULTS,
+	THEME_BUILD_DEFAULTS,
 } from "./theme-workspace.js";
 export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 
 export type CompileNazareArtifactOptions = Pick<
 	CompileInput,
-	"readFile" | "strictness"
+	"readFile" | "strictness" | "dependencyResolver"
 >;
 
 export type CompileArtifactOptions = CompileInput & {
@@ -287,7 +292,8 @@ export function compileNazareArtifact(
 	});
 	if (!compiled.ok) {
 		throw new Error(
-			compiled.issues[0]?.message ?? "Nazare Liquid compile failed",
+			compiled.issues.map((issue) => issue.message).join("\n") ||
+				"Nazare Liquid compile failed",
 		);
 	}
 	if (!compiled.ast) {
@@ -316,7 +322,7 @@ export function compilePlainLiquid(
 	return {
 		ast: metadata.ast,
 		issues: compiled.issues,
-		dependencies: metadata.dependencies,
+		dependencies: metadata.ast.dependencies,
 		canEmit: compiled.canEmit,
 	};
 }
@@ -340,36 +346,24 @@ export function buildPlainLiquid(
 	};
 }
 
+/**
+ * The frontend is first-party and in-process; its metadata is typed with
+ * `satisfies` at the construction site. This guards only the `unknown`
+ * crossing of the frontend boundary — it identifies the shape, it does not
+ * re-validate fields the type system already proved.
+ */
 function plainLiquidMetadata(metadata: unknown): PlainLiquidFrontendMetadata {
-	if (isPlainLiquidFrontendMetadata(metadata)) return metadata;
-	throw new Error("Plain Liquid frontend did not return valid metadata");
-}
-
-function isPlainLiquidFrontendMetadata(
-	metadata: unknown,
-): metadata is PlainLiquidFrontendMetadata {
 	const candidate = metadata as PlainLiquidFrontendMetadata | undefined;
-	return (
-		!!candidate &&
-		isPlainLiquidAst(candidate.ast) &&
-		candidate.dependencies === candidate.ast.dependencies &&
-		typeof candidate.factsCollected === "boolean" &&
-		candidate.factsCollected === candidate.ast.factsCollected &&
-		(candidate.parseMode === "strict" || candidate.parseMode === "tolerant") &&
-		candidate.parseMode === candidate.ast.parseMode
-	);
+	if (candidate && isPlainLiquidAst(candidate.ast)) return candidate;
+	throw new Error("Plain Liquid frontend did not return its metadata shape");
 }
 
 function isPlainLiquidAst(value: unknown): value is PlainLiquidAst {
 	const ast = value as PlainLiquidAst | undefined;
 	return (
 		!!ast &&
-		Array.isArray(ast.nodes) &&
-		ast.nodes.length === 0 &&
+		typeof ast.file === "string" &&
 		Array.isArray(ast.dependencies) &&
-		Array.isArray(ast.diagnostics) &&
-		Array.isArray(ast.settingsReads) &&
-		typeof ast.factsCollected === "boolean" &&
 		(ast.parseMode === "strict" || ast.parseMode === "tolerant")
 	);
 }

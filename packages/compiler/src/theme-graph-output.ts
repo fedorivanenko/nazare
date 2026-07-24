@@ -254,23 +254,27 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const settingRead of model.settingReads) {
-		const to =
-			settingRead.resolvedSettingId ??
-			`unresolved:setting:${settingRead.settingObject}:${settingRead.settingId}`;
-		if (!settingRead.resolvedSettingId) {
+		const targets = settingRead.resolvedSettingId
+			? [settingRead.resolvedSettingId]
+			: (settingRead.candidateSettingIds ?? []);
+		if (targets.length === 0) {
+			const unresolved = `unresolved:setting:${settingRead.settingObject}:${settingRead.settingId}`;
 			pushNode({
-				id: to,
+				id: unresolved,
 				kind: "unresolved",
 				targetKind: "setting",
 				name: `${settingRead.settingObject}.settings.${settingRead.settingId}`,
 			});
+			targets.push(unresolved);
 		}
-		pushEdge({
-			id: `edge:readsSetting:${settingRead.id}`,
-			kind: "readsSetting",
-			from: fileId(settingRead.fromPath),
-			to,
-		});
+		for (const target of targets) {
+			pushEdge({
+				id: `edge:readsSetting:${settingRead.id}->${target}`,
+				kind: "readsSetting",
+				from: fileId(settingRead.fromPath),
+				to: target,
+			});
+		}
 	}
 	for (const dataAccess of model.dataAccesses) {
 		const objectId = dataObjectId(dataAccess.object);
@@ -451,6 +455,8 @@ export function themeGraphFromModel(
 
 	const sortedNodes = nodes.sort((a, b) => a.id.localeCompare(b.id));
 	const sortedEdges = edges.sort((a, b) => a.id.localeCompare(b.id));
+	const views = graphViews(sortedNodes, sortedEdges);
+	assertGraphIntegrity(sortedNodes, sortedEdges, views);
 	return {
 		version: 1,
 		root: model.root,
@@ -458,9 +464,58 @@ export function themeGraphFromModel(
 		edges: sortedEdges,
 		evidence: model.evidence,
 		impact: impactSummary(model),
-		views: graphViews(sortedNodes, sortedEdges),
+		views,
 		issues: model.issues,
 	};
+}
+
+function assertGraphIntegrity(
+	nodes: SemanticThemeGraphNode[],
+	edges: SemanticThemeGraphEdge[],
+	views: ThemeGraphViews,
+): void {
+	const nodeIds = new Set(nodes.map((node) => node.id));
+	const edgeById = new Map(edges.map((edge) => [edge.id, edge]));
+	for (const edge of edges) {
+		if (!nodeIds.has(edge.from)) {
+			throw new Error(
+				`Semantic theme graph edge ${edge.id} missing from ${edge.from}`,
+			);
+		}
+		if (!nodeIds.has(edge.to)) {
+			throw new Error(
+				`Semantic theme graph edge ${edge.id} missing to ${edge.to}`,
+			);
+		}
+	}
+	for (const [viewName, view] of Object.entries(views)) {
+		const viewNodeIds = new Set(view.nodeIds);
+		for (const nodeId of view.nodeIds) {
+			if (!nodeIds.has(nodeId)) {
+				throw new Error(
+					`Semantic theme graph view ${viewName} references missing node ${nodeId}`,
+				);
+			}
+		}
+		for (const edgeId of view.edgeIds) {
+			const edge = edgeById.get(edgeId);
+			if (!edge) {
+				throw new Error(
+					`Semantic theme graph view ${viewName} references missing edge ${edgeId}`,
+				);
+			}
+			if (!viewNodeIds.has(edge.from)) {
+				throw new Error(
+					`Semantic theme graph view ${viewName} omits ${edge.from}`,
+				);
+			}
+			if (!viewNodeIds.has(edge.to)) {
+				throw new Error(
+					`Semantic theme graph view ${viewName} omits ${edge.to}`,
+				);
+			}
+		}
+	}
 }
 
 function graphViews(
@@ -470,16 +525,22 @@ function graphViews(
 	const view = (
 		nodeKinds: Set<SemanticThemeGraphNode["kind"]>,
 		edgeKinds: Set<SemanticThemeGraphEdge["kind"]>,
-	) => ({
-		nodeIds: nodes
-			.filter((node) => nodeKinds.has(node.kind))
-			.map((node) => node.id)
-			.sort((a, b) => a.localeCompare(b)),
-		edgeIds: edges
-			.filter((edge) => edgeKinds.has(edge.kind))
-			.map((edge) => edge.id)
-			.sort((a, b) => a.localeCompare(b)),
-	});
+	) => {
+		const selectedEdges = edges.filter((edge) => edgeKinds.has(edge.kind));
+		const selectedNodeIds = new Set(
+			nodes.filter((node) => nodeKinds.has(node.kind)).map((node) => node.id),
+		);
+		for (const edge of selectedEdges) {
+			selectedNodeIds.add(edge.from);
+			selectedNodeIds.add(edge.to);
+		}
+		return {
+			nodeIds: [...selectedNodeIds].sort((a, b) => a.localeCompare(b)),
+			edgeIds: selectedEdges
+				.map((edge) => edge.id)
+				.sort((a, b) => a.localeCompare(b)),
+		};
+	};
 	return {
 		themeStructure: view(
 			new Set([
@@ -595,6 +656,8 @@ function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
 		}
 	}
 	const declaredFiles = new Set(model.files.map((file) => file.path));
+	// Entry points nothing references by name but Shopify itself consumes:
+	// pages (templates), layout, locales, and the config files.
 	const entryFiles = new Set([
 		...model.pages.map((page) => page.path),
 		...model.declarations
@@ -603,14 +666,40 @@ function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
 					declaration.kind === "layout" || declaration.kind === "locale",
 			)
 			.map((declaration) => declaration.path),
+		...model.files
+			.filter(
+				(file) =>
+					file.fileKind === "settingsSchema" ||
+					file.fileKind === "settingsData",
+			)
+			.map((file) => file.path),
 	]);
 	const referencedFiles = new Set([...dependents.keys(), ...entryFiles]);
+	const hasDynamicSnippetReference = model.references.some(
+		(reference) => reference.kind === "rendersSnippet" && !reference.static,
+	);
+	const unusedCandidates = new Set(
+		model.declarations
+			.filter(
+				(declaration) =>
+					declaration.kind === "section" ||
+					declaration.kind === "snippet" ||
+					declaration.kind === "component",
+			)
+			.filter(
+				(declaration) =>
+					!(hasDynamicSnippetReference && declaration.kind === "snippet"),
+			)
+			.map((declaration) => declaration.path),
+	);
 	return {
 		dependencies: sortedRecord(dependencies),
 		dependents: sortedRecord(dependents),
 		affectedPages: sortedRecord(affectedPages),
 		unusedFiles: [...declaredFiles]
-			.filter((path) => !referencedFiles.has(path))
+			.filter(
+				(path) => unusedCandidates.has(path) && !referencedFiles.has(path),
+			)
 			.sort((a, b) => a.localeCompare(b)),
 	};
 }
