@@ -50,7 +50,10 @@ import type {
 	ThemeSemanticModel,
 } from "./theme-facts.js";
 import { themeGraphFromModel } from "./theme-graph-output.js";
-import { ThemeGraphStore } from "./theme-graph-store.js";
+import {
+	THEME_GRAPH_METAFIELD_SCHEMA_OWNER,
+	ThemeGraphStore,
+} from "./theme-graph-store.js";
 import { ThemeImpactIndex } from "./theme-impact-index.js";
 import {
 	createThemeInstancePass,
@@ -354,8 +357,15 @@ export class ThemeWorkspaceSession {
 			...semanticUpdate.changedRecordIds,
 			...semanticUpdate.removedRecordIds,
 		];
+		if (changedPaths.includes(".shopify/metafields.json")) {
+			changedSemanticIds.push(THEME_GRAPH_METAFIELD_SCHEMA_OWNER);
+		}
 		const nextGraphStore = this.graphStore.fork();
-		nextGraphStore.applyGraph(graphWithoutImpact(semanticUpdate.model));
+		nextGraphStore.applyOwnedGraph(
+			graphWithoutImpact(semanticUpdate.model),
+			semanticUpdate.model,
+			changedSemanticIds,
+		);
 		const nextGraph = nextGraphStore.getGraph();
 		const nextImpactIndex = this.impactIndex.fork();
 		nextImpactIndex.applyGraph(nextGraph);

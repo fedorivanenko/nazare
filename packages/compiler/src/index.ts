@@ -249,6 +249,7 @@ export type {
 } from "./theme-facts.js";
 export { shareThemeGraphRecords } from "./theme-graph-output.js";
 export {
+	THEME_GRAPH_METAFIELD_SCHEMA_OWNER,
 	ThemeGraphStore,
 	type ThemeGraphStoreDelta,
 } from "./theme-graph-store.js";

@@ -6,6 +6,8 @@ import type {
 type ThemeGraphNode = InspectNazareThemeResult["nodes"][number];
 type ThemeGraphEdge = InspectNazareThemeResult["edges"][number];
 
+export const THEME_GRAPH_METAFIELD_SCHEMA_OWNER = "projection:metafield-schema";
+
 export type ThemeGraphStoreDelta = {
 	addedNodeIds: string[];
 	removedNodeIds: string[];
@@ -38,6 +40,48 @@ export class ThemeGraphStore {
 		copySetMap(this.nodeIdsBySemanticId, fork.nodeIdsBySemanticId);
 		copySetMap(this.edgeIdsBySemanticId, fork.edgeIdsBySemanticId);
 		return fork;
+	}
+
+	applyOwnedGraph(
+		graph: InspectNazareThemeResult,
+		model: ThemeSemanticModel,
+		semanticIds: Iterable<string>,
+	): ThemeGraphStoreDelta {
+		const candidate = new ThemeGraphStore(graph);
+		candidate.replaceOwnership(model);
+		const affectedNodeIds = new Set<string>();
+		const affectedEdgeIds = new Set<string>();
+		for (const semanticId of semanticIds) {
+			for (const id of this.getOwnedNodeIds(semanticId))
+				affectedNodeIds.add(id);
+			for (const id of candidate.getOwnedNodeIds(semanticId)) {
+				affectedNodeIds.add(id);
+			}
+			for (const id of this.getOwnedEdgeIds(semanticId))
+				affectedEdgeIds.add(id);
+			for (const id of candidate.getOwnedEdgeIds(semanticId)) {
+				affectedEdgeIds.add(id);
+			}
+		}
+		const nodesById = new Map(this.nodesById);
+		const edgesById = new Map(this.edgesById);
+		for (const id of affectedNodeIds) {
+			const node = candidate.nodesById.get(id);
+			if (node) nodesById.set(id, node);
+			else nodesById.delete(id);
+		}
+		for (const id of affectedEdgeIds) {
+			const edge = candidate.edgesById.get(id);
+			if (edge) edgesById.set(id, edge);
+			else edgesById.delete(id);
+		}
+		const delta = this.applyGraph({
+			...graph,
+			nodes: [...nodesById.values()],
+			edges: [...edgesById.values()],
+		});
+		this.replaceOwnership(model);
+		return delta;
 	}
 
 	applyGraph(graph: InspectNazareThemeResult): ThemeGraphStoreDelta {
@@ -105,6 +149,13 @@ export class ThemeGraphStore {
 		this.edgeIdsBySemanticId.clear();
 		const semanticIds = semanticRecordIds(model);
 		for (const node of this.nodesById.values()) {
+			if (node.kind === "storeSchema") {
+				addOwnership(
+					this.nodeIdsBySemanticId,
+					THEME_GRAPH_METAFIELD_SCHEMA_OWNER,
+					node.id,
+				);
+			}
 			if (semanticIds.has(node.id)) {
 				addOwnership(this.nodeIdsBySemanticId, node.id, node.id);
 			}
@@ -118,6 +169,21 @@ export class ThemeGraphStore {
 					if (semanticIds.has(evidenceId)) owners.add(evidenceId);
 				}
 			}
+			for (const owner of owners) {
+				addOwnership(this.edgeIdsBySemanticId, owner, edge.id);
+				for (const nodeId of [edge.from, edge.to]) {
+					const node = this.nodesById.get(nodeId);
+					if (node && isOwnerDerivedNode(node)) {
+						addOwnership(this.nodeIdsBySemanticId, owner, nodeId);
+					}
+				}
+			}
+		}
+		for (const edge of this.edgesById.values()) {
+			const owners = new Set([
+				...ownersForGraphNode(this.nodeIdsBySemanticId, edge.from),
+				...ownersForGraphNode(this.nodeIdsBySemanticId, edge.to),
+			]);
 			for (const owner of owners) {
 				addOwnership(this.edgeIdsBySemanticId, owner, edge.id);
 				for (const nodeId of [edge.from, edge.to]) {
@@ -204,6 +270,15 @@ function isOwnerDerivedNode(node: ThemeGraphNode): boolean {
 		node.kind === "shopifyObject" ||
 		node.kind === "shopifyProperty"
 	);
+}
+
+function ownersForGraphNode(
+	nodeIdsBySemanticId: Map<string, Set<string>>,
+	nodeId: string,
+): string[] {
+	return [...nodeIdsBySemanticId]
+		.filter(([, nodeIds]) => nodeIds.has(nodeId))
+		.map(([semanticId]) => semanticId);
 }
 
 function addOwnership(
