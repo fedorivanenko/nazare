@@ -8,11 +8,14 @@ import {
 	checkComponentScripts,
 	compileNazareArtifact,
 	inspectNazareTheme,
+	summarizeThemeGraph,
 	type ThemeAnalysisCache,
+	themeGraphToDot,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
 import { registryFromEnv } from "@nazare/registry";
 import { runThemeBuild } from "./build-command.js";
+import { serveThemeGraph } from "./graph-server.js";
 import { diffComponent, installComponent, updateAll } from "./install.js";
 import { type CliOptions, parseCliOptions, printHelp } from "./options.js";
 import type { Output } from "./output.js";
@@ -60,6 +63,15 @@ export async function main(
 		// component into one theme output. It runs before the single-file setup
 		// below because it targets a directory (from the arg or nazare.theme.json
 		// build.sourceRoot) rather than one entry file.
+		if (command === "graph-server") {
+			await serveThemeGraph(
+				resolve(projectRoot, file ?? "."),
+				process.stdin,
+				process.stdout,
+			);
+			return 0;
+		}
+
 		if (command === "build") {
 			return await runThemeBuild(projectRoot, file, cliOptions, output);
 		}
@@ -320,8 +332,10 @@ async function runInspect(
 		return 1;
 	}
 	const format = cliOptions.format ?? "json";
-	if (format !== "json") {
-		output.error(`Unsupported inspect format ${format}; expected json`);
+	if (format !== "json" && format !== "text" && format !== "dot") {
+		output.error(
+			`Unsupported inspect format ${format}; expected json, text, or dot`,
+		);
 		return 1;
 	}
 	const manifest = await readProjectManifest(projectRoot);
@@ -354,12 +368,41 @@ async function runInspect(
 	});
 	await mkdir(join(projectRoot, ".nazare-out"), { recursive: true });
 	await writeFile(cachePath, JSON.stringify(cache));
-	output.log(JSON.stringify(inspected, null, 2));
+	output.log(
+		format === "text"
+			? renderInspectReport(inspected)
+			: format === "dot"
+				? themeGraphToDot(inspected)
+				: JSON.stringify(inspected, null, 2),
+	);
 	return hasErrors(
 		inspected.issues.filter((issue) => issue.severity === "error"),
 	)
 		? 1
 		: 0;
+}
+
+function renderInspectReport(
+	graph: ReturnType<typeof inspectNazareTheme>,
+): string {
+	const summary = summarizeThemeGraph(graph);
+	const lines = [
+		`Theme graph: ${summary.fileCount} files`,
+		`Pages ${summary.pageCount} · sections ${summary.sectionCount} · snippets ${summary.snippetCount} · components ${summary.componentCount}`,
+		`Unresolved ${summary.unresolvedCount} · metafield reads without definitions ${summary.brokenMetafieldReadCount}`,
+		`Affected pages ${summary.affectedPageCount}`,
+		`Issues ${summary.issueCount} (${summary.errorCount} errors, ${summary.warningCount} warnings)`,
+	];
+	if (graph.issues.length > 0) {
+		lines.push("", "Issues:");
+		for (const issue of graph.issues.slice(0, 10)) {
+			lines.push(`- [${issue.severity}] ${issue.code}: ${issue.message}`);
+		}
+		if (graph.issues.length > 10) {
+			lines.push(`- ... ${graph.issues.length - 10} more`);
+		}
+	}
+	return lines.join("\\n");
 }
 
 /**

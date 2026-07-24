@@ -577,6 +577,29 @@ test("cli: inspect honors inspect.exclude and reports every excluded file", asyn
 	);
 });
 
+test("cli: inspect can render a concise human report", async () => {
+	await withProject(
+		{
+			"sections/main.liquid": "{% render 'card' %}",
+			"snippets/card.liquid": "{{ product.title }}",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"text",
+			);
+			assert.equal(result.status, 0);
+			assert.match(result.stdout, /Theme graph: 2 files/);
+			assert.match(result.stdout, /Pages 0 · sections 1 · snippets 1/);
+			assert.match(result.stdout, /Issues 0/);
+		},
+	);
+});
+
 test("cli: inspect loads metafield snapshot and reports graph queries", {
 	smoke: true,
 }, async () => {

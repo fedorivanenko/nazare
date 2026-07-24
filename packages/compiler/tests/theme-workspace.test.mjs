@@ -1,16 +1,129 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
 	getThemeAffectedPages,
 	getThemeDependencies,
 	getThemeNode,
 	inspectNazareTheme,
 	summarizeThemeGraph,
+	ThemeBuildSession,
+	ThemeWorkspaceSession,
+	themeGraphToDot,
 } from "../dist/index.js";
 
 const hasIssue = (result, code) =>
 	result.issues.some((issue) => issue.code === code);
+
+test("build session reports emitted output deltas", () => {
+	const session = new ThemeBuildSession([
+		{ path: "card.nz.liquid", contents: "<span>Card</span>" },
+	]);
+	const unchanged = session.updateFile({
+		path: "card.nz.liquid",
+		contents: "<span>Card</span>",
+	});
+	assert.equal(unchanged.revision, 0);
+	const changed = session.updateFile({
+		path: "card.nz.liquid",
+		contents: "<span>Updated</span>",
+	});
+	assert.equal(changed.revision, 1);
+	assert.deepEqual(changed.changedPaths, ["card.nz.liquid"]);
+	assert.deepEqual(changed.recomputedPaths, ["card.nz.liquid"]);
+	assert.ok(changed.changedOutputPaths.length > 0);
+});
+
+test("semantic model memo reuses unchanged resolved models", () => {
+	const memo = {};
+	const files = [{ path: "snippets/card.liquid", contents: "Card" }];
+	const first = analyzeNazareTheme(files, { memo });
+	const second = analyzeNazareTheme(files, { memo });
+	assert.equal(first.ir, second.ir);
+});
+
+test("component artifacts reuse only affected dependency cache entries", () => {
+	const cache = { version: 1, entries: {} };
+	const firstFiles = [
+		{ path: "card.nz.liquid", contents: "<span>Card</span>" },
+		{ path: "other.nz.liquid", contents: "<span>Other</span>" },
+	];
+	analyzeNazareTheme(firstFiles, { cache });
+	const otherFingerprint = cache.entries["other.nz.liquid"].fingerprint;
+	const second = analyzeNazareTheme(
+		[
+			{ path: "card.nz.liquid", contents: "<span>Updated</span>" },
+			firstFiles[1],
+		],
+		{ cache },
+	);
+	assert.equal(second.artifacts.length, 2);
+	assert.equal(cache.entries["other.nz.liquid"].fingerprint, otherFingerprint);
+	assert.ok(cache.entries["other.nz.liquid"].artifact);
+});
+
+test("theme graph DOT projection escapes identifiers and labels", () => {
+	const graph = inspectNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const dot = themeGraphToDot(graph);
+	assert.match(dot, /^digraph nazare_theme/);
+	assert.match(dot, /snippet: card/);
+	assert.match(dot, /file:snippets\/card\.liquid/);
+});
+
+test("workspace session updates graph with stable revisions and deltas", () => {
+	const session = new ThemeWorkspaceSession([
+		{
+			path: "templates/index.json",
+			contents: JSON.stringify({ sections: { main: { type: "main" } } }),
+		},
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const first = session.updateFile({
+		path: "snippets/card.liquid",
+		contents: "Updated card",
+	});
+	assert.equal(first.revision, 1);
+	assert.deepEqual(first.invalidatedNodeIds, [
+		"sections/main.liquid",
+		"snippets/card.liquid",
+		"templates/index.json",
+	]);
+	assert.deepEqual(first.affectedPages, ["templates/index.json"]);
+	assert.deepEqual(first.changedPaths, ["snippets/card.liquid"]);
+	assert.deepEqual(first.addedNodeIds, []);
+	assert.deepEqual(first.removedNodeIds, []);
+	assert.deepEqual(first.changedNodeIds, []);
+	assert.deepEqual(first.changedEdgeIds, []);
+	const unchanged = session.updateFile({
+		path: "snippets/card.liquid",
+		contents: "Updated card",
+	});
+	assert.equal(unchanged.revision, 1);
+	assert.deepEqual(unchanged.changedPaths, []);
+	const external = session.updateExternalArtifacts({
+		metafields: undefined,
+		themeCheck: undefined,
+	});
+	assert.equal(external.revision, 1);
+	assert.deepEqual(external.changedPaths, []);
+	const policyAdded = session.updateExternalArtifacts({
+		metafields: undefined,
+		themeCheck: { path: ".theme-check.yml", contents: "ignore: []" },
+	});
+	assert.deepEqual(policyAdded.changedPaths, [".theme-check.yml"]);
+	const policyRemoved = session.updateExternalArtifacts({
+		metafields: undefined,
+		themeCheck: undefined,
+	});
+	assert.deepEqual(policyRemoved.changedPaths, [".theme-check.yml"]);
+	const removed = session.removeFile("snippets/card.liquid");
+	assert.equal(removed.revision, 4);
+	assert.ok(removed.removedNodeIds.includes("file:snippets/card.liquid"));
+});
 
 test("theme query API reads canonical graph and impact indexes", () => {
 	const graph = inspectNazareTheme([

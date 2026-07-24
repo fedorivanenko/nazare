@@ -20,6 +20,7 @@ export interface ThemeAnalysisCacheEntry {
 	fingerprint: string;
 	facts: ThemeFact[];
 	issues: Diagnostic[];
+	artifact?: ThemeBuiltArtifact;
 }
 
 export interface ThemeAnalysisCache {
@@ -27,12 +28,19 @@ export interface ThemeAnalysisCache {
 	entries: Record<string, ThemeAnalysisCacheEntry>;
 }
 
+export interface ThemeAnalysisMemo {
+	fingerprint: string;
+	model: ThemeSemanticModel;
+}
+
 export interface AnalyzeNazareThemeOptions {
 	root?: string;
 	strictness?: "strict" | "loose";
 	plainLiquidParseMode?: "strict" | "tolerant";
-	/** Mutable per-file fact cache. Nazare components remain uncached. */
+	/** Mutable per-file fact and component artifact cache. */
 	cache?: ThemeAnalysisCache;
+	/** Session-local semantic model memo. Do not persist this value. */
+	memo?: ThemeAnalysisMemo;
 	/**
 	 * Theme-relative globs whose files are skipped entirely. Exclusion is a user
 	 * policy and is never inferred; every excluded file is reported as
