@@ -53,6 +53,16 @@ import {
 } from "./theme-locale-pass.js";
 import { ThemeMetafieldIndex } from "./theme-metafield-index.js";
 import {
+	createThemeMetafieldPass,
+	type ThemeMetafieldPassContext,
+	type ThemeMetafieldRecord,
+} from "./theme-metafield-pass.js";
+import {
+	collectMetafieldDefinitions,
+	metafieldJoinKey,
+	type ThemeMetafieldAnalysis,
+} from "./theme-metafields.js";
+import {
 	blockId,
 	blockInstanceId,
 	blockSettingId,
@@ -144,6 +154,7 @@ export class ThemeWorkspaceSession {
 		string,
 		ThemeDerivedDataFlowResult
 	>();
+	private metafieldResult = { current: emptyMetafieldAnalysis() };
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
@@ -166,6 +177,7 @@ export class ThemeWorkspaceSession {
 			this.factStore,
 			this.collectionState(),
 			this.factStore.files(),
+			this.options.metafields,
 		);
 		this.applyCollectionState(collection);
 		const collectedModel = modelWithCollectedRecords(
@@ -177,6 +189,7 @@ export class ThemeWorkspaceSession {
 			collection.locales,
 			collection.dataFlowInputs,
 			collection.derivedDataFlow,
+			collection.metafields.current,
 		);
 		const model = new ThemeResolverIndex(collectedModel).resolveModel(
 			collectedModel,
@@ -282,6 +295,12 @@ export class ThemeWorkspaceSession {
 			nextFactStore,
 			this.collectionState(),
 			factChangedPaths,
+			this.options.metafields,
+			metafieldSnapshotChanges(
+				changedPaths,
+				this.metafieldResult.current,
+				this.options.metafields,
+			),
 		);
 		const collectedModel = modelWithCollectedRecords(
 			analysis.ir,
@@ -292,6 +311,7 @@ export class ThemeWorkspaceSession {
 			collection.locales,
 			collection.dataFlowInputs,
 			collection.derivedDataFlow,
+			collection.metafields.current,
 		);
 		const resolvedModel = this.resolverIndex.resolveModel(collectedModel);
 		const transaction = this.semanticStore.beginUpdate(resolvedModel);
@@ -344,6 +364,7 @@ export class ThemeWorkspaceSession {
 			locales: this.localeResultsBySource,
 			dataFlowInputs: this.dataFlowInputResultsBySource,
 			derivedDataFlow: this.derivedDataFlowBySource,
+			metafields: this.metafieldResult,
 		};
 	}
 
@@ -359,6 +380,7 @@ export class ThemeWorkspaceSession {
 		this.localeResultsBySource = state.locales;
 		this.dataFlowInputResultsBySource = state.dataFlowInputs;
 		this.derivedDataFlowBySource = state.derivedDataFlow;
+		this.metafieldResult = state.metafields;
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
@@ -386,6 +408,7 @@ type ThemeCollectionContext = ThemeDeclarationPassContext &
 	ThemeSchemaSettingPassContext &
 	ThemeInstancePassContext &
 	ThemeLocalePassContext &
+	ThemeMetafieldPassContext &
 	ThemeDataFlowInputPassContext &
 	ThemeDataFlowFixedPointContext;
 
@@ -407,6 +430,7 @@ type ThemeCollectionState = {
 	locales: Map<string, ThemeLocalePassResult>;
 	dataFlowInputs: Map<string, ThemeDataFlowInputPassResult>;
 	derivedDataFlow: Map<string, ThemeDerivedDataFlowResult>;
+	metafields: { current: ThemeMetafieldAnalysis };
 };
 
 function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
@@ -443,6 +467,9 @@ function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext>
 			string,
 			ThemeDataFlowDerivedRecord
 		>(createThemeDataFlowFixedPointPass()),
+		incrementalThemePass<ThemeCollectionContext, string, ThemeMetafieldRecord>(
+			createThemeMetafieldPass(),
+		),
 	]);
 }
 
@@ -451,6 +478,8 @@ function runCollectionPasses(
 	facts: ThemeFactStore,
 	previous: ThemeCollectionState,
 	changedPaths: string[],
+	metafieldSnapshot: InspectNazareThemeOptions["metafields"],
+	additionalChanges: PassChange[] = [],
 ): ThemeCollectionState {
 	const state = cloneCollectionState(previous);
 	let derivedSnapshot: Map<string, ThemeDerivedDataFlowResult> | undefined;
@@ -475,6 +504,11 @@ function runCollectionPasses(
 			reference: localeReferenceId,
 		},
 		dataFlowInputResultsBySource: state.dataFlowInputs,
+		metafieldSnapshot,
+		get dataAccessesBySource() {
+			return dataAccessesBySource(state);
+		},
+		metafieldResult: state.metafields,
 		dataFlowIds: {
 			dataAccess: dataAccessId,
 			variableRead: variableReadId,
@@ -530,7 +564,8 @@ function runCollectionPasses(
 	scheduler.execute(
 		[...new Set(changedPaths)]
 			.sort((a, b) => a.localeCompare(b))
-			.map((path): PassChange => ({ kind: "factsChanged", path })),
+			.map((path): PassChange => ({ kind: "factsChanged", path }))
+			.concat(additionalChanges),
 		context,
 	);
 	return state;
@@ -553,6 +588,7 @@ function cloneCollectionState(
 		locales: cloneLocaleResults(state.locales),
 		dataFlowInputs: cloneDataFlowInputResults(state.dataFlowInputs),
 		derivedDataFlow: cloneDerivedDataFlowResults(state.derivedDataFlow),
+		metafields: { current: cloneMetafieldAnalysis(state.metafields.current) },
 	};
 }
 
@@ -636,6 +672,77 @@ function cloneDataFlowInputResults(
 			},
 		]),
 	);
+}
+
+function emptyMetafieldAnalysis(): ThemeMetafieldAnalysis {
+	return {
+		definitions: [],
+		reads: [],
+		issues: [],
+		state: "unknown",
+		path: ".shopify/metafields.json",
+	};
+}
+
+function cloneMetafieldAnalysis(
+	analysis: ThemeMetafieldAnalysis,
+): ThemeMetafieldAnalysis {
+	return {
+		...analysis,
+		definitions: [...analysis.definitions],
+		reads: [...analysis.reads],
+		issues: [...analysis.issues],
+	};
+}
+
+function dataAccessesBySource(
+	state: ThemeCollectionState,
+): Map<string, ThemeDataAccessRecord[]> {
+	const accesses = new Map<string, ThemeDataAccessRecord[]>();
+	for (const [path, result] of state.dataFlowInputs) {
+		accesses.set(path, [...result.dataAccesses]);
+	}
+	for (const [path, result] of state.derivedDataFlow) {
+		accesses.set(path, [...(accesses.get(path) ?? []), ...result.dataAccesses]);
+	}
+	return accesses;
+}
+
+function metafieldSnapshotChanges(
+	changedPaths: string[],
+	previous: ThemeMetafieldAnalysis,
+	snapshot: InspectNazareThemeOptions["metafields"],
+): PassChange[] {
+	if (!changedPaths.includes(".shopify/metafields.json")) return [];
+	const next = collectMetafieldDefinitions(snapshot);
+	const previousByKey = new Map(
+		previous.definitions.map((definition) => [
+			metafieldJoinKey(definition.owner, definition.namespace, definition.key),
+			definition,
+		]),
+	);
+	const nextByKey = new Map(
+		next.definitions.map((definition) => [
+			metafieldJoinKey(definition.owner, definition.namespace, definition.key),
+			definition,
+		]),
+	);
+	const changedKeys = [
+		...new Set([...previousByKey.keys(), ...nextByKey.keys()]),
+	]
+		.filter(
+			(key) =>
+				JSON.stringify(previousByKey.get(key)) !==
+				JSON.stringify(nextByKey.get(key)),
+		)
+		.sort();
+	return [
+		{
+			kind: "metafieldSnapshotChanged",
+			changedKeys,
+			state: next.state,
+		},
+	];
 }
 
 function cloneDerivedDataFlowResults(
@@ -734,6 +841,7 @@ function modelWithCollectedRecords(
 	localesBySource: Map<string, ThemeLocalePassResult>,
 	dataFlowInputsBySource: Map<string, ThemeDataFlowInputPassResult>,
 	derivedDataFlowBySource: Map<string, ThemeDerivedDataFlowResult>,
+	metafields: ThemeMetafieldAnalysis,
 ): ThemeSemanticModel {
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
@@ -836,6 +944,13 @@ function modelWithCollectedRecords(
 		renderSites: uniqueById(
 			derivedDataFlow.flatMap((result) => result.renderSites),
 		),
+		metafieldDefinitions: metafields.definitions,
+		metafieldReads: metafields.reads,
+		metafieldSchema: {
+			state: metafields.state,
+			path: metafields.path,
+			pulledAt: metafields.pulledAt ?? null,
+		},
 	};
 }
 
