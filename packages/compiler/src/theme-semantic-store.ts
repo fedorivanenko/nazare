@@ -13,8 +13,8 @@ export class ThemeSemanticStore {
 	private readonly recordIdsBySourcePath = new Map<string, Set<string>>();
 
 	constructor(model: ThemeSemanticModel) {
-		this.model = model;
-		this.indexModel(model);
+		this.model = canonicalizeSemanticModel(model);
+		this.indexModel(this.model);
 	}
 
 	getModel(): ThemeSemanticModel {
@@ -107,14 +107,33 @@ function mergeSemanticModels(
 	previous: ThemeSemanticModel,
 	next: ThemeSemanticModel,
 ): ThemeSemanticModel {
-	const merged: ThemeSemanticModel = { ...next };
-	for (const key of Object.keys(next) as Array<keyof ThemeSemanticModel>) {
-		const current = next[key];
+	const canonicalNext = canonicalizeSemanticModel(next);
+	const merged: ThemeSemanticModel = { ...canonicalNext };
+	for (const key of Object.keys(canonicalNext) as Array<
+		keyof ThemeSemanticModel
+	>) {
+		const current = canonicalNext[key];
 		const old = previous[key];
 		if (!Array.isArray(current) || !Array.isArray(old)) continue;
 		(merged[key] as unknown[]) = shareRecords(old, current);
 	}
 	return merged;
+}
+
+function canonicalizeSemanticModel(
+	model: ThemeSemanticModel,
+): ThemeSemanticModel {
+	const canonical: ThemeSemanticModel = { ...model };
+	for (const key of Object.keys(model) as Array<keyof ThemeSemanticModel>) {
+		const value = model[key];
+		if (!Array.isArray(value) || !value.every(identified)) continue;
+		const sorted = [...value].sort((a, b) =>
+			identified(a) && identified(b) ? a.id.localeCompare(b.id) : 0,
+		);
+		const unchanged = sorted.every((record, index) => record === value[index]);
+		if (!unchanged) (canonical[key] as unknown[]) = sorted;
+	}
+	return canonical;
 }
 
 function shareRecords(previous: unknown[], current: unknown[]): unknown[] {

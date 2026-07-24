@@ -297,21 +297,31 @@ export class ThemeProgram {
 	}
 
 	updateExternalArtifacts(
-		options: Pick<InspectNazareThemeOptions, "metafields" | "themeCheck">,
+		options: Pick<
+			InspectNazareThemeOptions,
+			"exclude" | "metafields" | "themeCheck"
+		>,
 	): ThemeGraphUpdate {
 		const nextOptions = { ...this.options, ...options };
 		const nextFingerprint = fingerprintExternalArtifacts(nextOptions);
 		if (nextFingerprint === this.externalFingerprint) {
 			return this.emptyUpdate([]);
 		}
-		const changedPaths = externalChangedPaths(this.options, options);
+		const changedPaths = externalChangedPaths(this.options, nextOptions);
 		const previousOptions = {
+			exclude: this.options.exclude,
 			metafields: this.options.metafields,
 			themeCheck: this.options.themeCheck,
 		};
+		const exclusionChanged =
+			JSON.stringify(previousOptions.exclude) !==
+			JSON.stringify(nextOptions.exclude);
 		Object.assign(this.options, options);
 		try {
-			const update = this.rebuild(changedPaths, []);
+			const update = this.rebuild(
+				changedPaths,
+				exclusionChanged ? this.files().map((file) => file.path) : [],
+			);
 			this.externalFingerprint = nextFingerprint;
 			return update;
 		} catch (error) {
@@ -1183,19 +1193,32 @@ function graphWithIndexedImpact(model: ThemeSemanticModel): {
 }
 
 function fingerprintExternalArtifacts(
-	options: Pick<InspectNazareThemeOptions, "metafields" | "themeCheck">,
+	options: Pick<
+		InspectNazareThemeOptions,
+		"exclude" | "metafields" | "themeCheck"
+	>,
 ): string {
 	return JSON.stringify({
+		exclude: options.exclude,
 		metafields: options.metafields,
 		themeCheck: options.themeCheck,
 	});
 }
 
 function externalChangedPaths(
-	previous: Pick<InspectNazareThemeOptions, "metafields" | "themeCheck">,
-	next: Pick<InspectNazareThemeOptions, "metafields" | "themeCheck">,
+	previous: Pick<
+		InspectNazareThemeOptions,
+		"exclude" | "metafields" | "themeCheck"
+	>,
+	next: Pick<
+		InspectNazareThemeOptions,
+		"exclude" | "metafields" | "themeCheck"
+	>,
 ): string[] {
 	const paths: string[] = [];
+	if (JSON.stringify(previous.exclude) !== JSON.stringify(next.exclude)) {
+		paths.push(".nazare/exclusions");
+	}
 	if (JSON.stringify(previous.metafields) !== JSON.stringify(next.metafields)) {
 		paths.push(".shopify/metafields.json");
 	}
