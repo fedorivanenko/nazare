@@ -3,12 +3,14 @@ import test from "node:test";
 import {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
+	deriveThemeEvidence,
 	getThemeAffectedPages,
 	getThemeDependencies,
 	getThemeNode,
 	inspectNazareTheme,
 	shareThemeGraphRecords,
 	summarizeThemeGraph,
+	THEME_PASS_CONVERGENCE_BUDGET,
 	ThemeBuildSession,
 	ThemeFactIndex,
 	ThemeFactStore,
@@ -208,12 +210,22 @@ test("graph store applies stable-ID records transactionally", () => {
 	const tileSemanticIds = [...secondModel.files, ...secondModel.declarations]
 		.filter((record) => record.path === "snippets/tile.liquid")
 		.map((record) => record.id);
+	const candidate = new ThemeGraphStore(second);
+	candidate.replaceOwnership(secondModel);
+	const projectedNodeIds = new Set(
+		tileSemanticIds.flatMap((id) => candidate.getOwnedNodeIds(id)),
+	);
+	const projectedEdgeIds = new Set(
+		tileSemanticIds.flatMap((id) => candidate.getOwnedEdgeIds(id)),
+	);
 	const selective = committed.fork();
-	const selectiveDelta = selective.applyOwnedGraph(
-		second,
-		secondModel,
+	const composed = selective.composeOwnedRecords(
+		second.nodes.filter((node) => projectedNodeIds.has(node.id)),
+		second.edges.filter((edge) => projectedEdgeIds.has(edge.id)),
 		tileSemanticIds,
 	);
+	const selectiveDelta = selective.applyGraph({ ...second, ...composed });
+	selective.replaceOwnership(secondModel);
 	assert.ok(selectiveDelta.addedNodeIds.includes("file:snippets/tile.liquid"));
 	assert.strictEqual(selective.getNode(cardId), card);
 	assert.deepEqual(selective.getGraph(), second);
@@ -252,6 +264,31 @@ test("graph store applies stable-ID records transactionally", () => {
 		/missing evidence missing:evidence/,
 	);
 	assert.strictEqual(validationStore.getGraph(), previousGraph);
+});
+
+test("evidence derivation is canonical and preserves unchanged owners", () => {
+	const files = [
+		{ path: "snippets/card.liquid", contents: "{{ product.title }}" },
+		{ path: "snippets/other.liquid", contents: "{% render 'card' %}" },
+	];
+	const analysis = analyzeNazareTheme(files);
+	assert.deepEqual(
+		deriveThemeEvidence(analysis.ir, analysis.facts),
+		analysis.ir.evidence,
+	);
+	const program = new ThemeProgram(files);
+	const cardEvidence = program
+		.getModel()
+		.evidence.find((record) => record.file === "snippets/card.liquid");
+	assert.ok(cardEvidence);
+	program.updateFile({
+		path: "snippets/other.liquid",
+		contents: "{% render 'card' %} Updated",
+	});
+	assert.strictEqual(
+		program.getModel().evidence.find((record) => record.id === cardEvidence.id),
+		cardEvidence,
+	);
 });
 
 test("semantic transaction shares unchanged identified records", () => {
@@ -414,9 +451,17 @@ test("theme graph DOT projection escapes identifiers and labels", () => {
 		{ path: "snippets/card.liquid", contents: "Card" },
 	]);
 	const dot = themeGraphToDot(graph);
-	assert.match(dot, /^digraph nazare_theme/);
+	assert.match(dot, /^digraph nazare_theme \{\n {2}rankdir=LR;\n/);
 	assert.match(dot, /snippet: card/);
 	assert.match(dot, /file:snippets\/card\.liquid/);
+	assert.match(dot, /\n\}$/);
+
+	const escaped = themeGraphToDot({
+		nodes: [{ id: "path\\name", kind: "file", path: "line\nbreak" }],
+		edges: [],
+	});
+	assert.match(escaped, /"path\\\\name"/);
+	assert.match(escaped, /label="file: line\\nbreak"/);
 });
 
 test("incremental graph replay equals full rebuild", () => {
@@ -704,6 +749,14 @@ test("workspace rolls back a fixed-point work-budget failure", () => {
 	];
 	const session = new ThemeWorkspaceSession(files);
 	const previousGraph = session.getGraph();
+	const previousModel = session.getModel();
+	const previousFacts = session.getFacts();
+	const previousQueries = previousGraph.nodes.map((node) => [
+		node.id,
+		session.getDependencies(node.id),
+		session.getDependents(node.id),
+		session.getAffectedPages(node.id),
+	]);
 	const updated = {
 		path: "snippets/a.liquid",
 		contents: "{{ value }}{% render 'b' %}",
@@ -711,10 +764,62 @@ test("workspace rolls back a fixed-point work-budget failure", () => {
 	session.collectionScheduler.maximumFixedPointWork = 1;
 	assert.throws(() => session.updateFile(updated), /after 1 work units/);
 	assert.equal(session.getGraph(), previousGraph);
-	session.collectionScheduler.maximumFixedPointWork = 100_000;
+	assert.equal(session.getModel(), previousModel);
+	assert.deepEqual(session.getFacts(), previousFacts);
+	assert.deepEqual(
+		previousGraph.nodes.map((node) => [
+			node.id,
+			session.getDependencies(node.id),
+			session.getDependents(node.id),
+			session.getAffectedPages(node.id),
+		]),
+		previousQueries,
+	);
+	session.collectionScheduler.maximumFixedPointWork =
+		THEME_PASS_CONVERGENCE_BUDGET.maximumFixedPointWork;
 	const result = session.updateFile(updated);
 	assert.equal(result.revision, 1);
 	assert.deepEqual(session.getGraph(), inspectNazareTheme([files[1], updated]));
+});
+
+test("ThemeProgram stores canonical semantic diagnostics by pass and owner", () => {
+	const program = new ThemeProgram([
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	program.removeFile("snippets/card.liquid");
+	const owned = program.diagnosticStore.getOwned({ pass: "model-resolution" });
+	assert.equal(owned.length, 1);
+	assert.equal(owned[0].owner, "sections/main.liquid");
+	assert.equal(owned[0].diagnostic.code, "THEME_UNRESOLVED_REFERENCE");
+	assert.deepEqual(
+		program
+			.getModel()
+			.issues.filter((issue) => issue.code === owned[0].diagnostic.code),
+		[owned[0].diagnostic],
+	);
+});
+
+test("ThemeProgram periodically validates canonical indexes and cold rebuilds", () => {
+	const files = [{ path: "snippets/card.liquid", contents: "Card" }];
+	const program = new ThemeProgram(files, { incrementalValidationInterval: 1 });
+	const updated = { path: "snippets/card.liquid", contents: "Updated" };
+	const result = program.updateFile(updated);
+	assert.equal(result.revision, 1);
+	assert.deepEqual(program.getGraph(), inspectNazareTheme([updated]));
+});
+
+test("ThemeProgram warm updates skip canonical semantic construction", () => {
+	const program = new ThemeProgram([
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const coldMemoModel = program.memo.model;
+	program.updateFile({
+		path: "snippets/card.liquid",
+		contents: "Updated card",
+	});
+	assert.strictEqual(program.memo.model, coldMemoModel);
+	assert.notStrictEqual(program.getModel(), coldMemoModel);
 });
 
 test("ThemeProgram owns committed incremental workspace state", () => {

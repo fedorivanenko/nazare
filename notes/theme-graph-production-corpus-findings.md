@@ -195,7 +195,7 @@ Required implementation:
 
 ### 6. Capability/classification results need ground truth
 
-Classifications are present and structurally explainable, but rule confidence is not corpus-calibrated. Known ambiguity remains:
+Classifications are present and structurally explainable, but evidence strength is categorical rather than statistically calibrated. Known ambiguity remains:
 
 - cart page versus cart drawer;
 - one product image versus product gallery;
@@ -208,7 +208,7 @@ Required implementation:
 - record expected capabilities/classifications as golden fixtures;
 - measure precision and recall per rule;
 - propagate page/containment context into classification evidence;
-- do not increase confidence based only on filenames.
+- do not strengthen evidence based only on filenames.
 
 ## Vision assessment
 
@@ -302,9 +302,9 @@ Latest missing-argument changes:
 
 Remaining warnings now concentrate in direct unguarded reads, large generated Zipify interfaces, and parameters that Liquid tolerates as `nil` but source does not explicitly default.
 
-### Call-site-corroborated missing arguments
+### Declared missing arguments
 
-A free-variable read is useful graph evidence, but Liquid accepting `nil` means it does not alone prove that every caller must pass an argument. Missing-argument diagnostics require corpus corroboration: the target directly reads the inferred input without an absence guard or fallback, and a strict majority of resolved `render` calls pass it. Expected-input nodes remain in the graph even when call-site evidence is insufficient for a warning.
+A free-variable read is useful graph evidence, but Liquid accepting `nil` means it does not prove that every caller must pass an argument. `THEME_RENDER_ARGUMENT_MISSING` therefore applies only to required `{% doc %}` parameters and reports every omission. Expected-input inference remains in the graph without turning sibling call patterns into an implicit contract.
 
 Further precision rules now cover:
 
@@ -313,14 +313,14 @@ Further precision rules now cover:
 - `default` filters in outputs and arguments make their source optional;
 - aliases conditionally replaced when blank/null/empty are optional fallbacks.
 
-| Theme | Missing warnings after source inference | After corroboration and fallback analysis |
+| Theme | Source-inferred required inputs | Declared required omissions |
 |---|---:|---:|
 | alkamind-nazare | 218 | 0 |
 | alkamind-old | 501 | 0 |
 | climatic-health | 386 | 0 |
 | ucan | 197 | 0 |
 
-This removes warnings for optional conventions such as `icon.class`, `lazy-image.alt`, `lazy-image.crop`, `c-button.attributes`, `c-img-srcset.responsive_image`, forwarded `c-media` controls, and fallback-backed `c-bg-video.poster_alt`. Inferred expected inputs and their evidence remain queryable; no production-corpus call site currently has enough deterministic evidence for a missing-input diagnostic.
+This avoids warnings for optional conventions such as `icon.class`, `lazy-image.alt`, `lazy-image.crop`, `c-button.attributes`, `c-img-srcset.responsive_image`, forwarded `c-media` controls, and fallback-backed `c-bg-video.poster_alt`. Inferred expected inputs and their evidence remain queryable; none of these corpus snapshots declares a required omission through `{% doc %}`.
 
 ### Expression walker coverage
 

@@ -1,3 +1,4 @@
+import type { Diagnostic } from "@nazare/core";
 import {
 	createThemeCapabilityPass,
 	type ThemeCapabilityPassContext,
@@ -6,6 +7,10 @@ import {
 	createThemeCapabilitySignalPass,
 	type ThemeCapabilitySignalPassContext,
 } from "./theme-capability-signal-pass.js";
+import {
+	filterThemeCheckIssues,
+	parseThemeCheckPolicy,
+} from "./theme-check-policy.js";
 import {
 	createThemeClassificationPass,
 	type ThemeClassificationPassContext,
@@ -29,7 +34,15 @@ import {
 	type ThemeDeclarationPassResult,
 } from "./theme-declaration-pass.js";
 import { ThemeDiagnosticStore } from "./theme-diagnostic-store.js";
-import { deriveThemeExpectedInputs } from "./theme-expected-input-pass.js";
+import {
+	createThemeEvidencePass,
+	type ThemeEvidenceInputs,
+	type ThemeEvidencePassContext,
+} from "./theme-evidence-pass.js";
+import {
+	deriveThemeExpectedInputs,
+	themeDocContractIssues,
+} from "./theme-expected-input-pass.js";
 import { ThemeFactIndex } from "./theme-fact-index.js";
 import { ThemeFactStore, themeFactSourcePath } from "./theme-fact-store.js";
 import type {
@@ -42,6 +55,7 @@ import type {
 	ThemeClassificationRecord,
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
+	ThemeEvidenceRecord,
 	ThemeExpectedInputRecord,
 	ThemeFact,
 	ThemeFileRecord,
@@ -89,10 +103,12 @@ import {
 	blockSettingId,
 	dataAccessId,
 	declarationId,
+	deriveThemeInputDiagnostics,
 	fileId,
 	localeKeyId,
 	localeReferenceId,
 	localeTranslationId,
+	pageId,
 	referenceId,
 	renderArgumentId,
 	renderSiteId,
@@ -106,6 +122,7 @@ import {
 	fixedPointThemePass,
 	incrementalThemePass,
 	type PassChange,
+	THEME_PASS_CONVERGENCE_BUDGET,
 	ThemePassScheduler,
 } from "./theme-pass-scheduler.js";
 import {
@@ -114,9 +131,10 @@ import {
 } from "./theme-reference-pass.js";
 import {
 	createThemeResolutionPass,
+	resolveThemeDeclarationsAndReferences,
 	type ThemeIncrementalResolutionContext,
 } from "./theme-resolution-pass.js";
-import { ThemeResolverIndex } from "./theme-resolver-index.js";
+import { ThemeSchemaIndex } from "./theme-schema-index.js";
 import {
 	createThemeSchemaSettingPass,
 	type ThemeSchemaSettingPassContext,
@@ -125,6 +143,16 @@ import {
 } from "./theme-schema-setting-pass.js";
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
 import { analyzeNazareTheme } from "./theme-workspace.js";
+
+export type ThemeUpdateTelemetry = {
+	filesParsed: number;
+	passKeysProcessed: number;
+	semanticRecordsReplaced: number;
+	graphRecordsReplaced: number;
+	outputsEmitted: number;
+	elapsedMs: number;
+	peakMemoryBytes: number;
+};
 
 export type ThemeGraphUpdate = {
 	revision: number;
@@ -139,6 +167,7 @@ export type ThemeGraphUpdate = {
 	addedEdgeIds: string[];
 	removedEdgeIds: string[];
 	changedEdgeIds: string[];
+	telemetry: ThemeUpdateTelemetry;
 };
 
 export class ThemeProgram {
@@ -186,8 +215,8 @@ export class ThemeProgram {
 		ThemeClassificationRecord[]
 	>();
 	private diagnosticStore = new ThemeDiagnosticStore();
+	private evidenceBySource = new Map<string, ThemeEvidenceRecord[]>();
 	private semanticStore: ThemeSemanticStore;
-	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
 	private impactIndex: ThemeImpactIndex;
 	private graph: InspectNazareThemeResult;
@@ -226,11 +255,9 @@ export class ThemeProgram {
 			collection.capabilities,
 			collection.classifications,
 		);
-		const model = new ThemeResolverIndex(collectedModel).resolveModel(
-			collectedModel,
-		);
+		const model = collectedModel;
+		this.evidenceBySource = evidenceRecordsBySource(model.evidence);
 		this.semanticStore = new ThemeSemanticStore(model);
-		this.resolverIndex = new ThemeResolverIndex(model);
 		this.metafieldIndex = new ThemeMetafieldIndex(model);
 		const indexedGraph = graphWithIndexedImpact(this.semanticStore.getModel());
 		this.graph = indexedGraph.graph;
@@ -297,21 +324,31 @@ export class ThemeProgram {
 	}
 
 	updateExternalArtifacts(
-		options: Pick<InspectNazareThemeOptions, "metafields" | "themeCheck">,
+		options: Pick<
+			InspectNazareThemeOptions,
+			"exclude" | "metafields" | "themeCheck"
+		>,
 	): ThemeGraphUpdate {
 		const nextOptions = { ...this.options, ...options };
 		const nextFingerprint = fingerprintExternalArtifacts(nextOptions);
 		if (nextFingerprint === this.externalFingerprint) {
 			return this.emptyUpdate([]);
 		}
-		const changedPaths = externalChangedPaths(this.options, options);
+		const changedPaths = externalChangedPaths(this.options, nextOptions);
 		const previousOptions = {
+			exclude: this.options.exclude,
 			metafields: this.options.metafields,
 			themeCheck: this.options.themeCheck,
 		};
+		const exclusionChanged =
+			JSON.stringify(previousOptions.exclude) !==
+			JSON.stringify(nextOptions.exclude);
 		Object.assign(this.options, options);
 		try {
-			const update = this.rebuild(changedPaths, []);
+			const update = this.rebuild(
+				changedPaths,
+				exclusionChanged ? this.files().map((file) => file.path) : [],
+			);
 			this.externalFingerprint = nextFingerprint;
 			return update;
 		} catch (error) {
@@ -324,8 +361,13 @@ export class ThemeProgram {
 		changedPaths: string[],
 		factChangedPaths: string[],
 	): ThemeGraphUpdate {
+		const startedAt = telemetryNow();
+		const memoryAtStart = telemetryMemory();
 		const previous = this.graph;
-		const analysis = analyzeNazareTheme(this.files(), this.options);
+		const analysis = analyzeNazareTheme(this.files(), {
+			...this.options,
+			factsOnly: true,
+		});
 		const nextFactStore = new ThemeFactStore(this.factStore.all());
 		for (const path of factChangedPaths) {
 			const facts = analysis.facts.filter(
@@ -346,7 +388,7 @@ export class ThemeProgram {
 				this.options.metafields,
 			),
 		);
-		const collectedModel = modelWithCollectedRecords(
+		const collectedBaseModel = modelWithCollectedRecords(
 			analysis.ir,
 			collection.declarations,
 			collection.resolvedReferencesById,
@@ -360,10 +402,31 @@ export class ThemeProgram {
 			collection.capabilities,
 			collection.classifications,
 		);
-		const resolvedModel = this.resolverIndex.resolveModel(collectedModel);
-		const transaction = this.semanticStore.beginUpdate(resolvedModel);
+		const themeCheckPolicy = parseThemeCheckPolicy(this.options.themeCheck);
+		const ownedIssues = filterThemeCheckIssues(
+			[
+				...deriveOwnedSemanticIssues(
+					collectedBaseModel,
+					collection,
+					analysis.issues,
+				),
+				...themeCheckPolicy.issues,
+			],
+			themeCheckPolicy,
+		);
+		const collectedModel = {
+			...collectedBaseModel,
+			evidence: [...collection.evidenceBySource.values()]
+				.flat()
+				.sort((a, b) => a.id.localeCompare(b.id)),
+			issues: ownedIssues,
+			themeCheck: {
+				path: themeCheckPolicy.path,
+				ignoredChecks: themeCheckPolicy.ignoredChecks,
+			},
+		};
+		const transaction = this.semanticStore.beginUpdate(collectedModel);
 		const semanticUpdate = transaction.update;
-		const nextResolverIndex = new ThemeResolverIndex(semanticUpdate.model);
 		const nextMetafieldIndex = new ThemeMetafieldIndex(semanticUpdate.model);
 		const changedSemanticIds = [
 			...semanticUpdate.addedRecordIds,
@@ -422,14 +485,36 @@ export class ThemeProgram {
 				...nextImpactIndex.getAffectedPages(id),
 			],
 		);
-		const resolverDependents = semanticUpdate.changedRecordIds.flatMap((id) =>
-			nextResolverIndex.getDependents(id),
-		);
+		const changedRecordIds = new Set(changedSemanticIds);
+		const resolverDependents = semanticUpdate.model.references
+			.filter(
+				(reference) =>
+					reference.resolvedDeclarationId &&
+					changedRecordIds.has(reference.resolvedDeclarationId),
+			)
+			.map((reference) => reference.fromPath)
+			.sort();
+		validateStagedProgram({
+			model: semanticUpdate.model,
+			graph: nextGraph,
+			factStore: nextFactStore,
+			factIndex: nextFactIndex,
+			diagnostics: collection.diagnostics,
+			analysisFacts: analysis.facts,
+			factChangedPaths,
+		});
+		if (shouldRunCanonicalValidation(this.options, this.revision + 1)) {
+			validateCanonicalProgram(
+				this.files(),
+				this.options,
+				semanticUpdate.model,
+				nextGraph,
+			);
+		}
 		transaction.commit();
 		this.factStore = nextFactStore;
 		this.factIndex = nextFactIndex;
 		this.applyCollectionState(collection);
-		this.resolverIndex = nextResolverIndex;
 		this.metafieldIndex = nextMetafieldIndex;
 		this.graph = nextGraph;
 		this.graphStore = nextGraphStore;
@@ -451,6 +536,14 @@ export class ThemeProgram {
 				),
 				...metafieldAffectedPages,
 			],
+			{
+				filesParsed: factChangedPaths.length,
+				passKeysProcessed: collection.processedPassKeys,
+				semanticRecordsReplaced: changedSemanticIds.length,
+				outputsEmitted: 0,
+				elapsedMs: telemetryNow() - startedAt,
+				peakMemoryBytes: Math.max(memoryAtStart, telemetryMemory()),
+			},
 		);
 	}
 
@@ -472,6 +565,8 @@ export class ThemeProgram {
 			capabilities: this.capabilitiesBySource,
 			classifications: this.classificationsBySource,
 			diagnostics: this.diagnosticStore,
+			evidenceBySource: this.evidenceBySource,
+			processedPassKeys: 0,
 		};
 	}
 
@@ -492,6 +587,7 @@ export class ThemeProgram {
 		this.capabilitiesBySource = state.capabilities;
 		this.classificationsBySource = state.classifications;
 		this.diagnosticStore = state.diagnostics;
+		this.evidenceBySource = state.evidenceBySource;
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
@@ -527,7 +623,8 @@ type ThemeCollectionContext = ThemeDeclarationPassContext &
 	ThemeClassificationPassContext &
 	ThemeMetafieldPassContext &
 	ThemeDataFlowInputPassContext &
-	ThemeDataFlowFixedPointContext;
+	ThemeDataFlowFixedPointContext &
+	ThemeEvidencePassContext;
 
 type ThemeDerivedDataFlowResult = {
 	expectedInputs: ThemeExpectedInputRecord[];
@@ -552,59 +649,71 @@ type ThemeCollectionState = {
 	capabilities: Map<string, ThemeCapabilityRecord[]>;
 	classifications: Map<string, ThemeClassificationRecord[]>;
 	diagnostics: ThemeDiagnosticStore;
+	evidenceBySource: Map<string, ThemeEvidenceRecord[]>;
+	processedPassKeys: number;
 };
 
 function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
-	return new ThemePassScheduler<ThemeCollectionContext>([
-		incrementalThemePass<
-			ThemeCollectionContext,
-			string,
-			ThemeDeclarationPassRecord
-		>(createThemeDeclarationPass()),
-		incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
-			createThemeReferencePass(),
-		),
-		incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
-			createThemeResolutionPass(),
-		),
-		incrementalThemePass<
-			ThemeCollectionContext,
-			string,
-			ThemeSchemaSettingRecord
-		>(createThemeSchemaSettingPass()),
-		incrementalThemePass<ThemeCollectionContext, string, ThemeInstanceRecord>(
-			createThemeInstancePass(),
-		),
-		incrementalThemePass<ThemeCollectionContext, string, ThemeLocaleRecord>(
-			createThemeLocalePass(),
-		),
-		incrementalThemePass<
-			ThemeCollectionContext,
-			string,
-			ThemeDataFlowInputRecord
-		>(createThemeDataFlowInputPass()),
-		fixedPointThemePass<
-			ThemeCollectionContext,
-			string,
-			ThemeDataFlowDerivedRecord
-		>(createThemeDataFlowFixedPointPass()),
-		incrementalThemePass<
-			ThemeCollectionContext,
-			string,
-			ThemeCapabilitySignalRecord
-		>(createThemeCapabilitySignalPass()),
-		incrementalThemePass<ThemeCollectionContext, string, ThemeMetafieldRecord>(
-			createThemeMetafieldPass(),
-		),
-		incrementalThemePass<ThemeCollectionContext, string, ThemeCapabilityRecord>(
-			createThemeCapabilityPass(),
-		),
-		incrementalThemePass<
-			ThemeCollectionContext,
-			string,
-			ThemeClassificationRecord
-		>(createThemeClassificationPass()),
-	]);
+	return new ThemePassScheduler<ThemeCollectionContext>(
+		[
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeDeclarationPassRecord
+			>(createThemeDeclarationPass()),
+			incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
+				createThemeReferencePass(),
+			),
+			incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
+				createThemeResolutionPass(),
+			),
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeSchemaSettingRecord
+			>(createThemeSchemaSettingPass()),
+			incrementalThemePass<ThemeCollectionContext, string, ThemeInstanceRecord>(
+				createThemeInstancePass(),
+			),
+			incrementalThemePass<ThemeCollectionContext, string, ThemeLocaleRecord>(
+				createThemeLocalePass(),
+			),
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeDataFlowInputRecord
+			>(createThemeDataFlowInputPass()),
+			fixedPointThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeDataFlowDerivedRecord
+			>(createThemeDataFlowFixedPointPass()),
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeCapabilitySignalRecord
+			>(createThemeCapabilitySignalPass()),
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeMetafieldRecord
+			>(createThemeMetafieldPass()),
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeCapabilityRecord
+			>(createThemeCapabilityPass()),
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeClassificationRecord
+			>(createThemeClassificationPass()),
+			incrementalThemePass<ThemeCollectionContext, string, ThemeEvidenceRecord>(
+				createThemeEvidencePass(),
+			),
+		],
+		THEME_PASS_CONVERGENCE_BUDGET,
+	);
 }
 
 function runCollectionPasses(
@@ -646,6 +755,10 @@ function runCollectionPasses(
 		capabilitySignalsBySource: state.capabilitySignals,
 		capabilitiesBySource: state.capabilities,
 		classificationsBySource: state.classifications,
+		evidenceBySource: state.evidenceBySource,
+		evidenceInputsForSource(path) {
+			return evidenceInputsForSource(state, facts, path);
+		},
 		metafieldResult: state.metafields,
 		dataFlowIds: {
 			dataAccess: dataAccessId,
@@ -703,14 +816,142 @@ function runCollectionPasses(
 		},
 		id: referenceId,
 	};
-	scheduler.execute(
+	const execution = scheduler.execute(
 		[...new Set(changedPaths)]
 			.sort((a, b) => a.localeCompare(b))
 			.map((path): PassChange => ({ kind: "factsChanged", path }))
 			.concat(additionalChanges),
 		context,
 	);
+	state.processedPassKeys = execution.trace.length;
 	return state;
+}
+
+function deriveOwnedSemanticIssues(
+	model: ThemeSemanticModel,
+	state: ThemeCollectionState,
+	canonicalIssues: Diagnostic[],
+): Diagnostic[] {
+	const inputs = [...state.dataFlowInputs.values()];
+	const docParams = inputs.flatMap((result) => result.docParams);
+	const defaultedObjects = new Set(
+		inputs.flatMap((result) => result.defaultedObjects),
+	);
+	const schemaIndex = new ThemeSchemaIndex({
+		declarations: model.declarations,
+		blocks: model.blocks,
+		settings: model.settings,
+		blockSettings: model.blockSettings,
+		localeKeys: model.localeKeys,
+	});
+	const categories = [
+		{
+			pass: "model-resolution",
+			issues: resolveThemeDeclarationsAndReferences(
+				model.declarations,
+				model.references,
+			).issues,
+		},
+		{
+			pass: "model-doc-contracts",
+			issues: themeDocContractIssues(
+				model.expectedInputs,
+				docParams,
+				defaultedObjects,
+			),
+		},
+		{
+			pass: "model-render-inputs",
+			issues: deriveThemeInputDiagnostics(
+				model.renderSites,
+				model.expectedInputs,
+				model.renderArguments,
+				model.declarations,
+			),
+		},
+		{ pass: "model-metafields", issues: state.metafields.current.issues },
+		{
+			pass: "model-setting-resolution",
+			issues: schemaIndex.resolveSettingReads(model.settingReads).issues,
+		},
+		{
+			pass: "model-locale-resolution",
+			issues: schemaIndex.resolveLocaleReferences(model.localeReferences)
+				.issues,
+		},
+	];
+	const owned: Diagnostic[] = [];
+	for (const category of categories) {
+		replaceOwnedDiagnostics(state.diagnostics, category.pass, category.issues);
+		owned.push(...category.issues);
+	}
+	return [...canonicalIssues, ...owned];
+}
+
+function replaceOwnedDiagnostics(
+	store: ThemeDiagnosticStore,
+	pass: string,
+	issues: Diagnostic[],
+): void {
+	for (const owner of new Set(
+		store.getOwned({ pass }).map((entry) => entry.owner),
+	)) {
+		store.remove({ pass, owner });
+	}
+	const byOwner = new Map<string, Diagnostic[]>();
+	for (const issue of issues) {
+		const owner = issue.span?.file ?? `global:${issue.code}`;
+		byOwner.set(owner, [...(byOwner.get(owner) ?? []), issue]);
+	}
+	for (const [owner, ownedIssues] of byOwner) {
+		store.replace({ pass, owner }, ownedIssues);
+	}
+}
+
+function evidenceRecordsBySource(
+	records: ThemeEvidenceRecord[],
+): Map<string, ThemeEvidenceRecord[]> {
+	const bySource = new Map<string, ThemeEvidenceRecord[]>();
+	for (const record of records) {
+		bySource.set(record.file, [...(bySource.get(record.file) ?? []), record]);
+	}
+	return bySource;
+}
+
+function evidenceInputsForSource(
+	state: ThemeCollectionState,
+	facts: ThemeFactStore,
+	path: string,
+): ThemeEvidenceInputs {
+	const schema = state.schemaSettings.get(path);
+	const instances = state.instances.get(path);
+	const locales = state.locales.get(path);
+	const inputs = state.dataFlowInputs.get(path);
+	const derived = state.derivedDataFlow.get(path);
+	return {
+		references: [...state.resolvedReferencesById.values()].filter(
+			(reference) => reference.fromPath === path,
+		),
+		sectionInstances: instances?.sectionInstances ?? [],
+		blockInstances: instances?.blockInstances ?? [],
+		localeReferences: locales?.localeReferences ?? [],
+		schemas: schema?.schemas ?? [],
+		settings: schema?.settings ?? [],
+		settingReads: schema?.settingReads ?? [],
+		dataAccesses: uniqueById([
+			...(inputs?.dataAccesses ?? []),
+			...(derived?.dataAccesses ?? []),
+		]),
+		variableReads: inputs?.variableReads ?? [],
+		renderArguments: inputs?.renderArguments ?? [],
+		capabilitySignals: state.capabilitySignals.get(path) ?? [],
+		docParams: facts
+			.getFile(path)
+			.filter(
+				(fact): fact is Extract<ThemeFact, { kind: "declaresDocParam" }> =>
+					fact.kind === "declaresDocParam",
+			),
+	};
 }
 
 function cloneCollectionState(
@@ -735,6 +976,8 @@ function cloneCollectionState(
 		capabilities: cloneRecordsBySource(state.capabilities),
 		classifications: cloneRecordsBySource(state.classifications),
 		diagnostics: state.diagnostics.fork(),
+		evidenceBySource: cloneRecordsBySource(state.evidenceBySource),
+		processedPassKeys: 0,
 	};
 }
 
@@ -1015,15 +1258,7 @@ function modelWithCollectedRecords(
 		.filter((result): result is ThemeSchemaSettingPassResult =>
 			Boolean(result),
 		);
-	const analyzedSettingReads = new Map(
-		model.settingReads.map((read) => [read.id, read]),
-	);
-	const analyzedSectionInstances = new Map(
-		model.sectionInstances.map((instance) => [instance.id, instance]),
-	);
-	const analyzedBlockInstances = new Map(
-		model.blockInstances.map((instance) => [instance.id, instance]),
-	);
+
 	const instances = [...instancesBySource.keys()]
 		.sort((a, b) => a.localeCompare(b))
 		.map((path) => instancesBySource.get(path))
@@ -1032,9 +1267,7 @@ function modelWithCollectedRecords(
 		.sort((a, b) => a.localeCompare(b))
 		.map((path) => localesBySource.get(path))
 		.filter((result): result is ThemeLocalePassResult => Boolean(result));
-	const analyzedLocaleReferences = new Map(
-		model.localeReferences.map((reference) => [reference.id, reference]),
-	);
+
 	const dataFlowInputs = [...dataFlowInputsBySource.keys()]
 		.sort((a, b) => a.localeCompare(b))
 		.map((path) => dataFlowInputsBySource.get(path))
@@ -1045,42 +1278,53 @@ function modelWithCollectedRecords(
 	const derivedDataAccesses = derivedDataFlow.flatMap(
 		(result) => result.dataAccesses,
 	);
+	const schemas = schemaSettings.flatMap((result) => result.schemas);
+	const settings = schemaSettings.flatMap((result) => result.settings);
+	const blocks = schemaSettings.flatMap((result) => result.blocks);
+	const blockSettings = schemaSettings.flatMap(
+		(result) => result.blockSettings,
+	);
+	const schemaIndex = new ThemeSchemaIndex({
+		declarations,
+		blocks,
+		settings,
+		blockSettings,
+		localeKeys: uniqueById(locales.flatMap((result) => result.localeKeys)),
+	});
+	const resolvedInstances = schemaIndex.resolveInstances(
+		instances.flatMap((result) => result.sectionInstances),
+		instances.flatMap((result) => result.blockInstances),
+	);
 	return {
 		...model,
 		files,
+		pages: declarations
+			.filter((declaration) => declaration.kind === "template")
+			.map((declaration) => ({
+				id: pageId(declaration.path),
+				path: declaration.path,
+				name: declaration.name,
+				pageType: declaration.name.split(".")[0] || "unknown",
+				templateDeclarationId: declaration.id,
+			})),
 		declarations,
 		references,
-		schemas: schemaSettings.flatMap((result) => result.schemas),
-		settings: schemaSettings.flatMap((result) => result.settings),
-		blocks: schemaSettings.flatMap((result) => result.blocks),
-		blockSettings: schemaSettings.flatMap((result) => result.blockSettings),
-		settingReads: schemaSettings.flatMap((result) =>
-			result.settingReads.map(
-				(read) => analyzedSettingReads.get(read.id) ?? read,
-			),
-		),
-		sectionInstances: instances.flatMap((result) =>
-			result.sectionInstances.map(
-				(instance) => analyzedSectionInstances.get(instance.id) ?? instance,
-			),
-		),
-		blockInstances: instances.flatMap((result) =>
-			result.blockInstances.map(
-				(instance) => analyzedBlockInstances.get(instance.id) ?? instance,
-			),
-		),
+		schemas,
+		settings,
+		blocks,
+		blockSettings,
+		settingReads: schemaIndex.resolveSettingReads(
+			schemaSettings.flatMap((result) => result.settingReads),
+		).records,
+		sectionInstances: resolvedInstances.sectionInstances,
+		blockInstances: resolvedInstances.blockInstances,
 		localeKeys: uniqueById(locales.flatMap((result) => result.localeKeys)),
 		localeTranslations: uniqueById(
 			locales.flatMap((result) => result.localeTranslations),
 		),
-		localeReferences: uniqueById(
-			locales.flatMap((result) =>
-				result.localeReferences.map(
-					(reference) =>
-						analyzedLocaleReferences.get(reference.id) ?? reference,
-				),
-			),
-		),
+		localeReferences: schemaIndex.resolveLocaleReferences(
+			locales.flatMap((result) => result.localeReferences),
+		).records,
 		dataAccesses: uniqueById([
 			...dataFlowInputs.flatMap((result) => result.dataAccesses),
 			...derivedDataAccesses,
@@ -1128,12 +1372,20 @@ function diffGraphs(
 	indexedInvalidation: string[],
 	changedSemanticRecordIds: string[],
 	indexedAffectedPages: string[],
+	telemetry: Omit<ThemeUpdateTelemetry, "graphRecordsReplaced"> = {
+		filesParsed: 0,
+		passKeysProcessed: 0,
+		semanticRecordsReplaced: 0,
+		outputsEmitted: 0,
+		elapsedMs: 0,
+		peakMemoryBytes: telemetryMemory(),
+	},
 ): ThemeGraphUpdate {
 	const previousNodes = new Map(previous.nodes.map((node) => [node.id, node]));
 	const currentNodes = new Map(current.nodes.map((node) => [node.id, node]));
 	const previousEdges = new Map(previous.edges.map((edge) => [edge.id, edge]));
 	const currentEdges = new Map(current.edges.map((edge) => [edge.id, edge]));
-	return {
+	const update: ThemeGraphUpdate = {
 		revision,
 		graph: current,
 		changedPaths: [...new Set(changedPaths)].sort(),
@@ -1156,7 +1408,27 @@ function diffGraphs(
 		addedEdgeIds: addedIds(previousEdges, currentEdges),
 		removedEdgeIds: addedIds(currentEdges, previousEdges),
 		changedEdgeIds: changedIds(previousEdges, currentEdges),
+		telemetry: { ...telemetry, graphRecordsReplaced: 0 },
 	};
+	update.telemetry.graphRecordsReplaced =
+		update.addedNodeIds.length +
+		update.removedNodeIds.length +
+		update.changedNodeIds.length +
+		update.addedEdgeIds.length +
+		update.removedEdgeIds.length +
+		update.changedEdgeIds.length;
+	return update;
+}
+
+function telemetryNow(): number {
+	return globalThis.performance?.now() ?? Date.now();
+}
+
+function telemetryMemory(): number {
+	const processLike = globalThis as typeof globalThis & {
+		process?: { memoryUsage?: () => { heapUsed: number } };
+	};
+	return processLike.process?.memoryUsage?.().heapUsed ?? 0;
 }
 
 function graphWithoutImpact(
@@ -1183,19 +1455,32 @@ function graphWithIndexedImpact(model: ThemeSemanticModel): {
 }
 
 function fingerprintExternalArtifacts(
-	options: Pick<InspectNazareThemeOptions, "metafields" | "themeCheck">,
+	options: Pick<
+		InspectNazareThemeOptions,
+		"exclude" | "metafields" | "themeCheck"
+	>,
 ): string {
 	return JSON.stringify({
+		exclude: options.exclude,
 		metafields: options.metafields,
 		themeCheck: options.themeCheck,
 	});
 }
 
 function externalChangedPaths(
-	previous: Pick<InspectNazareThemeOptions, "metafields" | "themeCheck">,
-	next: Pick<InspectNazareThemeOptions, "metafields" | "themeCheck">,
+	previous: Pick<
+		InspectNazareThemeOptions,
+		"exclude" | "metafields" | "themeCheck"
+	>,
+	next: Pick<
+		InspectNazareThemeOptions,
+		"exclude" | "metafields" | "themeCheck"
+	>,
 ): string[] {
 	const paths: string[] = [];
+	if (JSON.stringify(previous.exclude) !== JSON.stringify(next.exclude)) {
+		paths.push(".nazare/exclusions");
+	}
 	if (JSON.stringify(previous.metafields) !== JSON.stringify(next.metafields)) {
 		paths.push(".shopify/metafields.json");
 	}
@@ -1203,6 +1488,83 @@ function externalChangedPaths(
 		paths.push(".theme-check.yml");
 	}
 	return paths;
+}
+
+function validateStagedProgram(input: {
+	model: ThemeSemanticModel;
+	graph: InspectNazareThemeResult;
+	factStore: ThemeFactStore;
+	factIndex: ThemeFactIndex;
+	diagnostics: ThemeDiagnosticStore;
+	analysisFacts: ThemeFact[];
+	factChangedPaths: string[];
+}): void {
+	const declarationIds = new Set(
+		input.model.declarations.map((declaration) => declaration.id),
+	);
+	for (const record of [
+		...input.model.references,
+		...input.model.sectionInstances,
+		...input.model.renderSites,
+	]) {
+		if (
+			record.resolvedDeclarationId &&
+			!declarationIds.has(record.resolvedDeclarationId)
+		) {
+			throw new Error(
+				`Staged resolved target ${record.resolvedDeclarationId} is missing for ${record.id}`,
+			);
+		}
+	}
+	input.diagnostics.validateOwnership();
+	for (const path of input.factChangedPaths) {
+		const expected = input.analysisFacts.filter(
+			(fact) => themeFactSourcePath(fact) === path,
+		);
+		if (
+			JSON.stringify(input.factStore.getFile(path)) !== JSON.stringify(expected)
+		) {
+			throw new Error(`Staged fact ownership mismatch for ${path}`);
+		}
+	}
+	const canonicalFactIndex = new ThemeFactIndex(
+		input.factStore.all(),
+	).snapshot();
+	if (
+		JSON.stringify(canonicalFactIndex) !==
+		JSON.stringify(input.factIndex.snapshot())
+	) {
+		throw new Error("Staged fact index differs from canonical fact store");
+	}
+	const canonicalImpact = new ThemeImpactIndex(input.graph).toSummary();
+	if (JSON.stringify(canonicalImpact) !== JSON.stringify(input.graph.impact)) {
+		throw new Error("Staged impact index differs from canonical graph impact");
+	}
+}
+
+function shouldRunCanonicalValidation(
+	options: InspectNazareThemeOptions,
+	revision: number,
+): boolean {
+	const interval = options.incrementalValidationInterval;
+	return interval !== undefined && interval > 0 && revision % interval === 0;
+}
+
+function validateCanonicalProgram(
+	files: ThemeInputFile[],
+	options: InspectNazareThemeOptions,
+	model: ThemeSemanticModel,
+	graph: InspectNazareThemeResult,
+): void {
+	const coldOptions = { ...options, cache: undefined, memo: undefined };
+	const coldAnalysis = analyzeNazareTheme(files, coldOptions);
+	if (JSON.stringify(coldAnalysis.ir) !== JSON.stringify(model)) {
+		throw new Error("Incremental semantic model differs from cold rebuild");
+	}
+	const coldGraph = graphWithIndexedImpact(coldAnalysis.ir).graph;
+	if (JSON.stringify(coldGraph) !== JSON.stringify(graph)) {
+		throw new Error("Incremental graph differs from cold rebuild");
+	}
 }
 
 function invalidationClosure(

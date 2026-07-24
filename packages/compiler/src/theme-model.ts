@@ -10,32 +10,22 @@ import {
 	type ThemeDeclarationPassContext,
 	type ThemeDeclarationPassRecord,
 } from "./theme-declaration-pass.js";
+import { deriveThemeEvidenceRecords } from "./theme-evidence-pass.js";
 import {
 	deriveThemeExpectedInputs,
-	docParamEvidenceId,
 	themeDocContractIssues,
 } from "./theme-expected-input-pass.js";
 import { ThemeFactStore } from "./theme-fact-store.js";
 import type {
-	ThemeBlockInstanceRecord,
-	ThemeCapabilitySignalRecord,
-	ThemeDataAccessRecord,
 	ThemeDeclaration,
-	ThemeEvidenceRecord,
 	ThemeExpectedInputRecord,
 	ThemeFact,
 	ThemeFileRecord,
-	ThemeLocaleReferenceRecord,
 	ThemePageRecord,
 	ThemeReference,
 	ThemeRenderArgumentRecord,
 	ThemeRenderSiteRecord,
-	ThemeSchemaRecord,
-	ThemeSectionInstanceRecord,
 	ThemeSemanticModel,
-	ThemeSettingReadRecord,
-	ThemeSettingRecord,
-	ThemeVariableReadRecord,
 } from "./theme-facts.js";
 import { inferCapabilities, inferClassifications } from "./theme-inference.js";
 import { collectThemeInstances } from "./theme-instance-pass.js";
@@ -44,6 +34,7 @@ import { analyzeMetafields } from "./theme-metafields.js";
 import {
 	incrementalThemePass,
 	type PassChange,
+	THEME_PASS_CONVERGENCE_BUDGET,
 	ThemePassScheduler,
 } from "./theme-pass-scheduler.js";
 import {
@@ -67,14 +58,17 @@ function collectScheduledDeclarationAndReferenceRecords(facts: ThemeFact[]): {
 		ids: { file: fileId, declaration: declarationId },
 		id: referenceId,
 	};
-	const scheduler = new ThemePassScheduler<typeof context>([
-		incrementalThemePass<typeof context, string, ThemeDeclarationPassRecord>(
-			createThemeDeclarationPass(),
-		),
-		incrementalThemePass<typeof context, string, ThemeReference>(
-			createThemeReferencePass(),
-		),
-	]);
+	const scheduler = new ThemePassScheduler<typeof context>(
+		[
+			incrementalThemePass<typeof context, string, ThemeDeclarationPassRecord>(
+				createThemeDeclarationPass(),
+			),
+			incrementalThemePass<typeof context, string, ThemeReference>(
+				createThemeReferencePass(),
+			),
+		],
+		THEME_PASS_CONVERGENCE_BUDGET,
+	);
 	scheduler.execute(
 		factStore
 			.files()
@@ -204,12 +198,13 @@ export function buildThemeSemanticModel(
 		renderArguments,
 		renderSiteId,
 	);
-	addInputDiagnostics(
-		modelIssues,
-		renderSites,
-		expectedInputs,
-		renderArguments,
-		declarations,
+	modelIssues.push(
+		...deriveThemeInputDiagnostics(
+			renderSites,
+			expectedInputs,
+			renderArguments,
+			declarations,
+		),
 	);
 	dataAccesses.push(
 		...deriveRenderArgumentDataAccesses(
@@ -224,7 +219,7 @@ export function buildThemeSemanticModel(
 	modelIssues.push(...metafields.issues);
 	const capabilities = inferCapabilities(dataAccesses, capabilitySignals);
 	const classifications = inferClassifications(capabilities, dataAccesses);
-	const evidence = evidenceRecords({
+	const evidence = deriveThemeEvidenceRecords({
 		references,
 		sectionInstances,
 		blockInstances,
@@ -463,109 +458,6 @@ function pageTypeFromTemplateName(name: string): string {
 	return pageType || "unknown";
 }
 
-function evidenceRecords(records: {
-	references: ThemeReference[];
-	sectionInstances: ThemeSectionInstanceRecord[];
-	blockInstances: ThemeBlockInstanceRecord[];
-	localeReferences: ThemeLocaleReferenceRecord[];
-	schemas: ThemeSchemaRecord[];
-	settings: ThemeSettingRecord[];
-	settingReads: ThemeSettingReadRecord[];
-	dataAccesses: ThemeDataAccessRecord[];
-	variableReads: ThemeVariableReadRecord[];
-	renderArguments: ThemeRenderArgumentRecord[];
-	capabilitySignals: ThemeCapabilitySignalRecord[];
-	docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[];
-}): ThemeEvidenceRecord[] {
-	return [
-		...records.docParams.map((param) => ({
-			id: docParamEvidenceId(param.path, param.name),
-			kind: "docParam" as const,
-			file: param.path,
-			span: param.span,
-			extractor: "theme-source-facts",
-		})),
-		...records.sectionInstances.map((instance) => ({
-			id: instance.id,
-			kind: "templateConfig" as const,
-			file: instance.templatePath,
-			extractor: "theme-json-facts",
-		})),
-		...records.blockInstances.map((instance) => ({
-			id: instance.id,
-			kind: "templateConfig" as const,
-			file: instance.ownerPath,
-			extractor: "theme-json-facts",
-		})),
-		...records.references.map((reference) => ({
-			id: reference.id,
-			kind:
-				reference.kind === "rendersSnippet"
-					? ("renderCall" as const)
-					: ("dependency" as const),
-			file: reference.fromPath,
-			span: reference.span,
-			extractor: "theme-liquid-dependencies",
-		})),
-		...records.localeReferences.map((reference) => ({
-			id: reference.id,
-			kind: "dependency" as const,
-			file: reference.fromPath,
-			span: reference.span,
-			extractor: "theme-source-facts",
-		})),
-		...records.schemas.map((schema) => ({
-			id: schema.id,
-			kind: "schema" as const,
-			file: schema.path,
-			span: schema.span,
-			extractor: "theme-schema",
-		})),
-		...records.settings.map((setting) => ({
-			id: setting.id,
-			kind: "schemaSetting" as const,
-			file: setting.path,
-			span: setting.span,
-			extractor: "theme-schema",
-		})),
-		...records.settingReads.map((read) => ({
-			id: read.id,
-			kind: "settingRead" as const,
-			file: read.fromPath,
-			span: read.span,
-			extractor: "theme-source-facts",
-		})),
-		...records.dataAccesses.map((access) => ({
-			id: access.id,
-			kind: "dataRead" as const,
-			file: access.fromPath,
-			span: access.span,
-			extractor: "theme-source-facts",
-		})),
-		...records.variableReads.map((read) => ({
-			id: read.id,
-			kind: "dataRead" as const,
-			file: read.fromPath,
-			span: read.span,
-			extractor: "theme-source-facts",
-		})),
-		...records.renderArguments.map((argument) => ({
-			id: argument.id,
-			kind: "renderArgument" as const,
-			file: argument.fromPath,
-			span: argument.span,
-			extractor: "theme-source-facts",
-		})),
-		...records.capabilitySignals.map((signal) => ({
-			id: signal.id,
-			kind: "dataRead" as const,
-			file: signal.path,
-			span: signal.span,
-			extractor: "theme-source-facts",
-		})),
-	];
-}
-
 /**
  * What a snippet expects its caller to pass: reads of page-context objects
  * ({% render %} isolates scope, so product/collection/... must be passed)
@@ -574,13 +466,13 @@ function evidenceRecords(records: {
  * forward a render argument remains unknown because forwarding alone does not
  * prove the downstream snippet requires it.
  */
-function addInputDiagnostics(
-	issues: Diagnostic[],
+export function deriveThemeInputDiagnostics(
 	renderSites: ThemeRenderSiteRecord[],
 	expectedInputs: ThemeExpectedInputRecord[],
 	renderArguments: ThemeRenderArgumentRecord[],
 	declarations: ThemeDeclaration[],
-): void {
+): Diagnostic[] {
+	const issues: Diagnostic[] = [];
 	const expectedByDeclaration = new Map<string, ThemeExpectedInputRecord[]>();
 	for (const input of expectedInputs) {
 		expectedByDeclaration.set(input.path, [
@@ -595,24 +487,6 @@ function addInputDiagnostics(
 		declarations.map((declaration) => [declaration.id, declaration]),
 	);
 	const argumentNamesByTarget = new Map<string, Set<string>[]>();
-	const renderCountByDeclaration = new Map<string, number>();
-	const argumentCountByDeclaration = new Map<string, Map<string, number>>();
-	for (const site of renderSites) {
-		if (site.invocationKind !== "render" || !site.resolvedDeclarationId)
-			continue;
-		renderCountByDeclaration.set(
-			site.resolvedDeclarationId,
-			(renderCountByDeclaration.get(site.resolvedDeclarationId) ?? 0) + 1,
-		);
-		const counts =
-			argumentCountByDeclaration.get(site.resolvedDeclarationId) ??
-			new Map<string, number>();
-		for (const argumentId of site.argumentIds) {
-			const name = argumentById.get(argumentId)?.argumentName;
-			if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
-		}
-		argumentCountByDeclaration.set(site.resolvedDeclarationId, counts);
-	}
 	for (const site of renderSites) {
 		if (
 			site.invocationKind !== "render" ||
@@ -636,22 +510,16 @@ function addInputDiagnostics(
 		]);
 		const expectedNames = new Set(expected.map((input) => input.name));
 		for (const input of expected) {
-			const renderCount =
-				renderCountByDeclaration.get(site.resolvedDeclarationId) ?? 0;
-			const argumentCount =
-				argumentCountByDeclaration
-					.get(site.resolvedDeclarationId)
-					?.get(input.name) ?? 0;
 			if (
-				!input.required ||
-				argumentNames.has(input.name) ||
-				argumentCount <= renderCount - argumentCount
+				input.provenance !== "declared" ||
+				input.requirement !== "required" ||
+				argumentNames.has(input.name)
 			)
 				continue;
 			issues.push({
 				severity: "warning",
 				code: "THEME_RENDER_ARGUMENT_MISSING",
-				message: `Render of ${site.targetName} from ${site.fromPath} omits inferred input ${input.name}, which most calls pass`,
+				message: `Render of ${site.targetName} from ${site.fromPath} omits required declared input ${input.name}`,
 				phase: "resolve",
 				span: site.span,
 			});
@@ -679,6 +547,7 @@ function addInputDiagnostics(
 			phase: "resolve",
 		});
 	}
+	return issues;
 }
 
 export function referenceId(reference: Omit<ThemeReference, "id">): string {

@@ -90,38 +90,11 @@ theme.
 Two positive paths remain covered:
 
 - explicit Nazare contracts report `CONSTRAINT_REQUIRED_PROP_MISSING` when a required prop is absent;
-- plain Liquid reports `THEME_RENDER_ARGUMENT_MISSING` when a target directly uses an inferred required input and a strict majority of its resolved render sites pass that input while a minority omit it.
+- plain Liquid `{% doc %}` contracts report `THEME_RENDER_ARGUMENT_MISSING` for every render site that omits a declared required `@param`.
 
-Optional/default/unknown paths are separately covered for guards, `default` filters, fallback aliases, `case` selectors, forwarding-only inputs, ambient Shopify objects, and branch/loop scope.
+Source inference remains queryable but does not diagnose missing arguments. Liquid renders absent variables as `nil`, so an unguarded read cannot prove a caller contract. Call-site majority was removed because unrelated render sites must not change whether one call is valid.
 
-The production corpus currently has zero `THEME_RENDER_ARGUMENT_MISSING` warnings. This means no production call site has enough deterministic evidence under the conservative policy; it does not prove that the themes contain no missing arguments. Positive recall is guaranteed by synthetic fixtures, not measured against a labeled production defect corpus.
-
-### Why zero, measured
-
-Re-running the corpus with the majority rule relaxed to "at least one sibling
-call passes the input" produced 570 warnings across the four themes, which
-collapse to 25 distinct (snippet, input) pairs — the count is inflated because
-the warning fires per call site, and one snippet alone (`icon` / `class` in
-alkamind-old) accounted for 324. Every root cause inspected was a false
-positive, in three families:
-
-1. a guard stored in a derived boolean (`if x != blank` → `assign flag = true`,
-   later `if flag`), which left the input inferred required;
-2. an input defaulted by `unless x != blank` → `assign x = fallback` rather
-   than by the `default` filter;
-3. genuinely optional decoration inputs read unguarded (`class`, `attributes`,
-   `padding`), where the source carries no evidence of optionality at all.
-
-Families 1 and 2 were inference defects and are fixed. Re-running the relaxed
-policy afterwards drops climatic-health from 46 warnings to 5 and ucan from 127
-to 70, while alkamind-nazare and alkamind-old are unchanged because their
-causes are all family 3. Corpus node, edge, and issue counts are unchanged; 25
-inputs moved from required to optional (579 to 554 across the corpus).
-
-The conclusion is that zero was not the majority rule being too strict. The
-majority rule was masking over-eager requiredness inference, and family 3 is
-irreducible from source evidence — it is the case explicit contracts exist to
-resolve. Relaxing the detection policy is therefore still the wrong trade.
+Optional/default/unknown paths remain covered for guards, `default` filters, fallback aliases, `case` selectors, forwarding-only inputs, ambient Shopify objects, and branch/loop scope. Production themes without explicit `{% doc %}` contracts therefore have zero missing-argument warnings by design; this does not prove they contain no omissions.
 
 ## Requirements audit
 
@@ -132,7 +105,7 @@ resolve. Relaxing the detection policy is therefore still the wrong trade.
 | Component inputs | Supported, conservative | Render sites, arguments, origins, expected inputs, requirement state, and inconsistent signatures are represented. Plain-Liquid requiredness remains inference. |
 | Configuration | Supported | Schema definitions, reads, selected resource types, influence, ambiguity, and unresolved reads are represented. |
 | Pages as compositions | Supported | Page, layout, section-group, section-instance, and reusable section/component concepts are distinct. |
-| Storefront concepts | Supported, heuristic | Classifications include confidence, evidence, and uncertainty; coverage is intentionally non-exhaustive. |
+| Storefront concepts | Supported, heuristic | Classifications include categorical evidence strength, evidence, and uncertainty; coverage is intentionally non-exhaustive. |
 | Capabilities | Supported, heuristic | Source signals produce evidence-backed capability records independent of filenames. |
 | Impact analysis | Supported | Dependencies, dependents, affected pages, Shopify-object consumers, and unused-file candidates are queryable. |
 | Evidence | Supported | Important semantic edges and classifications retain source evidence and spans. |

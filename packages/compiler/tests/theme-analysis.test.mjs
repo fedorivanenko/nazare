@@ -209,7 +209,7 @@ test("theme input inference handles render arguments and Liquid scope", () => {
 			],
 			"THEME_RENDER_ARGUMENT_MISSING",
 		),
-		true,
+		false,
 	);
 
 	assert.equal(
@@ -252,6 +252,30 @@ test("theme input inference handles render arguments and Liquid scope", () => {
 		),
 		false,
 	);
+});
+
+test("declared required inputs diagnose every omission without call-site heuristics", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "sections/main.liquid",
+			contents: `{% render 'price' %}\n{% render 'price', card_product: product %}`,
+		},
+		{
+			path: "snippets/price.liquid",
+			contents: [
+				"{% doc %}",
+				"  @param {product} card_product - Product to render",
+				"{% enddoc %}",
+				"{{ card_product.price }}",
+			].join("\n"),
+		},
+	]);
+	const missing = analysis.issues.filter(
+		(issue) => issue.code === "THEME_RENDER_ARGUMENT_MISSING",
+	);
+
+	assert.equal(missing.length, 1);
+	assert.match(missing[0].message, /required declared input card_product/);
 });
 
 test("ambient Shopify context remains unknown rather than required", () => {

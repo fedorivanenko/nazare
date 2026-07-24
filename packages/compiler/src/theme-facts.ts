@@ -7,6 +7,7 @@ import type {
 import type { NazareAst } from "./ast.js";
 import type { EmitResult } from "./emit.js";
 import type { ThemeCheckPolicyInput } from "./theme-check-policy.js";
+import type { ThemeEvidenceStrength } from "./theme-evidence-strength.js";
 import type { ThemeEvidenceRecord } from "./theme-evidence-types.js";
 import type { ThemeMetafieldSnapshot } from "./theme-external-types.js";
 import type { ThemeFileKind } from "./theme-file-classifier.js";
@@ -38,9 +39,12 @@ export interface ThemeAnalysisMemo {
 export interface AnalyzeNazareThemeOptions {
 	root?: string;
 	strictness?: "strict" | "loose";
-	plainLiquidParseMode?: "strict" | "tolerant";
+	/** strict validates HTML and Liquid; liquid-only masks HTML but validates Liquid structure. */
+	plainLiquidParseMode?: "strict" | "liquid-only";
 	/** Mutable per-file fact and component artifact cache. */
 	cache?: ThemeAnalysisCache;
+	/** @internal Skip canonical semantic construction for persistent warm sessions. */
+	factsOnly?: boolean;
 	/** Session-local semantic model memo. Do not persist this value. */
 	memo?: ThemeAnalysisMemo;
 	/**
@@ -53,6 +57,8 @@ export interface AnalyzeNazareThemeOptions {
 	metafields?: ThemeMetafieldSnapshot;
 	/** Shopify Theme Check configuration. */
 	themeCheck?: ThemeCheckPolicyInput;
+	/** Debug-only cadence for canonical index and cold replay validation. */
+	incrementalValidationInterval?: number;
 }
 
 export type InspectNazareThemeOptions = AnalyzeNazareThemeOptions;
@@ -270,7 +276,7 @@ export type ThemeFact =
 			kind: "detectsCapability";
 			path: string;
 			capability: string;
-			confidence: number;
+			evidenceStrength: ThemeEvidenceStrength;
 			span?: SourceSpan;
 	  };
 
@@ -473,7 +479,7 @@ export type ThemeCapabilityRecord = {
 	id: string;
 	path: string;
 	capability: string;
-	confidence: number;
+	evidenceStrength: ThemeEvidenceStrength;
 	evidenceIds: string[];
 };
 
@@ -481,7 +487,7 @@ export type ThemeCapabilitySignalRecord = {
 	id: string;
 	path: string;
 	capability: string;
-	confidence: number;
+	evidenceStrength: ThemeEvidenceStrength;
 	span?: SourceSpan;
 };
 
@@ -489,7 +495,7 @@ export type ThemeClassificationRecord = {
 	id: string;
 	path: string;
 	label: string;
-	confidence: number;
+	evidenceStrength: ThemeEvidenceStrength;
 	evidenceIds: string[];
 	uncertainty: string[];
 };

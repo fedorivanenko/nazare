@@ -6,17 +6,71 @@ import {
 	createThemeClassificationPass,
 	createThemeDataFlowFixedPointPass,
 	createThemeDeclarationPass,
+	createThemeEvidencePass,
 	createThemeMetafieldPass,
 	createThemeReferencePass,
 	createThemeResolutionPass,
 	fixedPointThemePass,
 	incrementalThemePass,
+	THEME_PASS_CONVERGENCE_BUDGET,
 	ThemeDiagnosticStore,
 	ThemeFactStore,
 	ThemePassConvergenceError,
 	ThemePassScheduler,
 	ThemeRenderDependencyIndex,
 } from "../dist/index.js";
+
+test("evidence pass replaces only changed source buckets", () => {
+	const retained = {
+		id: "evidence:b",
+		kind: "dependency",
+		file: "b.liquid",
+		extractor: "test",
+	};
+	const context = {
+		evidenceBySource: new Map([["b.liquid", [retained]]]),
+		evidenceInputsForSource(path) {
+			return {
+				references:
+					path === "a.liquid"
+						? [
+								{
+									id: "reference:a",
+									kind: "rendersSnippet",
+									fromPath: path,
+									targetKind: "snippet",
+									targetName: "card",
+									static: true,
+								},
+							]
+						: [],
+				sectionInstances: [],
+				blockInstances: [],
+				localeReferences: [],
+				schemas: [],
+				settings: [],
+				settingReads: [],
+				dataAccesses: [],
+				variableReads: [],
+				renderArguments: [],
+				capabilitySignals: [],
+				docParams: [],
+			};
+		},
+	};
+	const pass = createThemeEvidencePass();
+	const keys = pass.collectChanges(
+		[{ kind: "factsChanged", path: "a.liquid" }],
+		context,
+	);
+	const result = pass.run(keys, context);
+	assert.deepEqual([...keys], ["a.liquid"]);
+	assert.strictEqual(context.evidenceBySource.get("b.liquid")[0], retained);
+	assert.equal(context.evidenceBySource.get("a.liquid")[0].id, "reference:a");
+	assert.deepEqual(result.changes, [
+		{ kind: "diagnosticsChanged", pass: "evidence", owner: "a.liquid" },
+	]);
+});
 
 test("diagnostic store replaces only one pass and key owner", () => {
 	const original = new ThemeDiagnosticStore();
@@ -159,7 +213,7 @@ test("capability signal pass replaces only changed source records", () => {
 		kind: "detectsCapability",
 		path: "sections/main.liquid",
 		capability: "product-form",
-		confidence: 0.8,
+		evidenceStrength: "strong",
 	};
 	const context = {
 		facts: new ThemeFactStore([first]),
@@ -182,7 +236,7 @@ test("capability signal pass replaces only changed source records", () => {
 	assert.equal(context.capabilitySignalsBySource.has(first.path), false);
 });
 
-test("capability pass preserves confidence and evidence by source", () => {
+test("capability pass preserves evidence strength and sources by source", () => {
 	const path = "sections/main.liquid";
 	const context = {
 		dataAccessesBySource: new Map([
@@ -215,7 +269,7 @@ test("capability pass preserves confidence and evidence by source", () => {
 			id: `capability:${path}:displaysProductPrice`,
 			path,
 			capability: "displaysProductPrice",
-			confidence: 0.95,
+			evidenceStrength: "direct",
 			evidenceIds: ["access:price"],
 		},
 	]);
@@ -225,13 +279,13 @@ test("capability pass preserves confidence and evidence by source", () => {
 	);
 });
 
-test("classification pass preserves confidence uncertainty and evidence", () => {
+test("classification pass preserves evidence strength, uncertainty, and sources", () => {
 	const path = "snippets/card.liquid";
 	const priceCapability = {
 		id: `capability:${path}:displaysProductPrice`,
 		path,
 		capability: "displaysProductPrice",
-		confidence: 0.95,
+		evidenceStrength: "direct",
 		evidenceIds: ["access:price"],
 	};
 	const context = {
@@ -265,7 +319,7 @@ test("classification pass preserves confidence uncertainty and evidence", () => 
 			id: `classification:${path}:productCard`,
 			path,
 			label: "productCard",
-			confidence: 0.75,
+			evidenceStrength: "suggestive",
 			evidenceIds: ["access:price", "access:title"],
 			uncertainty: ["could be full product section"],
 		},
@@ -376,9 +430,10 @@ test("data-flow fixed point recomputes one affected SCC per step", () => {
 		static: true,
 	});
 	const groups = [];
-	const scheduler = new ThemePassScheduler([
-		fixedPointThemePass(createThemeDataFlowFixedPointPass()),
-	]);
+	const scheduler = new ThemePassScheduler(
+		[fixedPointThemePass(createThemeDataFlowFixedPointPass())],
+		THEME_PASS_CONVERGENCE_BUDGET,
+	);
 	const result = scheduler.execute(
 		[{ kind: "dataFlowChanged", sourcePath: "c" }],
 		{
@@ -413,6 +468,16 @@ test("theme pass scheduler rejects backward routes", () => {
 	);
 });
 
+test("theme pass scheduler requires an explicit fixed-point budget", () => {
+	assert.throws(
+		() =>
+			new ThemePassScheduler([
+				fixedPointThemePass(createThemeDataFlowFixedPointPass()),
+			]),
+		/require an explicit convergence budget/,
+	);
+});
+
 test("theme pass scheduler bounds fixed-point convergence", () => {
 	const scheduler = new ThemePassScheduler(
 		[
@@ -435,7 +500,10 @@ test("theme pass scheduler bounds fixed-point convergence", () => {
 				}),
 			}),
 		],
-		{ maximumFixedPointIterations: 2 },
+		{
+			...THEME_PASS_CONVERGENCE_BUDGET,
+			maximumFixedPointIterations: 2,
+		},
 	);
 	assert.throws(
 		() => scheduler.execute([{ kind: "sourceChanged", path: "card" }], {}),
@@ -471,7 +539,10 @@ test("theme pass scheduler bounds fixed-point work", () => {
 				}),
 			}),
 		],
-		{ maximumFixedPointWork: 2 },
+		{
+			...THEME_PASS_CONVERGENCE_BUDGET,
+			maximumFixedPointWork: 2,
+		},
 	);
 	assert.throws(
 		() => scheduler.execute([{ kind: "sourceChanged", path: "card" }], {}),

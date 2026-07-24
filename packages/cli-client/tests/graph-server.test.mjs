@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Readable, Writable } from "node:stream";
 import test from "node:test";
 import { serveThemeGraph } from "../dist/graph-server.js";
 
-async function runServer(root, requests) {
+async function runServer(root, requests, projectRoot = root) {
 	const responses = [];
 	const output = new Writable({
 		write(chunk, _encoding, callback) {
@@ -26,6 +26,7 @@ async function runServer(root, requests) {
 				.join("\n")}\n`,
 		),
 		output,
+		{ projectRoot },
 	);
 	return responses;
 }
@@ -43,7 +44,7 @@ function startLiveServer(root) {
 			callback();
 		},
 	});
-	const done = serveThemeGraph(root, input, output);
+	const done = serveThemeGraph(root, input, output, { projectRoot: root });
 	return {
 		messages,
 		done,
@@ -120,6 +121,50 @@ test("graph server supports MCP tools and build updates", async () => {
 		assert.equal(responses[2].result.isError, false);
 		assert.equal(responses[3].result.revision, 1);
 		assert.ok(responses[3].result.changedOutputPaths.length > 0);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("graph server uses inspect file selection and exclusion policy", async () => {
+	const root = await mkdtemp(join(tmpdir(), "nazare-graph-inputs-"));
+	try {
+		const sourceRoot = join(root, "theme");
+		await mkdir(join(sourceRoot, "templates"), { recursive: true });
+		await mkdir(join(sourceRoot, "snippets"));
+		await writeFile(
+			join(sourceRoot, "templates/index.json"),
+			JSON.stringify({ sections: {}, order: [] }),
+		);
+		await writeFile(join(sourceRoot, "snippets/generated.liquid"), "generated");
+		await writeFile(
+			join(sourceRoot, "package.json"),
+			JSON.stringify({ private: true }),
+		);
+		await writeFile(
+			join(root, "nazare.theme.json"),
+			JSON.stringify({ inspect: { exclude: ["snippets/**"] } }),
+		);
+
+		const [response] = await runServer(
+			sourceRoot,
+			[{ id: 1, method: "inspect" }],
+			root,
+		);
+		assert.deepEqual(
+			response.result.nodes
+				.filter((node) => node.kind === "file")
+				.map((node) => node.path),
+			["templates/index.json"],
+		);
+		assert.equal(
+			response.result.issues.some(
+				(issue) =>
+					issue.code === "THEME_FILE_EXCLUDED" &&
+					issue.span.file === "snippets/generated.liquid",
+			),
+			true,
+		);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

@@ -22,6 +22,7 @@ import {
 	visitLiquidExpressions,
 } from "./liquid-expressions.js";
 import { spanFromOffsets } from "./source.js";
+import type { ThemeEvidenceStrength } from "./theme-evidence-strength.js";
 import { renderSiteKey, type ThemeFact } from "./theme-facts.js";
 
 /** Shopify objects whose reads become readsShopifyData facts. */
@@ -90,26 +91,26 @@ const ASSET_FILTER_NAMES = new Set(["asset_url", "asset_img_url"]);
 
 type LookupCapabilityRule = {
 	capability: string;
-	confidence: number;
+	evidenceStrength: ThemeEvidenceStrength;
 	matches: (object: string, propertyPath: string) => boolean;
 };
 
 const lookupCapabilityRules: LookupCapabilityRule[] = [
 	{
 		capability: "addsToCart",
-		confidence: 0.95,
+		evidenceStrength: "direct",
 		matches: (object, path) => object === "routes" && path === "cart_add_url",
 	},
 	{
 		capability: "updatesCart",
-		confidence: 0.9,
+		evidenceStrength: "direct",
 		matches: (object, path) =>
 			object === "routes" &&
 			(path === "cart_change_url" || path === "cart_update_url"),
 	},
 	{
 		capability: "selectsVariants",
-		confidence: 0.85,
+		evidenceStrength: "strong",
 		matches: (object, path) =>
 			object === "product" &&
 			(/(^|\.)variants($|\.)/.test(path) ||
@@ -117,19 +118,19 @@ const lookupCapabilityRules: LookupCapabilityRule[] = [
 	},
 	{
 		capability: "performsPredictiveSearch",
-		confidence: 0.9,
+		evidenceStrength: "direct",
 		matches: (object) => object === "predictive_search",
 	},
 	{
 		capability: "filtersCollections",
-		confidence: 0.8,
+		evidenceStrength: "strong",
 		matches: (object, path) =>
 			(object === "collection" && /(^|\.)filters($|\.)/.test(path)) ||
 			(object === "filter" && (path === "active_values" || path === "values")),
 	},
 	{
 		capability: "displaysNavigation",
-		confidence: 0.8,
+		evidenceStrength: "strong",
 		matches: (object) => object === "linklists",
 	},
 ];
@@ -137,31 +138,35 @@ const lookupCapabilityRules: LookupCapabilityRule[] = [
 // Signals only visible as literal text (form actions, input names, JS calls
 // in inline <script>). These are heuristics by nature; they run over source
 // with comments and raw/script/stylesheet bodies blanked so dead text can
-// never signal, and they carry their own confidence.
+// never signal, and they carry an explicit categorical evidence strength.
 const textCapabilityRules: Array<{
 	capability: string;
-	confidence: number;
+	evidenceStrength: ThemeEvidenceStrength;
 	pattern: RegExp;
 }> = [
-	{ capability: "addsToCart", confidence: 0.95, pattern: /\/cart\/add/g },
+	{
+		capability: "addsToCart",
+		evidenceStrength: "direct",
+		pattern: /\/cart\/add/g,
+	},
 	{
 		capability: "updatesCart",
-		confidence: 0.9,
+		evidenceStrength: "direct",
 		pattern: /\/cart\/(?:change|update)/g,
 	},
 	{
 		capability: "selectsVariants",
-		confidence: 0.85,
+		evidenceStrength: "strong",
 		pattern: /name=["']id["']/g,
 	},
 	{
 		capability: "performsPredictiveSearch",
-		confidence: 0.9,
+		evidenceStrength: "direct",
 		pattern: /(?:predictive_search|\/search\/suggest)/g,
 	},
 	{
 		capability: "switchesLocalization",
-		confidence: 0.9,
+		evidenceStrength: "direct",
 		pattern:
 			/(?:form\s+['"]localization['"]|localization\.country|localization\.language)/g,
 	},
@@ -345,14 +350,14 @@ export function collectSourceThemeFacts(
 
 	const pushCapability = (
 		capability: string,
-		confidence: number,
+		evidenceStrength: ThemeEvidenceStrength,
 		span?: SourceSpan,
 	): void => {
 		facts.push({
 			kind: "detectsCapability",
 			path,
 			capability,
-			confidence,
+			evidenceStrength,
 			span,
 		});
 	};
@@ -414,7 +419,7 @@ export function collectSourceThemeFacts(
 		}
 		for (const rule of lookupCapabilityRules) {
 			if (rule.matches(object, propertyPath)) {
-				pushCapability(rule.capability, rule.confidence, span);
+				pushCapability(rule.capability, rule.evidenceStrength, span);
 			}
 		}
 	};
@@ -543,7 +548,7 @@ export function collectSourceThemeFacts(
 			if (match.index === undefined) continue;
 			pushCapability(
 				rule.capability,
-				rule.confidence,
+				rule.evidenceStrength,
 				spanFromOffsets(source, path, {
 					start: match.index,
 					end: match.index + match[0].length,

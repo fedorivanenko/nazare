@@ -8,7 +8,11 @@ import type {
 	ThemeSemanticModel,
 } from "./theme-facts.js";
 import { normalizeThemePath } from "./theme-file-classifier.js";
-import { ThemeWorkspaceSession } from "./theme-session.js";
+import {
+	type ThemeGraphUpdate,
+	ThemeProgram,
+	type ThemeUpdateTelemetry,
+} from "./theme-session.js";
 import { buildNazareThemeWorkspace } from "./theme-workspace.js";
 
 export type ThemeBuildUpdate = {
@@ -19,15 +23,21 @@ export type ThemeBuildUpdate = {
 	addedOutputPaths: string[];
 	removedOutputPaths: string[];
 	changedOutputPaths: string[];
+	telemetry: ThemeUpdateTelemetry;
+	graphUpdate: ThemeGraphUpdate;
 };
 
-export class ThemeBuildSession {
+class ThemeBuildState {
 	private readonly filesByPath = new Map<string, ThemeInputFile>();
 	private readonly options: BuildNazareThemeWorkspaceOptions;
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
 	private readonly memo = {} as ThemeAnalysisMemo;
-	private readonly semanticSession: ThemeWorkspaceSession;
+	private readonly semanticSession: ThemeProgram;
 	private build: ThemeBuildResult;
+	private readonly compiledArtifactsByPath = new Map<
+		string,
+		ThemeBuildResult["artifacts"][number]
+	>();
 	private outputPathsBySourcePath = new Map<string, Set<string>>();
 	private sourcePathsByOutputPath = new Map<string, Set<string>>();
 	private revision = 0;
@@ -35,6 +45,7 @@ export class ThemeBuildSession {
 	constructor(
 		files: ThemeInputFile[],
 		options: BuildNazareThemeWorkspaceOptions = {},
+		semanticProgram?: ThemeProgram,
 	) {
 		this.options = {
 			...options,
@@ -42,11 +53,13 @@ export class ThemeBuildSession {
 			memo: options.memo ?? this.memo,
 		};
 		for (const file of files) this.filesByPath.set(file.path, file);
-		this.semanticSession = new ThemeWorkspaceSession(
-			this.files(),
-			this.options,
-		);
+		this.semanticSession =
+			semanticProgram ?? new ThemeProgram(this.files(), this.options);
 		this.build = buildNazareThemeWorkspace(this.files(), this.options);
+		for (const artifact of this.build.artifacts) {
+			if (artifact.emitted)
+				this.compiledArtifactsByPath.set(artifact.path, artifact);
+		}
 		this.replaceOutputOwnership(this.build);
 	}
 
@@ -71,7 +84,7 @@ export class ThemeBuildSession {
 	updateFile(file: ThemeInputFile): ThemeBuildUpdate {
 		const previous = this.filesByPath.get(file.path);
 		if (previous?.contents === file.contents) {
-			return this.emptyUpdate([]);
+			return this.emptyUpdate([], this.semanticSession.updateFile(file));
 		}
 		this.filesByPath.set(file.path, file);
 		try {
@@ -86,7 +99,7 @@ export class ThemeBuildSession {
 	removeFile(path: string): ThemeBuildUpdate {
 		const previous = this.filesByPath.get(path);
 		if (!previous || !this.filesByPath.delete(path))
-			return this.emptyUpdate([]);
+			return this.emptyUpdate([], this.semanticSession.removeFile(path));
 		try {
 			return this.rebuild([path]);
 		} catch (error) {
@@ -96,6 +109,8 @@ export class ThemeBuildSession {
 	}
 
 	private rebuild(changedPaths: string[]): ThemeBuildUpdate {
+		const startedAt = buildTelemetryNow();
+		const memoryAtStart = buildTelemetryMemory();
 		const previous = this.build;
 		const recomputedPaths = buildRecomputationClosure(
 			this.files(),
@@ -114,15 +129,26 @@ export class ThemeBuildSession {
 			new Set(recomputedPaths),
 			this.sourcePathsByOutputPath,
 		);
+		let graphUpdate: ThemeGraphUpdate | undefined;
 		for (const path of changedPaths) {
 			const file = this.filesByPath.get(path);
-			if (file) this.semanticSession.updateFile(file);
-			else this.semanticSession.removeFile(path);
+			graphUpdate = file
+				? this.semanticSession.updateFile(file)
+				: this.semanticSession.removeFile(path);
+		}
+		for (const path of recomputedPaths) {
+			if (!this.filesByPath.has(path))
+				this.compiledArtifactsByPath.delete(path);
+		}
+		for (const artifact of rebuilt.artifacts) {
+			if (artifact.emitted)
+				this.compiledArtifactsByPath.set(artifact.path, artifact);
 		}
 		this.build = shareUnchangedOutputSnapshots(
 			previous,
 			mergeSelectiveBuild(
 				previous,
+				this.compiledArtifactsByPath,
 				rebuilt,
 				new Set(recomputedPaths),
 				new Set(this.filesByPath.keys()),
@@ -132,12 +158,25 @@ export class ThemeBuildSession {
 		);
 		this.replaceOutputOwnership(this.build);
 		this.revision += 1;
+		if (!graphUpdate)
+			throw new Error("Build update did not produce graph state");
 		return diffBuilds(
 			this.revision,
 			previous,
 			this.build,
 			changedPaths,
 			recomputedPaths,
+			{
+				filesParsed: graphUpdate?.telemetry.filesParsed ?? selectedPaths.length,
+				passKeysProcessed: graphUpdate?.telemetry.passKeysProcessed ?? 0,
+				semanticRecordsReplaced:
+					graphUpdate?.telemetry.semanticRecordsReplaced ?? 0,
+				graphRecordsReplaced: graphUpdate?.telemetry.graphRecordsReplaced ?? 0,
+				outputsEmitted: rebuilt.emitted.files.length,
+				elapsedMs: buildTelemetryNow() - startedAt,
+				peakMemoryBytes: Math.max(memoryAtStart, buildTelemetryMemory()),
+			},
+			graphUpdate,
 		);
 	}
 
@@ -147,8 +186,19 @@ export class ThemeBuildSession {
 		this.sourcePathsByOutputPath = ownership.sourcePathsByOutputPath;
 	}
 
-	private emptyUpdate(changedPaths: string[]): ThemeBuildUpdate {
-		return diffBuilds(this.revision, this.build, this.build, changedPaths, []);
+	private emptyUpdate(
+		changedPaths: string[],
+		graphUpdate: ThemeGraphUpdate,
+	): ThemeBuildUpdate {
+		return diffBuilds(
+			this.revision,
+			this.build,
+			this.build,
+			changedPaths,
+			[],
+			emptyBuildTelemetry(),
+			graphUpdate,
+		);
 	}
 
 	private files(): ThemeInputFile[] {
@@ -157,6 +207,9 @@ export class ThemeBuildSession {
 		);
 	}
 }
+
+/** @deprecated Use ThemeProgram for semantic workspace state. */
+export class ThemeBuildSession extends ThemeBuildState {}
 
 type ThemeEmittedFile = ThemeBuildResult["emitted"]["files"][number];
 
@@ -212,18 +265,16 @@ function validateRetainedOutputCollisions(
 
 function mergeSelectiveBuild(
 	previous: ThemeBuildResult,
+	compiledArtifactsByPath: Map<string, ThemeBuildResult["artifacts"][number]>,
 	selective: ThemeBuildResult,
 	affectedPaths: Set<string>,
 	currentPaths: Set<string>,
-	semanticSession: ThemeWorkspaceSession,
+	semanticSession: ThemeProgram,
 	emitOnError: boolean,
 ): ThemeBuildResult {
 	const artifactsByPath = new Map(
-		previous.analysis.artifacts
-			.filter(
-				(artifact) =>
-					!affectedPaths.has(artifact.path) && currentPaths.has(artifact.path),
-			)
+		[...compiledArtifactsByPath.values()]
+			.filter((artifact) => currentPaths.has(artifact.path))
 			.map((artifact) => [artifact.path, artifact]),
 	);
 	for (const artifact of selective.artifacts) {
@@ -232,12 +283,26 @@ function mergeSelectiveBuild(
 	let artifacts = [...artifactsByPath.values()].sort((a, b) =>
 		a.path.localeCompare(b.path),
 	);
+	const previousSemanticIssueKeys = new Set(
+		previous.analysis.ir.issues.map((issue) => JSON.stringify(issue)),
+	);
+	const selectiveSemanticIssueKeys = new Set(
+		selective.analysis.ir.issues.map((issue) => JSON.stringify(issue)),
+	);
 	const retainedIssues = previous.issues.filter((issue) => {
+		if (previousSemanticIssueKeys.has(JSON.stringify(issue))) return false;
 		const path = issue.span?.file;
 		return path === undefined || !affectedPaths.has(normalizeThemePath(path));
 	});
+	const selectiveBuildIssues = selective.issues.filter(
+		(issue) => !selectiveSemanticIssueKeys.has(JSON.stringify(issue)),
+	);
 	const issueKeys = new Set<string>();
-	const issues = [...retainedIssues, ...selective.issues].filter((issue) => {
+	const issues = [
+		...semanticSession.getModel().issues,
+		...retainedIssues,
+		...selectiveBuildIssues,
+	].filter((issue) => {
 		const key = JSON.stringify(issue);
 		if (issueKeys.has(key)) return false;
 		issueKeys.add(key);
@@ -387,6 +452,8 @@ function diffBuilds(
 	current: ThemeBuildResult,
 	changedPaths: string[],
 	recomputedPaths: string[],
+	telemetry: ThemeUpdateTelemetry,
+	graphUpdate: ThemeGraphUpdate,
 ): ThemeBuildUpdate {
 	const previousFiles = new Map(
 		previous.emitted.files.map((file) => [file.path, file.contents]),
@@ -412,5 +479,30 @@ function diffBuilds(
 					previousFiles.get(path) !== currentFiles.get(path),
 			)
 			.sort(),
+		telemetry,
+		graphUpdate,
 	};
+}
+
+function emptyBuildTelemetry(): ThemeUpdateTelemetry {
+	return {
+		filesParsed: 0,
+		passKeysProcessed: 0,
+		semanticRecordsReplaced: 0,
+		graphRecordsReplaced: 0,
+		outputsEmitted: 0,
+		elapsedMs: 0,
+		peakMemoryBytes: buildTelemetryMemory(),
+	};
+}
+
+function buildTelemetryNow(): number {
+	return globalThis.performance?.now() ?? Date.now();
+}
+
+function buildTelemetryMemory(): number {
+	const processLike = globalThis as typeof globalThis & {
+		process?: { memoryUsage?: () => { heapUsed: number } };
+	};
+	return processLike.process?.memoryUsage?.().heapUsed ?? 0;
 }

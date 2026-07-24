@@ -103,7 +103,7 @@ Built-in frontend support:
 
 ### `compilePlainLiquid(source, file)`
 
-Parses one existing Shopify `.liquid` file without interpreting Nazare syntax. Returns Liquid parse diagnostics, authored schema diagnostics, static/dynamic dependencies from `{% render %}`, `{% include %}`, `{% section %}`, `{% sections %}`, and `{% layout %}`, plus a `canEmit` flag. Strict parsing is the default; pass `{ parseMode: "tolerant" }` for editor/preview tooling.
+Parses one existing Shopify `.liquid` file without interpreting Nazare syntax. Returns Liquid parse diagnostics, authored schema diagnostics, static/dynamic dependencies from `{% render %}`, `{% include %}`, `{% section %}`, `{% sections %}`, and `{% layout %}`, plus a `canEmit` flag. Strict HTML + Liquid parsing is the default; pass `{ parseMode: "liquid-only" }` to mask HTML while retaining strict Liquid structure validation.
 
 Use this for coexistence mode: legacy theme files stay plain Shopify Liquid, but the compiler can still validate and index them beside `.nz.liquid` components.
 
@@ -138,7 +138,7 @@ Semantic output distinguishes:
 - direct source facts, carrying source evidence;
 - derived value-flow facts, such as a passed `product` becoming `product.price` inside a snippet;
 - inferred inputs, with `required`, `optional`, or `unknown` requirement state;
-- capabilities/classifications, carrying confidence and uncertainty;
+- capabilities/classifications, carrying categorical evidence strength and uncertainty;
 - unresolved dynamic or missing targets.
 
 Graph structure includes pages, templates, layouts, section groups, section and block instances, reusable theme blocks, render sites, render arguments, input satisfaction, Shopify data properties, settings, assets, locales, and optional Shopify metafield definitions. Render calls project explicitly as:
@@ -149,7 +149,7 @@ caller file → render site → target snippet
                                       → Shopify data or setting origin
 ```
 
-Theme analysis uses tolerant plain-Liquid parsing by default. A failed parse emits diagnostics and never fabricates skipped facts. Pass `.shopify/metafields.json` through `options.metafields` to join store definitions with theme reads; missing snapshots remain `unknown`, never proof of absence. Inspect output exposes consumed, unconsumed, broken, and page-impact queries. Pass `.theme-check.yml` through `options.themeCheck` to validate and expose the configured ignore list. Shopify rule names are not assumed to match Inspect diagnostics.
+Theme analysis uses `liquid-only` parsing by default: HTML is masked to avoid branch-balancing false positives, while Liquid structure is validated strictly. A failed parse emits diagnostics and never fabricates skipped facts. Pass `.shopify/metafields.json` through `options.metafields` to join store definitions with theme reads; missing snapshots remain `unknown`, never proof of absence. Inspect output exposes consumed, unconsumed, broken, and page-impact queries. Pass `.theme-check.yml` through `options.themeCheck` to validate and expose the configured ignore list. Shopify rule names are not assumed to match Inspect diagnostics.
 
 ### `buildNazareThemeWorkspace(files, options)`
 
@@ -167,7 +167,7 @@ Adds:
 - emitted Liquid/CSS/JS/runtime files;
 - `emittedOnError`, showing whether emit ran despite errors.
 
-Workspace builds use exported `THEME_BUILD_DEFAULTS`: strict checking, strict plain-Liquid parsing, workspace scope, and `emitOnError: false`. Build pipelines expose no output when errors exist. Tooling previews that need best-effort output must pass `emitOnError: true` explicitly. Analysis/inspect uses exported `THEME_ANALYSIS_DEFAULTS`, including tolerant plain-Liquid parsing for incomplete editor documents.
+Workspace builds use exported `THEME_BUILD_DEFAULTS`: strict checking, strict plain-Liquid parsing, workspace scope, and `emitOnError: false`. Build pipelines expose no output when errors exist. Tooling previews that need best-effort output must pass `emitOnError: true` explicitly. Analysis/inspect uses exported `THEME_ANALYSIS_DEFAULTS`, including `liquid-only` parsing that masks HTML while rejecting malformed Liquid structure.
 
 ## Minimal compile
 
