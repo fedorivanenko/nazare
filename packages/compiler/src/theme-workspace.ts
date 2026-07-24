@@ -148,7 +148,8 @@ export function buildNazareThemeWorkspace(
 	const workspaceCanEmit =
 		!hasErrors(allIssues) || buildOptions.emitOnError === true;
 	const scopedEntryPath =
-		buildOptions.scope.kind === "workspace"
+		buildOptions.scope.kind === "workspace" ||
+		buildOptions.scope.kind === "files"
 			? undefined
 			: normalizeThemePath(buildOptions.scope.path);
 	let artifacts = selected.map((artifact) => {
@@ -442,38 +443,34 @@ function buildScopeIssues(
 	byPath: Map<string, string>,
 ): Diagnostic[] {
 	if (!scope || scope.kind === "workspace") return [];
-	const path = normalizeThemePath(scope.path);
-	if (isUnsafeThemePath(path)) {
-		return [
-			{
+	const rawPaths = scope.kind === "files" ? scope.paths : [scope.path];
+	const issues: Diagnostic[] = [];
+	for (const rawPath of rawPaths) {
+		const path = normalizeThemePath(rawPath);
+		if (isUnsafeThemePath(path)) {
+			issues.push({
 				severity: "error",
 				code: "THEME_SCOPE_UNSAFE_PATH",
-				message: `Unsafe theme build scope path ${scope.path}`,
+				message: `Unsafe theme build scope path ${rawPath}`,
 				phase: "parse",
-			},
-		];
-	}
-	if (!byPath.has(path)) {
-		return [
-			{
+			});
+		} else if (!byPath.has(path)) {
+			issues.push({
 				severity: "error",
 				code: "THEME_SCOPE_FILE_NOT_FOUND",
-				message: `Theme build scope file not found: ${scope.path}`,
+				message: `Theme build scope file not found: ${rawPath}`,
 				phase: "resolve",
-			},
-		];
-	}
-	if (!path.endsWith(".nz.liquid")) {
-		return [
-			{
+			});
+		} else if (!path.endsWith(".nz.liquid")) {
+			issues.push({
 				severity: "error",
 				code: "THEME_SCOPE_UNSUPPORTED_FILE_KIND",
-				message: `Theme build scope file must be a .nz.liquid component: ${scope.path}`,
+				message: `Theme build scope file must be a .nz.liquid component: ${rawPath}`,
 				phase: "parse",
-			},
-		];
+			});
+		}
 	}
-	return [];
+	return issues;
 }
 
 function buildScopePaths(
@@ -481,7 +478,14 @@ function buildScopePaths(
 	byPath: Map<string, string>,
 ): Set<string> {
 	if (scope.kind === "workspace") return new Set(byPath.keys());
-	return scopedNazareClosure(normalizeThemePath(scope.path), byPath);
+	const entries = scope.kind === "files" ? scope.paths : [scope.path];
+	const paths = new Set<string>();
+	for (const entry of entries) {
+		for (const path of scopedNazareClosure(normalizeThemePath(entry), byPath)) {
+			paths.add(path);
+		}
+	}
+	return paths;
 }
 
 function scopedNazareClosure(
@@ -518,8 +522,12 @@ function buildScopeArtifacts(
 	if (scope.kind === "closure") {
 		return artifacts.filter((artifact) => scopePaths.has(artifact.path));
 	}
-	const path = normalizeThemePath(scope.path);
-	return artifacts.filter((artifact) => artifact.path === path);
+	const selectedPaths = new Set(
+		(scope.kind === "files" ? scope.paths : [scope.path]).map(
+			normalizeThemePath,
+		),
+	);
+	return artifacts.filter((artifact) => selectedPaths.has(artifact.path));
 }
 
 function normalizeInputFiles(files: ThemeInputFile[]): {

@@ -60,7 +60,8 @@ export type InspectNazareThemeOptions = AnalyzeNazareThemeOptions;
 export type BuildThemeScope =
 	| { kind: "workspace" }
 	| { kind: "closure"; path: string }
-	| { kind: "file"; path: string };
+	| { kind: "file"; path: string }
+	| { kind: "files"; paths: string[] };
 
 export interface BuildNazareThemeWorkspaceOptions
 	extends AnalyzeNazareThemeOptions {
