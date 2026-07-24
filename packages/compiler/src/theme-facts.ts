@@ -31,6 +31,8 @@ export interface ThemeAnalysisCache {
 export interface ThemeAnalysisMemo {
 	fingerprint: string;
 	model: ThemeSemanticModel;
+	projectionFingerprint?: string;
+	projectedModel?: ThemeSemanticModel;
 }
 
 export interface AnalyzeNazareThemeOptions {
