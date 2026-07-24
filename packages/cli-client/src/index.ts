@@ -1,16 +1,45 @@
 #!/usr/bin/env node
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { basename, extname, join, relative, resolve, sep } from "node:path";
+import {
+	mkdir,
+	readFile,
+	realpath,
+	rename,
+	rm,
+	writeFile,
+} from "node:fs/promises";
+import {
+	basename,
+	extname,
+	isAbsolute,
+	join,
+	relative,
+	resolve,
+	sep,
+} from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
 	checkComponentScripts,
 	compileNazareArtifact,
+	inspectNazareTheme,
+	parsePersistedInspectFactCache,
+	serializePersistedInspectFactCache,
+	summarizeThemeGraph,
+	type ThemeAnalysisCache,
+	themeGraphToDot,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
 import { registryFromEnv } from "@nazare/registry";
 import { runThemeBuild } from "./build-command.js";
+import { serveThemeGraph } from "./graph-server.js";
+import {
+	collectThemeInputFiles,
+	isMissingFileError,
+	readOptionalInspectArtifact,
+	validateInspectConfiguration,
+} from "./inspect-input.js";
 import { diffComponent, installComponent, updateAll } from "./install.js";
 import { type CliOptions, parseCliOptions, printHelp } from "./options.js";
 import type { Output } from "./output.js";
@@ -49,8 +78,11 @@ export async function main(
 		const readProjectFile = (path: string): string | undefined => {
 			try {
 				return readFileSync(join(projectRoot, path), "utf8");
-			} catch {
-				return undefined;
+			} catch (error) {
+				if (isMissingFileError(error)) return undefined;
+				throw new Error(
+					`Unable to read project file ${path}: ${errorMessage(error)}`,
+				);
 			}
 		};
 
@@ -58,6 +90,28 @@ export async function main(
 		// component into one theme output. It runs before the single-file setup
 		// below because it targets a directory (from the arg or nazare.theme.json
 		// build.sourceRoot) rather than one entry file.
+		if (command === "graph-server") {
+			const manifest = await readProjectManifest(projectRoot);
+			const graphRoot = file ?? manifest.build?.sourceRoot;
+			if (!graphRoot) {
+				throw new Error(
+					'Graph server requires a directory argument or "build.sourceRoot" in nazare.theme.json',
+				);
+			}
+			const resolvedGraphRoot = resolve(projectRoot, graphRoot);
+			const canonicalProjectRoot = await realpath(projectRoot);
+			const canonicalGraphRoot = await realpath(resolvedGraphRoot);
+			if (isOutsideRoot(canonicalProjectRoot, canonicalGraphRoot)) {
+				throw new Error(
+					`${resolvedGraphRoot} resolves outside the project root ${projectRoot}`,
+				);
+			}
+			await serveThemeGraph(canonicalGraphRoot, process.stdin, process.stdout, {
+				projectRoot: canonicalProjectRoot,
+			});
+			return 0;
+		}
+
 		if (command === "build") {
 			return await runThemeBuild(projectRoot, file, cliOptions, output);
 		}
@@ -65,6 +119,11 @@ export async function main(
 		// `init` scaffolds the project's explicit build config so add/build work.
 		if (command === "init") {
 			return await runInit(projectRoot, cliOptions, output);
+		}
+
+		// Whole-theme read-only inspection.
+		if (command === "inspect") {
+			return await runInspect(projectRoot, cliOptions, output);
 		}
 
 		// Registry config commands update project-level nazare.theme.json.
@@ -212,6 +271,11 @@ type ProjectManifest = {
 	registries?: Record<string, string>;
 	/** Explicit build paths. No hardcoded defaults; unset is an error. */
 	build?: { outDir?: string; sourceRoot?: string };
+	/**
+	 * Inspect policy. `exclude` holds theme-relative globs — typically generated
+	 * page-builder chunks — that are skipped entirely and reported as excluded.
+	 */
+	inspect?: { exclude?: string[] };
 };
 
 /**
@@ -295,6 +359,172 @@ async function runInit(
 		),
 	);
 	return 0;
+}
+
+async function runInspect(
+	projectRoot: string,
+	cliOptions: CliOptions,
+	output: Output,
+): Promise<number> {
+	const [target, dirArg] = cliOptions.positionals;
+	if (target !== "theme") {
+		output.error("Usage: nazare inspect theme [dir] --format json");
+		return 1;
+	}
+	const format = cliOptions.format ?? "json";
+	if (format !== "json" && format !== "text" && format !== "dot") {
+		output.error(
+			`Unsupported inspect format ${format}; expected json, text, or dot`,
+		);
+		return 1;
+	}
+	const manifest = await readProjectManifest(projectRoot);
+	const exclude = validateInspectConfiguration(manifest.inspect);
+	const inspectRoot = dirArg ?? manifest.build?.sourceRoot;
+	if (!inspectRoot) {
+		output.error(
+			'Usage: nazare inspect theme [dir] --format json (or set "build.sourceRoot" in nazare.theme.json)',
+		);
+		return 1;
+	}
+	const root = resolve(projectRoot, inspectRoot);
+	const canonicalProjectRoot = await realpath(projectRoot);
+	const canonicalRoot = await realpath(root);
+	if (isOutsideRoot(canonicalProjectRoot, canonicalRoot)) {
+		output.error(`${root} resolves outside the project root ${projectRoot}`);
+		return 1;
+	}
+	const files = await collectThemeInputFiles(
+		canonicalRoot,
+		canonicalProjectRoot,
+	);
+	const metafields = await readMetafieldSnapshot(projectRoot);
+	const themeCheck = await readThemeCheckPolicy(projectRoot);
+	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v2.json");
+	const cache = await readThemeAnalysisCache(cachePath);
+	const inspected = inspectNazareTheme(files, {
+		root:
+			relative(canonicalProjectRoot, canonicalRoot).split(sep).join("/") || ".",
+		strictness: cliOptions.strictness,
+		cache,
+		exclude,
+		metafields,
+		themeCheck,
+	});
+	await mkdir(join(projectRoot, ".nazare-out"), { recursive: true });
+	await writeThemeAnalysisCache(cachePath, cache);
+	output.log(
+		format === "text"
+			? renderInspectReport(inspected)
+			: format === "dot"
+				? themeGraphToDot(inspected)
+				: JSON.stringify(inspected, null, 2),
+	);
+	return hasErrors(
+		inspected.issues.filter((issue) => issue.severity === "error"),
+	)
+		? 1
+		: 0;
+}
+
+function renderInspectReport(
+	graph: ReturnType<typeof inspectNazareTheme>,
+): string {
+	const summary = summarizeThemeGraph(graph);
+	const lines = [
+		`Theme graph: ${summary.fileCount} files`,
+		`Pages ${summary.pageCount} · sections ${summary.sectionCount} · snippets ${summary.snippetCount} · components ${summary.componentCount}`,
+		`Unresolved ${summary.unresolvedCount} · metafield reads without definitions ${summary.brokenMetafieldReadCount}`,
+		`Affected pages ${summary.affectedPageCount}`,
+		`Issues ${summary.issueCount} (${summary.errorCount} errors, ${summary.warningCount} warnings)`,
+	];
+	if (graph.issues.length > 0) {
+		lines.push("", "Issues:");
+		for (const issue of graph.issues.slice(0, 10)) {
+			lines.push(`- [${issue.severity}] ${issue.code}: ${issue.message}`);
+		}
+		if (graph.issues.length > 10) {
+			lines.push(`- ... ${graph.issues.length - 10} more`);
+		}
+	}
+	return lines.join("\n");
+}
+
+async function readThemeCheckPolicy(
+	projectRoot: string,
+): Promise<{ path: string; contents: string } | undefined> {
+	return readOptionalInspectArtifact(projectRoot, ".theme-check.yml");
+}
+
+async function readMetafieldSnapshot(
+	projectRoot: string,
+): Promise<{ path: string; contents: string } | undefined> {
+	return readOptionalInspectArtifact(projectRoot, ".shopify/metafields.json");
+}
+
+function isOutsideRoot(root: string, path: string): boolean {
+	const relativePath = relative(root, path);
+	return (
+		relativePath === ".." ||
+		relativePath.startsWith(`..${sep}`) ||
+		isAbsolute(relativePath)
+	);
+}
+
+async function readThemeAnalysisCache(
+	path: string,
+): Promise<ThemeAnalysisCache> {
+	let raw: string;
+	try {
+		raw = await readFile(path, "utf8");
+	} catch (error) {
+		if (isMissingFileError(error)) return { version: 1, entries: {} };
+		throw new Error(
+			`Unable to read theme analysis cache ${path}: ${errorMessage(error)}`,
+		);
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (error) {
+		throw new Error(
+			`Invalid JSON in theme analysis cache ${path}: ${errorMessage(error)}`,
+		);
+	}
+	try {
+		return parsePersistedInspectFactCache(parsed);
+	} catch (error) {
+		throw new Error(
+			`Invalid theme analysis cache ${path}: ${errorMessage(error)}`,
+		);
+	}
+}
+
+async function writeThemeAnalysisCache(
+	path: string,
+	cache: ThemeAnalysisCache,
+): Promise<void> {
+	const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+	try {
+		await writeFile(temporaryPath, serializePersistedInspectFactCache(cache));
+		await rename(temporaryPath, path);
+	} catch (error) {
+		try {
+			await rm(temporaryPath, { force: true });
+		} catch (cleanupError) {
+			throw new AggregateError(
+				[error, cleanupError],
+				`Unable to write theme analysis cache ${path} and remove temporary file ${temporaryPath}`,
+			);
+		}
+		throw new Error(
+			`Unable to write theme analysis cache ${path}: ${errorMessage(error)}`,
+		);
+	}
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 async function writeDumpFiles(
@@ -564,11 +794,19 @@ function resolveRegistryUrl(url: string, projectRoot: string): string {
 async function readProjectManifest(
 	projectRoot: string,
 ): Promise<ProjectManifest> {
-	const raw = await readFile(join(projectRoot, THEME_MANIFEST), "utf8").catch(
-		() => undefined,
-	);
-	if (raw === undefined) return {};
-	return JSON.parse(raw) as ProjectManifest;
+	const path = join(projectRoot, THEME_MANIFEST);
+	let raw: string;
+	try {
+		raw = await readFile(path, "utf8");
+	} catch (error) {
+		if (isMissingFileError(error)) return {};
+		throw new Error(`Unable to read ${path}: ${errorMessage(error)}`);
+	}
+	try {
+		return JSON.parse(raw) as ProjectManifest;
+	} catch (error) {
+		throw new Error(`Invalid JSON in ${path}: ${errorMessage(error)}`);
+	}
 }
 
 async function writeProjectManifest(

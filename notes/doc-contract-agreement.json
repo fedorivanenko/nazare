@@ -1,0 +1,14 @@
+{
+	"version": 1,
+	"themes": {
+		"alkamind-nazare": {
+			"declared": 131,
+			"compared": 131,
+			"agree": 89,
+			"declaredOptionalButInferredRequired": 16,
+			"declaredRequiredButInferredOptional": 16,
+			"declaredRequiredButInferredUnknown": 5,
+			"other": 5
+		}
+	}
+}

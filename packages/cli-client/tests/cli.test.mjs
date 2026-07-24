@@ -5,6 +5,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -533,6 +534,226 @@ test("cli: registry add/use stores project registry and add reads it", async () 
 			assert.deepEqual(manifest.registries, { local: "file:.registry" });
 			assert.deepEqual(manifest.installed, { "@nazare/button": "0.1.0" });
 			assert.ok(manifest.installedFiles["@nazare/button"]["button.nz.liquid"]);
+		},
+	);
+});
+
+test("cli: inspect honors inspect.exclude and reports every excluded file", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+				inspect: { exclude: ["snippets/reploChunk.*.liquid"] },
+			}),
+			"sections/main.liquid": "{% render 'card' %}",
+			"snippets/card.liquid": "{{ product.title }}",
+			"snippets/reploChunk.abc.0.liquid": "<div>generated</div>",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 0);
+			const graph = JSON.parse(result.stdout);
+
+			const excluded = graph.issues.filter(
+				(issue) => issue.code === "THEME_FILE_EXCLUDED",
+			);
+			assert.equal(excluded.length, 1);
+			assert.equal(excluded[0].span.file, "snippets/reploChunk.abc.0.liquid");
+			assert.equal(
+				graph.nodes.some((node) => node.id.includes("reploChunk")),
+				false,
+			);
+			assert.equal(
+				graph.nodes.some((node) => node.id.includes("snippets/card.liquid")),
+				true,
+			);
+		},
+	);
+});
+
+test("cli: inspect can render a concise human report", async () => {
+	await withProject(
+		{
+			"sections/main.liquid": "{% render 'card' %}",
+			"snippets/card.liquid": "{{ product.title }}",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"text",
+			);
+			assert.equal(result.status, 0);
+			assert.deepEqual(result.stdout.trim().split("\n"), [
+				"Theme graph: 2 files",
+				"Pages 0 · sections 1 · snippets 1 · components 0",
+				"Unresolved 0 · metafield reads without definitions 0",
+				"Affected pages 0",
+				"Issues 0 (0 errors, 0 warnings)",
+			]);
+		},
+	);
+});
+
+test("cli: inspect loads metafield snapshot and reports graph queries", {
+	smoke: true,
+}, async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+			}),
+			"snippets/card.liquid": "{{ product.metafields.custom.subtitle }}",
+			".shopify/metafields.json": JSON.stringify([
+				{ owner: "product", namespace: "custom", key: "subtitle" },
+			]),
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 0);
+			const graph = JSON.parse(result.stdout);
+			assert.equal(graph.metafields.state, "present");
+			assert.equal(graph.metafields.consumedDefinitionIds.length, 1);
+		},
+	);
+});
+
+test("cli: inspect treats missing external artifacts as unknown", {
+	smoke: true,
+}, async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+			}),
+			"snippets/card.liquid": "{{ product.metafields.custom.subtitle }}",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 0);
+			assert.equal(JSON.parse(result.stdout).metafields.state, "unknown");
+		},
+	);
+});
+
+test("cli: inspect rejects a malformed cache instead of silently replacing it", async () => {
+	await withProject(
+		{
+			"snippets/card.liquid": "{{ product.title }}",
+			".nazare-out/inspect-cache-v2.json": "{invalid",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 1);
+			assert.match(result.stderr, /Invalid JSON in theme analysis cache/);
+		},
+	);
+});
+
+test("cli: inspect rejects roots whose symlink target escapes the project", async () => {
+	const outside = mkdtempSync(join(tmpdir(), "nazare-cli-outside-"));
+	try {
+		writeFileSync(join(outside, "secret.liquid"), "outside");
+		await withProject({}, async (cwd) => {
+			symlinkSync(outside, join(cwd, "linked-theme"), "dir");
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				"linked-theme",
+				"--format",
+				"json",
+			);
+
+			assert.equal(result.status, 1);
+			assert.match(result.stderr, /resolves outside the project root/);
+			assert.doesNotMatch(result.stdout, /secret/);
+		});
+	} finally {
+		await rm(outside, { recursive: true, force: true });
+	}
+});
+
+test("cli: inspect rejects malformed nested cache records", async () => {
+	await withProject({ "snippets/card.liquid": "{{ title }}" }, async (cwd) => {
+		const first = await runCli(
+			cwd,
+			"inspect",
+			"theme",
+			".",
+			"--format",
+			"json",
+		);
+		assert.equal(first.status, 0, first.stderr);
+		const cachePath = join(cwd, ".nazare-out", "inspect-cache-v2.json");
+		const cache = JSON.parse(readFileSync(cachePath, "utf8"));
+		cache.entries["snippets/card.liquid"].facts = [null];
+		writeFileSync(cachePath, JSON.stringify(cache));
+
+		const second = await runCli(
+			cwd,
+			"inspect",
+			"theme",
+			".",
+			"--format",
+			"json",
+		);
+		assert.equal(second.status, 1);
+		assert.match(second.stderr, /Invalid theme analysis cache/);
+	});
+});
+
+test("cli: inspect rejects a malformed inspect.exclude instead of ignoring it", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+				inspect: { exclude: "snippets/*.liquid" },
+			}),
+			"snippets/card.liquid": "{{ product.title }}",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 1);
+			assert.match(result.stderr, /inspect\.exclude/);
 		},
 	);
 });

@@ -9,7 +9,7 @@ import type {
 	PropTypeInfo,
 	SourceSpan,
 } from "@nazare/core";
-import type { DocumentNode, LiquidHtmlNode } from "@shopify/liquid-html-parser";
+import type { DocumentNode } from "@shopify/liquid-html-parser";
 
 /** @deprecated Use {@link Diagnostic} from @nazare/core. */
 export type ParseDiagnostic = Diagnostic;
@@ -155,12 +155,6 @@ export type NazareStyleNode = {
 	bodySpan: SourceSpan;
 };
 
-export type NazareOpaqueNode = {
-	type: "OpaqueLiquidHtml";
-	node: LiquidHtmlNode;
-	span: SourceSpan;
-};
-
 export type NazareNode =
 	| NazareImportNode
 	| NazareComponentNode
@@ -173,12 +167,11 @@ export type NazareNode =
 	| NazareScriptNode
 	| NazareStyleNode
 	| NazareBlocksNode
-	| NazareAssetImportNode
-	| NazareOpaqueNode;
+	| NazareAssetImportNode;
 
-/** A literal section.settings.x / block.settings.x read anywhere in the file. */
+/** A literal settings.x / section.settings.x / block.settings.x read. */
 export type SettingsRead = {
-	object: "section" | "block";
+	object: "settings" | "section" | "block";
 	name: string;
 	span: SourceSpan;
 };

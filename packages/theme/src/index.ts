@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { type Dirent, readFileSync, type Stats } from "node:fs";
 import {
 	mkdir,
 	readdir,
@@ -7,24 +7,18 @@ import {
 	stat,
 	writeFile,
 } from "node:fs/promises";
-import {
-	basename,
-	dirname,
-	extname,
-	join,
-	relative,
-	resolve,
-	sep,
-} from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import type {
 	EmittedFile,
 	NazareComponent,
 	NazareExtensionRegistration,
 } from "@nazare/compiler";
 import {
-	buildNazareTheme,
-	checkComponentScripts,
+	baseNameOf,
+	buildNazareThemeWorkspace,
+	importSpecifiers,
 	parseNazareLiquid,
+	resolveImportPath,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
 import type { Diagnostic } from "@nazare/core";
@@ -130,7 +124,7 @@ export async function buildTheme(
 	const outDir = requireStringOption(options.outDir, "outDir");
 	assertSafeOutDir(projectRoot, sourceRoot, outDir);
 	const rootAbs = resolve(projectRoot, sourceRoot);
-	const rootStat = await stat(rootAbs).catch(() => undefined);
+	const rootStat = await optionalStat(rootAbs);
 	if (!rootStat) throw new Error(`Source path not found: ${sourceRoot}`);
 
 	const sourceFiles = rootStat.isFile()
@@ -140,11 +134,56 @@ export async function buildTheme(
 	const readProjectFile = (path: string): string | undefined => {
 		try {
 			return readFileSync(join(projectRoot, path), "utf8");
-		} catch {
-			return undefined;
+		} catch (error) {
+			if (isFileNotFoundError(error)) return undefined;
+			throw error;
 		}
 	};
+	// The workspace reads only the files it is given; imports resolve against
+	// that set, never the filesystem. A single-file build therefore needs the
+	// entry's transitive import closure in the workspace, or every import
+	// would diagnose as unreadable.
+	const workspaceSourceFiles = rootStat.isFile()
+		? nazareImportClosure(sourceFiles[0], readProjectFile)
+		: sourceFiles;
+	const workspacePathForProjectPath = (path: string): string =>
+		rootStat.isFile() ? path : relativeSourcePath(sourceRoot, path);
+	const workspacePathByProjectPath = new Map(
+		workspaceSourceFiles.map((path) => [
+			path,
+			workspacePathForProjectPath(path),
+		]),
+	);
+	const projectPathByWorkspacePath = new Map(
+		[...workspacePathByProjectPath].map(([projectPath, workspacePath]) => [
+			workspacePath,
+			projectPath,
+		]),
+	);
+	const workspaceFiles = await Promise.all(
+		workspaceSourceFiles.map(async (path) => ({
+			path: workspacePathForProjectPath(path),
+			contents: await readFile(join(projectRoot, path), "utf8"),
+		})),
+	);
 
+	// One workspace build for the whole theme: every component compiles,
+	// checks its dependencies, and emits in a single pass over shared caches —
+	// never one workspace analysis per component.
+	const workspaceBuild = rootStat.isFile()
+		? buildNazareThemeWorkspace(workspaceFiles, {
+				scope: { kind: "closure", path: sourceFiles[0] },
+				name: artifactBaseName(sourceFiles[0]),
+				strictness: options.strictness,
+				plainLiquidParseMode: "strict",
+				emitOnError: false,
+			})
+		: buildNazareThemeWorkspace(workspaceFiles, {
+				scope: { kind: "workspace" },
+				strictness: options.strictness,
+				plainLiquidParseMode: "strict",
+				emitOnError: false,
+			});
 	const planned = new Map<string, PlannedFile>();
 	// Merchant-owned data files (settings values, section instances, block
 	// values) discovered in the source tree. These are only seeds: they populate
@@ -155,12 +194,58 @@ export async function buildTheme(
 	// merged field-by-field with the merchant's edits rather than copied over.
 	const sourceLocales = new Map<string, PlannedFile>();
 	const conflicts: string[] = [];
-	const issues: Diagnostic[] = [];
+	const issues: Diagnostic[] = [...workspaceBuild.issues];
 	const notes: Diagnostic[] = [];
 	const compiled: string[] = [];
 	const components: NazareComponent[] = [];
 	const copied: string[] = [];
 	const manifest: SchemaManifest = { version: 1, sections: {} };
+
+	for (const artifact of workspaceBuild.artifacts) {
+		const sourceFile =
+			projectPathByWorkspacePath.get(artifact.path) ?? artifact.path;
+		components.push({
+			file: sourceFile,
+			source: artifact.source,
+			schema: artifact.ast.schema,
+			ir: artifact.ir,
+			contract: artifact.contract,
+			importedContracts: artifact.contracts,
+			canEmit: artifact.canEmit,
+		});
+		notes.push(...artifact.notes);
+		const emittedFiles = artifact.emitted?.files ?? [];
+		for (const themeFile of emittedFiles) {
+			planFile(
+				planned,
+				conflicts,
+				themeFile.path,
+				themeFile.contents,
+				sourceFile,
+			);
+		}
+		const schemaBearing = emittedFiles.find(
+			(themeFile) =>
+				(themeFile.path.startsWith("sections/") ||
+					themeFile.path.startsWith("blocks/")) &&
+				themeFile.path.endsWith(".liquid"),
+		);
+		if (schemaBearing) {
+			const schema = themeSchemaFromIR(artifact.ir, {
+				name: artifactBaseName(sourceFile),
+				contracts: artifact.contracts,
+			});
+			manifest.sections[schemaBearing.path] = {
+				settings: schema.settings
+					.filter(
+						(setting): setting is typeof setting & { id: string } =>
+							typeof setting.id === "string",
+					)
+					.map((setting) => ({ id: setting.id, type: setting.type })),
+				blocks: (schema.blocks ?? []).map((block) => ({ type: block.type })),
+			};
+		}
+	}
 
 	for (const file of sourceFiles) {
 		const sourceRelative = relativeSourcePath(sourceRoot, file);
@@ -168,71 +253,7 @@ export async function buildTheme(
 
 		if (file.endsWith(".nz.liquid")) {
 			compiled.push(file);
-			const built = buildNazareTheme(contents, file, {
-				name: artifactBaseName(file),
-				readFile: readProjectFile,
-				strictness: options.strictness,
-				emitOnError: false,
-			});
-			components.push({
-				file,
-				source: contents,
-				schema: built.ast.schema,
-				ir: built.ir,
-				contract: built.contract,
-				importedContracts: built.contracts,
-				canEmit: built.canEmit,
-			});
-			issues.push(
-				...built.issues,
-				...checkComponentScripts(built.ir, { readFile: readProjectFile }),
-			);
-			notes.push(...built.notes);
-			for (const themeFile of built.emitted.files) {
-				planFile(planned, conflicts, themeFile.path, themeFile.contents, file);
-			}
-			// Fingerprint the generated schema for sections and blocks (the only
-			// kinds that carry one) so drift against saved merchant data is visible.
-			const schemaBearing = built.emitted.files.find(
-				(themeFile) =>
-					(themeFile.path.startsWith("sections/") ||
-						themeFile.path.startsWith("blocks/")) &&
-					themeFile.path.endsWith(".liquid"),
-			);
-			if (schemaBearing) {
-				const schema = themeSchemaFromIR(built.ir, {
-					name: artifactBaseName(file),
-					contracts: built.contracts,
-				});
-				manifest.sections[schemaBearing.path] = {
-					settings: schema.settings
-						.filter(
-							(setting): setting is typeof setting & { id: string } =>
-								typeof setting.id === "string",
-						)
-						.map((setting) => ({ id: setting.id, type: setting.type })),
-					blocks: (schema.blocks ?? []).map((block) => ({ type: block.type })),
-				};
-			}
 			continue;
-		}
-
-		if (isPlainLiquidThemeFile(sourceRelative)) {
-			const parsed = parseNazareLiquid(contents, file);
-			issues.push(
-				...parsed.diagnostics.map((issue) => ({
-					...issue,
-					phase: "parse" as const,
-				})),
-			);
-			notes.push(
-				...parsed.notes.map((note) => ({ ...note, phase: "parse" as const })),
-			);
-		}
-
-		if (file.endsWith(".json")) {
-			const invalid = validateJson(contents, file);
-			if (invalid) issues.push(invalid);
 		}
 
 		const outputPath = outputPathForSource(sourceRelative);
@@ -309,10 +330,9 @@ export async function buildTheme(
 	// section/setting rename. The same migrations are applied to the prior schema
 	// lock below, so a migrated rename stops registering as drift.
 	const migrationsPath = options.migrationsPath ?? DEFAULT_MIGRATIONS;
-	const migrationsRaw = await readFile(
+	const migrationsRaw = await readOptionalFile(
 		join(projectRoot, migrationsPath),
-		"utf8",
-	).catch(() => undefined);
+	);
 	let migrations: Migration[] = [];
 	if (migrationsRaw !== undefined) {
 		const parsed = parseMigrations(migrationsRaw, migrationsPath);
@@ -330,7 +350,7 @@ export async function buildTheme(
 	// applies the full list (idempotent on the schema lock).
 	const ledgerPath = options.migrationsLedgerPath ?? DEFAULT_MIGRATIONS_LEDGER;
 	const targetId = options.targetId ?? outDir;
-	const ledger = await readLedger(join(projectRoot, ledgerPath));
+	const ledger = await readLedger(join(projectRoot, ledgerPath), issues);
 	const alreadyApplied = new Set(ledger.applied[targetId] ?? []);
 	const unapplied = migrations.filter((m) => !alreadyApplied.has(m.id));
 
@@ -368,7 +388,10 @@ export async function buildTheme(
 	// the target, and the committed base (last build's source) as ancestor. The
 	// base is then rewritten to the current source for next time.
 	const localeBasePath = options.localeBasePath ?? DEFAULT_LOCALE_BASE;
-	const localeBase = await readLocaleBase(join(projectRoot, localeBasePath));
+	const localeBase = await readLocaleBase(
+		join(projectRoot, localeBasePath),
+		issues,
+	);
 	const nextLocaleBase: Record<string, unknown> = {};
 	const mergedLocales: string[] = [];
 	for (const path of new Set([
@@ -408,6 +431,17 @@ export async function buildTheme(
 		planned.set(path, {
 			contents: `${JSON.stringify(value, null, 2)}\n`,
 			from: sourceLocales.get(path)?.from ?? path,
+		});
+	}
+
+	if (hasErrors(issues)) {
+		return emptyThemeBuildResult({
+			compiled,
+			copied,
+			issues,
+			notes,
+			conflicts,
+			manifestPath: options.manifestPath,
 		});
 	}
 
@@ -529,7 +563,7 @@ async function readExistingLocales(
 ): Promise<Map<string, string>> {
 	const found = new Map<string, string>();
 	const dir = join(outputRoot, "locales");
-	const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+	const entries = await readOptionalDirectory(dir);
 	for (const dirent of entries) {
 		const rel = `locales/${dirent.name}`;
 		if (dirent.isFile() && isLocaleMergePath(rel)) {
@@ -542,16 +576,34 @@ async function readExistingLocales(
 // The committed merge base maps each locale path to its source tree from the
 // last build. A missing or malformed base yields an empty ancestor set, which
 // the merge treats as a safe 2-way (merchant-preserving) merge.
-async function readLocaleBase(path: string): Promise<Record<string, unknown>> {
-	const raw = await readFile(path, "utf8").catch(() => undefined);
-	if (raw !== undefined) {
-		try {
-			const parsed = JSON.parse(raw) as { files?: Record<string, unknown> };
-			if (parsed.files && typeof parsed.files === "object") return parsed.files;
-		} catch {
-			// fall through to an empty base
+async function readLocaleBase(
+	path: string,
+	issues: Diagnostic[],
+): Promise<Record<string, unknown>> {
+	const raw = await readOptionalFile(path);
+	if (raw === undefined) return {};
+	try {
+		const parsed = JSON.parse(raw) as { files?: Record<string, unknown> };
+		if (
+			parsed.files &&
+			typeof parsed.files === "object" &&
+			!Array.isArray(parsed.files)
+		) {
+			return parsed.files;
 		}
+	} catch (error) {
+		issues.push(
+			optionalStateDiagnostic("THEME_LOCALE_BASE_INVALID", path, error),
+		);
+		return {};
 	}
+	issues.push(
+		optionalStateDiagnostic(
+			"THEME_LOCALE_BASE_INVALID",
+			path,
+			new Error('expected an object with a "files" object'),
+		),
+	);
 	return {};
 }
 
@@ -577,18 +629,34 @@ function parseLocale(
 type MigrationLedger = { version: 1; applied: Record<string, string[]> };
 
 // A missing or malformed ledger is treated as "nothing applied yet".
-async function readLedger(path: string): Promise<MigrationLedger> {
-	const raw = await readFile(path, "utf8").catch(() => undefined);
-	if (raw !== undefined) {
-		try {
-			const parsed = JSON.parse(raw) as Partial<MigrationLedger>;
-			if (parsed.applied && typeof parsed.applied === "object") {
-				return { version: 1, applied: parsed.applied };
-			}
-		} catch {
-			// fall through to a fresh ledger
+async function readLedger(
+	path: string,
+	issues: Diagnostic[],
+): Promise<MigrationLedger> {
+	const raw = await readOptionalFile(path);
+	if (raw === undefined) return { version: 1, applied: {} };
+	try {
+		const parsed = JSON.parse(raw) as Partial<MigrationLedger>;
+		if (
+			parsed.applied &&
+			typeof parsed.applied === "object" &&
+			!Array.isArray(parsed.applied)
+		) {
+			return { version: 1, applied: parsed.applied };
 		}
+	} catch (error) {
+		issues.push(
+			optionalStateDiagnostic("THEME_MIGRATION_LEDGER_INVALID", path, error),
+		);
+		return { version: 1, applied: {} };
 	}
+	issues.push(
+		optionalStateDiagnostic(
+			"THEME_MIGRATION_LEDGER_INVALID",
+			path,
+			new Error('expected an object with an "applied" object'),
+		),
+	);
 	return { version: 1, applied: {} };
 }
 
@@ -618,7 +686,7 @@ async function readExistingData(
 ): Promise<Map<string, string>> {
 	const found = new Map<string, string>();
 	const walk = async (dir: string, base: string): Promise<void> => {
-		const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+		const entries = await readOptionalDirectory(dir);
 		for (const dirent of entries) {
 			const full = join(dir, dirent.name);
 			const rel = base ? `${base}/${dirent.name}` : dirent.name;
@@ -714,12 +782,6 @@ function outputPathForSource(sourceRelative: string): string | undefined {
 	if (!top) return undefined;
 	if (THEME_DIRS.has(top)) return sourceRelative;
 	return undefined;
-}
-
-function isPlainLiquidThemeFile(sourceRelative: string): boolean {
-	return (
-		sourceRelative.endsWith(".liquid") && !sourceRelative.endsWith(".nz.liquid")
-	);
 }
 
 function relativeSourcePath(sourceRoot: string, file: string): string {
@@ -955,18 +1017,52 @@ function planFile(
 	planned.set(path, { contents, from });
 }
 
-function validateJson(contents: string, file: string): Diagnostic | undefined {
+async function optionalStat(path: string): Promise<Stats | undefined> {
 	try {
-		JSON.parse(contents);
-		return undefined;
+		return await stat(path);
 	} catch (error) {
-		return {
-			severity: "error",
-			phase: "parse",
-			code: "THEME_INVALID_JSON",
-			message: `${file} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
-		};
+		if (isFileNotFoundError(error)) return undefined;
+		throw error;
 	}
+}
+
+async function readOptionalFile(path: string): Promise<string | undefined> {
+	try {
+		return await readFile(path, "utf8");
+	} catch (error) {
+		if (isFileNotFoundError(error)) return undefined;
+		throw error;
+	}
+}
+
+async function readOptionalDirectory(path: string): Promise<Dirent[]> {
+	try {
+		return await readdir(path, { withFileTypes: true });
+	} catch (error) {
+		if (isFileNotFoundError(error)) return [];
+		throw error;
+	}
+}
+
+function optionalStateDiagnostic(
+	code: string,
+	path: string,
+	error: unknown,
+): Diagnostic {
+	return {
+		severity: code === "THEME_MIGRATION_LEDGER_INVALID" ? "error" : "warning",
+		phase: "parse",
+		code,
+		message: `${path}: ${error instanceof Error ? error.message : String(error)}`,
+	};
+}
+
+function isFileNotFoundError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		"code" in error &&
+		(error as NodeJS.ErrnoException).code === "ENOENT"
+	);
 }
 
 function toRootRelativePosix(projectRoot: string, abs: string): string {
@@ -977,8 +1073,45 @@ function toRootRelativePosix(projectRoot: string, abs: string): string {
 	return rel;
 }
 
+/** The emitted name of a component: its basename, known extensions stripped. */
 function artifactBaseName(entryFile: string): string {
-	let name = basename(entryFile);
-	while (extname(name)) name = basename(name, extname(name));
-	return name;
+	return baseNameOf(entryFile);
+}
+
+/**
+ * The entry file plus everything it transitively imports: component imports
+ * and asset imports from .nz.liquid files, and relative module imports from
+ * .ts/.js behaviors (paths are project-relative, as the parser resolves
+ * them). Unreadable imports are skipped here; the workspace build reports
+ * them as IMPORT_NOT_FOUND with a span.
+ */
+function nazareImportClosure(
+	entry: string,
+	read: (path: string) => string | undefined,
+): string[] {
+	const visited = new Set<string>();
+	const pending = [entry];
+	while (pending.length > 0) {
+		const path = pending.pop();
+		if (path === undefined || visited.has(path)) continue;
+		const contents = read(path);
+		if (contents === undefined) continue;
+		visited.add(path);
+		if (path.endsWith(".nz.liquid")) {
+			const ast = parseNazareLiquid(contents, path);
+			for (const node of ast.nodes) {
+				if (node.type === "NazareImport" || node.type === "NazareAssetImport") {
+					pending.push(node.path);
+				}
+			}
+			continue;
+		}
+		if (/\.(ts|js)$/.test(path)) {
+			for (const specifier of importSpecifiers(contents)) {
+				const resolved = resolveImportPath(path, specifier);
+				if (resolved !== undefined) pending.push(resolved);
+			}
+		}
+	}
+	return [...visited].sort((a, b) => a.localeCompare(b));
 }

@@ -6,17 +6,25 @@ import type { Diagnostic, SourceSpan } from "@nazare/core";
 import {
 	type DocumentNode,
 	NodeTypes,
+	toLiquidAST,
 	toLiquidHtmlAST,
 	walk,
 } from "@shopify/liquid-html-parser";
 import type { AuthoredSchema, SettingsRead } from "./ast.js";
+import {
+	extractAuthoredSchema,
+	isLiquidString,
+	isVariableLookup,
+	liquidTagMarkup,
+	parseLiquidError,
+} from "./liquid-ast.js";
 import { scanSettingsReadsFromLiquidAst } from "./settings-reads.js";
 import { spanFromOffsets } from "./source.js";
 
-export type PlainLiquidParseMode = "strict" | "tolerant";
+export type PlainLiquidParseMode = "strict" | "liquid-only";
 
 export type PlainLiquidOptions = {
-	/** Defaults to strict for build/validation; use tolerant for editor previews. */
+	/** Defaults to strict HTML + Liquid validation; liquid-only masks HTML but still validates Liquid structure. */
 	parseMode?: PlainLiquidParseMode;
 };
 
@@ -33,6 +41,7 @@ export type PlainLiquidDependencyKind =
 
 export type PlainLiquidDependency = {
 	kind: PlainLiquidDependencyKind;
+	invocationKind?: "render" | "include";
 	/** Shopify theme-relative path when statically known and valid. */
 	path?: string;
 	/** Static dependency name. `layout none` intentionally has no path. */
@@ -77,22 +86,9 @@ type LiquidTagLike = {
 	position: { start: number; end: number };
 };
 
-type LiquidStringLike = {
-	type: "String";
-	value: string;
-	position: { start: number; end: number };
-	source?: string;
-};
-
 type RenderMarkupLike = {
 	type: "RenderMarkup";
 	snippet?: unknown;
-};
-
-type VariableLookupLike = {
-	type: "VariableLookup";
-	name: string;
-	lookups?: unknown[];
 };
 
 type DependencyExtraction =
@@ -110,11 +106,22 @@ export function parsePlainLiquid(
 	const diagnostics: Diagnostic[] = [];
 	let ast: DocumentNode;
 	let factsCollected = true;
+	const analysisSource = sourceForLiquidAnalysis(source);
 	try {
-		ast = toLiquidHtmlAST(source, {
-			mode: parseMode,
-			allowUnclosedDocumentNode: parseMode === "tolerant",
-		});
+		if (parseMode === "liquid-only") {
+			const liquidOnlySource = sourceForLiquidOnlyAnalysis(analysisSource);
+			ast = containsLiquidSyntax(liquidOnlySource)
+				? toLiquidAST(liquidOnlySource, {
+						mode: "strict",
+						allowUnclosedDocumentNode: false,
+					})
+				: emptyAst();
+		} else {
+			ast = toLiquidHtmlAST(analysisSource, {
+				mode: "strict",
+				allowUnclosedDocumentNode: false,
+			});
+		}
 	} catch (error) {
 		factsCollected = false;
 		diagnostics.push(parseLiquidError(error, file));
@@ -150,16 +157,71 @@ export function parsePlainLiquid(
 	};
 }
 
-function parseLiquidError(error: unknown, file: string): Diagnostic {
-	const loc = (error as { loc?: { start?: { line: number; column: number } } })
-		.loc;
-	const start = loc?.start ?? { line: 1, column: 1 };
-	return {
-		severity: "error",
-		code: "NAZARE_PARSE_LIQUID",
-		message: `Liquid parse error: ${error instanceof Error ? error.message : String(error)}`,
-		span: { file, start, end: start },
-	};
+/**
+ * HTML script/style bodies from page builders can contain megabytes of
+ * generated CSS/JavaScript. LiquidHTML parsing that syntax as raw text is
+ * needlessly expensive. Blank non-Liquid body text while preserving length,
+ * newlines, tags, and Liquid expressions, so all source offsets remain exact.
+ */
+function sourceForLiquidAnalysis(source: string): string {
+	return source.replace(
+		/<(style|script)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+		(block) => {
+			const bodyStart = block.indexOf(">");
+			const bodyEnd = block.lastIndexOf("</");
+			if (bodyStart < 0 || bodyEnd <= bodyStart) return block;
+			const start = block.slice(0, bodyStart + 1);
+			const body = block.slice(bodyStart + 1, bodyEnd);
+			const end = block.slice(bodyEnd);
+			return `${start}${blankNonLiquidCharacters(body)}${end}`;
+		},
+	);
+}
+
+/**
+ * Page builders publish megabytes of generated markup as `.liquid` files, many
+ * chunks of which hold no Liquid at all. Once masking has run, a source without
+ * `{{` or `{%` can only parse into text nodes, so every AST-derived fact —
+ * schema, settings reads, dependencies, expression facts — is necessarily
+ * empty. Skipping the parse is an optimization, not a policy: no fact that the
+ * parse could have produced is lost. Textual capability heuristics run against
+ * the raw source elsewhere and are unaffected.
+ */
+function containsLiquidSyntax(maskedSource: string): boolean {
+	return maskedSource.includes("{{") || maskedSource.includes("{%");
+}
+
+/**
+ * Bodies that carry meaning even though they are not Liquid expressions, and so
+ * must survive masking: authored schema, and `{% doc %}` annotations, whose
+ * `@param` lines are the declared component contract.
+ */
+const PRESERVED_BLOCK_BODIES = [
+	/{%-?\s*schema\s*-?%}[\s\S]*?{%-?\s*endschema\s*-?%}/gi,
+	/{%-?\s*doc\s*-?%}[\s\S]*?{%-?\s*enddoc\s*-?%}/gi,
+];
+
+function sourceForLiquidOnlyAnalysis(source: string): string {
+	let masked = blankNonLiquidCharacters(source);
+	for (const pattern of PRESERVED_BLOCK_BODIES) {
+		for (const match of source.matchAll(pattern)) {
+			const start = match.index ?? 0;
+			masked = `${masked.slice(0, start)}${match[0]}${masked.slice(start + match[0].length)}`;
+		}
+	}
+	return masked;
+}
+
+function blankNonLiquidCharacters(source: string): string {
+	let result = "";
+	let offset = 0;
+	for (const match of source.matchAll(/{{-?[\s\S]*?-?}}|{%-?[\s\S]*?-?%}/g)) {
+		const index = match.index ?? offset;
+		result += source.slice(offset, index).replace(/[^\n\r]/g, " ");
+		result += match[0];
+		offset = index + match[0].length;
+	}
+	return result + source.slice(offset).replace(/[^\n\r]/g, " ");
 }
 
 function plainLiquidFactsSkipped(file: string): Diagnostic {
@@ -206,23 +268,6 @@ function emptyAst(): DocumentNode {
 	});
 }
 
-function extractAuthoredSchema(
-	ast: DocumentNode,
-	source: string,
-	file: string,
-): AuthoredSchema | undefined {
-	for (const node of ast.children) {
-		if (node.type !== NodeTypes.LiquidRawTag || node.name !== "schema") {
-			continue;
-		}
-		return {
-			source: node.body.value,
-			span: spanFromOffsets(source, file, node.position),
-		};
-	}
-	return undefined;
-}
-
 function collectDependencies(
 	ast: DocumentNode,
 	source: string,
@@ -252,6 +297,10 @@ function collectDependencies(
 		}
 		dependencies.push({
 			kind,
+			invocationKind:
+				node.name === "render" || node.name === "include"
+					? node.name
+					: undefined,
 			name,
 			path: name && validation.valid ? dependencyPath(kind, name) : undefined,
 			source: liquidTagMarkup(source, node.position, node.name),
@@ -296,38 +345,6 @@ function dependencyName(extraction: DependencyExtraction): string | undefined {
 
 function isRenderMarkup(markup: unknown): markup is RenderMarkupLike {
 	return !!markup && (markup as { type?: unknown }).type === "RenderMarkup";
-}
-
-function isVariableLookup(node: unknown): node is VariableLookupLike {
-	return (
-		!!node &&
-		(node as { type?: unknown }).type === "VariableLookup" &&
-		typeof (node as { name?: unknown }).name === "string"
-	);
-}
-
-function isLiquidString(node: unknown): node is LiquidStringLike {
-	const position = (node as { position?: unknown } | undefined)?.position;
-	return (
-		!!node &&
-		(node as { type?: unknown }).type === "String" &&
-		typeof (node as { value?: unknown }).value === "string" &&
-		!!position &&
-		typeof (position as { start?: unknown }).start === "number" &&
-		typeof (position as { end?: unknown }).end === "number"
-	);
-}
-
-function liquidTagMarkup(
-	source: string,
-	position: { start: number; end: number },
-	name: string,
-): string {
-	const raw = source.slice(position.start, position.end);
-	return raw
-		.replace(new RegExp(`^\\s*\\{%-?\\s*${name}\\b`), "")
-		.replace(/-?%}\s*$/, "")
-		.trim();
 }
 
 function isDependencyTag(tagName: string): boolean {

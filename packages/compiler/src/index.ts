@@ -2,8 +2,8 @@
  * Public API of the Nazare compiler.
  *
  * Explicit flow:
- * frontend → semantic facts → graph/check/validate. Emit is separate;
- * buildNazareTheme runs compile plus emit and aggregates all issues.
+ * frontend → semantic facts → graph/check/validate. Workspace build is separate;
+ * buildNazareThemeWorkspace analyzes theme files, selects a scope, emits, and aggregates issues.
  */
 import type {
 	ArtifactContract,
@@ -13,7 +13,6 @@ import type {
 	Diagnostic,
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
-import { type EmitResult, type EmitThemeOptions, emitTheme } from "./emit.js";
 import type {
 	CompileInput,
 	CompilerFrontend,
@@ -28,7 +27,6 @@ import {
 } from "./frontends/plain-liquid.js";
 import { artifactGraphFromIR } from "./graph.js";
 import {
-	markDiagnostics,
 	type ProjectedArtifact,
 	projectArtifact,
 	projectIR,
@@ -39,7 +37,6 @@ import type {
 	CompilePlainLiquidResult,
 	PlainLiquidAst,
 } from "./plain-liquid.js";
-import { checkDependencies } from "./resolver.js";
 import { bindArtifactIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
 
@@ -58,7 +55,6 @@ export type {
 	NazareAst,
 	NazareImportNode,
 	NazareNode,
-	NazareOpaqueNode,
 	NazarePassedProp,
 	NazarePropDeclaration,
 	NazarePropsNode,
@@ -66,6 +62,7 @@ export type {
 	NazareRootMarkerNode,
 	ParseDiagnostic,
 } from "./ast.js";
+export { importSpecifiers } from "./bundle.js";
 export {
 	CHECK_RULES,
 	type CheckArtifactIROptions,
@@ -112,6 +109,7 @@ export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
 export { mergeArtifactIR } from "./merge.js";
 export { parseNazareLiquid } from "./parser.js";
+export { baseNameOf, resolveImportPath } from "./paths.js";
 export {
 	type BuildPlainLiquidOptions,
 	type BuildPlainLiquidResult,
@@ -125,6 +123,8 @@ export {
 } from "./plain-liquid.js";
 export {
 	checkDependencies,
+	createDependencyResolver,
+	type DependencyResolver,
 	type ReadFile,
 	resolveAssetImports,
 	resolveComponentContracts,
@@ -139,11 +139,251 @@ export {
 	contractFromIR,
 } from "./symbols.js";
 export { syntaxFromAst } from "./syntax.js";
+export {
+	parsePersistedInspectFactCache,
+	serializePersistedInspectFactCache,
+} from "./theme-analysis-cache.js";
+export {
+	ThemeBuildSession,
+	type ThemeBuildUpdate,
+} from "./theme-build-session.js";
+export {
+	createThemeCapabilityPass,
+	deriveThemeCapabilities,
+	type ThemeCapabilityPassContext,
+} from "./theme-capability-pass.js";
+export {
+	capabilitySignalId,
+	collectThemeCapabilitySignals,
+	createThemeCapabilitySignalPass,
+	type ThemeCapabilitySignalPassContext,
+} from "./theme-capability-signal-pass.js";
+export {
+	filterThemeCheckIssues,
+	parseThemeCheckPolicy,
+	type ThemeCheckPolicy,
+	type ThemeCheckPolicyInput,
+} from "./theme-check-policy.js";
+export {
+	createThemeClassificationPass,
+	deriveThemeClassifications,
+	type ThemeClassificationPassContext,
+} from "./theme-classification-pass.js";
+export { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
+export {
+	collectThemeDataFlowInputs,
+	createThemeDataFlowFixedPointPass,
+	createThemeDataFlowInputPass,
+	dataFlowGroupKey,
+	dataFlowWorkKey,
+	deriveRenderArgumentDataAccesses,
+	deriveThemeRenderSites,
+	type ThemeDataFlowDerivedRecord,
+	type ThemeDataFlowFixedPointContext,
+	type ThemeDataFlowGroupDelta,
+	type ThemeDataFlowGroupKey,
+	type ThemeDataFlowIds,
+	type ThemeDataFlowInputPassContext,
+	type ThemeDataFlowInputPassResult,
+	type ThemeDataFlowInputRecord,
+	type ThemeDataFlowWorkKey,
+} from "./theme-data-flow-pass.js";
+export {
+	collectThemeDeclarations,
+	createThemeDeclarationPass,
+	type ThemeDeclarationPassContext,
+	type ThemeDeclarationPassRecord,
+	type ThemeDeclarationPassResult,
+} from "./theme-declaration-pass.js";
+export {
+	type OwnedThemeDiagnostic,
+	type ThemeDiagnosticOwner,
+	ThemeDiagnosticStore,
+} from "./theme-diagnostic-store.js";
+export {
+	createThemeEvidencePass,
+	deriveThemeEvidence,
+	deriveThemeEvidenceRecords,
+	type ThemeEvidenceInputs,
+	type ThemeEvidencePassContext,
+} from "./theme-evidence-pass.js";
+export {
+	strongerThemeEvidence,
+	type ThemeEvidenceStrength,
+} from "./theme-evidence-strength.js";
+export { matchesThemeGlob } from "./theme-exclusions.js";
+export {
+	deriveThemeExpectedInputs,
+	docParamEvidenceId,
+	expectedInputId,
+	themeDocContractIssues,
+} from "./theme-expected-input-pass.js";
+export { ThemeFactIndex } from "./theme-fact-index.js";
+export {
+	ThemeFactStore,
+	themeFactSourcePath,
+} from "./theme-fact-store.js";
+export type {
+	AnalyzeNazareThemeOptions,
+	BuildNazareThemeWorkspaceOptions,
+	BuildThemeScope,
+	InspectNazareThemeOptions,
+	InspectNazareThemeResult,
+	SemanticThemeGraphEdge,
+	SemanticThemeGraphNode,
+	ThemeAnalysis,
+	ThemeAnalysisCache,
+	ThemeAnalysisCacheEntry,
+	ThemeBlockInstanceRecord,
+	ThemeBlockRecord,
+	ThemeBlockSettingRecord,
+	ThemeBuildResult,
+	ThemeCapabilityRecord,
+	ThemeCapabilitySignalRecord,
+	ThemeClassificationRecord,
+	ThemeDataAccessRecord,
+	ThemeEvidenceRecord,
+	ThemeExpectedInputRecord,
+	ThemeFact,
+	ThemeGraphView,
+	ThemeGraphViews,
+	ThemeImpactSummary,
+	ThemeInputFile,
+	ThemeLocaleKeyRecord,
+	ThemeLocaleReferenceRecord,
+	ThemeLocaleTranslationRecord,
+	ThemeMetafieldDefinitionRecord,
+	ThemeMetafieldQueries,
+	ThemeMetafieldReadRecord,
+	ThemePageRecord,
+	ThemeRenderArgumentRecord,
+	ThemeRenderSiteRecord,
+	ThemeSectionInstanceRecord,
+	ThemeSemanticModel,
+	ThemeSettingReadRecord,
+} from "./theme-facts.js";
+export { shareThemeGraphRecords } from "./theme-graph-output.js";
+export {
+	THEME_GRAPH_METAFIELD_SCHEMA_OWNER,
+	ThemeGraphStore,
+	type ThemeGraphStoreDelta,
+} from "./theme-graph-store.js";
+export {
+	ThemeImpactIndex,
+	type ThemeImpactIndexDelta,
+} from "./theme-impact-index.js";
+export {
+	collectThemeInstances,
+	createThemeInstancePass,
+	type ThemeInstanceIds,
+	type ThemeInstancePassContext,
+	type ThemeInstancePassResult,
+	type ThemeInstanceRecord,
+} from "./theme-instance-pass.js";
+export {
+	collectThemeLocales,
+	createThemeLocalePass,
+	type ThemeLocaleIds,
+	type ThemeLocalePassContext,
+	type ThemeLocalePassResult,
+	type ThemeLocaleRecord,
+} from "./theme-locale-pass.js";
+export { ThemeMetafieldIndex } from "./theme-metafield-index.js";
+export {
+	createThemeMetafieldPass,
+	type ThemeMetafieldPassContext,
+	type ThemeMetafieldRecord,
+} from "./theme-metafield-pass.js";
+export {
+	analyzeMetafields,
+	collectMetafieldDefinitions,
+	collectMetafieldReads,
+	joinMetafieldReads,
+	metafieldDefinitionId,
+	metafieldJoinKey,
+	type ThemeMetafieldAnalysis,
+	type ThemeMetafieldDefinitionCollection,
+	type ThemeMetafieldSnapshot,
+} from "./theme-metafields.js";
+export {
+	type FixedPointPass,
+	type FixedPointStep,
+	fixedPointThemePass,
+	type IncrementalPass,
+	incrementalThemePass,
+	type PassChange,
+	type PassChangeKind,
+	type PassDelta,
+	type PassRoute,
+	THEME_PASS_CONVERGENCE_BUDGET,
+	THEME_PASS_ORDER,
+	type ThemePassConvergenceBudget,
+	type ThemePassConvergenceDiagnostic,
+	ThemePassConvergenceError,
+	ThemePassScheduler,
+	type ThemePassStage,
+	type ThemePassTrace,
+	type ThemeSchedulerResult,
+} from "./theme-pass-scheduler.js";
+export {
+	getThemeAffectedPages,
+	getThemeDependencies,
+	getThemeDependents,
+	getThemeEdgesFrom,
+	getThemeEdgesTo,
+	getThemeNode,
+	summarizeThemeGraph,
+	type ThemeGraphSummary,
+	themeGraphToDot,
+} from "./theme-queries.js";
+export {
+	collectThemeReferences,
+	createThemeReferencePass,
+	referenceTargetKeys,
+	type ThemeReferencePassContext,
+} from "./theme-reference-pass.js";
+export {
+	createThemeResolutionPass,
+	resolveThemeDeclarationsAndReferences,
+	type ThemeIncrementalResolutionContext,
+	type ThemeResolutionPassResult,
+} from "./theme-resolution-pass.js";
+export { ThemeResolverIndex } from "./theme-resolver-index.js";
+export {
+	type ThemeRecordResolution,
+	ThemeSchemaIndex,
+	type ThemeSchemaIndexInput,
+} from "./theme-schema-index.js";
+export {
+	collectThemeSchemaSettings,
+	createThemeSchemaSettingPass,
+	type ThemeSchemaSettingIds,
+	type ThemeSchemaSettingPassContext,
+	type ThemeSchemaSettingPassResult,
+	type ThemeSchemaSettingRecord,
+} from "./theme-schema-setting-pass.js";
+export {
+	ThemeSemanticStore,
+	ThemeSemanticTransaction,
+} from "./theme-semantic-store.js";
+export {
+	type ThemeGraphUpdate,
+	ThemeProgram,
+	type ThemeUpdateTelemetry,
+	ThemeWorkspaceSession,
+} from "./theme-session.js";
+export {
+	analyzeNazareTheme,
+	buildNazareThemeWorkspace,
+	inspectNazareTheme,
+	THEME_ANALYSIS_DEFAULTS,
+	THEME_BUILD_DEFAULTS,
+} from "./theme-workspace.js";
 export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 
 export type CompileNazareArtifactOptions = Pick<
 	CompileInput,
-	"readFile" | "strictness"
+	"readFile" | "strictness" | "dependencyResolver"
 >;
 
 export type CompileArtifactOptions = CompileInput & {
@@ -206,21 +446,6 @@ export type CompileResult = CompileArtifactSuccess & {
 	ast: NazareAst;
 };
 
-export type BuildNazareThemeOptions = CompileNazareArtifactOptions &
-	EmitThemeOptions & {
-		/** Defaults to false; set true only for preview tooling that needs best-effort output despite compile/dependency errors. */
-		emitOnError?: boolean;
-	};
-
-export type BuildResult = CompileResult & {
-	/** Theme files emitted from the compiled artifact. */
-	emitted: EmitResult;
-	/** Compile and emit diagnostics, in order. */
-	issues: Diagnostic[];
-	/** True when emit ran despite compile/dependency errors. */
-	emittedOnError: boolean;
-};
-
 /** Shortcut to a graph when diagnostics and contracts are not needed. */
 export function artifactGraphFromAst(ast: NazareAst): ArtifactGraph {
 	return artifactGraphFromIR(bindArtifactIR(syntaxFromAst(ast)));
@@ -268,44 +493,14 @@ export function compileNazareArtifact(
 	});
 	if (!compiled.ok) {
 		throw new Error(
-			compiled.issues[0]?.message ?? "Nazare Liquid compile failed",
+			compiled.issues.map((issue) => issue.message).join("\n") ||
+				"Nazare Liquid compile failed",
 		);
 	}
 	if (!compiled.ast) {
 		throw new Error("Nazare Liquid frontend did not return an AST");
 	}
 	return { ...compiled, ast: compiled.ast };
-}
-
-/**
- * Compiles and emits theme files with one aggregated diagnostic list. A build
- * validates its dependencies, so it checks every imported file explicitly —
- * the one difference from a plain compile.
- */
-export function buildNazareTheme(
-	source: string,
-	file: string,
-	options: BuildNazareThemeOptions,
-): BuildResult {
-	const compiled = compileNazareArtifact(source, file, options);
-	const dependencyIssues = checkDependencies(compiled.ast, options.readFile, {
-		mode: options.strictness,
-	});
-	const preEmitIssues = [...compiled.issues, ...dependencyIssues];
-	const buildHasErrors = hasErrors(preEmitIssues);
-	const emitOnError = options.emitOnError === true;
-	const shouldEmit = !buildHasErrors || emitOnError;
-	const emitted = shouldEmit
-		? emitTheme(compiled.sourceForEmit, compiled, options)
-		: { files: [], issues: [] };
-	const issues = [...preEmitIssues, ...markDiagnostics(emitted.issues, "emit")];
-	return {
-		...compiled,
-		canEmit: !buildHasErrors,
-		emitted,
-		emittedOnError: shouldEmit && buildHasErrors,
-		issues,
-	};
 }
 
 export function compilePlainLiquid(
@@ -328,7 +523,7 @@ export function compilePlainLiquid(
 	return {
 		ast: metadata.ast,
 		issues: compiled.issues,
-		dependencies: metadata.dependencies,
+		dependencies: metadata.ast.dependencies,
 		canEmit: compiled.canEmit,
 	};
 }
@@ -352,37 +547,25 @@ export function buildPlainLiquid(
 	};
 }
 
+/**
+ * The frontend is first-party and in-process; its metadata is typed with
+ * `satisfies` at the construction site. This guards only the `unknown`
+ * crossing of the frontend boundary — it identifies the shape, it does not
+ * re-validate fields the type system already proved.
+ */
 function plainLiquidMetadata(metadata: unknown): PlainLiquidFrontendMetadata {
-	if (isPlainLiquidFrontendMetadata(metadata)) return metadata;
-	throw new Error("Plain Liquid frontend did not return valid metadata");
-}
-
-function isPlainLiquidFrontendMetadata(
-	metadata: unknown,
-): metadata is PlainLiquidFrontendMetadata {
 	const candidate = metadata as PlainLiquidFrontendMetadata | undefined;
-	return (
-		!!candidate &&
-		isPlainLiquidAst(candidate.ast) &&
-		candidate.dependencies === candidate.ast.dependencies &&
-		typeof candidate.factsCollected === "boolean" &&
-		candidate.factsCollected === candidate.ast.factsCollected &&
-		(candidate.parseMode === "strict" || candidate.parseMode === "tolerant") &&
-		candidate.parseMode === candidate.ast.parseMode
-	);
+	if (candidate && isPlainLiquidAst(candidate.ast)) return candidate;
+	throw new Error("Plain Liquid frontend did not return its metadata shape");
 }
 
 function isPlainLiquidAst(value: unknown): value is PlainLiquidAst {
 	const ast = value as PlainLiquidAst | undefined;
 	return (
 		!!ast &&
-		Array.isArray(ast.nodes) &&
-		ast.nodes.length === 0 &&
+		typeof ast.file === "string" &&
 		Array.isArray(ast.dependencies) &&
-		Array.isArray(ast.diagnostics) &&
-		Array.isArray(ast.settingsReads) &&
-		typeof ast.factsCollected === "boolean" &&
-		(ast.parseMode === "strict" || ast.parseMode === "tolerant")
+		(ast.parseMode === "strict" || ast.parseMode === "liquid-only")
 	);
 }
 
