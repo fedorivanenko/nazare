@@ -140,6 +140,10 @@ export {
 } from "./symbols.js";
 export { syntaxFromAst } from "./syntax.js";
 export {
+	parsePersistedInspectFactCache,
+	serializePersistedInspectFactCache,
+} from "./theme-analysis-cache.js";
+export {
 	ThemeBuildSession,
 	type ThemeBuildUpdate,
 } from "./theme-build-session.js";
@@ -311,7 +315,9 @@ export {
 	type PassChangeKind,
 	type PassDelta,
 	type PassRoute,
+	THEME_PASS_CONVERGENCE_BUDGET,
 	THEME_PASS_ORDER,
+	type ThemePassConvergenceBudget,
 	type ThemePassConvergenceDiagnostic,
 	ThemePassConvergenceError,
 	ThemePassScheduler,
@@ -559,7 +565,7 @@ function isPlainLiquidAst(value: unknown): value is PlainLiquidAst {
 		!!ast &&
 		typeof ast.file === "string" &&
 		Array.isArray(ast.dependencies) &&
-		(ast.parseMode === "strict" || ast.parseMode === "tolerant")
+		(ast.parseMode === "strict" || ast.parseMode === "liquid-only")
 	);
 }
 
