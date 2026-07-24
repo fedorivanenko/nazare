@@ -474,6 +474,34 @@ test("workspace scheduler replaces data-flow inputs by source", () => {
 	);
 });
 
+test("workspace invalidates capability inference only for changed sources", () => {
+	let files = [
+		{
+			path: "sections/product.liquid",
+			contents: "{{ product.price }} {{ product.title }}",
+		},
+		{
+			path: "sections/cart.liquid",
+			contents: "{{ cart.items }}",
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const cartCapabilities = session.capabilitiesBySource.get(
+		"sections/cart.liquid",
+	);
+	const updated = {
+		path: "sections/product.liquid",
+		contents: "{{ product.media }}",
+	};
+	files = [...files.filter((file) => file.path !== updated.path), updated];
+	session.updateFile(updated);
+	assert.strictEqual(
+		session.capabilitiesBySource.get("sections/cart.liquid"),
+		cartCapabilities,
+	);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+});
+
 test("workspace fixed-point data flow matches cold rebuild for render cycles", () => {
 	let files = [
 		{
