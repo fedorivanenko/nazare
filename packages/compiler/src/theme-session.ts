@@ -43,6 +43,7 @@ import type {
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
 	ThemeExpectedInputRecord,
+	ThemeFact,
 	ThemeFileRecord,
 	ThemeInputFile,
 	ThemeReference,
@@ -241,6 +242,14 @@ export class ThemeWorkspaceSession {
 
 	getGraph(): InspectNazareThemeResult {
 		return this.graph;
+	}
+
+	getModel(): ThemeSemanticModel {
+		return this.semanticStore.getModel();
+	}
+
+	getFacts(): ThemeFact[] {
+		return this.factStore.all();
 	}
 
 	getDependencies(nodeId: string): string[] {

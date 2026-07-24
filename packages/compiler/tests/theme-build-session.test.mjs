@@ -82,9 +82,13 @@ test("build session computes dependent closure without replacing unrelated outpu
 		session.getBuild(),
 		"snippets/unrelated.liquid",
 	);
+	const initialParentAst = session
+		.getBuild()
+		.artifacts.find((artifact) => artifact.path === "parent.nz.liquid")?.ast;
 	const unrelatedAst = session
 		.getBuild()
 		.artifacts.find((artifact) => artifact.path === "unrelated.nz.liquid")?.ast;
+	assert.ok(initialParentAst);
 	assert.ok(unrelatedAst);
 
 	const update = session.updateFile({
@@ -99,6 +103,12 @@ test("build session computes dependent closure without replacing unrelated outpu
 		emittedFile(session.getBuild(), "snippets/unrelated.liquid"),
 		unrelated,
 	);
+	assert.notStrictEqual(
+		session
+			.getBuild()
+			.artifacts.find((artifact) => artifact.path === "parent.nz.liquid")?.ast,
+		initialParentAst,
+	);
 	assert.strictEqual(
 		session
 			.getBuild()
@@ -109,4 +119,46 @@ test("build session computes dependent closure without replacing unrelated outpu
 	assert.deepEqual(session.getOwnedOutputPaths("parent.nz.liquid"), [
 		"snippets/parent.liquid",
 	]);
+});
+
+test("build session reference-counts shared runtime assets", () => {
+	const scripted = (label) =>
+		`<div ref="root">${label}</div>\n{% script %}\nexport default island(({ refs }) => refs.root.remove());\n{% endscript %}`;
+	const session = new ThemeBuildSession([
+		{ path: "a.nz.liquid", contents: scripted("A") },
+		{ path: "b.nz.liquid", contents: scripted("B") },
+	]);
+	assert.deepEqual(session.getOutputOwners("assets/nazare-runtime.js"), [
+		"a.nz.liquid",
+		"b.nz.liquid",
+	]);
+
+	session.removeFile("a.nz.liquid");
+	assert.deepEqual(session.getOutputOwners("assets/nazare-runtime.js"), [
+		"b.nz.liquid",
+	]);
+	assert.ok(
+		session
+			.getBuild()
+			.emitted.files.some((file) => file.path === "assets/nazare-runtime.js"),
+	);
+});
+
+test("build session rejects collisions with retained outputs transactionally", () => {
+	const session = new ThemeBuildSession([
+		{
+			path: "components/a/card.nz.liquid",
+			contents: "<span>Original</span>",
+		},
+	]);
+	const committed = session.getBuild();
+	assert.throws(
+		() =>
+			session.updateFile({
+				path: "components/b/card.nz.liquid",
+				contents: "<strong>Collision</strong>",
+			}),
+		/Selective build output collision at snippets\/card\.liquid/,
+	);
+	assert.strictEqual(session.getBuild(), committed);
 });
