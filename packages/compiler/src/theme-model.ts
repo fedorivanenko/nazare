@@ -1,5 +1,4 @@
 import type { Diagnostic } from "@nazare/core";
-import { CONTEXT_INPUT_OBJECTS } from "./theme-source-facts.js";
 import type {
 	ThemeBlockRecord,
 	ThemeBlockSettingRecord,
@@ -25,6 +24,7 @@ import type {
 	ThemeSettingRecord,
 	ThemeVariableReadRecord,
 } from "./theme-facts.js";
+import { CONTEXT_INPUT_OBJECTS } from "./theme-source-facts.js";
 
 export function buildThemeSemanticModel(
 	facts: ThemeFact[],
@@ -986,10 +986,7 @@ export function dataAccessId(path: string, expression: string): string {
 	return `data-access:${path}:${expression}`;
 }
 
-export function renderArgumentId(
-	siteId: string,
-	argumentName: string,
-): string {
+export function renderArgumentId(siteId: string, argumentName: string): string {
 	return `render-argument:${siteId}:${argumentName}`;
 }
 

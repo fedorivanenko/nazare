@@ -212,7 +212,13 @@ function checkEmitNameConstraints(index: ArtifactIRIndex): Diagnostic[] {
 		// The same file imported twice is one emitted file — no clobbering.
 		if (firstPath === node.path) continue;
 		issues.push(
-			importBasenameCollision(firstPath, node.path, baseName, node.id, node.span),
+			importBasenameCollision(
+				firstPath,
+				node.path,
+				baseName,
+				node.id,
+				node.span,
+			),
 		);
 	}
 
@@ -728,6 +734,8 @@ function inferExpressionType(
 	if (expression.inferredType) return expression.inferredType;
 	const [reference] =
 		index.symbolReferencesByExpressionId.get(expression.id) ?? [];
-	const symbol = reference ? index.symbolById.get(reference.symbolId) : undefined;
+	const symbol = reference
+		? index.symbolById.get(reference.symbolId)
+		: undefined;
 	return symbol?.semanticType ?? { kind: "unknown" };
 }

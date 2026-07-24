@@ -22,8 +22,6 @@ export type BundleResult = {
 	issues: Diagnostic[];
 };
 
-
-
 type Module = {
 	id: string;
 	transpiled: string;

@@ -137,8 +137,7 @@ const lookupCapabilityRules: LookupCapabilityRule[] = [
 		confidence: 0.8,
 		matches: (object, path) =>
 			(object === "collection" && /(^|\.)filters($|\.)/.test(path)) ||
-			(object === "filter" &&
-				(path === "active_values" || path === "values")),
+			(object === "filter" && (path === "active_values" || path === "values")),
 	},
 ];
 
@@ -190,7 +189,13 @@ export function collectSourceThemeFacts(
 		const key = `${capability}`;
 		if (capabilitySeen.has(key)) return;
 		capabilitySeen.add(key);
-		facts.push({ kind: "detectsCapability", path, capability, confidence, span });
+		facts.push({
+			kind: "detectsCapability",
+			path,
+			capability,
+			confidence,
+			span,
+		});
 	};
 
 	const handleLookup = (
@@ -237,8 +242,7 @@ export function collectSourceThemeFacts(
 			position: SourceRange;
 		};
 		const tagName = typeof tag.name === "string" ? tag.name : undefined;
-		const inCondition =
-			tagName !== undefined && conditionTagNames.has(tagName);
+		const inCondition = tagName !== undefined && conditionTagNames.has(tagName);
 
 		if (
 			(tagName === "render" || tagName === "include") &&

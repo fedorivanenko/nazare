@@ -70,10 +70,7 @@ export function visitLiquidExpressions(
 	const node = value as { type?: unknown };
 	if (isVariableLookup(value)) {
 		visitor.onLookup?.(value as PositionedLookup);
-		visitKnownChildren(
-			(value as VariableLookupLike).lookups,
-			visitor,
-		);
+		visitKnownChildren((value as VariableLookupLike).lookups, visitor);
 		return;
 	}
 	if (!node.type) {

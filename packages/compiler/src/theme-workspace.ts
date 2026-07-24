@@ -78,8 +78,7 @@ export function buildNazareThemeWorkspace(
 	const emitted: EmitResult = { files: [], issues: [] };
 	const artifacts: ThemeBuildResult["artifacts"] = [];
 
-	const scopedName =
-		options.scope?.kind === "file" ? options.name : undefined;
+	const scopedName = options.scope?.kind === "file" ? options.name : undefined;
 	for (const artifact of selected) {
 		const dependencyIssues = checkDependencies(artifact.ast, readFile, {
 			mode: options.strictness,

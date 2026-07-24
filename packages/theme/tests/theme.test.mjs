@@ -396,9 +396,7 @@ test("buildTheme reports invalid JSON", async () => {
 		async (projectRoot) => {
 			const result = await build(projectRoot);
 			assert.ok(
-				result.issues.some(
-					(issue) => issue.code === "THEME_JSON_PARSE_ERROR",
-				),
+				result.issues.some((issue) => issue.code === "THEME_JSON_PARSE_ERROR"),
 			);
 		},
 	);
