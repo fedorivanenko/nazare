@@ -1,10 +1,45 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzeNazareTheme, inspectNazareTheme } from "../dist/index.js";
+import {
+	analyzeMetafields,
+	analyzeNazareTheme,
+	collectMetafieldDefinitions,
+	collectMetafieldReads,
+	inspectNazareTheme,
+	joinMetafieldReads,
+} from "../dist/index.js";
 
 const issues = (files) => analyzeNazareTheme(files).issues;
 const hasIssue = (files, code) =>
 	issues(files).some((issue) => issue.code === code);
+
+test("metafield definition and read collection compose deterministically", () => {
+	const snapshot = {
+		path: ".shopify/metafields.json",
+		contents: JSON.stringify({
+			definitions: [{ owner: "product", namespace: "custom", key: "subtitle" }],
+		}),
+	};
+	const accesses = [
+		{
+			id: "access:subtitle",
+			fromPath: "sections/main.liquid",
+			object: "product",
+			propertyPath: "metafields.custom.subtitle",
+			expression: "product.metafields.custom.subtitle",
+			origin: "liquid",
+		},
+	];
+	const definitions = collectMetafieldDefinitions(snapshot);
+	const reads = joinMetafieldReads(
+		definitions.definitions,
+		collectMetafieldReads(accesses),
+	);
+	const analysis = analyzeMetafields(snapshot, accesses);
+	assert.deepEqual(definitions.definitions, analysis.definitions);
+	assert.deepEqual(reads, analysis.reads);
+	assert.equal(reads[0].definitionId, "metafield:product:custom:subtitle");
+});
 
 test("theme analysis cache reuses unchanged files and invalidates edits", () => {
 	const cache = { version: 1, entries: {} };

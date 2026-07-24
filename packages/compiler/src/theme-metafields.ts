@@ -31,10 +31,14 @@ export type ThemeMetafieldAnalysis = {
 	pulledAt?: string;
 };
 
-export function analyzeMetafields(
+export type ThemeMetafieldDefinitionCollection = Pick<
+	ThemeMetafieldAnalysis,
+	"definitions" | "issues" | "state" | "path" | "pulledAt"
+>;
+
+export function collectMetafieldDefinitions(
 	snapshot: ThemeMetafieldSnapshot | undefined,
-	dataAccesses: ThemeDataAccessRecord[],
-): ThemeMetafieldAnalysis {
+): ThemeMetafieldDefinitionCollection {
 	const path = snapshot?.path ?? ".shopify/metafields.json";
 	let value: unknown;
 	if (!snapshot) {
@@ -45,7 +49,6 @@ export function analyzeMetafields(
 		} catch (error) {
 			return {
 				definitions: [],
-				reads: [],
 				state: "invalid",
 				path,
 				pulledAt: snapshot.pulledAt,
@@ -79,45 +82,76 @@ export function analyzeMetafields(
 			});
 		}
 	}
-	const byKey = new Map(
-		definitions.map((definition) => [
-			definitionKey(definition.owner, definition.namespace, definition.key),
-			definition,
-		]),
-	);
+	return {
+		definitions: definitions.sort((a, b) => a.id.localeCompare(b.id)),
+		issues: [],
+		state: snapshot ? "present" : "unknown",
+		path,
+		pulledAt: snapshot?.pulledAt,
+	};
+}
+
+export function collectMetafieldReads(
+	dataAccesses: ThemeDataAccessRecord[],
+): ThemeMetafieldReadRecord[] {
 	const readsById = new Map<string, ThemeMetafieldReadRecord>();
 	for (const access of dataAccesses) {
 		const match = metafieldPath(access);
 		if (!match) continue;
-		const definition =
-			match.owner === "unknown"
-				? undefined
-				: byKey.get(definitionKey(match.owner, match.namespace, match.key));
 		const read = {
 			id: `metafield-read:${access.id}`,
 			fromPath: access.fromPath,
 			...match,
-			definitionId: definition?.id,
 			dataAccessId: access.id,
 		};
 		readsById.set(read.id, read);
 	}
-	const reads = [...readsById.values()];
+	return [...readsById.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+export function joinMetafieldReads(
+	definitions: ThemeMetafieldDefinitionRecord[],
+	reads: ThemeMetafieldReadRecord[],
+): ThemeMetafieldReadRecord[] {
+	const byKey = new Map(
+		definitions.map((definition) => [
+			metafieldJoinKey(definition.owner, definition.namespace, definition.key),
+			definition,
+		]),
+	);
+	return reads.map((read) => {
+		const definition =
+			read.owner === "unknown"
+				? undefined
+				: byKey.get(metafieldJoinKey(read.owner, read.namespace, read.key));
+		return { ...read, definitionId: definition?.id };
+	});
+}
+
+export function analyzeMetafields(
+	snapshot: ThemeMetafieldSnapshot | undefined,
+	dataAccesses: ThemeDataAccessRecord[],
+): ThemeMetafieldAnalysis {
+	const collection = collectMetafieldDefinitions(snapshot);
+	if (collection.state === "invalid") {
+		return { ...collection, reads: [] };
+	}
+	const reads = joinMetafieldReads(
+		collection.definitions,
+		collectMetafieldReads(dataAccesses),
+	);
 	const issues: Diagnostic[] = reads
 		.filter((read) => snapshot && !read.definitionId)
 		.map((read) => ({
 			severity: "warning" as const,
 			code: "THEME_METAFIELD_UNRESOLVED",
-			message: `Metafield ${read.owner}.metafields.${read.namespace}.${read.key} is not defined in ${path}`,
+			message: `Metafield ${read.owner}.metafields.${read.namespace}.${read.key} is not defined in ${collection.path}`,
 			phase: "resolve" as const,
 		}));
 	return {
-		definitions: definitions.sort((a, b) => a.id.localeCompare(b.id)),
-		reads: reads.sort((a, b) => a.id.localeCompare(b.id)),
-		issues,
-		state: snapshot ? "present" : "unknown",
-		path,
-		pulledAt: snapshot?.pulledAt,
+		...collection,
+		reads,
+		issues: [...collection.issues, ...issues],
 	};
 }
 
@@ -222,6 +256,10 @@ function typeValue(value: unknown): string | undefined {
 	if (isRecord(value)) return stringValue(value.name ?? value.category);
 	return undefined;
 }
-function definitionKey(owner: string, namespace: string, key: string): string {
+export function metafieldJoinKey(
+	owner: string,
+	namespace: string,
+	key: string,
+): string {
 	return `${owner}:${namespace}:${key}`.toLowerCase();
 }
