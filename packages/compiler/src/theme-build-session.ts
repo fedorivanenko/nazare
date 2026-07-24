@@ -28,6 +28,10 @@ class ThemeBuildState {
 	private readonly memo = {} as ThemeAnalysisMemo;
 	private readonly semanticSession: ThemeWorkspaceSession;
 	private build: ThemeBuildResult;
+	private readonly compiledArtifactsByPath = new Map<
+		string,
+		ThemeBuildResult["artifacts"][number]
+	>();
 	private outputPathsBySourcePath = new Map<string, Set<string>>();
 	private sourcePathsByOutputPath = new Map<string, Set<string>>();
 	private revision = 0;
@@ -47,6 +51,10 @@ class ThemeBuildState {
 			this.options,
 		);
 		this.build = buildNazareThemeWorkspace(this.files(), this.options);
+		for (const artifact of this.build.artifacts) {
+			if (artifact.emitted)
+				this.compiledArtifactsByPath.set(artifact.path, artifact);
+		}
 		this.replaceOutputOwnership(this.build);
 	}
 
@@ -119,10 +127,19 @@ class ThemeBuildState {
 			if (file) this.semanticSession.updateFile(file);
 			else this.semanticSession.removeFile(path);
 		}
+		for (const path of recomputedPaths) {
+			if (!this.filesByPath.has(path))
+				this.compiledArtifactsByPath.delete(path);
+		}
+		for (const artifact of rebuilt.artifacts) {
+			if (artifact.emitted)
+				this.compiledArtifactsByPath.set(artifact.path, artifact);
+		}
 		this.build = shareUnchangedOutputSnapshots(
 			previous,
 			mergeSelectiveBuild(
 				previous,
+				this.compiledArtifactsByPath,
 				rebuilt,
 				new Set(recomputedPaths),
 				new Set(this.filesByPath.keys()),
@@ -215,6 +232,7 @@ function validateRetainedOutputCollisions(
 
 function mergeSelectiveBuild(
 	previous: ThemeBuildResult,
+	compiledArtifactsByPath: Map<string, ThemeBuildResult["artifacts"][number]>,
 	selective: ThemeBuildResult,
 	affectedPaths: Set<string>,
 	currentPaths: Set<string>,
@@ -222,11 +240,8 @@ function mergeSelectiveBuild(
 	emitOnError: boolean,
 ): ThemeBuildResult {
 	const artifactsByPath = new Map(
-		previous.analysis.artifacts
-			.filter(
-				(artifact) =>
-					!affectedPaths.has(artifact.path) && currentPaths.has(artifact.path),
-			)
+		[...compiledArtifactsByPath.values()]
+			.filter((artifact) => currentPaths.has(artifact.path))
 			.map((artifact) => [artifact.path, artifact]),
 	);
 	for (const artifact of selective.artifacts) {
@@ -235,12 +250,26 @@ function mergeSelectiveBuild(
 	let artifacts = [...artifactsByPath.values()].sort((a, b) =>
 		a.path.localeCompare(b.path),
 	);
+	const previousSemanticIssueKeys = new Set(
+		previous.analysis.ir.issues.map((issue) => JSON.stringify(issue)),
+	);
+	const selectiveSemanticIssueKeys = new Set(
+		selective.analysis.ir.issues.map((issue) => JSON.stringify(issue)),
+	);
 	const retainedIssues = previous.issues.filter((issue) => {
+		if (previousSemanticIssueKeys.has(JSON.stringify(issue))) return false;
 		const path = issue.span?.file;
 		return path === undefined || !affectedPaths.has(normalizeThemePath(path));
 	});
+	const selectiveBuildIssues = selective.issues.filter(
+		(issue) => !selectiveSemanticIssueKeys.has(JSON.stringify(issue)),
+	);
 	const issueKeys = new Set<string>();
-	const issues = [...retainedIssues, ...selective.issues].filter((issue) => {
+	const issues = [
+		...semanticSession.getModel().issues,
+		...retainedIssues,
+		...selectiveBuildIssues,
+	].filter((issue) => {
 		const key = JSON.stringify(issue);
 		if (issueKeys.has(key)) return false;
 		issueKeys.add(key);
