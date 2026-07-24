@@ -29,7 +29,11 @@ import {
 	type ThemeDeclarationPassResult,
 } from "./theme-declaration-pass.js";
 import { ThemeDiagnosticStore } from "./theme-diagnostic-store.js";
-import { deriveThemeEvidence } from "./theme-evidence-pass.js";
+import {
+	createThemeEvidencePass,
+	type ThemeEvidenceInputs,
+	type ThemeEvidencePassContext,
+} from "./theme-evidence-pass.js";
 import { deriveThemeExpectedInputs } from "./theme-expected-input-pass.js";
 import { ThemeFactIndex } from "./theme-fact-index.js";
 import { ThemeFactStore, themeFactSourcePath } from "./theme-fact-store.js";
@@ -43,6 +47,7 @@ import type {
 	ThemeClassificationRecord,
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
+	ThemeEvidenceRecord,
 	ThemeExpectedInputRecord,
 	ThemeFact,
 	ThemeFileRecord,
@@ -197,6 +202,7 @@ export class ThemeProgram {
 		ThemeClassificationRecord[]
 	>();
 	private diagnosticStore = new ThemeDiagnosticStore();
+	private evidenceBySource = new Map<string, ThemeEvidenceRecord[]>();
 	private semanticStore: ThemeSemanticStore;
 	private metafieldIndex: ThemeMetafieldIndex;
 	private impactIndex: ThemeImpactIndex;
@@ -237,6 +243,7 @@ export class ThemeProgram {
 			collection.classifications,
 		);
 		const model = collectedModel;
+		this.evidenceBySource = evidenceRecordsBySource(model.evidence);
 		this.semanticStore = new ThemeSemanticStore(model);
 		this.metafieldIndex = new ThemeMetafieldIndex(model);
 		const indexedGraph = graphWithIndexedImpact(this.semanticStore.getModel());
@@ -381,7 +388,9 @@ export class ThemeProgram {
 		);
 		const collectedModel = {
 			...collectedBaseModel,
-			evidence: deriveThemeEvidence(collectedBaseModel, nextFactStore.all()),
+			evidence: [...collection.evidenceBySource.values()]
+				.flat()
+				.sort((a, b) => a.id.localeCompare(b.id)),
 		};
 		const transaction = this.semanticStore.beginUpdate(collectedModel);
 		const semanticUpdate = transaction.update;
@@ -523,6 +532,7 @@ export class ThemeProgram {
 			capabilities: this.capabilitiesBySource,
 			classifications: this.classificationsBySource,
 			diagnostics: this.diagnosticStore,
+			evidenceBySource: this.evidenceBySource,
 			processedPassKeys: 0,
 		};
 	}
@@ -544,6 +554,7 @@ export class ThemeProgram {
 		this.capabilitiesBySource = state.capabilities;
 		this.classificationsBySource = state.classifications;
 		this.diagnosticStore = state.diagnostics;
+		this.evidenceBySource = state.evidenceBySource;
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
@@ -579,7 +590,8 @@ type ThemeCollectionContext = ThemeDeclarationPassContext &
 	ThemeClassificationPassContext &
 	ThemeMetafieldPassContext &
 	ThemeDataFlowInputPassContext &
-	ThemeDataFlowFixedPointContext;
+	ThemeDataFlowFixedPointContext &
+	ThemeEvidencePassContext;
 
 type ThemeDerivedDataFlowResult = {
 	expectedInputs: ThemeExpectedInputRecord[];
@@ -604,6 +616,7 @@ type ThemeCollectionState = {
 	capabilities: Map<string, ThemeCapabilityRecord[]>;
 	classifications: Map<string, ThemeClassificationRecord[]>;
 	diagnostics: ThemeDiagnosticStore;
+	evidenceBySource: Map<string, ThemeEvidenceRecord[]>;
 	processedPassKeys: number;
 };
 
@@ -657,6 +670,9 @@ function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext>
 			string,
 			ThemeClassificationRecord
 		>(createThemeClassificationPass()),
+		incrementalThemePass<ThemeCollectionContext, string, ThemeEvidenceRecord>(
+			createThemeEvidencePass(),
+		),
 	]);
 }
 
@@ -699,6 +715,10 @@ function runCollectionPasses(
 		capabilitySignalsBySource: state.capabilitySignals,
 		capabilitiesBySource: state.capabilities,
 		classificationsBySource: state.classifications,
+		evidenceBySource: state.evidenceBySource,
+		evidenceInputsForSource(path) {
+			return evidenceInputsForSource(state, facts, path);
+		},
 		metafieldResult: state.metafields,
 		dataFlowIds: {
 			dataAccess: dataAccessId,
@@ -767,6 +787,52 @@ function runCollectionPasses(
 	return state;
 }
 
+function evidenceRecordsBySource(
+	records: ThemeEvidenceRecord[],
+): Map<string, ThemeEvidenceRecord[]> {
+	const bySource = new Map<string, ThemeEvidenceRecord[]>();
+	for (const record of records) {
+		bySource.set(record.file, [...(bySource.get(record.file) ?? []), record]);
+	}
+	return bySource;
+}
+
+function evidenceInputsForSource(
+	state: ThemeCollectionState,
+	facts: ThemeFactStore,
+	path: string,
+): ThemeEvidenceInputs {
+	const schema = state.schemaSettings.get(path);
+	const instances = state.instances.get(path);
+	const locales = state.locales.get(path);
+	const inputs = state.dataFlowInputs.get(path);
+	const derived = state.derivedDataFlow.get(path);
+	return {
+		references: [...state.resolvedReferencesById.values()].filter(
+			(reference) => reference.fromPath === path,
+		),
+		sectionInstances: instances?.sectionInstances ?? [],
+		blockInstances: instances?.blockInstances ?? [],
+		localeReferences: locales?.localeReferences ?? [],
+		schemas: schema?.schemas ?? [],
+		settings: schema?.settings ?? [],
+		settingReads: schema?.settingReads ?? [],
+		dataAccesses: uniqueById([
+			...(inputs?.dataAccesses ?? []),
+			...(derived?.dataAccesses ?? []),
+		]),
+		variableReads: inputs?.variableReads ?? [],
+		renderArguments: inputs?.renderArguments ?? [],
+		capabilitySignals: state.capabilitySignals.get(path) ?? [],
+		docParams: facts
+			.getFile(path)
+			.filter(
+				(fact): fact is Extract<ThemeFact, { kind: "declaresDocParam" }> =>
+					fact.kind === "declaresDocParam",
+			),
+	};
+}
+
 function cloneCollectionState(
 	state: ThemeCollectionState,
 ): ThemeCollectionState {
@@ -789,6 +855,7 @@ function cloneCollectionState(
 		capabilities: cloneRecordsBySource(state.capabilities),
 		classifications: cloneRecordsBySource(state.classifications),
 		diagnostics: state.diagnostics.fork(),
+		evidenceBySource: cloneRecordsBySource(state.evidenceBySource),
 		processedPassKeys: 0,
 	};
 }

@@ -197,9 +197,11 @@ export {
 	ThemeDiagnosticStore,
 } from "./theme-diagnostic-store.js";
 export {
+	createThemeEvidencePass,
 	deriveThemeEvidence,
 	deriveThemeEvidenceRecords,
 	type ThemeEvidenceInputs,
+	type ThemeEvidencePassContext,
 } from "./theme-evidence-pass.js";
 export { matchesThemeGlob } from "./theme-exclusions.js";
 export {
