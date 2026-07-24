@@ -12,6 +12,8 @@ export type PreviewComponent = {
 	name: string;
 	/** Project-relative source path. */
 	file: string;
+	/** Registry id when the component came from a package, e.g. "@nazare/link". */
+	packageId?: string;
 	frontend: "nazare" | "plain";
 	/** snippet | section | block, when the frontend knows it. */
 	componentKind?: ComponentKind;
@@ -29,6 +31,8 @@ export type PreviewComponentOptions = {
 	readFile?: (path: string) => string | undefined;
 	/** Defaults to strict, matching a package author's build. */
 	strictness?: "strict" | "loose";
+	/** Registry id from the component's nazare.json, for the install command. */
+	packageId?: string;
 };
 
 const templateBaseName = (file: string): string =>
@@ -65,6 +69,7 @@ export function previewComponentFromSource(
 		return {
 			name,
 			file,
+			packageId: options.packageId,
 			frontend: "plain",
 			template: template || source,
 			assets,
@@ -87,6 +92,7 @@ export function previewComponentFromSource(
 	return {
 		name,
 		file,
+		packageId: options.packageId,
 		frontend: "nazare",
 		componentKind: built.contract.kind,
 		template,

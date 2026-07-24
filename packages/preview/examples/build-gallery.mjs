@@ -46,7 +46,7 @@ for (const folder of readdirSync(componentsRoot).sort()) {
 	const component = previewComponentFromSource(
 		readFileSync(join(repoRoot, file), "utf8"),
 		file,
-		{ readFile: readProjectFile },
+		{ readFile: readProjectFile, packageId: manifest.id },
 	);
 	rendered.push(await renderComponentStories(component));
 

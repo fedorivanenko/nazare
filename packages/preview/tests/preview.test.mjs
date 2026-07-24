@@ -147,7 +147,9 @@ test("a story that fails to render is reported, not swallowed", async () => {
 });
 
 test("the gallery page carries the stories, the controls, and the caveat", async () => {
-	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid", {
+		packageId: "@nazare/button",
+	});
 	const rendered = await renderComponentStories(component);
 	const page = galleryPage([rendered], {
 		title: "Buttons",
@@ -159,5 +161,23 @@ test("the gallery page carries the stories, the controls, and the caveat", async
 	assert.ok(page.includes("btn--ghost"));
 	// Controls ship as JSON so an interactive panel can be layered on later.
 	assert.ok(page.includes('class="controls-json"'));
-	assert.ok(page.includes("not Shopify"));
+	assert.ok(page.includes("workbench"), "the liquidjs caveat is on the page");
+	// The install command is copyable, as on a shadcn registry page.
+	assert.ok(page.includes("nazare add @nazare/button"));
+	assert.ok(page.includes('data-copy="nazare add @nazare/button"'));
+});
+
+test("each component gets a props table and a code tab of the emitted Liquid", async () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const page = galleryPage([await renderComponentStories(component)]);
+
+	// Tabs are radio inputs, so Preview/Code works without JavaScript.
+	assert.ok(page.includes('name="tabs-button"'));
+	assert.ok(page.includes("tab-panel--code"));
+	// The Code tab shows the emitted template, escaped.
+	assert.ok(page.includes("{{ label }}"));
+	assert.ok(page.includes("<th>Default</th>"));
+	// Both the enum members and the derived default reach the table.
+	assert.ok(page.includes("&quot;solid&quot; | &quot;outline&quot;"));
+	assert.ok(page.includes("badge--required"));
 });
