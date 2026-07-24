@@ -134,7 +134,11 @@ export function createThemeMetafieldPass(): IncrementalPass<
 					),
 					...(diagnosticsChanged
 						? ([
-								{ kind: "diagnosticsChanged", owner: "metafields" },
+								{
+									kind: "diagnosticsChanged",
+									pass: "metafields",
+									owner: "snapshot-and-reads",
+								},
 							] satisfies PassChange[])
 						: []),
 				],
