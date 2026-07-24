@@ -344,6 +344,7 @@ test("metafield pass owns definition and Liquid read creation", () => {
 			contents: JSON.stringify({
 				definitions: [
 					{ owner: "product", namespace: "custom", key: "subtitle" },
+					{ owner: "product", namespace: "custom", key: "title" },
 				],
 			}),
 		},
@@ -357,6 +358,14 @@ test("metafield pass owns definition and Liquid read creation", () => {
 						object: "product",
 						propertyPath: "metafields.custom.subtitle",
 						expression: "product.metafields.custom.subtitle",
+						origin: "liquid",
+					},
+					{
+						id: "access:title",
+						fromPath: "sections/main.liquid",
+						object: "product",
+						propertyPath: "metafields.custom.title",
+						expression: "product.metafields.custom.title",
 						origin: "liquid",
 					},
 				],
@@ -376,15 +385,48 @@ test("metafield pass owns definition and Liquid read creation", () => {
 		[{ kind: "dataFlowChanged", sourcePath: "sections/main.liquid" }],
 		context,
 	);
-	assert.equal(context.metafieldResult.current.definitions.length, 1);
+	assert.equal(context.metafieldResult.current.definitions.length, 2);
 	assert.equal(
 		context.metafieldResult.current.reads[0].definitionId,
 		"metafield:product:custom:subtitle",
 	);
 	assert.deepEqual(
 		result.changes.filter((change) => change.kind === "metafieldReadChanged"),
-		[{ kind: "metafieldReadChanged", id: "metafield-read:access:subtitle" }],
+		[
+			{ kind: "metafieldReadChanged", id: "metafield-read:access:subtitle" },
+			{ kind: "metafieldReadChanged", id: "metafield-read:access:title" },
+		],
 	);
+	const previousSubtitle = context.metafieldResult.current.reads.find(
+		(read) => read.key === "subtitle",
+	);
+	const previousTitle = context.metafieldResult.current.reads.find(
+		(read) => read.key === "title",
+	);
+	context.metafieldSnapshot = {
+		contents: JSON.stringify({
+			definitions: [{ owner: "product", namespace: "custom", key: "title" }],
+		}),
+	};
+	scheduler.execute(
+		[
+			{
+				kind: "metafieldSnapshotChanged",
+				changedKeys: ["product:custom:subtitle"],
+				state: "present",
+			},
+		],
+		context,
+	);
+	const nextSubtitle = context.metafieldResult.current.reads.find(
+		(read) => read.key === "subtitle",
+	);
+	const nextTitle = context.metafieldResult.current.reads.find(
+		(read) => read.key === "title",
+	);
+	assert.notStrictEqual(nextSubtitle, previousSubtitle);
+	assert.strictEqual(nextTitle, previousTitle);
+	assert.equal(nextSubtitle.definitionId, undefined);
 });
 
 test("metafield snapshot changes can seed a snapshot-only pass", () => {
