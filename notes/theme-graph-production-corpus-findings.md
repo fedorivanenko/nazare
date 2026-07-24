@@ -195,7 +195,7 @@ Required implementation:
 
 ### 6. Capability/classification results need ground truth
 
-Classifications are present and structurally explainable, but rule confidence is not corpus-calibrated. Known ambiguity remains:
+Classifications are present and structurally explainable, but evidence strength is categorical rather than statistically calibrated. Known ambiguity remains:
 
 - cart page versus cart drawer;
 - one product image versus product gallery;
@@ -208,7 +208,7 @@ Required implementation:
 - record expected capabilities/classifications as golden fixtures;
 - measure precision and recall per rule;
 - propagate page/containment context into classification evidence;
-- do not increase confidence based only on filenames.
+- do not strengthen evidence based only on filenames.
 
 ## Vision assessment
 

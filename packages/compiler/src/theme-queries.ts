@@ -19,7 +19,7 @@ export function themeGraphToDot(graph: InspectNazareThemeResult): string {
 		);
 	}
 	lines.push("}");
-	return lines.join("\\n");
+	return lines.join("\n");
 }
 
 function dotId(value: string): string {
@@ -28,9 +28,9 @@ function dotId(value: string): string {
 
 function dotEscape(value: string): string {
 	return value
-		.replaceAll("\\\\", "\\\\\\\\")
+		.replaceAll("\\", "\\\\")
 		.replaceAll('"', '\\"')
-		.replaceAll("\\n", "\\\\n");
+		.replaceAll("\n", "\\n");
 }
 
 export type ThemeGraphSummary = {
