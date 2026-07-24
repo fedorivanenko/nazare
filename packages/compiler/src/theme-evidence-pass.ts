@@ -15,6 +15,7 @@ import type {
 	ThemeSettingRecord,
 	ThemeVariableReadRecord,
 } from "./theme-facts.js";
+import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
 
 export type ThemeEvidenceInputs = {
 	references: ThemeReference[];
@@ -52,6 +53,56 @@ export function deriveThemeEvidence(
 				fact.kind === "declaresDocParam",
 		),
 	});
+}
+
+export type ThemeEvidencePassContext = {
+	evidenceBySource: Map<string, ThemeEvidenceRecord[]>;
+	evidenceInputsForSource(path: string): ThemeEvidenceInputs;
+};
+
+export function createThemeEvidencePass(): IncrementalPass<
+	string,
+	ThemeEvidenceRecord,
+	ThemeEvidencePassContext
+> {
+	return {
+		name: "evidence",
+		stage: "diagnostics",
+		routes: [],
+		collectChanges(changes) {
+			return evidenceChangedSources(changes);
+		},
+		run(paths, context) {
+			const records: ThemeEvidenceRecord[] = [];
+			const changes: PassChange[] = [];
+			for (const path of [...paths].sort((a, b) => a.localeCompare(b))) {
+				const next = deriveThemeEvidenceRecords(
+					context.evidenceInputsForSource(path),
+				);
+				const previous = context.evidenceBySource.get(path) ?? [];
+				if (JSON.stringify(previous) === JSON.stringify(next)) continue;
+				if (next.length === 0) context.evidenceBySource.delete(path);
+				else context.evidenceBySource.set(path, next);
+				records.push(...next);
+				changes.push({
+					kind: "diagnosticsChanged",
+					pass: "evidence",
+					owner: path,
+				});
+			}
+			return { records, changes };
+		},
+	};
+}
+
+function evidenceChangedSources(changes: readonly PassChange[]): Set<string> {
+	const paths = new Set<string>();
+	for (const change of changes) {
+		if (change.kind === "factsChanged") paths.add(change.path);
+		if (change.kind === "dataFlowChanged") paths.add(change.sourcePath);
+		if (change.kind === "capabilitySignalChanged") paths.add(change.sourcePath);
+	}
+	return paths;
 }
 
 export function deriveThemeEvidenceRecords(
