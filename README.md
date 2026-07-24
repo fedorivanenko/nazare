@@ -40,7 +40,7 @@ nazare init
 Choose and save a registry, then add components:
 
 ```sh
-nazare registry add main https://registry.nazare.engineering
+nazare registry connect main https://registry.nazare.engineering
 nazare registry use main
 
 nazare add @nazare/button
@@ -232,10 +232,10 @@ Example diagnostic:
 Useful compiler commands:
 
 ```sh
-nazare validate nazare/components/hero.nz.liquid
-nazare schema nazare/components/hero.nz.liquid
-nazare graph nazare/components/hero.nz.liquid
-nazare dump nazare/components/hero.nz.liquid
+nazare check nazare/components/hero.nz.liquid
+nazare inspect schema nazare/components/hero.nz.liquid
+nazare inspect graph nazare/components/hero.nz.liquid
+nazare inspect dump nazare/components/hero.nz.liquid
 ```
 
 ## 2. Registry
@@ -248,7 +248,7 @@ Example usage:
 
 ```sh
 # save and select a registry for this project
-nazare registry add main https://registry.nazare.engineering
+nazare registry connect main https://registry.nazare.engineering
 nazare registry use main
 nazare registry list
 
@@ -294,11 +294,10 @@ Publish your own component:
 ```
 
 ```sh
-nazare registry add company https://registry.your-website.com
+nazare registry connect company https://registry.your-website.com
 nazare registry use company
 export NAZARE_TOKEN=your-publish-token
 
-nazare pack ./components/button
 nazare publish ./components/button
 ```
 
@@ -312,7 +311,7 @@ nazare update
 You can also run a registry from a local folder, with no server:
 
 ```sh
-nazare registry add local file:.nazare-registry
+nazare registry connect local file:.nazare-registry
 nazare registry use local
 
 nazare publish ./components/button
@@ -337,7 +336,7 @@ NAZARE_TOKENS="dev-token" pnpm --filter @nazare/registry-api start
 Then point the CLI at it:
 
 ```sh
-nazare registry add local-http http://localhost:3000
+nazare registry connect local-http http://localhost:3000
 nazare registry use local-http
 export NAZARE_TOKEN=dev-token
 
@@ -345,7 +344,7 @@ nazare publish ./components/button
 nazare add @acme/button
 ```
 
-For production, deploy `apps/registry-api` to any Node host or Vercel, set `DATABASE_URL` and `NAZARE_TOKENS`, run the migration, then save the deployed URL with `nazare registry add`.
+For production, deploy `apps/registry-api` to any Node host or Vercel, set `DATABASE_URL` and `NAZARE_TOKENS`, run the migration, then save the deployed URL with `nazare registry connect`.
 
 Registry operational model:
 
@@ -528,7 +527,7 @@ Nazare source compiles one way, but a live Shopify theme is edited from both sid
 To reconcile against a real live theme, pull its merchant-owned data first (requires the Shopify CLI):
 
 ```sh
-nazare build --pull --store your-store.myshopify.com --theme 123456789
+nazare build --pull-data --store your-store.myshopify.com --theme 123456789
 shopify theme push --path .nazare-out/theme
 ```
 
@@ -568,21 +567,26 @@ Also, Nazare includes JS island architecture, supports any JavaScript framework 
 ```txt
 nazare init                         scaffold build config in nazare.theme.json
 nazare build [source-root|file]     build a complete Shopify theme output
-nazare build --pull                 reconcile against a live theme before building
-nazare add <@scope/name>            install a registry component and dependencies
-nazare update [@scope/name]         update one component, or all installed components
-nazare registry add <name> <url>    save a project registry in `nazare.theme.json`
+nazare build --pull-data            reconcile against a live theme before building
+nazare check <file>                 check one `.nz.liquid` file
+nazare registry add <@scope/name>   install a registry component and dependencies
+nazare registry update [@scope/name]  update one component, or all installed
+nazare registry diff <@scope/name>  compare the registry version with local files
+nazare registry publish [dir]       publish a component folder (--pack writes locally)
+nazare registry connect <name> <url>  save a project registry in `nazare.theme.json`
 nazare registry use <name>          select a saved project registry
 nazare registry list                list saved registries
-nazare pack [dir]                   create a publishable registry payload
-nazare publish [dir]                publish a component folder
-nazare validate <file>              check one `.nz.liquid` file
-nazare schema <file>                print generated Shopify schema
-nazare graph <file>                 print component dependency graph
-nazare ast <file>                   print parsed AST
-nazare ir <file>                    print compiler IR
-nazare artifact <file>              print full compiler artifact
-nazare dump <file>                  write debug JSON files into `.nazare-out`
+nazare inspect <view> <file>        compiler facts: ast, ir, graph, schema, artifact, dump
+```
+
+`add`, `update`, and `publish` also answer at the top level, so `nazare add
+@scope/name` is `nazare registry add @scope/name`.
+
+Nazare builds a theme directory; the Shopify CLI moves it to and from a store,
+so there is no `nazare push` or `nazare pull`:
+
+```sh
+shopify theme push --path <outDir>
 ```
 
 Common options and environment variables:
@@ -592,9 +596,9 @@ Common options and environment variables:
 --version x.y.z                     add/update exact registry version
 --source-root <dir>                 add/update/build source root (else `nazare.theme.json` build.sourceRoot)
 --out-dir <dir>                     build output directory (else `nazare.theme.json` build.outDir)
---pull                              build: fetch live theme data before building
---store <domain>                    build --pull: Shopify store to pull from
---theme <id|name>                   build --pull: theme to pull from
+--pull-data                         build: reconcile a live theme's merchant data first
+--store <domain>                    build --pull-data: Shopify store to pull from
+--theme <id|name>                   build --pull-data: theme to pull from
 --json                              build: print the raw result as JSON
 NAZARE_REGISTRY                     one-command registry override, or `file:<dir>`
 NAZARE_TOKEN                        publish token

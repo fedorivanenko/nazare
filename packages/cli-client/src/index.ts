@@ -18,6 +18,23 @@ import { packComponent, publishComponent } from "./publish.js";
 
 const THEME_MANIFEST = "nazare.theme.json";
 
+/**
+ * Compiler facts: one file in, JSON out. Debugging views rather than daily
+ * verbs, so they sit under `inspect` instead of competing for the top level
+ * with `build`.
+ */
+const INSPECT_VIEWS = new Set([
+	"ast",
+	"ir",
+	"graph",
+	"schema",
+	"artifact",
+	"dump",
+]);
+
+/** Registry verbs common enough to also answer at the top level. */
+const REGISTRY_ALIASES = new Set(["add", "update", "publish"]);
+
 type MainOptions = { cwd?: string; env?: NodeJS.ProcessEnv; output?: Output };
 
 export async function main(
@@ -40,7 +57,6 @@ export async function main(
 
 	try {
 		const cliOptions = parseCliOptions(args.slice(1));
-		const file = cliOptions.positionals[0];
 
 		// The project root is the working directory: every file the compiler
 		// sees is identified by its root-relative POSIX path, and readProjectFile
@@ -59,7 +75,12 @@ export async function main(
 		// below because it targets a directory (from the arg or nazare.theme.json
 		// build.sourceRoot) rather than one entry file.
 		if (command === "build") {
-			return await runThemeBuild(projectRoot, file, cliOptions, output);
+			return await runThemeBuild(
+				projectRoot,
+				cliOptions.positionals[0],
+				cliOptions,
+				output,
+			);
 		}
 
 		// `init` scaffolds the project's explicit build config so add/build work.
@@ -67,37 +88,47 @@ export async function main(
 			return await runInit(projectRoot, cliOptions, output);
 		}
 
-		// Registry config commands update project-level nazare.theme.json.
+		// Everything registry-shaped lives under one namespace. `add`, `update`,
+		// and `publish` are the daily verbs, so they are also reachable at the top
+		// level — aliases, not commands of their own.
 		if (command === "registry") {
-			return await runRegistry(projectRoot, cliOptions, output, env);
+			const [subcommand, ...rest] = cliOptions.positionals;
+			return await runRegistry(
+				subcommand,
+				{ ...cliOptions, positionals: rest },
+				projectRoot,
+				output,
+				env,
+			);
 		}
-
-		// `add` / `update` talk to the registry, not a local entry file: they copy
-		// component source (and its dependency closure) into the source root.
-		if (command === "add") {
-			return await runAdd(projectRoot, file, cliOptions, output, env);
-		}
-		if (command === "update") {
-			return await runUpdate(projectRoot, file, cliOptions, output, env);
-		}
-		if (command === "diff") {
-			return await runDiff(projectRoot, file, cliOptions, output, env);
-		}
-
-		// Registry authoring commands target a component folder, not a compile entry.
-		if (command === "pack") {
-			return await runPack(file, output, projectRoot);
-		}
-		if (command === "publish") {
-			return await runPublish(file, output, env, projectRoot);
+		if (REGISTRY_ALIASES.has(command)) {
+			return await runRegistry(command, cliOptions, projectRoot, output, env);
 		}
 
 		// Every other command targets exactly one entry file.
-		if (!file) {
+		if (command !== "check" && command !== "inspect") {
+			output.error(`Unknown command ${command}`);
+			printHelp(output);
+			return 1;
+		}
+		// `inspect` names the view first: `nazare inspect ir <file>`.
+		const view = command === "inspect" ? cliOptions.positionals[0] : "check";
+		const target =
+			command === "inspect"
+				? cliOptions.positionals[1]
+				: cliOptions.positionals[0];
+		if (command === "inspect" && (!view || !INSPECT_VIEWS.has(view))) {
+			output.error(
+				`Usage: nazare inspect <${[...INSPECT_VIEWS].join("|")}> <file>`,
+			);
+			return 1;
+		}
+		if (!target) {
 			output.error(`Missing file path for command ${command}`);
 			printHelp(output);
 			return 1;
 		}
+		const file = target;
 		const resolvedFile = resolve(projectRoot, file);
 		const entryPath = relative(projectRoot, resolvedFile).split(sep).join("/");
 		if (entryPath.startsWith("..")) {
@@ -117,7 +148,7 @@ export async function main(
 			return compiled;
 		};
 
-		if (command === "ast") {
+		if (view === "ast") {
 			const result = compile();
 			output.log(
 				JSON.stringify(
@@ -129,7 +160,7 @@ export async function main(
 			return hasErrors(result.issues) ? 1 : 0;
 		}
 
-		if (command === "ir") {
+		if (view === "ir") {
 			const result = compile();
 			output.log(
 				JSON.stringify(
@@ -141,7 +172,7 @@ export async function main(
 			return hasErrors(result.issues) ? 1 : 0;
 		}
 
-		if (command === "graph") {
+		if (view === "graph") {
 			const result = compile();
 			output.log(
 				JSON.stringify(
@@ -153,7 +184,7 @@ export async function main(
 			return hasErrors(result.issues) ? 1 : 0;
 		}
 
-		if (command === "validate") {
+		if (view === "check") {
 			const result = compile();
 			const issues = [
 				...result.issues,
@@ -163,13 +194,13 @@ export async function main(
 			return hasErrors(issues) ? 1 : 0;
 		}
 
-		if (command === "artifact") {
+		if (view === "artifact") {
 			const result = compile();
 			output.log(JSON.stringify(result, null, 2));
 			return hasErrors(result.issues) ? 1 : 0;
 		}
 
-		if (command === "schema") {
+		if (view === "schema") {
 			const result = compile();
 			const schema = themeSchemaFromIR(result.ir, {
 				name: artifactBaseName(entryPath),
@@ -185,14 +216,14 @@ export async function main(
 			return hasErrors(result.issues) ? 1 : 0;
 		}
 
-		if (command === "dump") {
+		if (view === "dump") {
 			const result = compile();
 			const written = await writeDumpFiles(entryPath, result);
 			output.log(JSON.stringify({ written, issues: result.issues }, null, 2));
 			return hasErrors(result.issues) ? 1 : 0;
 		}
 
-		output.error(`Unknown command ${command}`);
+		output.error(`Unknown inspect view ${view}`);
 		printHelp(output);
 		return 1;
 	} catch (error) {
@@ -462,16 +493,42 @@ async function runDiff(
 	return 0;
 }
 
+/**
+ * The registry namespace: installing components, authoring them, and choosing
+ * which registry to talk to. `connect` registers a source; `add` installs a
+ * component — two verbs that were both called `add` before, one nested in the
+ * other.
+ */
 async function runRegistry(
-	projectRoot: string,
+	subcommand: string | undefined,
 	cliOptions: CliOptions,
+	projectRoot: string,
 	output: Output,
 	env: NodeJS.ProcessEnv,
 ): Promise<number> {
-	const [subcommand, name, url] = cliOptions.positionals;
+	const [name, url] = cliOptions.positionals;
+
 	if (subcommand === "add") {
+		return await runAdd(projectRoot, name, cliOptions, output, env);
+	}
+	if (subcommand === "update") {
+		return await runUpdate(projectRoot, name, cliOptions, output, env);
+	}
+	if (subcommand === "diff") {
+		return await runDiff(projectRoot, name, cliOptions, output, env);
+	}
+	if (subcommand === "publish") {
+		// One operation, one name: --pack writes the payload locally instead of
+		// uploading it. The output is registry-shaped, so it doubles as a
+		// `file:` registry to install from.
+		return cliOptions.pack
+			? await runPack(name, output, projectRoot)
+			: await runPublish(name, output, env, projectRoot);
+	}
+
+	if (subcommand === "connect") {
 		if (!name || !url) {
-			output.error("Usage: nazare registry add <name> <url>");
+			output.error("Usage: nazare registry connect <name> <url>");
 			return 1;
 		}
 		assertRegistryName(name);
@@ -527,7 +584,7 @@ async function runRegistry(
 		return 0;
 	}
 
-	output.error(`Unknown registry command ${subcommand}`);
+	output.error(`Unknown registry command ${subcommand ?? ""}`.trim());
 	printHelp(output);
 	return 1;
 }
@@ -548,7 +605,7 @@ async function registryClientForProject(
 	const url = current ? registries[current] : undefined;
 	if (!current || !url) {
 		throw new Error(
-			"No registry configured. Run `nazare registry add <name> <url>` and `nazare registry use <name>`, or set NAZARE_REGISTRY.",
+			"No registry configured. Run `nazare registry connect <name> <url>` and `nazare registry use <name>`, or set NAZARE_REGISTRY.",
 		);
 	}
 	return registryFromEnv({

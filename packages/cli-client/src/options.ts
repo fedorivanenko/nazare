@@ -5,8 +5,11 @@ export type CliOptions = {
 	version?: string;
 	sourceRoot?: string;
 	outDir?: string;
-	pull?: boolean;
+	/** build: reconcile against a live theme's merchant-owned data first. */
+	pullData?: boolean;
 	force?: boolean;
+	/** registry publish: write the payload locally instead of uploading it. */
+	pack?: boolean;
 	store?: string;
 	theme?: string;
 	json?: boolean;
@@ -71,8 +74,12 @@ export function parseCliOptions(args: string[]): CliOptions {
 			index += theme.consumed - 1;
 			continue;
 		}
-		if (arg === "--pull") {
-			options.pull = true;
+		if (arg === "--pull-data") {
+			options.pullData = true;
+			continue;
+		}
+		if (arg === "--pack") {
+			options.pack = true;
 			continue;
 		}
 		if (arg === "--force") {
@@ -101,37 +108,43 @@ function parseStrictness(value: string | undefined): "loose" | "strict" {
 
 export function printHelp(output: Output = console): void {
 	output.error(`Usage:
-  nazare ast <file>
-  nazare ir <file>
-  nazare graph <file>
-  nazare validate <file>
-  nazare schema <file>
-  nazare init                       scaffold build config in nazare.theme.json (prompts for src/out dirs)
-  nazare build [source-root|file]   source root from arg or nazare.theme.json build.sourceRoot
-                                    --pull reconciles against a live theme first
-  nazare add <@scope/name>          copy a component + deps into the source root
-  nazare update [@scope/name]       re-fetch latest; all installed if omitted
-  nazare diff <@scope/name>         show registry update vs local installed files
-  nazare registry add <name> <url>  save a project registry in nazare.theme.json
-  nazare registry use <name>        select a saved project registry
-  nazare registry list              list saved project registries
-  nazare pack [dir]                 write publishable payload to .nazare-out/pack
-  nazare publish [dir]              publish component folder (default .)
-  nazare artifact <file>
-  nazare dump <file>
+  nazare init                        scaffold build config in nazare.theme.json (prompts for src/out dirs)
+  nazare build [source-root|file]    source root from arg or nazare.theme.json build.sourceRoot
+  nazare check <file>                diagnostics only; non-zero exit on errors
+  nazare registry <command>          install, author, and choose registries
+  nazare inspect <view> <file>       compiler facts as JSON
+
+Registry:
+  nazare registry add <@scope/name>      copy a component + deps into the source root
+  nazare registry update [@scope/name]   re-fetch latest; all installed if omitted
+  nazare registry diff <@scope/name>     show registry update vs local installed files
+  nazare registry publish [dir]          publish a component folder (default .)
+  nazare registry connect <name> <url>   save a project registry in nazare.theme.json
+  nazare registry use <name>             select a saved project registry
+  nazare registry list                   list saved project registries
+
+  add, update, and publish also answer at the top level:
+  \`nazare add @scope/name\` is \`nazare registry add @scope/name\`.
+
+Inspect views:
+  ast, ir, graph, schema, artifact, dump
 
 Options:
   --strictness loose|strict
-  --version x.y.z                   add/update/diff: exact version (default latest)
-  --force                           update: overwrite local component edits
-  --source-root <dir>               add/update/build source root (else nazare.theme.json build.sourceRoot)
-  --out-dir <dir>                   build output directory (else nazare.theme.json build.outDir)
-  --pull                            build: fetch live theme data before building
-  --store <domain>                  build --pull: Shopify store to pull from
-  --theme <id|name>                 build --pull: theme to pull from
-  --json                            build: print the raw result as JSON
+  --version x.y.z                    registry add/update/diff: exact version (default latest)
+  --force                            registry update: overwrite local component edits
+  --pack                             registry publish: write the payload to .nazare-out/pack instead
+  --source-root <dir>                registry add/update, build (else nazare.theme.json build.sourceRoot)
+  --out-dir <dir>                    build output directory (else nazare.theme.json build.outDir)
+  --pull-data                        build: reconcile against a live theme's merchant-owned data first
+  --store <domain>                   build --pull-data: Shopify store to pull from
+  --theme <id|name>                  build --pull-data: theme to pull from
+  --json                             build: print the raw result as JSON
 
 Env:
-  NAZARE_REGISTRY                   registry base URL, or file:<dir> for a local one
-  NAZARE_TOKEN                      bearer token for publish (file: registries ignore it)`);
+  NAZARE_REGISTRY                    registry base URL, or file:<dir> for a local one
+  NAZARE_TOKEN                       bearer token for publish (file: registries ignore it)
+
+Nazare builds a theme directory; the Shopify CLI moves it to and from a store
+(\`shopify theme push --path <outDir>\`), which is why there is no push or pull.`);
 }

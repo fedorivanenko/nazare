@@ -148,9 +148,15 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 			"component.nz.liquid": `<div></div>\n{% script %}\nexport default island(({ refs }) => refs.missing);\n{% endscript %}`,
 		},
 		async (cwd) => {
-			const strict = await runCli(cwd, "artifact", "component.nz.liquid");
+			const strict = await runCli(
+				cwd,
+				"inspect",
+				"artifact",
+				"component.nz.liquid",
+			);
 			const loose = await runCli(
 				cwd,
+				"inspect",
 				"artifact",
 				"component.nz.liquid",
 				"--strictness",
@@ -173,7 +179,7 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 	);
 });
 
-test("cli: build validates dependencies, validate checks only the entry", async () => {
+test("cli: build validates dependencies, check looks at the entry only", async () => {
 	await withProject(
 		{
 			"component.nz.liquid": `{% import Child from "./child.nz.liquid" %}\n{% render Child {} %}`,
@@ -196,8 +202,8 @@ test("cli: build validates dependencies, validate checks only the entry", async 
 				),
 			);
 
-			// validate compiles the entry only — the child is not checked here.
-			const validated = await runCli(cwd, "validate", "component.nz.liquid");
+			// check compiles the entry only — the child is not checked here.
+			const validated = await runCli(cwd, "check", "component.nz.liquid");
 			assert.equal(validated.status, 0, validated.stderr);
 			assert.ok(
 				!JSON.parse(validated.stdout).issues.some(
@@ -467,7 +473,13 @@ test("cli: pack is available on the main nazare command", {
 			"nazare/button/button.ts": "export const button = 1;\n",
 		},
 		async (cwd) => {
-			const packed = await runCli(cwd, "pack", "nazare/button");
+			const packed = await runCli(
+				cwd,
+				"registry",
+				"publish",
+				"nazare/button",
+				"--pack",
+			);
 			assert.equal(packed.status, 0, packed.stderr);
 			const output = JSON.parse(packed.stdout);
 			assert.deepEqual(output.packed, {
@@ -480,7 +492,7 @@ test("cli: pack is available on the main nazare command", {
 	);
 });
 
-test("cli: registry add/use stores project registry and add reads it", async () => {
+test("cli: registry connect/use stores project registry and add reads it", async () => {
 	await withProject(
 		{
 			".registry/nazare/button/0.1.0.json": JSON.stringify({
@@ -500,7 +512,7 @@ test("cli: registry add/use stores project registry and add reads it", async () 
 			const addedRegistry = await runCli(
 				cwd,
 				"registry",
-				"add",
+				"connect",
 				"local",
 				"file:.registry",
 			);
@@ -533,6 +545,103 @@ test("cli: registry add/use stores project registry and add reads it", async () 
 			assert.deepEqual(manifest.registries, { local: "file:.registry" });
 			assert.deepEqual(manifest.installed, { "@nazare/button": "0.1.0" });
 			assert.ok(manifest.installedFiles["@nazare/button"]["button.nz.liquid"]);
+		},
+	);
+});
+
+test("cli: inspect names the view first and rejects an unknown one", async () => {
+	await withProject(
+		{ "component.nz.liquid": "<div>hi</div>\n" },
+		async (cwd) => {
+			const ir = await runCli(cwd, "inspect", "ir", "component.nz.liquid");
+			assert.equal(ir.status, 0, ir.stderr);
+			assert.ok(JSON.parse(ir.stdout).ir);
+
+			const unknown = await runCli(
+				cwd,
+				"inspect",
+				"nope",
+				"component.nz.liquid",
+			);
+			assert.equal(unknown.status, 1);
+			assert.match(unknown.stderr, /nazare inspect <ast\|ir\|/);
+
+			// The old top-level spellings are gone, not aliased.
+			const removed = await runCli(cwd, "ir", "component.nz.liquid");
+			assert.equal(removed.status, 1);
+			assert.match(removed.stderr, /Unknown command ir/);
+		},
+	);
+});
+
+test("cli: registry verbs answer under the namespace and at the top level", async () => {
+	await withProject(
+		{
+			".registry/nazare/button/0.1.0.json": JSON.stringify({
+				id: "@nazare/button",
+				version: "0.1.0",
+				dependencies: {},
+				files: {
+					"nazare.json": JSON.stringify({
+						id: "@nazare/button",
+						version: "0.1.0",
+					}),
+					"button.nz.liquid": "<button>Button</button>\n",
+				},
+			}),
+		},
+		async (cwd) => {
+			const connected = await runCli(
+				cwd,
+				"registry",
+				"connect",
+				"local",
+				"file:.registry",
+			);
+			assert.equal(connected.status, 0, connected.stderr);
+
+			// The namespaced spelling is canonical...
+			const namespaced = await runCli(
+				cwd,
+				"registry",
+				"add",
+				"@nazare/button",
+				"--source-root",
+				"nazare",
+			);
+			assert.equal(namespaced.status, 0, namespaced.stderr);
+			assert.ok(existsSync(join(cwd, "nazare/button/button.nz.liquid")));
+
+			// ...and the top-level alias reaches the same command: it sees the
+			// install the namespaced spelling just recorded, and skips it.
+			const aliased = await runCli(
+				cwd,
+				"add",
+				"@nazare/button",
+				"--source-root",
+				"nazare",
+			);
+			assert.equal(aliased.status, 0, aliased.stderr);
+			assert.deepEqual(JSON.parse(aliased.stdout).skipped, [
+				{ id: "@nazare/button", version: "0.1.0" },
+			]);
+		},
+	);
+});
+
+test("cli: a successful build prints the Shopify CLI handoff", async () => {
+	await withProject(
+		{
+			"nazare/component.nz.liquid": "<div>hi</div>\n",
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: "nazare", outDir: "theme" },
+			}),
+		},
+		async (cwd) => {
+			const built = await runCli(cwd, "build");
+			assert.equal(built.status, 0, built.stderr);
+			// Nazare stops at the theme directory; the Shopify CLI uploads it.
+			assert.match(built.stdout, /shopify theme push --path theme/);
 		},
 	);
 });
