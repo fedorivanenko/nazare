@@ -127,10 +127,30 @@ export function createPreviewEngine(
 	return engine;
 }
 
+/**
+ * The scope a story's props are rendered in. Emit lowers a snippet's props to
+ * bare variables, but a section's to `section.settings.*` and a block's to
+ * `block.settings.*` — so props handed to a section have to arrive shaped like
+ * the settings object Shopify would pass, or every setting reads blank.
+ */
+export function renderContext(
+	props: Record<string, unknown>,
+	kind: string | undefined,
+	name = "preview",
+): Record<string, unknown> {
+	if (kind === "section") {
+		return { section: { id: `preview-${name}`, settings: props, blocks: [] } };
+	}
+	if (kind === "block") {
+		return { block: { id: `preview-${name}`, type: name, settings: props } };
+	}
+	return props;
+}
+
 export async function renderPreview(
 	engine: Liquid,
 	source: string,
-	props: Record<string, unknown>,
+	context: Record<string, unknown>,
 ): Promise<string> {
-	return (await engine.parseAndRender(source, props)).trim();
+	return (await engine.parseAndRender(source, context)).trim();
 }

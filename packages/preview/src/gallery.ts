@@ -9,7 +9,7 @@
 import type { Diagnostic } from "@nazare/core";
 import type { PreviewComponent } from "./component.js";
 import type { PreviewControl } from "./controls.js";
-import { createPreviewEngine, renderPreview } from "./engine.js";
+import { createPreviewEngine, renderContext, renderPreview } from "./engine.js";
 import {
 	changedProps,
 	generatedStories,
@@ -49,7 +49,11 @@ export async function renderComponentStories(
 			rendered.push({
 				story,
 				changed,
-				html: await renderPreview(engine, component.template, story.props),
+				html: await renderPreview(
+					engine,
+					component.template,
+					renderContext(story.props, component.componentKind, component.name),
+				),
 			});
 		} catch (error) {
 			rendered.push({

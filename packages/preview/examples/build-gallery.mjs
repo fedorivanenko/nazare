@@ -29,7 +29,6 @@ const readProjectFile = (path) => {
 
 const rendered = [];
 const stylesheets = new Set();
-const scripts = new Set();
 
 for (const folder of readdirSync(componentsRoot).sort()) {
 	const manifestPath = join(componentsRoot, folder, "nazare.json");
@@ -55,11 +54,14 @@ for (const folder of readdirSync(componentsRoot).sort()) {
 		mkdirSync(join(outDir, "assets"), { recursive: true });
 		writeFileSync(join(outDir, "assets", name), asset.contents);
 		if (name.endsWith(".css")) stylesheets.add(`./assets/${name}`);
-		// Behaviors are ES modules that mount on the emitted markup, so the
-		// island components are actually interactive in the gallery.
-		if (name.endsWith(".js")) scripts.add(`./assets/${name}`);
 	}
 }
+
+// Behaviors are deliberately NOT wired here: the emitted template already ends
+// in `{{ 'nazare-runtime.js' | asset_url | script_tag }}` followed by its own
+// behavior, and the preview engine renders those tags for real. Loading them
+// again from the page would only risk getting the order wrong — the behavior
+// scripts read `window.Nazare`, so the runtime must execute first.
 
 mkdirSync(outDir, { recursive: true });
 writeFileSync(
@@ -67,7 +69,6 @@ writeFileSync(
 	galleryPage(rendered, {
 		title: "Nazare registry — preview",
 		stylesheets: [...stylesheets],
-		scripts: [...scripts],
 	}),
 );
 console.log(join(outDir, "index.html"));

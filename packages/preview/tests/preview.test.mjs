@@ -36,7 +36,7 @@ const SECTION = `{% component section %}
   featured: boolean.setting({ label: "Featured", default: false }),
 } %}
 
-<section data-columns="{{ columns }}"><h2>{{ heading }}</h2></section>
+<section data-columns="{{ props.columns }}"><h2>{{ props.heading }}</h2></section>
 `;
 
 test("controls come from the contract, not from hand-written argTypes", () => {
@@ -104,6 +104,17 @@ test("generated stories cover the defaults plus every enum member", async () => 
 	assert.ok(html.default.includes('class="btn btn--solid"'));
 	assert.ok(html["scheme: outline"].includes('class="btn btn--outline"'));
 	assert.equal(rendered.stories[1].changed.join(","), "scheme");
+});
+
+test("a section's props render as section.settings, not as bare variables", async () => {
+	const component = previewComponentFromSource(SECTION, "grid.nz.liquid");
+	const rendered = await renderComponentStories(component);
+
+	// Emit lowers a section's props to section.settings.*, so props handed to a
+	// story have to arrive shaped that way or every setting reads blank.
+	assert.ok(component.template.includes("section.settings.heading"));
+	assert.ok(rendered.stories[0].html.includes('data-columns="2"'));
+	assert.ok(rendered.stories[0].html.includes("<h2>Sale</h2>"));
 });
 
 test("plain Liquid previews with no controls to derive", async () => {
