@@ -351,6 +351,7 @@ export {
 } from "./theme-semantic-store.js";
 export {
 	type ThemeGraphUpdate,
+	ThemeProgram,
 	ThemeWorkspaceSession,
 } from "./theme-session.js";
 export {
