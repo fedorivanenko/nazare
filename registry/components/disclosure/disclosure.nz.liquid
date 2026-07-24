@@ -10,7 +10,7 @@
 <div ref="root" class="nazare-disclosure">
   <button ref="trigger" type="button">{{ props.label }}</button>
   <div ref="panel" hidden>
-    <slot></slot>
+    {% blocks %}
   </div>
 </div>
 
