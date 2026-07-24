@@ -91,6 +91,7 @@ export function createThemeDataFlowFixedPointPass(): FixedPointPass<
 				records: delta.records,
 				changes: delta.changes,
 				pending: nextPending,
+				work: paths.length,
 			} satisfies FixedPointStep<
 				ThemeDataFlowGroupKey,
 				ThemeDataFlowDerivedRecord

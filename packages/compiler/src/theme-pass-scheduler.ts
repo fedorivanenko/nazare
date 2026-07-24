@@ -47,7 +47,31 @@ export type PassDelta<RecordValue> = {
 
 export type FixedPointStep<Key, RecordValue> = PassDelta<RecordValue> & {
 	pending: Set<Key>;
+	work?: number;
 };
+
+export type ThemePassConvergenceDiagnostic = {
+	code: "fixed-point-budget-exceeded";
+	pass: string;
+	budget: "iterations" | "work";
+	limit: number;
+	observed: number;
+	pendingKeyCount: number;
+};
+
+export class ThemePassConvergenceError extends Error {
+	readonly diagnostic: ThemePassConvergenceDiagnostic;
+
+	constructor(diagnostic: ThemePassConvergenceDiagnostic) {
+		const unit =
+			diagnostic.budget === "iterations" ? "iterations" : "work units";
+		super(
+			`Theme pass ${diagnostic.pass} did not converge after ${diagnostic.limit} ${unit}`,
+		);
+		this.name = "ThemePassConvergenceError";
+		this.diagnostic = diagnostic;
+	}
+}
 
 export interface IncrementalPass<Key, RecordValue, Context> {
 	readonly name: string;
@@ -94,14 +118,25 @@ export type ThemeSchedulerResult = {
 export class ThemePassScheduler<Context> {
 	private readonly passes: RegisteredPass<Context>[];
 	private readonly maximumFixedPointIterations: number;
+	private readonly maximumFixedPointWork: number;
 
 	constructor(
 		passes: RegisteredPass<Context>[],
-		options: { maximumFixedPointIterations?: number } = {},
+		options: {
+			maximumFixedPointIterations?: number;
+			maximumFixedPointWork?: number;
+		} = {},
 	) {
 		this.passes = [...passes].sort(comparePasses);
 		this.maximumFixedPointIterations =
 			options.maximumFixedPointIterations ?? 10_000;
+		this.maximumFixedPointWork = options.maximumFixedPointWork ?? 100_000;
+		if (this.maximumFixedPointIterations < 1) {
+			throw new Error("maximumFixedPointIterations must be at least 1");
+		}
+		if (this.maximumFixedPointWork < 1) {
+			throw new Error("maximumFixedPointWork must be at least 1");
+		}
 		this.validateRoutes();
 	}
 
@@ -133,15 +168,36 @@ export class ThemePassScheduler<Context> {
 			let pending = registration.pass.seed(changes, context);
 			if (pending.size === 0) continue;
 			let iterations = 0;
+			let work = 0;
 			let recordCount = 0;
 			while (pending.size > 0) {
 				iterations += 1;
 				if (iterations > this.maximumFixedPointIterations) {
-					throw new Error(
-						`Theme pass ${registration.pass.name} did not converge after ${this.maximumFixedPointIterations} iterations`,
+					throw convergenceError(
+						registration.pass.name,
+						"iterations",
+						this.maximumFixedPointIterations,
+						iterations,
+						pending.size,
 					);
 				}
 				const step = registration.pass.step(pending, context);
+				const stepWork = step.work ?? 1;
+				if (!Number.isSafeInteger(stepWork) || stepWork < 1) {
+					throw new Error(
+						`Theme pass ${registration.pass.name} reported invalid fixed-point work ${stepWork}`,
+					);
+				}
+				work += stepWork;
+				if (work > this.maximumFixedPointWork) {
+					throw convergenceError(
+						registration.pass.name,
+						"work",
+						this.maximumFixedPointWork,
+						work,
+						step.pending.size,
+					);
+				}
 				records.push(...step.records);
 				recordCount += step.records.length;
 				changes.push(...newChanges(changes, step.changes));
@@ -240,4 +296,21 @@ function newChanges(
 
 function changeKey(change: PassChange): string {
 	return JSON.stringify(change, Object.keys(change).sort());
+}
+
+function convergenceError(
+	pass: string,
+	budget: ThemePassConvergenceDiagnostic["budget"],
+	limit: number,
+	observed: number,
+	pendingKeyCount: number,
+): ThemePassConvergenceError {
+	return new ThemePassConvergenceError({
+		code: "fixed-point-budget-exceeded",
+		pass,
+		budget,
+		limit,
+		observed,
+		pendingKeyCount,
+	});
 }

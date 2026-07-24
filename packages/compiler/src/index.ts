@@ -262,6 +262,8 @@ export {
 	type PassDelta,
 	type PassRoute,
 	THEME_PASS_ORDER,
+	type ThemePassConvergenceDiagnostic,
+	ThemePassConvergenceError,
 	ThemePassScheduler,
 	type ThemePassStage,
 	type ThemePassTrace,
