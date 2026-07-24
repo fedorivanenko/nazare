@@ -78,6 +78,18 @@ importers:
 
   packages/core: {}
 
+  packages/preview:
+    dependencies:
+      '@nazare/compiler':
+        specifier: workspace:^
+        version: link:../compiler
+      '@nazare/core':
+        specifier: workspace:^
+        version: link:../core
+      liquidjs:
+        specifier: ^10.21.1
+        version: 10.27.2
+
   packages/registry:
     dependencies:
       '@nazare/core':
@@ -1020,6 +1032,10 @@ packages:
   comma-separated-tokens@2.0.3:
     resolution: {integrity: sha512-Fu4hJdvzeylCfQPp9SGWidpzrMs7tTrlu6Vb8XGaRGck8QSNZJJp538Wrb60Lax4fPwR64ViY468OIUTbRlGZg==}
 
+  commander@10.0.1:
+    resolution: {integrity: sha512-y4Mg2tXshplEbSGzx7amzPwKKOCGuoSRP/CjEdwwk0FOGlUbq6lKuoyDZTNZkmxHdJtp54hdfY/JUrdL7Xfdug==}
+    engines: {node: '>=14'}
+
   commander@11.1.0:
     resolution: {integrity: sha512-yPVavfyCcRhmorC7rWlkHn15b4wDVgVmBA7kV4QVBsF7kv/9TKJAbAXVTxvTnwP8HHKjRCJDClKbciiYS7p0DQ==}
     engines: {node: '>=16'}
@@ -1331,6 +1347,11 @@ packages:
 
   line-column@1.0.2:
     resolution: {integrity: sha512-Ktrjk5noGYlHsVnYWh62FLVs4hTb8A3e+vucNZMgPeAOITdshMSgv4cCZQeRDjm7+goqmo6+liZwTXo+U3sVww==}
+
+  liquidjs@10.27.2:
+    resolution: {integrity: sha512-kvknfAEtOHjHkAAv7GxLEJh8ghpMQm3Fc4uWVyF7hERSTsSRsdC7saWs0p5aDG7GDcWsu5o+T4232O+8KZO55w==}
+    engines: {node: '>=16'}
+    hasBin: true
 
   lru-cache@11.5.2:
     resolution: {integrity: sha512-4pfM1Ff0x50o0tQwb5ucw/RzNyD0/YJME6IVcStalZuMWxdt3sR3huStTtxz4PUmvZfRguvDejasvQ2kifR11g==}
@@ -2770,6 +2791,8 @@ snapshots:
 
   comma-separated-tokens@2.0.3: {}
 
+  commander@10.0.1: {}
+
   commander@11.1.0: {}
 
   common-ancestor-path@2.0.0: {}
@@ -3080,6 +3103,10 @@ snapshots:
     dependencies:
       isarray: 1.0.0
       isobject: 2.1.0
+
+  liquidjs@10.27.2:
+    dependencies:
+      commander: 10.0.1
 
   lru-cache@11.5.2: {}
 

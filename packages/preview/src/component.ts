@@ -1,0 +1,98 @@
+// Source → previewable component. The preview always renders the *emitted*
+// template, never the authored source: what the storefront gets is what the
+// gallery shows, so a lowering bug is visible here instead of only on a store.
+import { buildNazareTheme, buildPlainLiquid } from "@nazare/compiler";
+import type { ArtifactContract, ComponentKind, Diagnostic } from "@nazare/core";
+import { controlsFromContract, type PreviewControl } from "./controls.js";
+
+export type PreviewAsset = { path: string; contents: string };
+
+export type PreviewComponent = {
+	/** Display name — the emitted template's basename. */
+	name: string;
+	/** Project-relative source path. */
+	file: string;
+	frontend: "nazare" | "plain";
+	/** snippet | section | block, when the frontend knows it. */
+	componentKind?: ComponentKind;
+	/** Emitted Liquid, the thing the preview renders. */
+	template: string;
+	/** Emitted assets/*: stylesheets, behavior modules, the island runtime. */
+	assets: PreviewAsset[];
+	contract?: ArtifactContract;
+	controls: PreviewControl[];
+	issues: Diagnostic[];
+};
+
+export type PreviewComponentOptions = {
+	/** Resolves imports, relative to the same root the file path is relative to. */
+	readFile?: (path: string) => string | undefined;
+	/** Defaults to strict, matching a package author's build. */
+	strictness?: "strict" | "loose";
+};
+
+const templateBaseName = (file: string): string =>
+	(file.split("/").pop() ?? file).replace(/\.nz\.liquid$|\.liquid$/, "");
+
+function splitEmitted(files: { path: string; contents: string }[]): {
+	template: string;
+	assets: PreviewAsset[];
+} {
+	let template = "";
+	const assets: PreviewAsset[] = [];
+	for (const file of files) {
+		if (file.path.endsWith(".liquid")) {
+			// One artifact emits one template; assets are everything else.
+			template ||= file.contents;
+			continue;
+		}
+		assets.push(file);
+	}
+	return { template, assets };
+}
+
+export function previewComponentFromSource(
+	source: string,
+	file: string,
+	options: PreviewComponentOptions = {},
+): PreviewComponent {
+	const name = templateBaseName(file);
+	const readFile = options.readFile ?? (() => undefined);
+
+	if (!file.endsWith(".nz.liquid")) {
+		const built = buildPlainLiquid(source, file, { emitOnError: true });
+		const { template, assets } = splitEmitted(built.emitted.files);
+		return {
+			name,
+			file,
+			frontend: "plain",
+			template: template || source,
+			assets,
+			// Plain Liquid declares no typed props, so there is nothing to derive
+			// controls from — a plain component's stories supply their own props.
+			controls: [],
+			issues: built.issues,
+		};
+	}
+
+	// emitOnError: the gallery is worth more with a broken component shown and
+	// its diagnostics listed than with the whole page failing to build.
+	const built = buildNazareTheme(source, file, {
+		name,
+		readFile,
+		strictness: options.strictness ?? "strict",
+		emitOnError: true,
+	});
+	const { template, assets } = splitEmitted(built.emitted.files);
+	return {
+		name,
+		file,
+		frontend: "nazare",
+		componentKind: built.contract.kind,
+		template,
+		assets,
+		contract: built.contract,
+		controls: controlsFromContract(built.contract),
+		issues: built.issues,
+	};
+}
