@@ -1,4 +1,5 @@
 import type { Diagnostic } from "@nazare/core";
+import type { ThemeDiagnosticStore } from "./theme-diagnostic-store.js";
 import type { ThemeDeclaration, ThemeReference } from "./theme-facts.js";
 import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
 import { referenceTargetKeys } from "./theme-reference-pass.js";
@@ -8,6 +9,7 @@ export type ThemeIncrementalResolutionContext = {
 	referencesById: Map<string, ThemeReference>;
 	referencesByTargetKey: Map<string, Map<string, ThemeReference>>;
 	resolvedReferencesById: Map<string, ThemeReference>;
+	diagnosticStore: ThemeDiagnosticStore;
 };
 
 export function createThemeResolutionPass(): IncrementalPass<
@@ -18,7 +20,10 @@ export function createThemeResolutionPass(): IncrementalPass<
 	return {
 		name: "resolution",
 		stage: "resolution",
-		routes: [{ kind: "resolutionChanged", target: "diagnostics" }],
+		routes: [
+			{ kind: "resolutionChanged", target: "diagnostics" },
+			{ kind: "diagnosticsChanged", target: "diagnostics" },
+		],
 		collectChanges(changes) {
 			const keys = new Set<string>();
 			for (const change of changes) {
@@ -51,17 +56,53 @@ export function createThemeResolutionPass(): IncrementalPass<
 				const reference = context.referencesById.get(id);
 				if (!reference) {
 					context.resolvedReferencesById.delete(id);
-					changes.push({ kind: "resolutionChanged", id });
+					context.diagnosticStore.remove({
+						pass: "resolution",
+						owner: `reference:${id}`,
+					});
+					changes.push(
+						{ kind: "resolutionChanged", id },
+						{ kind: "diagnosticsChanged", owner: `resolution:reference:${id}` },
+					);
 					continue;
 				}
 				const resolved = resolveIndexedReference(reference, context);
 				context.resolvedReferencesById.set(id, resolved);
+				context.diagnosticStore.replace(
+					{ pass: "resolution", owner: `reference:${id}` },
+					resolutionIssues(resolved, context),
+				);
 				records.push(resolved);
-				changes.push({ kind: "resolutionChanged", id });
+				changes.push(
+					{ kind: "resolutionChanged", id },
+					{ kind: "diagnosticsChanged", owner: `resolution:reference:${id}` },
+				);
 			}
 			return { records, changes };
 		},
 	};
+}
+
+function resolutionIssues(
+	reference: ThemeReference,
+	context: ThemeIncrementalResolutionContext,
+): Diagnostic[] {
+	if (!reference.static || reference.resolvedDeclarationId) return [];
+	const candidates = referenceTargetKeys(reference).flatMap((key) => [
+		...(context.declarationsByKey.get(key)?.values() ?? []),
+	]);
+	return [
+		{
+			severity: "warning",
+			code:
+				candidates.length > 1
+					? "THEME_AMBIGUOUS_REFERENCE"
+					: "THEME_UNRESOLVED_REFERENCE",
+			message: `${candidates.length > 1 ? "Ambiguous" : "Unresolved"} ${reference.targetKind} reference${reference.targetName ? ` ${reference.targetName}` : ""} from ${reference.fromPath}`,
+			phase: "resolve",
+			span: reference.span,
+		},
+	];
 }
 
 function resolveIndexedReference(
