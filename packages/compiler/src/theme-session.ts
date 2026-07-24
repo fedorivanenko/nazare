@@ -349,6 +349,11 @@ export class ThemeWorkspaceSession {
 		const semanticUpdate = transaction.update;
 		const nextResolverIndex = new ThemeResolverIndex(semanticUpdate.model);
 		const nextMetafieldIndex = new ThemeMetafieldIndex(semanticUpdate.model);
+		const changedSemanticIds = [
+			...semanticUpdate.addedRecordIds,
+			...semanticUpdate.changedRecordIds,
+			...semanticUpdate.removedRecordIds,
+		];
 		const nextGraphStore = this.graphStore.fork();
 		nextGraphStore.applyGraph(graphWithoutImpact(semanticUpdate.model));
 		const nextGraph = nextGraphStore.getGraph();
@@ -365,11 +370,9 @@ export class ThemeWorkspaceSession {
 				(definition) => definition.id,
 			),
 		]);
-		const changedMetafieldDefinitionIds = [
-			...semanticUpdate.addedRecordIds,
-			...semanticUpdate.changedRecordIds,
-			...semanticUpdate.removedRecordIds,
-		].filter((id) => metafieldDefinitionIds.has(id));
+		const changedMetafieldDefinitionIds = changedSemanticIds.filter((id) =>
+			metafieldDefinitionIds.has(id),
+		);
 		const metafieldAffectedPages = changedMetafieldDefinitionIds.flatMap(
 			(id) => [
 				...this.impactIndex.getAffectedPages(id),

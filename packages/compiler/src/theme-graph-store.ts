@@ -56,6 +56,17 @@ export class ThemeGraphStore {
 			const edge = nextEdges.get(id);
 			if (edge) this.edgesById.set(id, edge);
 		}
+		const views = { ...graph.views };
+		for (const key of Object.keys(graph.views) as Array<
+			keyof InspectNazareThemeResult["views"]
+		>) {
+			if (sameRecord(this.graph.views[key], graph.views[key])) {
+				(views as Record<string, unknown>)[key] = this.graph.views[key];
+			}
+		}
+		const previousEvidenceById = new Map(
+			this.graph.evidence.map((record) => [record.id, record]),
+		);
 		this.graph = {
 			...graph,
 			nodes: [...this.nodesById.values()].sort((a, b) =>
@@ -64,6 +75,20 @@ export class ThemeGraphStore {
 			edges: [...this.edgesById.values()].sort((a, b) =>
 				a.id.localeCompare(b.id),
 			),
+			evidence: graph.evidence.map((record) => {
+				const previous = previousEvidenceById.get(record.id);
+				return previous && sameRecord(previous, record) ? previous : record;
+			}),
+			views,
+			issues: sameRecord(this.graph.issues, graph.issues)
+				? this.graph.issues
+				: graph.issues,
+			metafields: sameRecord(this.graph.metafields, graph.metafields)
+				? this.graph.metafields
+				: graph.metafields,
+			themeCheck: sameRecord(this.graph.themeCheck, graph.themeCheck)
+				? this.graph.themeCheck
+				: graph.themeCheck,
 		};
 		return {
 			addedNodeIds: nodeDelta.added,
