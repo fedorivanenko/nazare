@@ -21,7 +21,7 @@ export type ThemeBuildUpdate = {
 	changedOutputPaths: string[];
 };
 
-export class ThemeBuildSession {
+class ThemeBuildState {
 	private readonly filesByPath = new Map<string, ThemeInputFile>();
 	private readonly options: BuildNazareThemeWorkspaceOptions;
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
@@ -157,6 +157,9 @@ export class ThemeBuildSession {
 		);
 	}
 }
+
+/** @deprecated Use ThemeProgram for semantic workspace state. */
+export class ThemeBuildSession extends ThemeBuildState {}
 
 type ThemeEmittedFile = ThemeBuildResult["emitted"]["files"][number];
 
