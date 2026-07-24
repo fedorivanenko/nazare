@@ -48,6 +48,25 @@ export class ThemeMetafieldIndex {
 		].sort();
 	}
 
+	getConsumedDefinitionIds(): string[] {
+		return [...this.definitions.keys()]
+			.filter((id) => (this.readIdsByDefinition.get(id)?.size ?? 0) > 0)
+			.sort();
+	}
+
+	getUnconsumedDefinitionIds(): string[] {
+		return [...this.definitions.keys()]
+			.filter((id) => (this.readIdsByDefinition.get(id)?.size ?? 0) === 0)
+			.sort();
+	}
+
+	getBrokenReadIds(): string[] {
+		return [...this.reads.values()]
+			.filter((read) => !read.definitionId)
+			.map((read) => read.id)
+			.sort();
+	}
+
 	private addModel(model: ThemeSemanticModel): void {
 		for (const definition of model.metafieldDefinitions)
 			this.addDefinition(definition);
