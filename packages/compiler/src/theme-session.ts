@@ -43,6 +43,7 @@ import type {
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
 	ThemeExpectedInputRecord,
+	ThemeFact,
 	ThemeFileRecord,
 	ThemeInputFile,
 	ThemeReference,
@@ -140,7 +141,7 @@ export type ThemeGraphUpdate = {
 	changedEdgeIds: string[];
 };
 
-export class ThemeWorkspaceSession {
+export class ThemeProgram {
 	private readonly filesByPath = new Map<string, ThemeInputFile>();
 	private readonly options: InspectNazareThemeOptions;
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
@@ -241,6 +242,14 @@ export class ThemeWorkspaceSession {
 
 	getGraph(): InspectNazareThemeResult {
 		return this.graph;
+	}
+
+	getModel(): ThemeSemanticModel {
+		return this.semanticStore.getModel();
+	}
+
+	getFacts(): ThemeFact[] {
+		return this.factStore.all();
 	}
 
 	getDependencies(nodeId: string): string[] {
@@ -503,6 +512,9 @@ export class ThemeWorkspaceSession {
 		);
 	}
 }
+
+/** @deprecated Use ThemeProgram. */
+export class ThemeWorkspaceSession extends ThemeProgram {}
 
 type ThemeCollectionContext = ThemeDeclarationPassContext &
 	ThemeReferencePassContext &

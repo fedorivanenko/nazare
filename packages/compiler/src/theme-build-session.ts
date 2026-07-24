@@ -5,8 +5,10 @@ import type {
 	ThemeAnalysisMemo,
 	ThemeBuildResult,
 	ThemeInputFile,
+	ThemeSemanticModel,
 } from "./theme-facts.js";
 import { normalizeThemePath } from "./theme-file-classifier.js";
+import { ThemeWorkspaceSession } from "./theme-session.js";
 import { buildNazareThemeWorkspace } from "./theme-workspace.js";
 
 export type ThemeBuildUpdate = {
@@ -24,6 +26,7 @@ export class ThemeBuildSession {
 	private readonly options: BuildNazareThemeWorkspaceOptions;
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
 	private readonly memo = {} as ThemeAnalysisMemo;
+	private readonly semanticSession: ThemeWorkspaceSession;
 	private build: ThemeBuildResult;
 	private outputPathsBySourcePath = new Map<string, Set<string>>();
 	private sourcePathsByOutputPath = new Map<string, Set<string>>();
@@ -39,6 +42,10 @@ export class ThemeBuildSession {
 			memo: options.memo ?? this.memo,
 		};
 		for (const file of files) this.filesByPath.set(file.path, file);
+		this.semanticSession = new ThemeWorkspaceSession(
+			this.files(),
+			this.options,
+		);
 		this.build = buildNazareThemeWorkspace(this.files(), this.options);
 		this.replaceOutputOwnership(this.build);
 	}
@@ -94,8 +101,35 @@ export class ThemeBuildSession {
 			this.files(),
 			changedPaths,
 		);
-		const rebuilt = buildNazareThemeWorkspace(this.files(), this.options);
-		this.build = shareUnchangedOutputSnapshots(previous, rebuilt);
+		const selectedPaths = recomputedPaths.filter(
+			(path) => path.endsWith(".nz.liquid") && this.filesByPath.has(path),
+		);
+		const rebuilt = buildNazareThemeWorkspace(this.files(), {
+			...this.options,
+			scope: { kind: "files", paths: selectedPaths },
+		});
+		validateRetainedOutputCollisions(
+			previous,
+			rebuilt,
+			new Set(recomputedPaths),
+			this.sourcePathsByOutputPath,
+		);
+		for (const path of changedPaths) {
+			const file = this.filesByPath.get(path);
+			if (file) this.semanticSession.updateFile(file);
+			else this.semanticSession.removeFile(path);
+		}
+		this.build = shareUnchangedOutputSnapshots(
+			previous,
+			mergeSelectiveBuild(
+				previous,
+				rebuilt,
+				new Set(recomputedPaths),
+				new Set(this.filesByPath.keys()),
+				this.semanticSession,
+				this.options.emitOnError === true,
+			),
+		);
 		this.replaceOutputOwnership(this.build);
 		this.revision += 1;
 		return diffBuilds(
@@ -149,6 +183,125 @@ function buildOutputOwnership(build: ThemeBuildResult): ThemeOutputOwnership {
 		}
 	}
 	return { outputPathsBySourcePath, sourcePathsByOutputPath };
+}
+
+function validateRetainedOutputCollisions(
+	previous: ThemeBuildResult,
+	selective: ThemeBuildResult,
+	affectedPaths: Set<string>,
+	ownersByOutputPath: Map<string, Set<string>>,
+): void {
+	const retained = new Map(
+		previous.emitted.files
+			.filter((file) =>
+				[...(ownersByOutputPath.get(normalizeThemePath(file.path)) ?? [])].some(
+					(owner) => !affectedPaths.has(owner),
+				),
+			)
+			.map((file) => [normalizeThemePath(file.path), file.contents]),
+	);
+	for (const file of selective.emitted.files) {
+		const retainedContents = retained.get(normalizeThemePath(file.path));
+		if (retainedContents !== undefined && retainedContents !== file.contents) {
+			throw new Error(
+				`Selective build output collision at ${normalizeThemePath(file.path)}`,
+			);
+		}
+	}
+}
+
+function mergeSelectiveBuild(
+	previous: ThemeBuildResult,
+	selective: ThemeBuildResult,
+	affectedPaths: Set<string>,
+	currentPaths: Set<string>,
+	semanticSession: ThemeWorkspaceSession,
+	emitOnError: boolean,
+): ThemeBuildResult {
+	const artifactsByPath = new Map(
+		previous.analysis.artifacts
+			.filter(
+				(artifact) =>
+					!affectedPaths.has(artifact.path) && currentPaths.has(artifact.path),
+			)
+			.map((artifact) => [artifact.path, artifact]),
+	);
+	for (const artifact of selective.artifacts) {
+		artifactsByPath.set(artifact.path, artifact);
+	}
+	let artifacts = [...artifactsByPath.values()].sort((a, b) =>
+		a.path.localeCompare(b.path),
+	);
+	const retainedIssues = previous.issues.filter((issue) => {
+		const path = issue.span?.file;
+		return path === undefined || !affectedPaths.has(normalizeThemePath(path));
+	});
+	const issueKeys = new Set<string>();
+	const issues = [...retainedIssues, ...selective.issues].filter((issue) => {
+		const key = JSON.stringify(issue);
+		if (issueKeys.has(key)) return false;
+		issueKeys.add(key);
+		return true;
+	});
+	const hasErrors = issues.some((issue) => issue.severity === "error");
+	if (hasErrors && !emitOnError) {
+		artifacts = artifacts.map((artifact) => {
+			if (!artifact.emitted) return artifact;
+			const { emitted: _emitted, ...withoutEmission } = artifact;
+			return withoutEmission;
+		});
+	}
+	const emittedFiles = artifacts.flatMap(
+		(artifact) => artifact.emitted?.files ?? [],
+	);
+	const emittedIssues = artifacts.flatMap(
+		(artifact) => artifact.emitted?.issues ?? [],
+	);
+	return {
+		analysis: {
+			ir: canonicalSemanticModel(semanticSession.getModel()),
+			artifacts,
+			facts: semanticSession.getFacts(),
+			issues,
+		},
+		artifacts,
+		emitted: { files: emittedFiles, issues: emittedIssues },
+		issues,
+		emittedOnError: emittedFiles.length > 0 && hasErrors,
+	};
+}
+
+function canonicalSemanticModel(model: ThemeSemanticModel): ThemeSemanticModel {
+	const byId = <T extends { id: string }>(records: T[]): T[] =>
+		[...records].sort((a, b) => a.id.localeCompare(b.id));
+	return {
+		...model,
+		files: [...model.files].sort((a, b) => a.path.localeCompare(b.path)),
+		declarations: byId(model.declarations),
+		references: byId(model.references),
+		schemas: byId(model.schemas),
+		settings: byId(model.settings),
+		blocks: byId(model.blocks),
+		blockSettings: byId(model.blockSettings),
+		sectionInstances: byId(model.sectionInstances),
+		blockInstances: byId(model.blockInstances),
+		pages: byId(model.pages),
+		localeKeys: byId(model.localeKeys),
+		localeTranslations: byId(model.localeTranslations),
+		localeReferences: byId(model.localeReferences),
+		settingReads: byId(model.settingReads),
+		dataAccesses: byId(model.dataAccesses),
+		metafieldDefinitions: byId(model.metafieldDefinitions),
+		metafieldReads: byId(model.metafieldReads),
+		variableReads: byId(model.variableReads),
+		renderArguments: byId(model.renderArguments),
+		expectedInputs: byId(model.expectedInputs),
+		renderSites: byId(model.renderSites),
+		capabilitySignals: byId(model.capabilitySignals),
+		capabilities: byId(model.capabilities),
+		classifications: byId(model.classifications),
+		evidence: byId(model.evidence),
+	};
 }
 
 function shareUnchangedOutputSnapshots(
