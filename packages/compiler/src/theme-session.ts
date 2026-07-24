@@ -141,7 +141,7 @@ export type ThemeGraphUpdate = {
 	changedEdgeIds: string[];
 };
 
-export class ThemeWorkspaceSession {
+export class ThemeProgram {
 	private readonly filesByPath = new Map<string, ThemeInputFile>();
 	private readonly options: InspectNazareThemeOptions;
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
@@ -512,6 +512,9 @@ export class ThemeWorkspaceSession {
 		);
 	}
 }
+
+/** @deprecated Use ThemeProgram. */
+export class ThemeWorkspaceSession extends ThemeProgram {}
 
 type ThemeCollectionContext = ThemeDeclarationPassContext &
 	ThemeReferencePassContext &

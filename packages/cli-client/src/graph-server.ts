@@ -8,7 +8,7 @@ import {
 	summarizeThemeGraph,
 	ThemeBuildSession,
 	type ThemeInputFile,
-	ThemeWorkspaceSession,
+	ThemeProgram,
 } from "@nazare/compiler";
 
 export async function serveThemeGraph(
@@ -16,7 +16,7 @@ export async function serveThemeGraph(
 	input: Readable,
 	output: Writable,
 ): Promise<void> {
-	let session = await loadSession(root);
+	let session = await loadProgram(root);
 	let buildSession = await loadBuildSession(root);
 	let stopWatching: (() => void) | undefined;
 	let mcpInitialized = false;
@@ -114,8 +114,8 @@ type GraphRequest = {
 async function handleRequest(
 	request: GraphRequest,
 	root: string,
-	getSession: () => ThemeWorkspaceSession,
-	setSession: (session: ThemeWorkspaceSession) => void,
+	getSession: () => ThemeProgram,
+	setSession: (session: ThemeProgram) => void,
 	getBuildSession: () => ThemeBuildSession,
 	setBuildSession: (session: ThemeBuildSession) => void,
 	setWatcher: (stop: () => void) => void,
@@ -178,7 +178,7 @@ async function handleRequest(
 		};
 	}
 	if (request.method === "reload" || request.method === "inspect") {
-		const session = await loadSession(root);
+		const session = await loadProgram(root);
 		setSession(session);
 		setBuildSession(await loadBuildSession(root));
 		return session.getGraph();
@@ -231,7 +231,7 @@ const WATCH_DEBOUNCE_MS = 40;
 
 function startWatcher(
 	root: string,
-	getSession: () => ThemeWorkspaceSession,
+	getSession: () => ThemeProgram,
 	getBuildSession: () => ThemeBuildSession,
 	notify: (update: unknown) => void,
 ): () => void {
@@ -330,11 +330,11 @@ function isNotFound(error: unknown): boolean {
 	);
 }
 
-async function loadSession(root: string): Promise<ThemeWorkspaceSession> {
+async function loadProgram(root: string): Promise<ThemeProgram> {
 	const files = await collectThemeFiles(root);
 	const metafields = await optionalFile(root, ".shopify/metafields.json");
 	const themeCheck = await optionalFile(root, ".theme-check.yml");
-	return new ThemeWorkspaceSession(files, { metafields, themeCheck });
+	return new ThemeProgram(files, { metafields, themeCheck });
 }
 
 async function loadBuildSession(root: string): Promise<ThemeBuildSession> {
