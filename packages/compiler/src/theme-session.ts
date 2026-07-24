@@ -325,6 +325,25 @@ export class ThemeWorkspaceSession {
 			}),
 		);
 		const nextImpactIndex = new ThemeImpactIndex(nextGraph);
+		const metafieldDefinitionIds = new Set([
+			...this.semanticStore
+				.getModel()
+				.metafieldDefinitions.map((definition) => definition.id),
+			...semanticUpdate.model.metafieldDefinitions.map(
+				(definition) => definition.id,
+			),
+		]);
+		const changedMetafieldDefinitionIds = [
+			...semanticUpdate.addedRecordIds,
+			...semanticUpdate.changedRecordIds,
+			...semanticUpdate.removedRecordIds,
+		].filter((id) => metafieldDefinitionIds.has(id));
+		const metafieldAffectedPages = changedMetafieldDefinitionIds.flatMap(
+			(id) => [
+				...this.impactIndex.getAffectedPages(id),
+				...nextImpactIndex.getAffectedPages(id),
+			],
+		);
 		const resolverDependents = semanticUpdate.changedRecordIds.flatMap((id) =>
 			nextResolverIndex.getDependents(id),
 		);
@@ -347,7 +366,12 @@ export class ThemeWorkspaceSession {
 				...resolverDependents,
 			],
 			semanticUpdate.changedRecordIds,
-			changedPaths.flatMap((path) => this.impactIndex.getAffectedPages(path)),
+			[
+				...changedPaths.flatMap((path) =>
+					this.impactIndex.getAffectedPages(path),
+				),
+				...metafieldAffectedPages,
+			],
 		);
 	}
 

@@ -386,6 +386,21 @@ test("metafield pass owns definition and Liquid read creation", () => {
 		context,
 	);
 	assert.equal(context.metafieldResult.current.definitions.length, 2);
+	assert.deepEqual(
+		result.changes.filter(
+			(change) => change.kind === "metafieldDefinitionChanged",
+		),
+		[
+			{
+				kind: "metafieldDefinitionChanged",
+				id: "metafield:product:custom:subtitle",
+			},
+			{
+				kind: "metafieldDefinitionChanged",
+				id: "metafield:product:custom:title",
+			},
+		],
+	);
 	assert.equal(
 		context.metafieldResult.current.reads[0].definitionId,
 		"metafield:product:custom:subtitle",

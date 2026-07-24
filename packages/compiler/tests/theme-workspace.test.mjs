@@ -829,6 +829,32 @@ test("metafield definitions inherit affected pages through theme dependencies", 
 	);
 });
 
+test("workspace propagates changed metafield definitions to affected pages", () => {
+	const files = [
+		{
+			path: "templates/product.json",
+			contents: JSON.stringify({
+				sections: { main: { type: "main-product" } },
+			}),
+		},
+		{
+			path: "sections/main-product.liquid",
+			contents: "{{ product.metafields.custom.subtitle }}",
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const metafields = {
+		contents: JSON.stringify([
+			{ owner: "product", namespace: "custom", key: "subtitle" },
+		]),
+	};
+	const added = session.updateExternalArtifacts({ metafields });
+	assert.deepEqual(added.affectedPages, ["templates/product.json"]);
+	const removed = session.updateExternalArtifacts({ metafields: undefined });
+	assert.deepEqual(removed.affectedPages, ["templates/product.json"]);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
+});
+
 test("metafield parser does not infer arbitrary nested objects", () => {
 	const graph = inspectNazareTheme(
 		[
