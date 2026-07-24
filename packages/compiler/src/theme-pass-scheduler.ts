@@ -52,7 +52,7 @@ export type PassDelta<RecordValue> = {
 
 export type FixedPointStep<Key, RecordValue> = PassDelta<RecordValue> & {
 	pending: Set<Key>;
-	work?: number;
+	work: number;
 };
 
 export type ThemePassConvergenceDiagnostic = {
@@ -203,7 +203,7 @@ export class ThemePassScheduler<Context> {
 					);
 				}
 				const step = registration.pass.step(pending, context);
-				const stepWork = step.work ?? 1;
+				const stepWork = step.work;
 				if (!Number.isSafeInteger(stepWork) || stepWork < 1) {
 					throw new Error(
 						`Theme pass ${registration.pass.name} reported invalid fixed-point work ${stepWork}`,

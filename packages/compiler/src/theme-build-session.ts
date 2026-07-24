@@ -427,9 +427,10 @@ function buildRecomputationClosure(
 	for (const file of components.values()) {
 		const ast = parseNazareLiquid(file.contents, file.path);
 		for (const node of ast.nodes) {
-			if (node.type !== "NazareImport") continue;
+			if (node.type !== "NazareImport" && node.type !== "NazareAssetImport")
+				continue;
 			const target = normalizeThemePath(node.path);
-			if (!components.has(target)) continue;
+			if (!files.some((candidate) => candidate.path === target)) continue;
 			const paths = dependents.get(target) ?? new Set<string>();
 			paths.add(file.path);
 			dependents.set(target, paths);

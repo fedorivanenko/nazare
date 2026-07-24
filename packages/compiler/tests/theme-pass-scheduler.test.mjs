@@ -55,6 +55,7 @@ test("evidence pass replaces only changed source buckets", () => {
 				renderArguments: [],
 				capabilitySignals: [],
 				docParams: [],
+				declaredInputs: [],
 			};
 		},
 	};
@@ -497,6 +498,7 @@ test("theme pass scheduler bounds fixed-point convergence", () => {
 					records: [...pending],
 					changes: [],
 					pending: new Set(pending),
+					work: 1,
 				}),
 			}),
 		],

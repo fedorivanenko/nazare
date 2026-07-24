@@ -1,4 +1,7 @@
-import { docParamEvidenceId } from "./theme-expected-input-pass.js";
+import {
+	declaredInputEvidenceId,
+	docParamEvidenceId,
+} from "./theme-expected-input-pass.js";
 import type {
 	ThemeBlockInstanceRecord,
 	ThemeCapabilitySignalRecord,
@@ -30,6 +33,7 @@ export type ThemeEvidenceInputs = {
 	renderArguments: ThemeRenderArgumentRecord[];
 	capabilitySignals: ThemeCapabilitySignalRecord[];
 	docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[];
+	declaredInputs: Extract<ThemeFact, { kind: "declaresInput" }>[];
 };
 
 export function deriveThemeEvidence(
@@ -51,6 +55,10 @@ export function deriveThemeEvidence(
 		docParams: facts.filter(
 			(fact): fact is Extract<ThemeFact, { kind: "declaresDocParam" }> =>
 				fact.kind === "declaresDocParam",
+		),
+		declaredInputs: facts.filter(
+			(fact): fact is Extract<ThemeFact, { kind: "declaresInput" }> =>
+				fact.kind === "declaresInput",
 		),
 	});
 }
@@ -109,6 +117,13 @@ export function deriveThemeEvidenceRecords(
 	records: ThemeEvidenceInputs,
 ): ThemeEvidenceRecord[] {
 	return [
+		...records.declaredInputs.map((input) => ({
+			id: declaredInputEvidenceId(input.path, input.name),
+			kind: "inputDeclaration" as const,
+			file: input.path,
+			span: input.span,
+			extractor: "theme-nazare-facts",
+		})),
 		...records.docParams.map((param) => ({
 			id: docParamEvidenceId(param.path, param.name),
 			kind: "docParam" as const,

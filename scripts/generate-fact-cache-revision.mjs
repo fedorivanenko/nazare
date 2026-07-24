@@ -83,7 +83,10 @@ function renderModule(value) {
 function readIfPresent(path) {
 	try {
 		return readFileSync(path, "utf8");
-	} catch {
-		return undefined;
+	} catch (error) {
+		if (error && typeof error === "object" && error.code === "ENOENT") {
+			return undefined;
+		}
+		throw error;
 	}
 }

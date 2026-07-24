@@ -262,6 +262,15 @@ export type ThemeFact =
 			via: "guard" | "default";
 	  }
 	| {
+			/** Explicit Nazare prop declaration projected into the theme interface. */
+			kind: "declaresInput";
+			path: string;
+			name: string;
+			required: boolean;
+			paramType?: string;
+			span?: SourceSpan;
+	  }
+	| {
 			/** A `@param` in a `{% doc %}` block: the author's own statement of
 			 * this component's interface, which outranks source inference. */
 			kind: "declaresDocParam";
@@ -518,7 +527,7 @@ export type ThemeExpectedInputRecord = {
 	 * rot invisibly the moment declarations start winning.
 	 */
 	inferredRequirement: "required" | "optional" | "unknown";
-	origin: "freeVariable" | "ambientShopifyContext" | "docParam";
+	origin: "freeVariable" | "ambientShopifyContext" | "docParam" | "nazareProp";
 	/** Declared type from `@param {type} name`, when the author gave one. */
 	declaredType?: string;
 	propertyPaths: string[];
