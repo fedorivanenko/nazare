@@ -124,6 +124,22 @@ test("plain Liquid tolerant mode allows editor-style partial files", () => {
 	assert.equal(result.ast.factsCollected, true);
 });
 
+test("plain Liquid tolerant mode recovers facts from large malformed HTML", () => {
+	const result = compilePlainLiquid(
+		`<h2><h3><div data-generated="${"x".repeat(20_000)}">{{ section.settings.title }}</h2></h3>{% render 'card' %}`,
+		"sections/branch-html.liquid",
+		{ parseMode: "tolerant" },
+	);
+
+	assert.equal(result.ast.factsCollected, true);
+	assert.equal(result.ast.settingsReads.length, 1);
+	assert.equal(result.dependencies[0]?.name, "card");
+	assert.equal(
+		result.issues.some((issue) => issue.severity === "error"),
+		false,
+	);
+});
+
 test("plain Liquid frontend covers all dependency tag kinds", () => {
 	const source = [
 		"{% render 'product-card' %}",
@@ -275,4 +291,34 @@ test("plain Liquid settings scanner handles range endpoints", () => {
 			(issue) => issue.code === "LIQUID_UNSCANNED_SETTINGS_EXPRESSION",
 		),
 	);
+});
+
+test("plain Liquid tolerant mode skips parsing sources with no Liquid syntax", () => {
+	// Generated page-builder chunks are megabytes of markup with no Liquid at
+	// all. Skipping the parse must produce exactly what parsing would have.
+	const generated = `<style>${".r-1dj3cc3{color:#000}".repeat(20_000)}</style><div class="r-1dj3cc3">text</div>`;
+	const result = compilePlainLiquid(generated, "snippets/generated.0.liquid", {
+		parseMode: "tolerant",
+	});
+
+	assert.equal(result.ast.factsCollected, true);
+	assert.deepEqual(result.ast.settingsReads, []);
+	assert.deepEqual(result.dependencies, []);
+	assert.equal(result.ast.schema, undefined);
+	assert.equal(
+		result.issues.some((issue) => issue.severity === "error"),
+		false,
+	);
+});
+
+test("plain Liquid tolerant mode still parses when Liquid survives masking", () => {
+	// Liquid inside a <style> body is masked away, but Liquid outside one is
+	// not: the skip must key off the masked source, not the raw source.
+	const source = `<style>{{ hidden.by.masking }}</style>{% render 'card' %}{{ section.settings.title }}`;
+	const result = compilePlainLiquid(source, "snippets/mixed.liquid", {
+		parseMode: "tolerant",
+	});
+
+	assert.equal(result.dependencies[0]?.name, "card");
+	assert.equal(result.ast.settingsReads.length, 1);
 });

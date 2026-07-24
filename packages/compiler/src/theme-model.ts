@@ -1,5 +1,6 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
 import type {
+	ThemeBlockInstanceRecord,
 	ThemeBlockRecord,
 	ThemeBlockSettingRecord,
 	ThemeCapabilitySignalRecord,
@@ -11,6 +12,7 @@ import type {
 	ThemeFileRecord,
 	ThemeLocaleKeyRecord,
 	ThemeLocaleReferenceRecord,
+	ThemeLocaleTranslationRecord,
 	ThemePageRecord,
 	ThemeReference,
 	ThemeRenderArgumentRecord,
@@ -37,12 +39,15 @@ export function buildThemeSemanticModel(
 	const blocks: ThemeBlockRecord[] = [];
 	const blockSettings: ThemeBlockSettingRecord[] = [];
 	const sectionInstances: ThemeSectionInstanceRecord[] = [];
+	const blockInstances: ThemeBlockInstanceRecord[] = [];
 	const localeKeys: ThemeLocaleKeyRecord[] = [];
+	const localeTranslations: ThemeLocaleTranslationRecord[] = [];
 	const localeReferences: ThemeLocaleReferenceRecord[] = [];
 	const settingReads: ThemeSettingReadRecord[] = [];
 	const dataAccesses: ThemeDataAccessRecord[] = [];
 	const variableReads: ThemeVariableReadRecord[] = [];
 	const guardedObjects = new Set<string>();
+	const docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[] = [];
 	const renderSiteFacts: Extract<ThemeFact, { kind: "rendersSnippet" }>[] = [];
 	const renderArguments: ThemeRenderArgumentRecord[] = [];
 	const capabilitySignals: ThemeCapabilitySignalRecord[] = [];
@@ -73,6 +78,12 @@ export function buildThemeSemanticModel(
 		if (fact.kind === "declaresAsset") {
 			declarations.push(declaration("asset", fact.path, fact.name));
 		}
+		if (fact.kind === "declaresSectionGroup") {
+			declarations.push(declaration("sectionGroup", fact.path, fact.name));
+		}
+		if (fact.kind === "declaresThemeBlock") {
+			declarations.push(declaration("themeBlock", fact.path, fact.name));
+		}
 		if (fact.kind === "declaresComponent") {
 			declarations.push({
 				...declaration("component", fact.path, fact.name),
@@ -85,6 +96,21 @@ export function buildThemeSemanticModel(
 				templatePath: fact.templatePath,
 				instanceId: fact.instanceId,
 				sectionType: fact.sectionType,
+				static: fact.static,
+			});
+		}
+		if (fact.kind === "blockInstance") {
+			blockInstances.push({
+				id: blockInstanceId(
+					fact.ownerPath,
+					fact.sectionInstanceId,
+					fact.instanceId,
+				),
+				ownerPath: fact.ownerPath,
+				sectionInstanceId: fact.sectionInstanceId,
+				instanceId: fact.instanceId,
+				blockType: fact.blockType,
+				parentInstanceId: fact.parentInstanceId,
 				static: fact.static,
 			});
 		}
@@ -107,10 +133,13 @@ export function buildThemeSemanticModel(
 			});
 		}
 		if (fact.kind === "definesLocaleKey") {
-			localeKeys.push({
-				id: localeKeyId(fact.path, fact.key),
+			const keyId = localeKeyId(fact.key);
+			localeKeys.push({ id: keyId, key: fact.key });
+			localeTranslations.push({
+				id: localeTranslationId(fact.path, fact.key),
 				path: fact.path,
 				key: fact.key,
+				localeKeyId: keyId,
 				span: fact.span,
 			});
 		}
@@ -165,11 +194,17 @@ export function buildThemeSemanticModel(
 				id: variableReadId(fact.fromPath, fact.name, fact.span),
 				fromPath: fact.fromPath,
 				name: fact.name,
+				propertyPath: fact.propertyPath,
+				expression: fact.expression,
+				usage: fact.usage,
 				span: fact.span,
 			});
 		}
 		if (fact.kind === "guardsObject") {
 			guardedObjects.add(`${fact.fromPath}:${fact.name}`);
+		}
+		if (fact.kind === "declaresDocParam") {
+			docParams.push(fact);
 		}
 		if (fact.kind === "readsShopifyData") {
 			dataAccesses.push({
@@ -279,6 +314,36 @@ export function buildThemeSemanticModel(
 				}),
 			);
 		}
+		if (fact.kind === "containsSectionGroup") {
+			references.push(
+				reference({
+					kind: "containsSectionGroup",
+					fromPath: fact.fromPath,
+					targetKind: "sectionGroup",
+					targetName: fact.targetName,
+					static: fact.static,
+					span: fact.span,
+					declaration: fact.targetName
+						? byKindName.get(`sectionGroup:${fact.targetName}`)
+						: undefined,
+				}),
+			);
+		}
+		if (fact.kind === "usesLayout") {
+			references.push(
+				reference({
+					kind: "usesLayout",
+					fromPath: fact.fromPath,
+					targetKind: "layout",
+					targetName: fact.targetName,
+					static: fact.static,
+					span: fact.span,
+					declaration: fact.targetName
+						? byKindName.get(`layout:${fact.targetName}`)
+						: undefined,
+				}),
+			);
+		}
 		if (fact.kind === "referencesAsset") {
 			const declaration = fact.targetName
 				? (byKindName.get(`asset:${fact.targetName}`) ??
@@ -317,6 +382,35 @@ export function buildThemeSemanticModel(
 		const declaration = byKindName.get(`section:${instance.sectionType}`);
 		if (declaration) instance.resolvedDeclarationId = declaration.id;
 	}
+	const sectionInstanceByOwnerAndId = new Map(
+		sectionInstances.map((instance) => [
+			`${instance.templatePath}:${instance.instanceId}`,
+			instance,
+		]),
+	);
+	for (const instance of blockInstances) {
+		if (!instance.blockType) continue;
+		const themeBlock = byKindName.get(`themeBlock:${instance.blockType}`);
+		if (themeBlock) {
+			instance.resolvedBlockId = themeBlock.id;
+			continue;
+		}
+		const sectionInstance = sectionInstanceByOwnerAndId.get(
+			`${instance.ownerPath}:${instance.sectionInstanceId}`,
+		);
+		const sectionPath = sectionInstance?.resolvedDeclarationId
+			? declarations.find(
+					(declaration) =>
+						declaration.id === sectionInstance.resolvedDeclarationId,
+				)?.path
+			: undefined;
+		if (!sectionPath) continue;
+		const schemaBlock = blocks.find(
+			(block) =>
+				block.path === sectionPath && block.blockType === instance.blockType,
+		);
+		if (schemaBlock) instance.resolvedBlockId = schemaBlock.id;
+	}
 
 	const pages = pageRecords(declarations);
 	const expectedInputs = expectedInputRecords(
@@ -324,7 +418,9 @@ export function buildThemeSemanticModel(
 		dataAccesses,
 		variableReads,
 		guardedObjects,
+		docParams,
 	);
+	modelIssues.push(...docContractIssues(expectedInputs, docParams));
 	const renderSites = renderSiteRecords(
 		renderSiteFacts,
 		byKindName,
@@ -337,10 +433,21 @@ export function buildThemeSemanticModel(
 		renderArguments,
 		declarations,
 	);
+	dataAccesses.push(
+		...deriveArgumentDataAccesses(
+			renderSites,
+			renderArguments,
+			expectedInputs,
+			declarations,
+			variableReads,
+		),
+	);
 	const capabilities = inferCapabilities(dataAccesses, capabilitySignals);
 	const classifications = inferClassifications(capabilities, dataAccesses);
 	const evidence = evidenceRecords({
 		references,
+		sectionInstances,
+		blockInstances,
 		localeReferences,
 		schemas,
 		settings,
@@ -349,6 +456,7 @@ export function buildThemeSemanticModel(
 		variableReads,
 		renderArguments,
 		capabilitySignals,
+		docParams,
 	});
 
 	const settingByPathAndId = new Map(
@@ -413,18 +521,13 @@ export function buildThemeSemanticModel(
 		});
 	}
 
-	const localeKeysByKey = new Map<string, ThemeLocaleKeyRecord[]>();
-	for (const key of localeKeys) {
-		localeKeysByKey.set(key.key, [
-			...(localeKeysByKey.get(key.key) ?? []),
-			key,
-		]);
-	}
+	const localeKeyByKey = new Map(
+		localeKeys.map((localeKey) => [localeKey.key, localeKey]),
+	);
 	for (const reference of localeReferences) {
 		if (!reference.static || !reference.key) continue;
-		reference.resolvedLocaleKeyIds = (
-			localeKeysByKey.get(reference.key) ?? []
-		).map((key) => key.id);
+		const resolved = localeKeyByKey.get(reference.key);
+		reference.resolvedLocaleKeyIds = resolved ? [resolved.id] : [];
 		if (reference.resolvedLocaleKeyIds.length === 0) {
 			modelIssues.push({
 				severity: "warning",
@@ -461,7 +564,7 @@ export function buildThemeSemanticModel(
 	}
 
 	const model: ThemeSemanticModel = {
-		version: 1,
+		version: 2,
 		root: options.root ?? ".",
 		files: [...files.values()].sort((a, b) => a.path.localeCompare(b.path)),
 		declarations: dedupeById(declarations).sort((a, b) =>
@@ -477,8 +580,14 @@ export function buildThemeSemanticModel(
 		sectionInstances: dedupeById(sectionInstances).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
+		blockInstances: dedupeById(blockInstances).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
 		pages: dedupeById(pages).sort((a, b) => a.id.localeCompare(b.id)),
 		localeKeys: dedupeById(localeKeys).sort((a, b) => a.id.localeCompare(b.id)),
+		localeTranslations: dedupeById(localeTranslations).sort((a, b) =>
+			a.id.localeCompare(b.id),
+		),
 		localeReferences: dedupeById(localeReferences).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
@@ -547,6 +656,19 @@ function assertThemeSemanticModel(model: ThemeSemanticModel): void {
 			);
 		}
 	}
+	const blockIds = new Set([
+		...model.blocks.map((block) => block.id),
+		...model.declarations
+			.filter((declaration) => declaration.kind === "themeBlock")
+			.map((declaration) => declaration.id),
+	]);
+	for (const instance of model.blockInstances) {
+		if (instance.resolvedBlockId && !blockIds.has(instance.resolvedBlockId)) {
+			throw new Error(
+				`Theme block instance ${instance.id} resolves to missing block ${instance.resolvedBlockId}`,
+			);
+		}
+	}
 	for (const read of model.settingReads) {
 		if (read.resolvedSettingId && (read.candidateSettingIds?.length ?? 0) > 0) {
 			throw new Error(
@@ -570,6 +692,13 @@ function assertThemeSemanticModel(model: ThemeSemanticModel): void {
 					`Theme setting read ${read.id} has missing candidate ${candidateId}`,
 				);
 			}
+		}
+	}
+	for (const translation of model.localeTranslations) {
+		if (!localeKeyIds.has(translation.localeKeyId)) {
+			throw new Error(
+				`Theme locale translation ${translation.id} resolves to missing locale key ${translation.localeKeyId}`,
+			);
 		}
 	}
 	for (const reference of model.localeReferences) {
@@ -647,6 +776,8 @@ function pageTypeFromTemplateName(name: string): string {
 
 function evidenceRecords(records: {
 	references: ThemeReference[];
+	sectionInstances: ThemeSectionInstanceRecord[];
+	blockInstances: ThemeBlockInstanceRecord[];
 	localeReferences: ThemeLocaleReferenceRecord[];
 	schemas: ThemeSchemaRecord[];
 	settings: ThemeSettingRecord[];
@@ -655,8 +786,28 @@ function evidenceRecords(records: {
 	variableReads: ThemeVariableReadRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
 	capabilitySignals: ThemeCapabilitySignalRecord[];
+	docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[];
 }): ThemeEvidenceRecord[] {
 	return [
+		...records.docParams.map((param) => ({
+			id: docParamEvidenceId(param.path, param.name),
+			kind: "docParam" as const,
+			file: param.path,
+			span: param.span,
+			extractor: "theme-source-facts",
+		})),
+		...records.sectionInstances.map((instance) => ({
+			id: instance.id,
+			kind: "templateConfig" as const,
+			file: instance.templatePath,
+			extractor: "theme-json-facts",
+		})),
+		...records.blockInstances.map((instance) => ({
+			id: instance.id,
+			kind: "templateConfig" as const,
+			file: instance.ownerPath,
+			extractor: "theme-json-facts",
+		})),
 		...records.references.map((reference) => ({
 			id: reference.id,
 			kind:
@@ -730,15 +881,20 @@ function evidenceRecords(records: {
  * What a snippet expects its caller to pass: reads of page-context objects
  * ({% render %} isolates scope, so product/collection/... must be passed)
  * plus free variable reads (bare names that are neither Liquid globals nor
- * assigned in the file). An input is required unless the file guards the
- * name in a condition — a guarded read tolerates absence.
+ * assigned in the file). A guarded input is optional. An input used only to
+ * forward a render argument remains unknown because forwarding alone does not
+ * prove the downstream snippet requires it.
  */
 function expectedInputRecords(
 	declarations: ThemeDeclaration[],
 	dataAccesses: ThemeDataAccessRecord[],
 	variableReads: ThemeVariableReadRecord[],
 	guardedObjects: Set<string>,
+	docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[],
 ): ThemeExpectedInputRecord[] {
+	const declaredByPathAndName = new Map(
+		docParams.map((param) => [`${param.path}:${param.name}`, param]),
+	);
 	const componentPaths = new Set(
 		declarations
 			.filter(
@@ -748,33 +904,186 @@ function expectedInputRecords(
 			.map((declaration) => declaration.path),
 	);
 	const byId = new Map<string, ThemeExpectedInputRecord>();
-	const addInput = (path: string, name: string, evidenceId: string): void => {
+	const directlyReadInputs = new Set(
+		variableReads
+			.filter((read) => read.usage !== "renderArgument")
+			.map((read) => `${read.fromPath}:${read.name}`),
+	);
+	const inferredRequirement = (
+		path: string,
+		name: string,
+		origin: ThemeExpectedInputRecord["origin"],
+	): ThemeExpectedInputRecord["requirement"] => {
+		if (origin === "ambientShopifyContext") return "unknown";
+		if (guardedObjects.has(`${path}:${name}`)) return "optional";
+		return directlyReadInputs.has(`${path}:${name}`) ? "required" : "unknown";
+	};
+	const addInput = (
+		path: string,
+		name: string,
+		propertyPath: string | undefined,
+		evidenceId: string,
+		origin: ThemeExpectedInputRecord["origin"],
+	): void => {
 		const id = expectedInputId(path, name);
 		const existing = byId.get(id);
 		if (existing) {
+			existing.propertyPaths = [
+				...new Set([
+					...existing.propertyPaths,
+					...(propertyPath ? [propertyPath] : []),
+				]),
+			].sort((a, b) => a.localeCompare(b));
 			existing.evidenceIds = [
 				...new Set([...existing.evidenceIds, evidenceId]),
 			];
+			// A free-variable read is stronger evidence than ambient context.
+			if (origin === "freeVariable" && existing.origin !== "docParam") {
+				existing.origin = origin;
+				existing.inferredRequirement = inferredRequirement(path, name, origin);
+				if (existing.provenance === "inferred") {
+					existing.requirement = existing.inferredRequirement;
+					existing.required = existing.requirement === "required";
+				}
+			}
 			return;
 		}
-		byId.set(id, {
-			id,
+		byId.set(id, reconciledInput(path, name, origin, [evidenceId], propertyPath));
+	};
+	/**
+	 * Effective requirement is the author's when they declared one, and the
+	 * inferred requirement otherwise. Both are kept: the declaration is the
+	 * answer, the inference is what makes disagreement visible.
+	 */
+	const reconciledInput = (
+		path: string,
+		name: string,
+		origin: ThemeExpectedInputRecord["origin"],
+		evidenceIds: string[],
+		propertyPath?: string,
+	): ThemeExpectedInputRecord => {
+		const declared = declaredByPathAndName.get(`${path}:${name}`);
+		const inferred = inferredRequirement(path, name, origin);
+		const requirement = declared
+			? declared.required
+				? "required"
+				: "optional"
+			: inferred;
+		return {
+			id: expectedInputId(path, name),
 			path,
 			name,
-			required: !guardedObjects.has(`${path}:${name}`),
-			evidenceIds: [evidenceId],
-		});
+			required: requirement === "required",
+			requirement,
+			provenance: declared ? "declared" : "inferred",
+			inferredRequirement: inferred,
+			origin,
+			declaredType: declared?.paramType,
+			propertyPaths: propertyPath ? [propertyPath] : [],
+			evidenceIds: declared
+				? [...evidenceIds, docParamEvidenceId(path, name)]
+				: evidenceIds,
+		};
 	};
 	for (const access of dataAccesses) {
 		if (!componentPaths.has(access.fromPath)) continue;
 		if (!CONTEXT_INPUT_OBJECTS.has(access.object)) continue;
-		addInput(access.fromPath, access.object, access.id);
+		addInput(
+			access.fromPath,
+			access.object,
+			access.propertyPath,
+			access.id,
+			"ambientShopifyContext",
+		);
 	}
 	for (const read of variableReads) {
 		if (!componentPaths.has(read.fromPath)) continue;
-		addInput(read.fromPath, read.name, read.id);
+		addInput(
+			read.fromPath,
+			read.name,
+			read.propertyPath,
+			read.id,
+			"freeVariable",
+		);
+	}
+	// A declared parameter is part of the interface whether or not the body
+	// happens to read it, so declarations seed inputs that no read produced.
+	for (const param of docParams) {
+		if (!componentPaths.has(param.path)) continue;
+		const id = expectedInputId(param.path, param.name);
+		if (byId.has(id)) continue;
+		byId.set(id, reconciledInput(param.path, param.name, "docParam", []));
 	}
 	return [...byId.values()];
+}
+
+/**
+ * Where a `{% doc %}` block and the source it documents disagree. A stale
+ * declaration outranks correct inference, so these are what keep a contract
+ * honest once declarations win.
+ *
+ * All of these are informational. None of them is a runtime defect: Liquid
+ * renders an absent variable as empty rather than raising, so an unguarded
+ * read of an optional parameter is how an optional class hook is *supposed*
+ * to be written (`class='{{ item_class }}'`). These report a disagreement
+ * between two descriptions of one interface, which is worth a human's
+ * attention and is not worth a warning.
+ *
+ * Not reported: a declared-required input that inference calls optional or
+ * unknown. Inference is deliberately conservative, so its silence is expected
+ * and flagging it would blame the author for the compiler's caution. That
+ * disagreement is still recorded on the input for the agreement harness.
+ */
+function docContractIssues(
+	expectedInputs: ThemeExpectedInputRecord[],
+	docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[],
+): Diagnostic[] {
+	if (docParams.length === 0) return [];
+	const issues: Diagnostic[] = [];
+	const documentedPaths = new Set(docParams.map((param) => param.path));
+	const declaredByPathAndName = new Map(
+		docParams.map((param) => [`${param.path}:${param.name}`, param]),
+	);
+	for (const input of expectedInputs) {
+		const declared = declaredByPathAndName.get(`${input.path}:${input.name}`);
+		if (declared && !declared.required) {
+			if (input.inferredRequirement === "required") {
+				issues.push({
+					severity: "info",
+					code: "THEME_DOC_PARAM_UNGUARDED",
+					message: `@param ${input.name} is declared optional, but no read of it is guarded or defaulted; source evidence alone would call it required`,
+					phase: "resolve",
+					span: declared.span,
+				});
+			}
+			continue;
+		}
+		if (!declared && documentedPaths.has(input.path)) {
+			issues.push({
+				severity: "info",
+				code: "THEME_DOC_PARAM_UNDECLARED",
+				message: `${input.path} uses ${input.name} as an input but its {% doc %} block does not declare it`,
+				phase: "resolve",
+				span: fileSpan(input.path),
+			});
+		}
+	}
+	const usedNames = new Set(
+		expectedInputs
+			.filter((input) => input.origin !== "docParam")
+			.map((input) => `${input.path}:${input.name}`),
+	);
+	for (const param of docParams) {
+		if (usedNames.has(`${param.path}:${param.name}`)) continue;
+		issues.push({
+			severity: "info",
+			code: "THEME_DOC_PARAM_UNUSED",
+			message: `@param ${param.name} is declared but never read; the doc block has drifted from the source`,
+			phase: "resolve",
+			span: param.span,
+		});
+	}
+	return issues;
 }
 
 /**
@@ -809,6 +1118,68 @@ function renderSiteRecords(
 	}));
 }
 
+function deriveArgumentDataAccesses(
+	renderSites: ThemeRenderSiteRecord[],
+	renderArguments: ThemeRenderArgumentRecord[],
+	expectedInputs: ThemeExpectedInputRecord[],
+	declarations: ThemeDeclaration[],
+	variableReads: ThemeVariableReadRecord[],
+): ThemeDataAccessRecord[] {
+	const declarationById = new Map(
+		declarations.map((declaration) => [declaration.id, declaration]),
+	);
+	const argumentById = new Map(
+		renderArguments.map((argument) => [argument.id, argument]),
+	);
+	const inputsByPathAndName = new Map(
+		expectedInputs.map((input) => [`${input.path}:${input.name}`, input]),
+	);
+	const variableReadById = new Map(
+		variableReads.map((read) => [read.id, read]),
+	);
+	const accesses: ThemeDataAccessRecord[] = [];
+	for (const site of renderSites) {
+		if (!site.resolvedDeclarationId) continue;
+		const targetPath = declarationById.get(site.resolvedDeclarationId)?.path;
+		if (!targetPath) continue;
+		for (const argumentId of site.argumentIds) {
+			const argument = argumentById.get(argumentId);
+			if (
+				!argument?.sourceObject ||
+				argument.sourceObject.endsWith(".settings")
+			)
+				continue;
+			const input = inputsByPathAndName.get(
+				`${targetPath}:${argument.argumentName}`,
+			);
+			if (!input) continue;
+			for (const inputPropertyPath of input.propertyPaths) {
+				const propertyPath = [argument.sourcePath, inputPropertyPath]
+					.filter(Boolean)
+					.join(".");
+				const expression = propertyPath
+					? `${argument.sourceObject}.${propertyPath}`
+					: argument.sourceObject;
+				const readEvidence = input.evidenceIds
+					.map((id) => variableReadById.get(id))
+					.find((read) => read?.propertyPath === inputPropertyPath);
+				accesses.push({
+					id: `data-access-derived:${targetPath}:${argument.id}:${expression}`,
+					fromPath: targetPath,
+					object: argument.sourceObject,
+					propertyPath: propertyPath || undefined,
+					expression,
+					origin: "renderArgument",
+					sourceRenderArgumentId: argument.id,
+					inputName: argument.argumentName,
+					span: readEvidence?.span,
+				});
+			}
+		}
+	}
+	return accesses;
+}
+
 function addInputDiagnostics(
 	issues: Diagnostic[],
 	renderSites: ThemeRenderSiteRecord[],
@@ -830,6 +1201,24 @@ function addInputDiagnostics(
 		declarations.map((declaration) => [declaration.id, declaration]),
 	);
 	const argumentNamesByTarget = new Map<string, Set<string>[]>();
+	const renderCountByDeclaration = new Map<string, number>();
+	const argumentCountByDeclaration = new Map<string, Map<string, number>>();
+	for (const site of renderSites) {
+		if (site.invocationKind !== "render" || !site.resolvedDeclarationId)
+			continue;
+		renderCountByDeclaration.set(
+			site.resolvedDeclarationId,
+			(renderCountByDeclaration.get(site.resolvedDeclarationId) ?? 0) + 1,
+		);
+		const counts =
+			argumentCountByDeclaration.get(site.resolvedDeclarationId) ??
+			new Map<string, number>();
+		for (const argumentId of site.argumentIds) {
+			const name = argumentById.get(argumentId)?.argumentName;
+			if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+		}
+		argumentCountByDeclaration.set(site.resolvedDeclarationId, counts);
+	}
 	for (const site of renderSites) {
 		if (
 			site.invocationKind !== "render" ||
@@ -853,11 +1242,22 @@ function addInputDiagnostics(
 		]);
 		const expectedNames = new Set(expected.map((input) => input.name));
 		for (const input of expected) {
-			if (!input.required || argumentNames.has(input.name)) continue;
+			const renderCount =
+				renderCountByDeclaration.get(site.resolvedDeclarationId) ?? 0;
+			const argumentCount =
+				argumentCountByDeclaration
+					.get(site.resolvedDeclarationId)
+					?.get(input.name) ?? 0;
+			if (
+				!input.required ||
+				argumentNames.has(input.name) ||
+				argumentCount <= renderCount - argumentCount
+			)
+				continue;
 			issues.push({
 				severity: "warning",
 				code: "THEME_RENDER_ARGUMENT_MISSING",
-				message: `Render of ${site.targetName} from ${site.fromPath} does not pass inferred required input ${input.name}`,
+				message: `Render of ${site.targetName} from ${site.fromPath} omits inferred input ${input.name}, which most calls pass`,
 				phase: "resolve",
 				span: site.span,
 			});
@@ -967,8 +1367,12 @@ export function pageId(path: string): string {
 	return `page:${path}`;
 }
 
-export function localeKeyId(path: string, key: string): string {
-	return `locale-key:${path}:${key}`;
+export function localeKeyId(key: string): string {
+	return `locale-key:${key}`;
+}
+
+export function localeTranslationId(path: string, key: string): string {
+	return `locale-translation:${path}:${key}`;
 }
 
 export function localeReferenceId(
@@ -984,6 +1388,14 @@ export function sectionInstanceId(
 	instanceId: string,
 ): string {
 	return `section-instance:${templatePath}:${instanceId}`;
+}
+
+export function blockInstanceId(
+	ownerPath: string,
+	sectionInstanceId: string,
+	instanceId: string,
+): string {
+	return `block-instance:${ownerPath}:${sectionInstanceId}:${instanceId}`;
 }
 
 export function settingReadId(
@@ -1029,6 +1441,16 @@ export function variableReadId(
 
 export function expectedInputId(path: string, name: string): string {
 	return `expected-input:${path}:${name}`;
+}
+
+export function docParamEvidenceId(path: string, name: string): string {
+	return `doc-param:${path}:${name}`;
+}
+
+/** Anchors a file-level finding that has no single source position. */
+function fileSpan(path: string): SourceSpan {
+	const position = { line: 1, column: 1 };
+	return { file: path, start: position, end: position };
 }
 
 export function capabilitySignalId(

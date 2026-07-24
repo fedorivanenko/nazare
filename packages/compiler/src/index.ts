@@ -148,6 +148,9 @@ export type {
 	SemanticThemeGraphEdge,
 	SemanticThemeGraphNode,
 	ThemeAnalysis,
+	ThemeAnalysisCache,
+	ThemeAnalysisCacheEntry,
+	ThemeBlockInstanceRecord,
 	ThemeBlockRecord,
 	ThemeBlockSettingRecord,
 	ThemeBuildResult,
@@ -164,6 +167,7 @@ export type {
 	ThemeInputFile,
 	ThemeLocaleKeyRecord,
 	ThemeLocaleReferenceRecord,
+	ThemeLocaleTranslationRecord,
 	ThemePageRecord,
 	ThemeRenderArgumentRecord,
 	ThemeRenderSiteRecord,
@@ -171,6 +175,7 @@ export type {
 	ThemeSemanticModel,
 	ThemeSettingReadRecord,
 } from "./theme-facts.js";
+export { matchesThemeGlob } from "./theme-exclusions.js";
 export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,

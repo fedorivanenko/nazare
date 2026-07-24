@@ -8,6 +8,7 @@ import {
 	checkComponentScripts,
 	compileNazareArtifact,
 	inspectNazareTheme,
+	type ThemeAnalysisCache,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
 import { registryFromEnv } from "@nazare/registry";
@@ -218,6 +219,11 @@ type ProjectManifest = {
 	registries?: Record<string, string>;
 	/** Explicit build paths. No hardcoded defaults; unset is an error. */
 	build?: { outDir?: string; sourceRoot?: string };
+	/**
+	 * Inspect policy. `exclude` holds theme-relative globs — typically generated
+	 * page-builder chunks — that are skipped entirely and reported as excluded.
+	 */
+	inspect?: { exclude?: string[] };
 };
 
 /**
@@ -318,8 +324,10 @@ async function runInspect(
 		output.error(`Unsupported inspect format ${format}; expected json`);
 		return 1;
 	}
-	const inspectRoot =
-		dirArg ?? (await readProjectManifest(projectRoot)).build?.sourceRoot;
+	const manifest = await readProjectManifest(projectRoot);
+	const exclude = inspectExcludePatterns(manifest, output);
+	if (!exclude) return 1;
+	const inspectRoot = dirArg ?? manifest.build?.sourceRoot;
 	if (!inspectRoot) {
 		output.error(
 			'Usage: nazare inspect theme [dir] --format json (or set "build.sourceRoot" in nazare.theme.json)',
@@ -332,10 +340,16 @@ async function runInspect(
 		return 1;
 	}
 	const files = await collectThemeInputFiles(root, projectRoot);
+	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v1.json");
+	const cache = await readThemeAnalysisCache(cachePath);
 	const inspected = inspectNazareTheme(files, {
 		root: relative(projectRoot, root).split(sep).join("/") || ".",
 		strictness: cliOptions.strictness,
+		cache,
+		exclude,
 	});
+	await mkdir(join(projectRoot, ".nazare-out"), { recursive: true });
+	await writeFile(cachePath, JSON.stringify(cache));
 	output.log(JSON.stringify(inspected, null, 2));
 	return hasErrors(
 		inspected.issues.filter((issue) => issue.severity === "error"),
@@ -344,9 +358,61 @@ async function runInspect(
 		: 0;
 }
 
+/**
+ * Reads `inspect.exclude`. A malformed value is an error rather than an ignored
+ * setting: silently inspecting files the user asked to skip, or silently
+ * skipping none, both misrepresent what the graph covers. Returns undefined
+ * only after reporting, so callers can fail.
+ */
+function inspectExcludePatterns(
+	manifest: ProjectManifest,
+	output: Output,
+): string[] | undefined {
+	const configured = manifest.inspect?.exclude;
+	if (configured === undefined) return [];
+	if (
+		!Array.isArray(configured) ||
+		configured.some((pattern) => typeof pattern !== "string" || !pattern)
+	) {
+		output.error(
+			'"inspect.exclude" in nazare.theme.json must be an array of non-empty theme-relative glob strings',
+		);
+		return undefined;
+	}
+	return configured;
+}
+
 function isOutsideRoot(root: string, path: string): boolean {
 	const relativePath = relative(root, path);
 	return relativePath.startsWith("..") || relativePath.startsWith(sep);
+}
+
+async function readThemeAnalysisCache(
+	path: string,
+): Promise<ThemeAnalysisCache> {
+	try {
+		const parsed = JSON.parse(
+			await readFile(path, "utf8"),
+		) as Partial<ThemeAnalysisCache>;
+		if (
+			parsed.version === 1 &&
+			parsed.entries &&
+			typeof parsed.entries === "object" &&
+			!Array.isArray(parsed.entries) &&
+			Object.values(parsed.entries).every(
+				(entry) =>
+					!!entry &&
+					typeof entry.fingerprint === "string" &&
+					Array.isArray(entry.facts) &&
+					Array.isArray(entry.issues),
+			)
+		) {
+			return parsed as ThemeAnalysisCache;
+		}
+	} catch {
+		// Missing, stale, or malformed cache: rebuild from source.
+	}
+	return { version: 1, entries: {} };
 }
 
 async function collectThemeInputFiles(
@@ -354,41 +420,57 @@ async function collectThemeInputFiles(
 	projectRoot: string,
 ): Promise<{ path: string; contents: string }[]> {
 	const ignored = new Set(["node_modules", ".git", "dist", ".nazare-out"]);
-	const files: { path: string; contents: string }[] = [];
+	const candidates: { path: string; absolutePath: string }[] = [];
 	async function walk(dir: string): Promise<void> {
-		for (const entry of await readdir(dir, { withFileTypes: true })) {
-			if (ignored.has(entry.name)) continue;
-			const abs = join(dir, entry.name);
-			if (entry.isDirectory()) {
-				await walk(abs);
-				continue;
-			}
-			if (!entry.isFile()) continue;
-			const rel = relative(root, abs).split(sep).join("/");
-			if (!isInspectThemeFile(rel)) continue;
-			files.push({
-				path: rel,
-				contents: shouldReadInspectContents(rel)
-					? await readFile(abs, "utf8")
-					: "",
-			});
-		}
+		const entries = await readdir(dir, { withFileTypes: true });
+		await Promise.all(
+			entries.map(async (entry) => {
+				if (ignored.has(entry.name)) return;
+				const absolutePath = join(dir, entry.name);
+				if (entry.isDirectory()) {
+					await walk(absolutePath);
+					return;
+				}
+				if (!entry.isFile()) return;
+				const path = relative(root, absolutePath).split(sep).join("/");
+				if (isInspectThemeFile(path)) candidates.push({ path, absolutePath });
+			}),
+		);
 	}
 	const rootStat = await stat(root);
 	if (rootStat.isFile()) {
 		const path = relative(projectRoot, root).split(sep).join("/");
-		if (isInspectThemeFile(path)) {
-			files.push({
-				path,
-				contents: shouldReadInspectContents(path)
-					? await readFile(root, "utf8")
-					: "",
-			});
-		}
+		if (isInspectThemeFile(path)) candidates.push({ path, absolutePath: root });
 	} else {
 		await walk(root);
 	}
-	return files.sort((a, b) => a.path.localeCompare(b.path));
+	candidates.sort((a, b) => a.path.localeCompare(b.path));
+	return mapConcurrent(candidates, 32, async ({ path, absolutePath }) => ({
+		path,
+		contents: shouldReadInspectContents(path)
+			? await readFile(absolutePath, "utf8")
+			: "",
+	}));
+}
+
+async function mapConcurrent<Input, OutputValue>(
+	values: Input[],
+	concurrency: number,
+	map: (value: Input) => Promise<OutputValue>,
+): Promise<OutputValue[]> {
+	const results = new Array<OutputValue>(values.length);
+	let nextIndex = 0;
+	const workers = Array.from(
+		{ length: Math.min(concurrency, values.length) },
+		async () => {
+			while (nextIndex < values.length) {
+				const index = nextIndex++;
+				results[index] = await map(values[index] as Input);
+			}
+		},
+	);
+	await Promise.all(workers);
+	return results;
 }
 
 function isInspectThemeFile(path: string): boolean {
@@ -398,10 +480,12 @@ function isInspectThemeFile(path: string): boolean {
 function shouldReadInspectContents(path: string): boolean {
 	return (
 		path.endsWith(".nz.liquid") ||
-		/^sections\/[^/]+\.liquid$/.test(path) ||
+		/^sections\/[^/]+\.(json|liquid)$/.test(path) ||
 		/^snippets\/[^/]+\.liquid$/.test(path) ||
+		/^blocks\/[^/]+\.liquid$/.test(path) ||
 		/^templates\/.+\.(json|liquid)$/.test(path) ||
 		/^layout\/[^/]+\.liquid$/.test(path) ||
+		/^locales\/[^/]+\.json$/.test(path) ||
 		path === "config/settings_schema.json" ||
 		path === "config/settings_data.json"
 	);

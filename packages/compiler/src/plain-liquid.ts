@@ -6,6 +6,7 @@ import type { Diagnostic, SourceSpan } from "@nazare/core";
 import {
 	type DocumentNode,
 	NodeTypes,
+	toLiquidAST,
 	toLiquidHtmlAST,
 	walk,
 } from "@shopify/liquid-html-parser";
@@ -105,11 +106,26 @@ export function parsePlainLiquid(
 	const diagnostics: Diagnostic[] = [];
 	let ast: DocumentNode;
 	let factsCollected = true;
+	const analysisSource = sourceForLiquidAnalysis(source);
 	try {
-		ast = toLiquidHtmlAST(source, {
-			mode: parseMode,
-			allowUnclosedDocumentNode: parseMode === "tolerant",
-		});
+		if (parseMode === "tolerant") {
+			// Inspect needs Liquid semantics, not one hypothetical static HTML tree.
+			// Shopify themes commonly balance HTML across Liquid branches. Masking
+			// non-Liquid source avoids false HTML failures and makes parser work scale
+			// with Liquid syntax while preserving every source offset.
+			const liquidOnlySource = sourceForLiquidOnlyAnalysis(analysisSource);
+			ast = containsLiquidSyntax(liquidOnlySource)
+				? toLiquidAST(liquidOnlySource, {
+						mode: "tolerant",
+						allowUnclosedDocumentNode: true,
+					})
+				: emptyAst();
+		} else {
+			ast = toLiquidHtmlAST(analysisSource, {
+				mode: "strict",
+				allowUnclosedDocumentNode: false,
+			});
+		}
 	} catch (error) {
 		factsCollected = false;
 		diagnostics.push(parseLiquidError(error, file));
@@ -143,6 +159,73 @@ export function parsePlainLiquid(
 		factsCollected,
 		parseMode,
 	};
+}
+
+/**
+ * HTML script/style bodies from page builders can contain megabytes of
+ * generated CSS/JavaScript. LiquidHTML parsing that syntax as raw text is
+ * needlessly expensive. Blank non-Liquid body text while preserving length,
+ * newlines, tags, and Liquid expressions, so all source offsets remain exact.
+ */
+function sourceForLiquidAnalysis(source: string): string {
+	return source.replace(
+		/<(style|script)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+		(block) => {
+			const bodyStart = block.indexOf(">");
+			const bodyEnd = block.lastIndexOf("</");
+			if (bodyStart < 0 || bodyEnd <= bodyStart) return block;
+			const start = block.slice(0, bodyStart + 1);
+			const body = block.slice(bodyStart + 1, bodyEnd);
+			const end = block.slice(bodyEnd);
+			return `${start}${blankNonLiquidCharacters(body)}${end}`;
+		},
+	);
+}
+
+/**
+ * Page builders publish megabytes of generated markup as `.liquid` files, many
+ * chunks of which hold no Liquid at all. Once masking has run, a source without
+ * `{{` or `{%` can only parse into text nodes, so every AST-derived fact —
+ * schema, settings reads, dependencies, expression facts — is necessarily
+ * empty. Skipping the parse is an optimization, not a policy: no fact that the
+ * parse could have produced is lost. Textual capability heuristics run against
+ * the raw source elsewhere and are unaffected.
+ */
+function containsLiquidSyntax(maskedSource: string): boolean {
+	return maskedSource.includes("{{") || maskedSource.includes("{%");
+}
+
+/**
+ * Bodies that carry meaning even though they are not Liquid expressions, and so
+ * must survive masking: authored schema, and `{% doc %}` annotations, whose
+ * `@param` lines are the declared component contract.
+ */
+const PRESERVED_BLOCK_BODIES = [
+	/{%-?\s*schema\s*-?%}[\s\S]*?{%-?\s*endschema\s*-?%}/gi,
+	/{%-?\s*doc\s*-?%}[\s\S]*?{%-?\s*enddoc\s*-?%}/gi,
+];
+
+function sourceForLiquidOnlyAnalysis(source: string): string {
+	let masked = blankNonLiquidCharacters(source);
+	for (const pattern of PRESERVED_BLOCK_BODIES) {
+		for (const match of source.matchAll(pattern)) {
+			const start = match.index ?? 0;
+			masked = `${masked.slice(0, start)}${match[0]}${masked.slice(start + match[0].length)}`;
+		}
+	}
+	return masked;
+}
+
+function blankNonLiquidCharacters(source: string): string {
+	let result = "";
+	let offset = 0;
+	for (const match of source.matchAll(/{{-?[\s\S]*?-?}}|{%-?[\s\S]*?-?%}/g)) {
+		const index = match.index ?? offset;
+		result += source.slice(offset, index).replace(/[^\n\r]/g, " ");
+		result += match[0];
+		offset = index + match[0].length;
+	}
+	return result + source.slice(offset).replace(/[^\n\r]/g, " ");
 }
 
 function plainLiquidFactsSkipped(file: string): Diagnostic {

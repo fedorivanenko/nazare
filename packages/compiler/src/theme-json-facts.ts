@@ -17,7 +17,7 @@ export function collectJsonThemeFacts(
 	}
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(contents);
+		parsed = JSON.parse(stripShopifyJsonPreamble(contents));
 	} catch (error) {
 		return {
 			facts,
@@ -62,6 +62,30 @@ export function collectJsonThemeFacts(
 		);
 	}
 	return { facts, issues };
+}
+
+/** Shopify-generated JSON files commonly start with an IMPORTANT block
+ * comment. JSON itself has no comments, but Shopify accepts this exact
+ * preamble. Strip only leading comments; never rewrite JSON content. */
+function stripShopifyJsonPreamble(contents: string): string {
+	let offset = contents.charCodeAt(0) === 0xfeff ? 1 : 0;
+	while (offset < contents.length) {
+		while (/\s/.test(contents[offset] ?? "")) offset += 1;
+		if (contents.startsWith("/*", offset)) {
+			const end = contents.indexOf("*/", offset + 2);
+			if (end < 0) return contents.slice(offset);
+			offset = end + 2;
+			continue;
+		}
+		if (contents.startsWith("//", offset)) {
+			const end = contents.indexOf("\n", offset + 2);
+			if (end < 0) return "";
+			offset = end + 1;
+			continue;
+		}
+		break;
+	}
+	return contents.slice(offset);
 }
 
 function collectTemplateFacts(
@@ -125,6 +149,71 @@ function collectTemplateFacts(
 			sectionType: section.type,
 			static: true,
 		});
+		collectBlockInstances(path, instanceId, section.blocks, facts, issues);
+	}
+}
+
+function collectBlockInstances(
+	ownerPath: string,
+	sectionInstanceId: string,
+	value: unknown,
+	facts: ThemeFact[],
+	issues: Diagnostic[],
+	parentInstanceId?: string,
+): void {
+	if (value === undefined) return;
+	if (!isRecord(value)) {
+		issues.push(
+			invalidJsonShape(
+				ownerPath,
+				"THEME_TEMPLATE_INVALID_BLOCKS",
+				`Blocks for section instance ${sectionInstanceId} must be an object`,
+			),
+		);
+		return;
+	}
+	for (const [instanceId, block] of Object.entries(value)) {
+		if (!isRecord(block)) {
+			issues.push(
+				invalidJsonShape(
+					ownerPath,
+					"THEME_TEMPLATE_INVALID_BLOCK_INSTANCE",
+					`Template block ${instanceId} must be an object`,
+				),
+			);
+			continue;
+		}
+		const blockType =
+			typeof block.type === "string" && block.type.length > 0
+				? block.type
+				: undefined;
+		if (!blockType) {
+			issues.push(
+				invalidJsonShape(
+					ownerPath,
+					"THEME_TEMPLATE_INVALID_BLOCK_TYPE",
+					`Template block ${instanceId} must have a non-empty string type`,
+				),
+			);
+			continue;
+		}
+		facts.push({
+			kind: "blockInstance",
+			ownerPath,
+			sectionInstanceId,
+			instanceId,
+			blockType,
+			parentInstanceId,
+			static: true,
+		});
+		collectBlockInstances(
+			ownerPath,
+			sectionInstanceId,
+			block.blocks,
+			facts,
+			issues,
+			instanceId,
+		);
 	}
 }
 

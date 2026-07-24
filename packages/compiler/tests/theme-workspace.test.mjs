@@ -21,6 +21,69 @@ test("inspectNazareTheme keeps unresolved references navigable", () => {
 	);
 });
 
+test("semantic graph connects pages, blocks, render sites, settings, and layouts", () => {
+	const graph = inspectNazareTheme([
+		{ path: "layout/theme.liquid", contents: "{{ content_for_layout }}" },
+		{
+			path: "templates/product.json",
+			contents: JSON.stringify({
+				sections: {
+					main: {
+						type: "main-product",
+						blocks: { icon: { type: "icon" } },
+					},
+				},
+			}),
+		},
+		{
+			path: "sections/main-product.liquid",
+			contents:
+				`{% layout 'theme' %}{% render 'badge', color: section.settings.color %}` +
+				`{% schema %}{"settings":[{"type":"color","id":"color"}]}{% endschema %}`,
+		},
+		{ path: "snippets/badge.liquid", contents: "{{ color }}" },
+		{ path: "blocks/icon.liquid", contents: "Icon" },
+	]);
+
+	for (const kind of [
+		"usesLayout",
+		"pageContainsSectionInstance",
+		"sectionInstanceContainsBlockInstance",
+		"instanceOfBlock",
+		"invokes",
+		"resolvesRenderTarget",
+		"hasArgument",
+		"satisfiesInput",
+		"argumentReadsSetting",
+	]) {
+		assert.ok(
+			graph.edges.some((edge) => edge.kind === kind),
+			kind,
+		);
+	}
+	assert.ok(graph.nodes.some((node) => node.kind === "renderSite"));
+	assert.ok(graph.nodes.some((node) => node.kind === "themeBlock"));
+	assert.ok(graph.nodes.some((node) => node.kind === "blockInstance"));
+});
+
+test("semantic graph is canonical across input order", () => {
+	const files = [
+		{ path: "snippets/card.liquid", contents: "{{ product.title }}" },
+		{
+			path: "sections/main.liquid",
+			contents: `{% render 'card', product: product %}`,
+		},
+		{
+			path: "templates/product.json",
+			contents: JSON.stringify({ sections: { main: { type: "main" } } }),
+		},
+	];
+	assert.deepEqual(
+		inspectNazareTheme(files),
+		inspectNazareTheme([...files].reverse()),
+	);
+});
+
 test("impact summary follows template dependencies and Shopify-owned entries", () => {
 	const graph = inspectNazareTheme([
 		{

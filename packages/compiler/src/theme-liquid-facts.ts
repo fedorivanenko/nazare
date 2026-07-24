@@ -52,6 +52,24 @@ export function collectPlainLiquidThemeFacts(
 				span: dependency.span,
 			});
 		}
+		if (dependency.kind === "section-group") {
+			facts.push({
+				kind: "containsSectionGroup",
+				fromPath: path,
+				targetName: dependency.name,
+				static: dependency.static,
+				span: dependency.span,
+			});
+		}
+		if (dependency.kind === "layout" && dependency.name !== "none") {
+			facts.push({
+				kind: "usesLayout",
+				fromPath: path,
+				targetName: dependency.name,
+				static: dependency.static,
+				span: dependency.span,
+			});
+		}
 	}
 	// The parser already located every settings read; map, don't re-scan.
 	for (const read of ast.settingsReads) {
@@ -110,7 +128,7 @@ function schemaFacts(
 			path,
 			schemaPath,
 			parsed.settings,
-			undefined,
+			path.startsWith("blocks/") ? themeNameFromPath(path) : undefined,
 			ast,
 			facts,
 			issues,

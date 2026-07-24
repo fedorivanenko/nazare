@@ -24,7 +24,13 @@ export type LiquidFilterLike = {
 export type RenderMarkupLike = {
 	type: "RenderMarkup";
 	snippet?: unknown;
-	variable?: unknown;
+	variable?: {
+		type?: unknown;
+		kind?: unknown;
+		name?: unknown;
+		position?: SourceRange;
+	};
+	alias?: { type?: unknown; value?: unknown; position?: SourceRange } | null;
 	args?: unknown;
 	position?: SourceRange;
 };
@@ -94,8 +100,11 @@ export function visitLiquidExpressions(
 			visitor.onFor?.(value as ForMarkupLike);
 			visitKnownChildren(value, visitor);
 			return;
+		case "LogicalExpression":
 		case "CycleMarkup":
 		case "RenderMarkup":
+		case "RenderVariableExpression":
+		case "RenderAliasExpression":
 		case "NamedArgument":
 		case "Comparison":
 		case "Condition":
@@ -104,6 +113,11 @@ export function visitLiquidExpressions(
 		case "Range":
 			visitKnownChildren(value, visitor);
 			return;
+		// Nested tags/branches are visited independently by LiquidHTML walk().
+		// Seeing one in parent markup is expected, not an unscanned expression.
+		case "LiquidTag":
+		case "LiquidBranch":
+		case "LiquidRawTag":
 		case "String":
 		case "Number":
 		case "LiquidLiteral":
@@ -124,6 +138,7 @@ function visitKnownChildren(
 	}
 	const node = value as Record<string, unknown>;
 	for (const key of [
+		"markup",
 		"expression",
 		"filters",
 		"args",
@@ -131,6 +146,8 @@ function visitKnownChildren(
 		"lookups",
 		"snippet",
 		"variable",
+		"alias",
+		"name",
 		"collection",
 		"start",
 		"end",

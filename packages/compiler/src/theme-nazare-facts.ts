@@ -59,6 +59,9 @@ export function collectNazareThemeFacts(
 		notes: frontendResult.notes,
 	};
 
+	const declaredComponentKind = projected.syntax.find(
+		(node) => node.kind === "component",
+	)?.componentKind;
 	const snippetNameByImportAlias = new Map(
 		projected.syntax
 			.filter((node) => node.kind === "import")
@@ -85,6 +88,13 @@ export function collectNazareThemeFacts(
 			if (node.componentKind === "snippet") {
 				facts.push({
 					kind: "declaresSnippet",
+					path,
+					name: themeNameFromPath(path),
+				});
+			}
+			if (node.componentKind === "block") {
+				facts.push({
+					kind: "declaresThemeBlock",
 					path,
 					name: themeNameFromPath(path),
 				});
@@ -153,6 +163,17 @@ export function collectNazareThemeFacts(
 		for (const node of frontendResult.ast.nodes) {
 			if (node.type !== "NazareProps") continue;
 			for (const prop of node.props) {
+				if (declaredComponentKind === "block") {
+					facts.push({
+						kind: "definesBlockSetting",
+						path,
+						blockType: themeNameFromPath(path),
+						settingId: prop.name,
+						settingType: prop.typeExpression,
+						span: prop.span,
+					});
+					continue;
+				}
 				facts.push({
 					kind: "definesSetting",
 					path,

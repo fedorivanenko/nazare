@@ -1,6 +1,9 @@
 import type { Diagnostic } from "@nazare/core";
 import { checkComponentScripts } from "./check-script.js";
 import { type EmitResult, emitTheme } from "./emit.js";
+// Generated from a digest of this package's source, so any change to fact
+// derivation invalidates persisted caches without anyone remembering to.
+import { THEME_FACT_CACHE_REVISION } from "./fact-cache-revision.js";
 import { parseNazareLiquid } from "./parser.js";
 import { markDiagnostics } from "./pipeline.js";
 import {
@@ -18,6 +21,10 @@ import type {
 	ThemeFact,
 	ThemeInputFile,
 } from "./theme-facts.js";
+import {
+	partitionExcludedThemeFiles,
+	themeExclusionIssues,
+} from "./theme-exclusions.js";
 import {
 	classifyThemeFile,
 	isUnsafeThemePath,
@@ -49,10 +56,15 @@ export function analyzeNazareTheme(
 	options: AnalyzeNazareThemeOptions = {},
 ): ThemeAnalysis {
 	const normalized = normalizeInputFiles(files);
-	return analyzeNormalizedThemeFiles(normalized.files, normalized.byPath, {
+	const { analyzed, excluded } = partitionExcludedThemeFiles(
+		normalized.files,
+		options.exclude,
+	);
+	for (const exclusion of excluded) normalized.byPath.delete(exclusion.path);
+	return analyzeNormalizedThemeFiles(analyzed, normalized.byPath, {
 		...THEME_ANALYSIS_DEFAULTS,
 		...options,
-		initialIssues: normalized.issues,
+		initialIssues: [...normalized.issues, ...themeExclusionIssues(excluded)],
 	});
 }
 
@@ -205,9 +217,36 @@ function analyzeNormalizedThemeFiles(
 	// component re-parses its whole import closure from scratch.
 	const dependencyResolver: DependencyResolver =
 		createDependencyResolver(readFile);
+	const cache = options.cache?.version === 1 ? options.cache : undefined;
+	if (cache) {
+		const currentPaths = new Set(files.map((file) => file.path));
+		for (const path of Object.keys(cache.entries)) {
+			if (!currentPaths.has(path)) delete cache.entries[path];
+		}
+	}
 
 	for (const file of files) {
 		const fileKind = classifyThemeFile(file.path);
+		const cacheable = fileKind !== "nazareComponent";
+		const fingerprint = cacheable
+			? themeFileFingerprint(file, fileKind, options)
+			: undefined;
+		const cached = cacheable ? cache?.entries[file.path] : undefined;
+		if (cached && cached.fingerprint === fingerprint) {
+			facts.push(...cached.facts);
+			issues.push(...cached.issues);
+			continue;
+		}
+		const factStart = facts.length;
+		const issueStart = issues.length;
+		const saveCacheEntry = (): void => {
+			if (!cache || !cacheable || !fingerprint) return;
+			cache.entries[file.path] = {
+				fingerprint,
+				facts: facts.slice(factStart),
+				issues: issues.slice(issueStart),
+			};
+		};
 		facts.push({ kind: "file", path: file.path, fileKind });
 		if (fileKind === "asset") {
 			// One declaration per asset; the model additionally indexes assets by
@@ -217,11 +256,26 @@ function analyzeNormalizedThemeFiles(
 				path: file.path,
 				name: themeNameFromPath(file.path),
 			});
+			saveCacheEntry();
 			continue;
 		}
 		if (fileKind === "layout") {
 			facts.push({
 				kind: "declaresLayout",
+				path: file.path,
+				name: themeNameFromPath(file.path),
+			});
+		}
+		if (fileKind === "sectionGroup") {
+			facts.push({
+				kind: "declaresSectionGroup",
+				path: file.path,
+				name: themeNameFromPath(file.path),
+			});
+		}
+		if (fileKind === "themeBlock") {
+			facts.push({
+				kind: "declaresThemeBlock",
 				path: file.path,
 				name: themeNameFromPath(file.path),
 			});
@@ -250,6 +304,7 @@ function analyzeNormalizedThemeFiles(
 			});
 			facts.push(...result.facts);
 			issues.push(...result.issues);
+			saveCacheEntry();
 			continue;
 		}
 		if (file.path.endsWith(".json")) {
@@ -257,10 +312,26 @@ function analyzeNormalizedThemeFiles(
 			facts.push(...result.facts);
 			issues.push(...result.issues);
 		}
+		saveCacheEntry();
 	}
 
 	const ir = buildThemeSemanticModel(facts, issues, { root: options.root });
 	return { ir, artifacts, issues: ir.issues };
+}
+
+
+function themeFileFingerprint(
+	file: ThemeInputFile,
+	fileKind: ReturnType<typeof classifyThemeFile>,
+	options: AnalyzeNazareThemeOptions,
+): string {
+	let hash = 2_166_136_261;
+	const input = `${THEME_FACT_CACHE_REVISION}\0${fileKind}\0${options.plainLiquidParseMode ?? "tolerant"}\0${file.contents}`;
+	for (let index = 0; index < input.length; index += 1) {
+		hash ^= input.charCodeAt(index);
+		hash = Math.imul(hash, 16_777_619);
+	}
+	return `${input.length}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 function buildScopeIssues(
