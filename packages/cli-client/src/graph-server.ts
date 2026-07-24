@@ -16,8 +16,9 @@ export async function serveThemeGraph(
 	input: Readable,
 	output: Writable,
 ): Promise<void> {
-	let session = await loadProgram(root);
-	let buildSession = await loadBuildSession(root);
+	const initial = await loadProgramState(root);
+	let session = initial.program;
+	let buildSession = initial.buildSession;
 	let stopWatching: (() => void) | undefined;
 	let mcpInitialized = false;
 	const readline = createInterface({ input, crlfDelay: Infinity });
@@ -178,29 +179,24 @@ async function handleRequest(
 		};
 	}
 	if (request.method === "reload" || request.method === "inspect") {
-		const session = await loadProgram(root);
-		setSession(session);
-		setBuildSession(await loadBuildSession(root));
-		return session.getGraph();
+		const state = await loadProgramState(root);
+		setSession(state.program);
+		setBuildSession(state.buildSession);
+		return state.program.getGraph();
 	}
 	const session = getSession();
 	if (request.method === "build") return getBuildSession().getBuild();
 	if (request.method === "updateFile") {
 		const file = requiredFile(request.params);
-		const graphUpdate = session.updateFile(file);
-		getBuildSession().updateFile(file);
-		return graphUpdate;
+		return getBuildSession().updateFile(file).graphUpdate;
 	}
 	if (request.method === "buildUpdate") {
 		const file = requiredFile(request.params);
-		session.updateFile(file);
 		return getBuildSession().updateFile(file);
 	}
 	if (request.method === "removeFile") {
 		const path = requiredString(request.params, "path");
-		const graphUpdate = session.removeFile(path);
-		getBuildSession().removeFile(path);
-		return graphUpdate;
+		return getBuildSession().removeFile(path).graphUpdate;
 	}
 	if (request.method === "watch") {
 		setWatcher(startWatcher(root, getSession, getBuildSession, notify));
@@ -274,8 +270,8 @@ function startWatcher(
 			try {
 				const contents = await readFile(join(root, relativePath), "utf8");
 				const file = { path: relativePath, contents };
-				const graphUpdate = session.updateFile(file);
 				const buildUpdate = getBuildSession().updateFile(file);
+				const graphUpdate = buildUpdate.graphUpdate;
 				if (closed) return;
 				if (graphUpdate.changedPaths.length > 0) {
 					notify({ method: "graph/update", params: graphUpdate });
@@ -285,8 +281,8 @@ function startWatcher(
 				}
 			} catch (error) {
 				if (!isNotFound(error)) throw error;
-				const graphUpdate = session.removeFile(relativePath);
 				const buildUpdate = getBuildSession().removeFile(relativePath);
+				const graphUpdate = buildUpdate.graphUpdate;
 				if (closed) return;
 				if (graphUpdate.changedPaths.length > 0) {
 					notify({ method: "graph/update", params: graphUpdate });
@@ -330,15 +326,18 @@ function isNotFound(error: unknown): boolean {
 	);
 }
 
-async function loadProgram(root: string): Promise<ThemeProgram> {
+async function loadProgramState(root: string): Promise<{
+	program: ThemeProgram;
+	buildSession: ThemeBuildSession;
+}> {
 	const files = await collectThemeFiles(root);
 	const metafields = await optionalFile(root, ".shopify/metafields.json");
 	const themeCheck = await optionalFile(root, ".theme-check.yml");
-	return new ThemeProgram(files, { metafields, themeCheck });
-}
-
-async function loadBuildSession(root: string): Promise<ThemeBuildSession> {
-	return new ThemeBuildSession(await collectThemeFiles(root));
+	const program = new ThemeProgram(files, { metafields, themeCheck });
+	return {
+		program,
+		buildSession: new ThemeBuildSession(files, {}, program),
+	};
 }
 
 async function collectThemeFiles(

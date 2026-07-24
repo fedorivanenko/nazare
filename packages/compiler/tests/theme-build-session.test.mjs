@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildNazareThemeWorkspace, ThemeBuildSession } from "../dist/index.js";
+import {
+	buildNazareThemeWorkspace,
+	ThemeBuildSession,
+	ThemeProgram,
+} from "../dist/index.js";
 
 function emittedFile(build, path) {
 	const file = build.emitted.files.find((candidate) => candidate.path === path);
@@ -144,14 +148,36 @@ test("build session reference-counts shared runtime assets", () => {
 	);
 });
 
+test("build session and server-style program share one atomic revision", () => {
+	const files = [{ path: "a.nz.liquid", contents: "<span>A</span>" }];
+	const program = new ThemeProgram(files);
+	const session = new ThemeBuildSession(files, {}, program);
+	const update = session.updateFile({
+		path: "a.nz.liquid",
+		contents: "<strong>Updated</strong>",
+	});
+	assert.equal(update.graphUpdate.revision, 1);
+	assert.strictEqual(update.graphUpdate.graph, program.getGraph());
+	assert.equal(
+		program.updateFile({
+			path: "a.nz.liquid",
+			contents: "<strong>Updated</strong>",
+		}).revision,
+		1,
+	);
+});
+
 test("build session rejects collisions with retained outputs transactionally", () => {
-	const session = new ThemeBuildSession([
+	const files = [
 		{
 			path: "components/a/card.nz.liquid",
 			contents: "<span>Original</span>",
 		},
-	]);
+	];
+	const program = new ThemeProgram(files);
+	const session = new ThemeBuildSession(files, {}, program);
 	const committed = session.getBuild();
+	const committedGraph = program.getGraph();
 	assert.throws(
 		() =>
 			session.updateFile({
@@ -161,4 +187,5 @@ test("build session rejects collisions with retained outputs transactionally", (
 		/Selective build output collision at snippets\/card\.liquid/,
 	);
 	assert.strictEqual(session.getBuild(), committed);
+	assert.strictEqual(program.getGraph(), committedGraph);
 });
