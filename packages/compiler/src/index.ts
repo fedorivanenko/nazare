@@ -144,6 +144,12 @@ export {
 	type ThemeBuildUpdate,
 } from "./theme-build-session.js";
 export {
+	capabilitySignalId,
+	collectThemeCapabilitySignals,
+	createThemeCapabilitySignalPass,
+	type ThemeCapabilitySignalPassContext,
+} from "./theme-capability-signal-pass.js";
+export {
 	filterThemeCheckIssues,
 	parseThemeCheckPolicy,
 	type ThemeCheckPolicy,
