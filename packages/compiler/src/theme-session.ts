@@ -227,6 +227,7 @@ export class ThemeWorkspaceSession {
 		const indexedGraph = graphWithIndexedImpact(this.semanticStore.getModel());
 		this.graph = indexedGraph.graph;
 		this.graphStore = new ThemeGraphStore(this.graph);
+		this.graphStore.replaceOwnership(this.semanticStore.getModel());
 		this.impactIndex = indexedGraph.index;
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
@@ -355,6 +356,7 @@ export class ThemeWorkspaceSession {
 		nextImpactIndex.applyGraph(nextGraph);
 		nextGraph.impact = nextImpactIndex.toSummary();
 		nextGraphStore.applyGraph(nextGraph);
+		nextGraphStore.replaceOwnership(semanticUpdate.model);
 		const metafieldDefinitionIds = new Set([
 			...this.semanticStore
 				.getModel()

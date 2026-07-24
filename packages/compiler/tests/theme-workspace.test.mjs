@@ -185,6 +185,24 @@ test("graph store applies stable-ID records transactionally", () => {
 	assert.equal(committed.getNode("file:snippets/tile.liquid"), undefined);
 	assert.ok(delta.addedNodeIds.includes("file:snippets/tile.liquid"));
 	assert.deepEqual(staged.getGraph(), second);
+
+	const files = [
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	];
+	const analysis = analyzeNazareTheme(files);
+	const owned = new ThemeGraphStore(inspectNazareTheme(files));
+	owned.replaceOwnership(analysis.ir);
+	const reference = analysis.ir.references.find(
+		(record) => record.kind === "rendersSnippet",
+	);
+	assert.ok(reference);
+	assert.equal(
+		owned
+			.getOwnedEdgeIds(reference.id)
+			.some((id) => id.startsWith("edge:renders:")),
+		true,
+	);
 });
 
 test("semantic transaction shares unchanged identified records", () => {
