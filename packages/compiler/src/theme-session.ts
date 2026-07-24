@@ -348,9 +348,13 @@ export class ThemeWorkspaceSession {
 		const semanticUpdate = transaction.update;
 		const nextResolverIndex = new ThemeResolverIndex(semanticUpdate.model);
 		const nextMetafieldIndex = new ThemeMetafieldIndex(semanticUpdate.model);
-		const indexedGraph = graphWithIndexedImpact(semanticUpdate.model);
-		const nextGraph = shareThemeGraphRecords(this.graph, indexedGraph.graph);
-		const nextImpactIndex = new ThemeImpactIndex(nextGraph);
+		const nextGraph = shareThemeGraphRecords(
+			this.graph,
+			graphWithoutImpact(semanticUpdate.model),
+		);
+		const nextImpactIndex = this.impactIndex.fork();
+		nextImpactIndex.applyGraph(nextGraph);
+		nextGraph.impact = nextImpactIndex.toSummary();
 		const metafieldDefinitionIds = new Set([
 			...this.semanticStore
 				.getModel()
@@ -1103,11 +1107,10 @@ function diffGraphs(
 	};
 }
 
-function graphWithIndexedImpact(model: ThemeSemanticModel): {
-	graph: InspectNazareThemeResult;
-	index: ThemeImpactIndex;
-} {
-	const graph = themeGraphFromModel(model, {
+function graphWithoutImpact(
+	model: ThemeSemanticModel,
+): InspectNazareThemeResult {
+	return themeGraphFromModel(model, {
 		impact: {
 			dependencies: {},
 			dependents: {},
@@ -1115,6 +1118,13 @@ function graphWithIndexedImpact(model: ThemeSemanticModel): {
 			unusedFiles: [],
 		},
 	});
+}
+
+function graphWithIndexedImpact(model: ThemeSemanticModel): {
+	graph: InspectNazareThemeResult;
+	index: ThemeImpactIndex;
+} {
+	const graph = graphWithoutImpact(model);
 	const index = new ThemeImpactIndex(graph);
 	graph.impact = index.toSummary();
 	return { graph, index };
