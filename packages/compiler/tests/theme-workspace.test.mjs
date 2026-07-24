@@ -177,6 +177,10 @@ test("graph store applies stable-ID records transactionally", () => {
 		{ path: "snippets/tile.liquid", contents: "Tile" },
 	]);
 	const committed = new ThemeGraphStore(first);
+	const firstModel = analyzeNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]).ir;
+	committed.replaceOwnership(firstModel);
 	const cardId = "file:snippets/card.liquid";
 	const card = committed.getNode(cardId);
 	const staged = committed.fork();
@@ -196,6 +200,22 @@ test("graph store applies stable-ID records transactionally", () => {
 	assert.equal(committed.getNode("file:snippets/tile.liquid"), undefined);
 	assert.ok(delta.addedNodeIds.includes("file:snippets/tile.liquid"));
 	assert.deepEqual(staged.getGraph(), second);
+	const secondModel = analyzeNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+		{ path: "snippets/tile.liquid", contents: "Tile" },
+	]).ir;
+	const tileSemanticIds = [...secondModel.files, ...secondModel.declarations]
+		.filter((record) => record.path === "snippets/tile.liquid")
+		.map((record) => record.id);
+	const selective = committed.fork();
+	const selectiveDelta = selective.applyOwnedGraph(
+		second,
+		secondModel,
+		tileSemanticIds,
+	);
+	assert.ok(selectiveDelta.addedNodeIds.includes("file:snippets/tile.liquid"));
+	assert.strictEqual(selective.getNode(cardId), card);
+	assert.deepEqual(selective.getGraph(), second);
 
 	const files = [
 		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
