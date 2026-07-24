@@ -10,6 +10,7 @@ import {
 	inspectNazareTheme,
 	shareThemeGraphRecords,
 	summarizeThemeGraph,
+	THEME_PASS_CONVERGENCE_BUDGET,
 	ThemeBuildSession,
 	ThemeFactIndex,
 	ThemeFactStore,
@@ -774,7 +775,8 @@ test("workspace rolls back a fixed-point work-budget failure", () => {
 		]),
 		previousQueries,
 	);
-	session.collectionScheduler.maximumFixedPointWork = 100_000;
+	session.collectionScheduler.maximumFixedPointWork =
+		THEME_PASS_CONVERGENCE_BUDGET.maximumFixedPointWork;
 	const result = session.updateFile(updated);
 	assert.equal(result.revision, 1);
 	assert.deepEqual(session.getGraph(), inspectNazareTheme([files[1], updated]));

@@ -1,13 +1,31 @@
 #!/usr/bin/env node
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { basename, extname, join, relative, resolve, sep } from "node:path";
+import {
+	mkdir,
+	readFile,
+	realpath,
+	rename,
+	rm,
+	writeFile,
+} from "node:fs/promises";
+import {
+	basename,
+	extname,
+	isAbsolute,
+	join,
+	relative,
+	resolve,
+	sep,
+} from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
 	checkComponentScripts,
 	compileNazareArtifact,
 	inspectNazareTheme,
+	parsePersistedInspectFactCache,
+	serializePersistedInspectFactCache,
 	summarizeThemeGraph,
 	type ThemeAnalysisCache,
 	themeGraphToDot,
@@ -81,13 +99,15 @@ export async function main(
 				);
 			}
 			const resolvedGraphRoot = resolve(projectRoot, graphRoot);
-			if (isOutsideRoot(projectRoot, resolvedGraphRoot)) {
+			const canonicalProjectRoot = await realpath(projectRoot);
+			const canonicalGraphRoot = await realpath(resolvedGraphRoot);
+			if (isOutsideRoot(canonicalProjectRoot, canonicalGraphRoot)) {
 				throw new Error(
-					`${resolvedGraphRoot} is outside the project root ${projectRoot}`,
+					`${resolvedGraphRoot} resolves outside the project root ${projectRoot}`,
 				);
 			}
-			await serveThemeGraph(resolvedGraphRoot, process.stdin, process.stdout, {
-				projectRoot,
+			await serveThemeGraph(canonicalGraphRoot, process.stdin, process.stdout, {
+				projectRoot: canonicalProjectRoot,
 			});
 			return 0;
 		}
@@ -368,17 +388,23 @@ async function runInspect(
 		return 1;
 	}
 	const root = resolve(projectRoot, inspectRoot);
-	if (isOutsideRoot(projectRoot, root)) {
-		output.error(`${root} is outside the project root ${projectRoot}`);
+	const canonicalProjectRoot = await realpath(projectRoot);
+	const canonicalRoot = await realpath(root);
+	if (isOutsideRoot(canonicalProjectRoot, canonicalRoot)) {
+		output.error(`${root} resolves outside the project root ${projectRoot}`);
 		return 1;
 	}
-	const files = await collectThemeInputFiles(root, projectRoot);
+	const files = await collectThemeInputFiles(
+		canonicalRoot,
+		canonicalProjectRoot,
+	);
 	const metafields = await readMetafieldSnapshot(projectRoot);
 	const themeCheck = await readThemeCheckPolicy(projectRoot);
-	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v1.json");
+	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v2.json");
 	const cache = await readThemeAnalysisCache(cachePath);
 	const inspected = inspectNazareTheme(files, {
-		root: relative(projectRoot, root).split(sep).join("/") || ".",
+		root:
+			relative(canonicalProjectRoot, canonicalRoot).split(sep).join("/") || ".",
 		strictness: cliOptions.strictness,
 		cache,
 		exclude,
@@ -438,7 +464,11 @@ async function readMetafieldSnapshot(
 
 function isOutsideRoot(root: string, path: string): boolean {
 	const relativePath = relative(root, path);
-	return relativePath.startsWith("..") || relativePath.startsWith(sep);
+	return (
+		relativePath === ".." ||
+		relativePath.startsWith(`..${sep}`) ||
+		isAbsolute(relativePath)
+	);
 }
 
 async function readThemeAnalysisCache(
@@ -461,39 +491,22 @@ async function readThemeAnalysisCache(
 			`Invalid JSON in theme analysis cache ${path}: ${errorMessage(error)}`,
 		);
 	}
-	if (!isThemeAnalysisCache(parsed)) {
+	try {
+		return parsePersistedInspectFactCache(parsed);
+	} catch (error) {
 		throw new Error(
-			`Invalid theme analysis cache ${path}: expected version 1 with fingerprinted fact and issue arrays`,
+			`Invalid theme analysis cache ${path}: ${errorMessage(error)}`,
 		);
 	}
-	return parsed;
-}
-
-function isThemeAnalysisCache(value: unknown): value is ThemeAnalysisCache {
-	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-	const candidate = value as Partial<ThemeAnalysisCache>;
-	return (
-		candidate.version === 1 &&
-		!!candidate.entries &&
-		typeof candidate.entries === "object" &&
-		!Array.isArray(candidate.entries) &&
-		Object.values(candidate.entries).every(
-			(entry) =>
-				!!entry &&
-				typeof entry.fingerprint === "string" &&
-				Array.isArray(entry.facts) &&
-				Array.isArray(entry.issues),
-		)
-	);
 }
 
 async function writeThemeAnalysisCache(
 	path: string,
 	cache: ThemeAnalysisCache,
 ): Promise<void> {
-	const temporaryPath = `${path}.${process.pid}.tmp`;
+	const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
 	try {
-		await writeFile(temporaryPath, JSON.stringify(cache));
+		await writeFile(temporaryPath, serializePersistedInspectFactCache(cache));
 		await rename(temporaryPath, path);
 	} catch (error) {
 		try {

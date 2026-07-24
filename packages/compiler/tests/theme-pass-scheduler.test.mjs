@@ -12,6 +12,7 @@ import {
 	createThemeResolutionPass,
 	fixedPointThemePass,
 	incrementalThemePass,
+	THEME_PASS_CONVERGENCE_BUDGET,
 	ThemeDiagnosticStore,
 	ThemeFactStore,
 	ThemePassConvergenceError,
@@ -429,9 +430,10 @@ test("data-flow fixed point recomputes one affected SCC per step", () => {
 		static: true,
 	});
 	const groups = [];
-	const scheduler = new ThemePassScheduler([
-		fixedPointThemePass(createThemeDataFlowFixedPointPass()),
-	]);
+	const scheduler = new ThemePassScheduler(
+		[fixedPointThemePass(createThemeDataFlowFixedPointPass())],
+		THEME_PASS_CONVERGENCE_BUDGET,
+	);
 	const result = scheduler.execute(
 		[{ kind: "dataFlowChanged", sourcePath: "c" }],
 		{
@@ -466,6 +468,16 @@ test("theme pass scheduler rejects backward routes", () => {
 	);
 });
 
+test("theme pass scheduler requires an explicit fixed-point budget", () => {
+	assert.throws(
+		() =>
+			new ThemePassScheduler([
+				fixedPointThemePass(createThemeDataFlowFixedPointPass()),
+			]),
+		/require an explicit convergence budget/,
+	);
+});
+
 test("theme pass scheduler bounds fixed-point convergence", () => {
 	const scheduler = new ThemePassScheduler(
 		[
@@ -488,7 +500,10 @@ test("theme pass scheduler bounds fixed-point convergence", () => {
 				}),
 			}),
 		],
-		{ maximumFixedPointIterations: 2 },
+		{
+			...THEME_PASS_CONVERGENCE_BUDGET,
+			maximumFixedPointIterations: 2,
+		},
 	);
 	assert.throws(
 		() => scheduler.execute([{ kind: "sourceChanged", path: "card" }], {}),
@@ -524,7 +539,10 @@ test("theme pass scheduler bounds fixed-point work", () => {
 				}),
 			}),
 		],
-		{ maximumFixedPointWork: 2 },
+		{
+			...THEME_PASS_CONVERGENCE_BUDGET,
+			maximumFixedPointWork: 2,
+		},
 	);
 	assert.throws(
 		() => scheduler.execute([{ kind: "sourceChanged", path: "card" }], {}),

@@ -34,6 +34,7 @@ import { analyzeMetafields } from "./theme-metafields.js";
 import {
 	incrementalThemePass,
 	type PassChange,
+	THEME_PASS_CONVERGENCE_BUDGET,
 	ThemePassScheduler,
 } from "./theme-pass-scheduler.js";
 import {
@@ -57,14 +58,17 @@ function collectScheduledDeclarationAndReferenceRecords(facts: ThemeFact[]): {
 		ids: { file: fileId, declaration: declarationId },
 		id: referenceId,
 	};
-	const scheduler = new ThemePassScheduler<typeof context>([
-		incrementalThemePass<typeof context, string, ThemeDeclarationPassRecord>(
-			createThemeDeclarationPass(),
-		),
-		incrementalThemePass<typeof context, string, ThemeReference>(
-			createThemeReferencePass(),
-		),
-	]);
+	const scheduler = new ThemePassScheduler<typeof context>(
+		[
+			incrementalThemePass<typeof context, string, ThemeDeclarationPassRecord>(
+				createThemeDeclarationPass(),
+			),
+			incrementalThemePass<typeof context, string, ThemeReference>(
+				createThemeReferencePass(),
+			),
+		],
+		THEME_PASS_CONVERGENCE_BUDGET,
+	);
 	scheduler.execute(
 		factStore
 			.files()
@@ -483,24 +487,6 @@ export function deriveThemeInputDiagnostics(
 		declarations.map((declaration) => [declaration.id, declaration]),
 	);
 	const argumentNamesByTarget = new Map<string, Set<string>[]>();
-	const renderCountByDeclaration = new Map<string, number>();
-	const argumentCountByDeclaration = new Map<string, Map<string, number>>();
-	for (const site of renderSites) {
-		if (site.invocationKind !== "render" || !site.resolvedDeclarationId)
-			continue;
-		renderCountByDeclaration.set(
-			site.resolvedDeclarationId,
-			(renderCountByDeclaration.get(site.resolvedDeclarationId) ?? 0) + 1,
-		);
-		const counts =
-			argumentCountByDeclaration.get(site.resolvedDeclarationId) ??
-			new Map<string, number>();
-		for (const argumentId of site.argumentIds) {
-			const name = argumentById.get(argumentId)?.argumentName;
-			if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
-		}
-		argumentCountByDeclaration.set(site.resolvedDeclarationId, counts);
-	}
 	for (const site of renderSites) {
 		if (
 			site.invocationKind !== "render" ||
@@ -524,22 +510,16 @@ export function deriveThemeInputDiagnostics(
 		]);
 		const expectedNames = new Set(expected.map((input) => input.name));
 		for (const input of expected) {
-			const renderCount =
-				renderCountByDeclaration.get(site.resolvedDeclarationId) ?? 0;
-			const argumentCount =
-				argumentCountByDeclaration
-					.get(site.resolvedDeclarationId)
-					?.get(input.name) ?? 0;
 			if (
-				!input.required ||
-				argumentNames.has(input.name) ||
-				argumentCount <= renderCount - argumentCount
+				input.provenance !== "declared" ||
+				input.requirement !== "required" ||
+				argumentNames.has(input.name)
 			)
 				continue;
 			issues.push({
 				severity: "warning",
 				code: "THEME_RENDER_ARGUMENT_MISSING",
-				message: `Render of ${site.targetName} from ${site.fromPath} omits inferred input ${input.name}, which most calls pass`,
+				message: `Render of ${site.targetName} from ${site.fromPath} omits required declared input ${input.name}`,
 				phase: "resolve",
 				span: site.span,
 			});

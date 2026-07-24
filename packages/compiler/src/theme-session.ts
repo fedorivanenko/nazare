@@ -122,6 +122,7 @@ import {
 	fixedPointThemePass,
 	incrementalThemePass,
 	type PassChange,
+	THEME_PASS_CONVERGENCE_BUDGET,
 	ThemePassScheduler,
 } from "./theme-pass-scheduler.js";
 import {
@@ -653,59 +654,66 @@ type ThemeCollectionState = {
 };
 
 function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
-	return new ThemePassScheduler<ThemeCollectionContext>([
-		incrementalThemePass<
-			ThemeCollectionContext,
-			string,
-			ThemeDeclarationPassRecord
-		>(createThemeDeclarationPass()),
-		incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
-			createThemeReferencePass(),
-		),
-		incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
-			createThemeResolutionPass(),
-		),
-		incrementalThemePass<
-			ThemeCollectionContext,
-			string,
-			ThemeSchemaSettingRecord
-		>(createThemeSchemaSettingPass()),
-		incrementalThemePass<ThemeCollectionContext, string, ThemeInstanceRecord>(
-			createThemeInstancePass(),
-		),
-		incrementalThemePass<ThemeCollectionContext, string, ThemeLocaleRecord>(
-			createThemeLocalePass(),
-		),
-		incrementalThemePass<
-			ThemeCollectionContext,
-			string,
-			ThemeDataFlowInputRecord
-		>(createThemeDataFlowInputPass()),
-		fixedPointThemePass<
-			ThemeCollectionContext,
-			string,
-			ThemeDataFlowDerivedRecord
-		>(createThemeDataFlowFixedPointPass()),
-		incrementalThemePass<
-			ThemeCollectionContext,
-			string,
-			ThemeCapabilitySignalRecord
-		>(createThemeCapabilitySignalPass()),
-		incrementalThemePass<ThemeCollectionContext, string, ThemeMetafieldRecord>(
-			createThemeMetafieldPass(),
-		),
-		incrementalThemePass<ThemeCollectionContext, string, ThemeCapabilityRecord>(
-			createThemeCapabilityPass(),
-		),
-		incrementalThemePass<
-			ThemeCollectionContext,
-			string,
-			ThemeClassificationRecord
-		>(createThemeClassificationPass()),
-		incrementalThemePass<ThemeCollectionContext, string, ThemeEvidenceRecord>(
-			createThemeEvidencePass(),
-		),
-	]);
+	return new ThemePassScheduler<ThemeCollectionContext>(
+		[
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeDeclarationPassRecord
+			>(createThemeDeclarationPass()),
+			incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
+				createThemeReferencePass(),
+			),
+			incrementalThemePass<ThemeCollectionContext, string, ThemeReference>(
+				createThemeResolutionPass(),
+			),
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeSchemaSettingRecord
+			>(createThemeSchemaSettingPass()),
+			incrementalThemePass<ThemeCollectionContext, string, ThemeInstanceRecord>(
+				createThemeInstancePass(),
+			),
+			incrementalThemePass<ThemeCollectionContext, string, ThemeLocaleRecord>(
+				createThemeLocalePass(),
+			),
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeDataFlowInputRecord
+			>(createThemeDataFlowInputPass()),
+			fixedPointThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeDataFlowDerivedRecord
+			>(createThemeDataFlowFixedPointPass()),
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeCapabilitySignalRecord
+			>(createThemeCapabilitySignalPass()),
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeMetafieldRecord
+			>(createThemeMetafieldPass()),
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeCapabilityRecord
+			>(createThemeCapabilityPass()),
+			incrementalThemePass<
+				ThemeCollectionContext,
+				string,
+				ThemeClassificationRecord
+			>(createThemeClassificationPass()),
+			incrementalThemePass<ThemeCollectionContext, string, ThemeEvidenceRecord>(
+				createThemeEvidencePass(),
+			),
+		],
+		THEME_PASS_CONVERGENCE_BUDGET,
+	);
 }
 
 function runCollectionPasses(

@@ -45,7 +45,7 @@ import { collectNazareThemeFacts } from "./theme-nazare-facts.js";
 export const THEME_ANALYSIS_DEFAULTS = {
 	root: ".",
 	strictness: "strict",
-	plainLiquidParseMode: "tolerant",
+	plainLiquidParseMode: "liquid-only",
 } as const;
 
 export const THEME_BUILD_DEFAULTS = {
@@ -321,7 +321,7 @@ function analyzeNormalizedThemeFiles(
 		}
 		if (file.path.endsWith(".liquid")) {
 			const result = collectPlainLiquidThemeFacts(file.path, file.contents, {
-				parseMode: options.plainLiquidParseMode ?? "tolerant",
+				parseMode: options.plainLiquidParseMode ?? "liquid-only",
 			});
 			facts.push(...result.facts);
 			issues.push(...result.issues);
@@ -402,7 +402,7 @@ function themeFileFingerprint(
 	dependencyFingerprint?: string,
 ): string {
 	let hash = 2_166_136_261;
-	const input = `${THEME_FACT_CACHE_REVISION}\0${fileKind}\0${options.plainLiquidParseMode ?? "tolerant"}\0${dependencyFingerprint ?? ""}\0${file.contents}`;
+	const input = `${THEME_FACT_CACHE_REVISION}\0${fileKind}\0${options.plainLiquidParseMode ?? "liquid-only"}\0${dependencyFingerprint ?? ""}\0${file.contents}`;
 	for (let index = 0; index < input.length; index += 1) {
 		hash ^= input.charCodeAt(index);
 		hash = Math.imul(hash, 16_777_619);

@@ -21,10 +21,10 @@ import {
 import { scanSettingsReadsFromLiquidAst } from "./settings-reads.js";
 import { spanFromOffsets } from "./source.js";
 
-export type PlainLiquidParseMode = "strict" | "tolerant";
+export type PlainLiquidParseMode = "strict" | "liquid-only";
 
 export type PlainLiquidOptions = {
-	/** Defaults to strict for build/validation; use tolerant for editor previews. */
+	/** Defaults to strict HTML + Liquid validation; liquid-only masks HTML but still validates Liquid structure. */
 	parseMode?: PlainLiquidParseMode;
 };
 
@@ -108,16 +108,12 @@ export function parsePlainLiquid(
 	let factsCollected = true;
 	const analysisSource = sourceForLiquidAnalysis(source);
 	try {
-		if (parseMode === "tolerant") {
-			// Inspect needs Liquid semantics, not one hypothetical static HTML tree.
-			// Shopify themes commonly balance HTML across Liquid branches. Masking
-			// non-Liquid source avoids false HTML failures and makes parser work scale
-			// with Liquid syntax while preserving every source offset.
+		if (parseMode === "liquid-only") {
 			const liquidOnlySource = sourceForLiquidOnlyAnalysis(analysisSource);
 			ast = containsLiquidSyntax(liquidOnlySource)
 				? toLiquidAST(liquidOnlySource, {
-						mode: "tolerant",
-						allowUnclosedDocumentNode: true,
+						mode: "strict",
+						allowUnclosedDocumentNode: false,
 					})
 				: emptyAst();
 		} else {
