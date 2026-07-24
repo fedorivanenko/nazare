@@ -64,9 +64,17 @@ export function createThemeMetafieldPass(): IncrementalPass<
 			if (collection.state === "invalid") {
 				reads = [];
 			} else {
-				for (const key of [...keys].sort()) {
-					if (!key.startsWith("source:")) continue;
-					const sourcePath = key.slice("source:".length);
+				const sourcePaths = new Set(
+					[...keys]
+						.filter((key) => key.startsWith("source:"))
+						.map((key) => key.slice("source:".length)),
+				);
+				if (previous.state === "invalid") {
+					for (const sourcePath of context.dataAccessesBySource.keys()) {
+						sourcePaths.add(sourcePath);
+					}
+				}
+				for (const sourcePath of [...sourcePaths].sort()) {
 					reads = reads.filter((read) => read.fromPath !== sourcePath);
 					reads.push(
 						...joinMetafieldReads(
