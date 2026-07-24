@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	createThemeCapabilitySignalPass,
 	createThemeDataFlowFixedPointPass,
 	createThemeDeclarationPass,
 	createThemeMetafieldPass,
@@ -124,6 +125,34 @@ test("declaration and reference passes replace per-source outputs", () => {
 	assert.ok(
 		update.changes.some((change) => change.kind === "referenceChanged"),
 	);
+});
+
+test("capability signal pass replaces only changed source records", () => {
+	const first = {
+		kind: "detectsCapability",
+		path: "sections/main.liquid",
+		capability: "product-form",
+		confidence: 0.8,
+	};
+	const context = {
+		facts: new ThemeFactStore([first]),
+		capabilitySignalsBySource: new Map(),
+	};
+	const scheduler = new ThemePassScheduler([
+		incrementalThemePass(createThemeCapabilitySignalPass()),
+	]);
+	const initial = scheduler.execute(
+		[{ kind: "factsChanged", path: first.path }],
+		context,
+	);
+	assert.equal(context.capabilitySignalsBySource.get(first.path).length, 1);
+	assert.equal(
+		initial.changes.some((change) => change.kind === "capabilitySignalChanged"),
+		true,
+	);
+	context.facts.replaceFile(first.path, []);
+	scheduler.execute([{ kind: "factsChanged", path: first.path }], context);
+	assert.equal(context.capabilitySignalsBySource.has(first.path), false);
 });
 
 test("resolution pass recomputes only references under changed target keys", () => {
