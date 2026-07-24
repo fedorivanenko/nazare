@@ -15,6 +15,7 @@ import {
 	ThemeGraphStore,
 	ThemeImpactIndex,
 	ThemeMetafieldIndex,
+	ThemeProgram,
 	ThemeResolverIndex,
 	ThemeSemanticStore,
 	ThemeWorkspaceSession,
@@ -714,6 +715,31 @@ test("workspace rolls back a fixed-point work-budget failure", () => {
 	const result = session.updateFile(updated);
 	assert.equal(result.revision, 1);
 	assert.deepEqual(session.getGraph(), inspectNazareTheme([files[1], updated]));
+});
+
+test("ThemeProgram owns committed incremental workspace state", () => {
+	const program = new ThemeProgram([
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const committed = program.getGraph();
+	const noOp = program.updateFile({
+		path: "snippets/card.liquid",
+		contents: "Card",
+	});
+	assert.equal(noOp.revision, 0);
+	assert.strictEqual(program.getGraph(), committed);
+
+	const update = program.updateFile({
+		path: "snippets/card.liquid",
+		contents: "Updated",
+	});
+	assert.equal(update.revision, 1);
+	assert.notStrictEqual(program.getGraph(), committed);
+	assert.deepEqual(
+		program.getModel(),
+		analyzeNazareTheme([{ path: "snippets/card.liquid", contents: "Updated" }])
+			.ir,
+	);
 });
 
 test("workspace session updates graph with stable revisions and deltas", () => {
