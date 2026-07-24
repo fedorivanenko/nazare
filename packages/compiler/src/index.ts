@@ -2,8 +2,8 @@
  * Public API of the Nazare compiler.
  *
  * Explicit flow:
- * frontend → semantic facts → graph/check/validate. Emit is separate;
- * buildNazareTheme runs compile plus emit and aggregates all issues.
+ * frontend → semantic facts → graph/check/validate. Workspace build is separate;
+ * buildNazareThemeWorkspace analyzes theme files, selects a scope, emits, and aggregates issues.
  */
 import type {
 	ArtifactContract,
@@ -13,7 +13,6 @@ import type {
 	Diagnostic,
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
-import { type EmitResult, type EmitThemeOptions, emitTheme } from "./emit.js";
 import type {
 	CompileInput,
 	CompilerFrontend,
@@ -28,7 +27,6 @@ import {
 } from "./frontends/plain-liquid.js";
 import { artifactGraphFromIR } from "./graph.js";
 import {
-	markDiagnostics,
 	type ProjectedArtifact,
 	projectArtifact,
 	projectIR,
@@ -39,7 +37,6 @@ import type {
 	CompilePlainLiquidResult,
 	PlainLiquidAst,
 } from "./plain-liquid.js";
-import { checkDependencies } from "./resolver.js";
 import { bindArtifactIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
 
@@ -139,6 +136,25 @@ export {
 	contractFromIR,
 } from "./symbols.js";
 export { syntaxFromAst } from "./syntax.js";
+export type {
+	AnalyzeNazareThemeOptions,
+	BuildNazareThemeWorkspaceOptions,
+	BuildThemeScope,
+	InspectNazareThemeOptions,
+	InspectNazareThemeResult,
+	SemanticThemeGraphEdge,
+	SemanticThemeGraphNode,
+	ThemeAnalysis,
+	ThemeBuildResult,
+	ThemeFact,
+	ThemeInputFile,
+	ThemeSemanticModel,
+} from "./theme-facts.js";
+export {
+	analyzeNazareTheme,
+	buildNazareThemeWorkspace,
+	inspectNazareTheme,
+} from "./theme-workspace.js";
 export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 
 export type CompileNazareArtifactOptions = Pick<
@@ -206,21 +222,6 @@ export type CompileResult = CompileArtifactSuccess & {
 	ast: NazareAst;
 };
 
-export type BuildNazareThemeOptions = CompileNazareArtifactOptions &
-	EmitThemeOptions & {
-		/** Defaults to false; set true only for preview tooling that needs best-effort output despite compile/dependency errors. */
-		emitOnError?: boolean;
-	};
-
-export type BuildResult = CompileResult & {
-	/** Theme files emitted from the compiled artifact. */
-	emitted: EmitResult;
-	/** Compile and emit diagnostics, in order. */
-	issues: Diagnostic[];
-	/** True when emit ran despite compile/dependency errors. */
-	emittedOnError: boolean;
-};
-
 /** Shortcut to a graph when diagnostics and contracts are not needed. */
 export function artifactGraphFromAst(ast: NazareAst): ArtifactGraph {
 	return artifactGraphFromIR(bindArtifactIR(syntaxFromAst(ast)));
@@ -275,37 +276,6 @@ export function compileNazareArtifact(
 		throw new Error("Nazare Liquid frontend did not return an AST");
 	}
 	return { ...compiled, ast: compiled.ast };
-}
-
-/**
- * Compiles and emits theme files with one aggregated diagnostic list. A build
- * validates its dependencies, so it checks every imported file explicitly —
- * the one difference from a plain compile.
- */
-export function buildNazareTheme(
-	source: string,
-	file: string,
-	options: BuildNazareThemeOptions,
-): BuildResult {
-	const compiled = compileNazareArtifact(source, file, options);
-	const dependencyIssues = checkDependencies(compiled.ast, options.readFile, {
-		mode: options.strictness,
-	});
-	const preEmitIssues = [...compiled.issues, ...dependencyIssues];
-	const buildHasErrors = hasErrors(preEmitIssues);
-	const emitOnError = options.emitOnError === true;
-	const shouldEmit = !buildHasErrors || emitOnError;
-	const emitted = shouldEmit
-		? emitTheme(compiled.sourceForEmit, compiled, options)
-		: { files: [], issues: [] };
-	const issues = [...preEmitIssues, ...markDiagnostics(emitted.issues, "emit")];
-	return {
-		...compiled,
-		canEmit: !buildHasErrors,
-		emitted,
-		emittedOnError: shouldEmit && buildHasErrors,
-		issues,
-	};
 }
 
 export function compilePlainLiquid(

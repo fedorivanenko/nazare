@@ -64,7 +64,7 @@ emitTheme
   - Shopify schema generation
 ```
 
-`compileArtifact()` runs the generic frontend-based compile pipeline. It selects a frontend, projects frontend output through shared compiler passes, and returns either `ok: true` with compiler facts or `ok: false` with diagnostics only. `compileNazareArtifact()` is the compatibility wrapper for `.nz.liquid`. `buildNazareTheme()` runs Nazare compile, checks dependencies, then emits theme files.
+`compileArtifact()` runs the generic frontend-based compile pipeline. It selects a frontend, projects frontend output through shared compiler passes, and returns either `ok: true` with compiler facts or `ok: false` with diagnostics only. `compileNazareArtifact()` is the compatibility wrapper for `.nz.liquid`. `buildNazareThemeWorkspace()` analyzes a theme workspace, selects a build scope, then emits theme files.
 
 ## Main entry points
 
@@ -129,13 +129,18 @@ Returns:
 - `contracts` — imported component contracts;
 - `canEmit` — false if compile errors exist.
 
-### `buildNazareTheme(source, file, options)`
+### `buildNazareThemeWorkspace(files, options)`
 
-Compiles and emits Shopify theme files.
+Analyzes workspace files and emits Shopify theme files for the selected scope.
+
+Scopes:
+
+- `{ kind: "workspace" }` — emit all buildable `.nz.liquid` artifacts.
+- `{ kind: "file", path }` — analyze and emit one artifact, while still using workspace files as dependency read context.
 
 Adds:
 
-- dependency diagnostics;
+- analysis diagnostics;
 - emitted Liquid/CSS/JS/runtime files;
 - `emittedOnError`, showing whether emit ran despite errors.
 
@@ -191,12 +196,15 @@ console.log(result.issues);
 ## Build theme files
 
 ```ts
-import { buildNazareTheme } from "@nazare/compiler";
+import { buildNazareThemeWorkspace } from "@nazare/compiler";
 
-const built = buildNazareTheme(source, "components/heading.nz.liquid", {
-	name: "heading",
-	readFile: (path) => files[path],
-});
+const built = buildNazareThemeWorkspace(
+	[{ path: "components/heading.nz.liquid", contents: source }],
+	{
+		name: "heading",
+		scope: { kind: "file", path: "components/heading.nz.liquid" },
+	},
+);
 
 for (const file of built.emitted.files) {
 	console.log(file.path);
