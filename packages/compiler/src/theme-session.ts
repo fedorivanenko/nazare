@@ -1,3 +1,4 @@
+import type { Diagnostic } from "@nazare/core";
 import {
 	createThemeCapabilityPass,
 	type ThemeCapabilityPassContext,
@@ -34,7 +35,10 @@ import {
 	type ThemeEvidenceInputs,
 	type ThemeEvidencePassContext,
 } from "./theme-evidence-pass.js";
-import { deriveThemeExpectedInputs } from "./theme-expected-input-pass.js";
+import {
+	deriveThemeExpectedInputs,
+	themeDocContractIssues,
+} from "./theme-expected-input-pass.js";
 import { ThemeFactIndex } from "./theme-fact-index.js";
 import { ThemeFactStore, themeFactSourcePath } from "./theme-fact-store.js";
 import type {
@@ -95,6 +99,7 @@ import {
 	blockSettingId,
 	dataAccessId,
 	declarationId,
+	deriveThemeInputDiagnostics,
 	fileId,
 	localeKeyId,
 	localeReferenceId,
@@ -120,8 +125,10 @@ import {
 } from "./theme-reference-pass.js";
 import {
 	createThemeResolutionPass,
+	resolveThemeDeclarationsAndReferences,
 	type ThemeIncrementalResolutionContext,
 } from "./theme-resolution-pass.js";
+import { ThemeSchemaIndex } from "./theme-schema-index.js";
 import {
 	createThemeSchemaSettingPass,
 	type ThemeSchemaSettingPassContext,
@@ -386,11 +393,17 @@ export class ThemeProgram {
 			collection.capabilities,
 			collection.classifications,
 		);
+		const ownedIssues = deriveOwnedSemanticIssues(
+			collectedBaseModel,
+			collection,
+			analysis.ir.issues,
+		);
 		const collectedModel = {
 			...collectedBaseModel,
 			evidence: [...collection.evidenceBySource.values()]
 				.flat()
 				.sort((a, b) => a.id.localeCompare(b.id)),
+			issues: ownedIssues,
 		};
 		const transaction = this.semanticStore.beginUpdate(collectedModel);
 		const semanticUpdate = transaction.update;
@@ -785,6 +798,119 @@ function runCollectionPasses(
 	);
 	state.processedPassKeys = execution.trace.length;
 	return state;
+}
+
+function deriveOwnedSemanticIssues(
+	model: ThemeSemanticModel,
+	state: ThemeCollectionState,
+	canonicalIssues: Diagnostic[],
+): Diagnostic[] {
+	const inputs = [...state.dataFlowInputs.values()];
+	const docParams = inputs.flatMap((result) => result.docParams);
+	const defaultedObjects = new Set(
+		inputs.flatMap((result) => result.defaultedObjects),
+	);
+	const schemaIndex = new ThemeSchemaIndex({
+		declarations: model.declarations,
+		blocks: model.blocks,
+		settings: model.settings,
+		blockSettings: model.blockSettings,
+		localeKeys: model.localeKeys,
+	});
+	const categories = [
+		{
+			pass: "model-resolution",
+			issues: resolveThemeDeclarationsAndReferences(
+				model.declarations,
+				model.references,
+			).issues,
+		},
+		{
+			pass: "model-doc-contracts",
+			issues: themeDocContractIssues(
+				model.expectedInputs,
+				docParams,
+				defaultedObjects,
+			),
+		},
+		{
+			pass: "model-render-inputs",
+			issues: deriveThemeInputDiagnostics(
+				model.renderSites,
+				model.expectedInputs,
+				model.renderArguments,
+				model.declarations,
+			),
+		},
+		{ pass: "model-metafields", issues: state.metafields.current.issues },
+		{
+			pass: "model-setting-resolution",
+			issues: schemaIndex.resolveSettingReads(model.settingReads).issues,
+		},
+		{
+			pass: "model-locale-resolution",
+			issues: schemaIndex.resolveLocaleReferences(model.localeReferences)
+				.issues,
+		},
+	];
+	const canonicalCounts = diagnosticCounts(canonicalIssues);
+	const ownedKeys = new Map<string, number>();
+	const owned: Diagnostic[] = [];
+	for (const category of categories) {
+		const filtered = category.issues.filter((issue) => {
+			const key = JSON.stringify(issue);
+			const used = ownedKeys.get(key) ?? 0;
+			if (used >= (canonicalCounts.get(key) ?? 0)) return false;
+			ownedKeys.set(key, used + 1);
+			return true;
+		});
+		replaceOwnedDiagnostics(state.diagnostics, category.pass, filtered);
+		owned.push(...filtered);
+	}
+	const consumed = new Map<string, number>();
+	const sourceIssues = canonicalIssues.filter((issue) => {
+		const key = JSON.stringify(issue);
+		const used = consumed.get(key) ?? 0;
+		if (used >= (ownedKeys.get(key) ?? 0)) return true;
+		consumed.set(key, used + 1);
+		return false;
+	});
+	const policyIssues = sourceIssues.filter((issue) =>
+		issue.code.startsWith("THEME_CHECK_"),
+	);
+	const extractionIssues = sourceIssues.filter(
+		(issue) => !issue.code.startsWith("THEME_CHECK_"),
+	);
+	return [...extractionIssues, ...owned, ...policyIssues];
+}
+
+function diagnosticCounts(issues: Diagnostic[]): Map<string, number> {
+	const counts = new Map<string, number>();
+	for (const issue of issues) {
+		const key = JSON.stringify(issue);
+		counts.set(key, (counts.get(key) ?? 0) + 1);
+	}
+	return counts;
+}
+
+function replaceOwnedDiagnostics(
+	store: ThemeDiagnosticStore,
+	pass: string,
+	issues: Diagnostic[],
+): void {
+	for (const owner of new Set(
+		store.getOwned({ pass }).map((entry) => entry.owner),
+	)) {
+		store.remove({ pass, owner });
+	}
+	const byOwner = new Map<string, Diagnostic[]>();
+	for (const issue of issues) {
+		const owner = issue.span?.file ?? `global:${issue.code}`;
+		byOwner.set(owner, [...(byOwner.get(owner) ?? []), issue]);
+	}
+	for (const [owner, ownedIssues] of byOwner) {
+		store.replace({ pass, owner }, ownedIssues);
+	}
 }
 
 function evidenceRecordsBySource(
