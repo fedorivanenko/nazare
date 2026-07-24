@@ -23,6 +23,7 @@ export class ThemeGraphStore {
 	private graph: InspectNazareThemeResult;
 
 	constructor(graph: InspectNazareThemeResult) {
+		validateGraphRecords(graph);
 		this.graph = graph;
 		for (const node of graph.nodes) this.nodesById.set(node.id, node);
 		for (const edge of graph.edges) this.edgesById.set(edge.id, edge);
@@ -40,6 +41,7 @@ export class ThemeGraphStore {
 	}
 
 	applyGraph(graph: InspectNazareThemeResult): ThemeGraphStoreDelta {
+		validateGraphRecords(graph);
 		const nextNodes = new Map(graph.nodes.map((node) => [node.id, node]));
 		const nextEdges = new Map(graph.edges.map((edge) => [edge.id, edge]));
 		const nodeDelta = recordDelta(this.nodesById, nextNodes);
@@ -121,6 +123,38 @@ export class ThemeGraphStore {
 
 	getEdge(id: string): ThemeGraphEdge | undefined {
 		return this.edgesById.get(id);
+	}
+}
+
+function validateGraphRecords(graph: InspectNazareThemeResult): void {
+	const nodeIds = new Set(graph.nodes.map((node) => node.id));
+	const evidenceIds = new Set(graph.evidence.map((evidence) => evidence.id));
+	for (const edge of graph.edges) {
+		if (!nodeIds.has(edge.from)) {
+			throw new Error(
+				`Graph edge ${edge.id} has missing from node ${edge.from}`,
+			);
+		}
+		if (!nodeIds.has(edge.to)) {
+			throw new Error(`Graph edge ${edge.id} has missing to node ${edge.to}`);
+		}
+		validateEvidenceIds(edge, evidenceIds, `Graph edge ${edge.id}`);
+	}
+	for (const node of graph.nodes) {
+		validateEvidenceIds(node, evidenceIds, `Graph node ${node.id}`);
+	}
+}
+
+function validateEvidenceIds(
+	record: object,
+	evidenceIds: Set<string>,
+	owner: string,
+): void {
+	if (!("evidenceIds" in record) || !Array.isArray(record.evidenceIds)) return;
+	for (const evidenceId of record.evidenceIds) {
+		if (typeof evidenceId === "string" && !evidenceIds.has(evidenceId)) {
+			throw new Error(`${owner} has missing evidence ${evidenceId}`);
+		}
 	}
 }
 

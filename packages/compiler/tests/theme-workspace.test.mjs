@@ -203,6 +203,23 @@ test("graph store applies stable-ID records transactionally", () => {
 			.some((id) => id.startsWith("edge:renders:")),
 		true,
 	);
+
+	const validationStore = new ThemeGraphStore(first);
+	const previousGraph = validationStore.getGraph();
+	const missingEndpoint = structuredClone(first);
+	missingEndpoint.edges[0].to = "missing:node";
+	assert.throws(
+		() => validationStore.applyGraph(missingEndpoint),
+		/missing to node missing:node/,
+	);
+	assert.strictEqual(validationStore.getGraph(), previousGraph);
+	const missingEvidence = structuredClone(first);
+	missingEvidence.edges[0].evidenceIds = ["missing:evidence"];
+	assert.throws(
+		() => validationStore.applyGraph(missingEvidence),
+		/missing evidence missing:evidence/,
+	);
+	assert.strictEqual(validationStore.getGraph(), previousGraph);
 });
 
 test("semantic transaction shares unchanged identified records", () => {
