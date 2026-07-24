@@ -104,48 +104,6 @@ export class ThemeGraphStore {
 		};
 	}
 
-	applyOwnedGraph(
-		graph: InspectNazareThemeResult,
-		model: ThemeSemanticModel,
-		semanticIds: Iterable<string>,
-	): ThemeGraphStoreDelta {
-		const candidate = new ThemeGraphStore(graph);
-		candidate.replaceOwnership(model);
-		const affectedNodeIds = new Set<string>();
-		const affectedEdgeIds = new Set<string>();
-		for (const semanticId of semanticIds) {
-			for (const id of this.getOwnedNodeIds(semanticId))
-				affectedNodeIds.add(id);
-			for (const id of candidate.getOwnedNodeIds(semanticId)) {
-				affectedNodeIds.add(id);
-			}
-			for (const id of this.getOwnedEdgeIds(semanticId))
-				affectedEdgeIds.add(id);
-			for (const id of candidate.getOwnedEdgeIds(semanticId)) {
-				affectedEdgeIds.add(id);
-			}
-		}
-		const nodesById = new Map(this.nodesById);
-		const edgesById = new Map(this.edgesById);
-		for (const id of affectedNodeIds) {
-			const node = candidate.nodesById.get(id);
-			if (node) nodesById.set(id, node);
-			else nodesById.delete(id);
-		}
-		for (const id of affectedEdgeIds) {
-			const edge = candidate.edgesById.get(id);
-			if (edge) edgesById.set(id, edge);
-			else edgesById.delete(id);
-		}
-		const delta = this.applyGraph({
-			...graph,
-			nodes: [...nodesById.values()],
-			edges: [...edgesById.values()],
-		});
-		this.replaceOwnership(model);
-		return delta;
-	}
-
 	applyGraph(graph: InspectNazareThemeResult): ThemeGraphStoreDelta {
 		validateGraphRecords(graph);
 		const nextNodes = new Map(graph.nodes.map((node) => [node.id, node]));
