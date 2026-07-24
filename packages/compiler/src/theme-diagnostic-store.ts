@@ -62,6 +62,19 @@ export class ThemeDiagnosticStore {
 	getAll(): Diagnostic[] {
 		return this.getOwned().map((entry) => entry.diagnostic);
 	}
+
+	validateOwnership(): void {
+		for (const [key, entries] of this.diagnosticsByOwner) {
+			if (entries.length === 0)
+				throw new Error(`Empty diagnostic owner bucket ${key}`);
+			for (const entry of entries) {
+				assertOwner(entry);
+				if (ownerKey(entry.pass, entry.owner) !== key) {
+					throw new Error(`Diagnostic owner bucket mismatch for ${key}`);
+				}
+			}
+		}
+	}
 }
 
 function assertOwner(owner: ThemeDiagnosticOwner): void {
