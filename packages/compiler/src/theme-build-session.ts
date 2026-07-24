@@ -9,8 +9,9 @@ import type {
 } from "./theme-facts.js";
 import { normalizeThemePath } from "./theme-file-classifier.js";
 import {
+	type ThemeGraphUpdate,
+	ThemeProgram,
 	type ThemeUpdateTelemetry,
-	ThemeWorkspaceSession,
 } from "./theme-session.js";
 import { buildNazareThemeWorkspace } from "./theme-workspace.js";
 
@@ -23,6 +24,7 @@ export type ThemeBuildUpdate = {
 	removedOutputPaths: string[];
 	changedOutputPaths: string[];
 	telemetry: ThemeUpdateTelemetry;
+	graphUpdate: ThemeGraphUpdate;
 };
 
 class ThemeBuildState {
@@ -30,7 +32,7 @@ class ThemeBuildState {
 	private readonly options: BuildNazareThemeWorkspaceOptions;
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
 	private readonly memo = {} as ThemeAnalysisMemo;
-	private readonly semanticSession: ThemeWorkspaceSession;
+	private readonly semanticSession: ThemeProgram;
 	private build: ThemeBuildResult;
 	private readonly compiledArtifactsByPath = new Map<
 		string,
@@ -43,6 +45,7 @@ class ThemeBuildState {
 	constructor(
 		files: ThemeInputFile[],
 		options: BuildNazareThemeWorkspaceOptions = {},
+		semanticProgram?: ThemeProgram,
 	) {
 		this.options = {
 			...options,
@@ -50,10 +53,8 @@ class ThemeBuildState {
 			memo: options.memo ?? this.memo,
 		};
 		for (const file of files) this.filesByPath.set(file.path, file);
-		this.semanticSession = new ThemeWorkspaceSession(
-			this.files(),
-			this.options,
-		);
+		this.semanticSession =
+			semanticProgram ?? new ThemeProgram(this.files(), this.options);
 		this.build = buildNazareThemeWorkspace(this.files(), this.options);
 		for (const artifact of this.build.artifacts) {
 			if (artifact.emitted)
@@ -83,7 +84,7 @@ class ThemeBuildState {
 	updateFile(file: ThemeInputFile): ThemeBuildUpdate {
 		const previous = this.filesByPath.get(file.path);
 		if (previous?.contents === file.contents) {
-			return this.emptyUpdate([]);
+			return this.emptyUpdate([], this.semanticSession.updateFile(file));
 		}
 		this.filesByPath.set(file.path, file);
 		try {
@@ -98,7 +99,7 @@ class ThemeBuildState {
 	removeFile(path: string): ThemeBuildUpdate {
 		const previous = this.filesByPath.get(path);
 		if (!previous || !this.filesByPath.delete(path))
-			return this.emptyUpdate([]);
+			return this.emptyUpdate([], this.semanticSession.removeFile(path));
 		try {
 			return this.rebuild([path]);
 		} catch (error) {
@@ -128,13 +129,12 @@ class ThemeBuildState {
 			new Set(recomputedPaths),
 			this.sourcePathsByOutputPath,
 		);
-		let semanticTelemetry: ThemeUpdateTelemetry | undefined;
+		let graphUpdate: ThemeGraphUpdate | undefined;
 		for (const path of changedPaths) {
 			const file = this.filesByPath.get(path);
-			const update = file
+			graphUpdate = file
 				? this.semanticSession.updateFile(file)
 				: this.semanticSession.removeFile(path);
-			semanticTelemetry = update.telemetry;
 		}
 		for (const path of recomputedPaths) {
 			if (!this.filesByPath.has(path))
@@ -158,6 +158,8 @@ class ThemeBuildState {
 		);
 		this.replaceOutputOwnership(this.build);
 		this.revision += 1;
+		if (!graphUpdate)
+			throw new Error("Build update did not produce graph state");
 		return diffBuilds(
 			this.revision,
 			previous,
@@ -165,15 +167,16 @@ class ThemeBuildState {
 			changedPaths,
 			recomputedPaths,
 			{
-				filesParsed: semanticTelemetry?.filesParsed ?? selectedPaths.length,
-				passKeysProcessed: semanticTelemetry?.passKeysProcessed ?? 0,
+				filesParsed: graphUpdate?.telemetry.filesParsed ?? selectedPaths.length,
+				passKeysProcessed: graphUpdate?.telemetry.passKeysProcessed ?? 0,
 				semanticRecordsReplaced:
-					semanticTelemetry?.semanticRecordsReplaced ?? 0,
-				graphRecordsReplaced: semanticTelemetry?.graphRecordsReplaced ?? 0,
+					graphUpdate?.telemetry.semanticRecordsReplaced ?? 0,
+				graphRecordsReplaced: graphUpdate?.telemetry.graphRecordsReplaced ?? 0,
 				outputsEmitted: rebuilt.emitted.files.length,
 				elapsedMs: buildTelemetryNow() - startedAt,
 				peakMemoryBytes: Math.max(memoryAtStart, buildTelemetryMemory()),
 			},
+			graphUpdate,
 		);
 	}
 
@@ -183,8 +186,19 @@ class ThemeBuildState {
 		this.sourcePathsByOutputPath = ownership.sourcePathsByOutputPath;
 	}
 
-	private emptyUpdate(changedPaths: string[]): ThemeBuildUpdate {
-		return diffBuilds(this.revision, this.build, this.build, changedPaths, []);
+	private emptyUpdate(
+		changedPaths: string[],
+		graphUpdate: ThemeGraphUpdate,
+	): ThemeBuildUpdate {
+		return diffBuilds(
+			this.revision,
+			this.build,
+			this.build,
+			changedPaths,
+			[],
+			emptyBuildTelemetry(),
+			graphUpdate,
+		);
 	}
 
 	private files(): ThemeInputFile[] {
@@ -255,7 +269,7 @@ function mergeSelectiveBuild(
 	selective: ThemeBuildResult,
 	affectedPaths: Set<string>,
 	currentPaths: Set<string>,
-	semanticSession: ThemeWorkspaceSession,
+	semanticSession: ThemeProgram,
 	emitOnError: boolean,
 ): ThemeBuildResult {
 	const artifactsByPath = new Map(
@@ -438,7 +452,8 @@ function diffBuilds(
 	current: ThemeBuildResult,
 	changedPaths: string[],
 	recomputedPaths: string[],
-	telemetry: ThemeUpdateTelemetry = emptyBuildTelemetry(),
+	telemetry: ThemeUpdateTelemetry,
+	graphUpdate: ThemeGraphUpdate,
 ): ThemeBuildUpdate {
 	const previousFiles = new Map(
 		previous.emitted.files.map((file) => [file.path, file.contents]),
@@ -465,6 +480,7 @@ function diffBuilds(
 			)
 			.sort(),
 		telemetry,
+		graphUpdate,
 	};
 }
 
