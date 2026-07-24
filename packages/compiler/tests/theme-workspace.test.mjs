@@ -49,6 +49,34 @@ test("impact index propagates dependencies to pages", () => {
 	assert.deepEqual(index.toSummary(), graph.impact);
 });
 
+test("impact index applies graph edge and node deltas transactionally", () => {
+	const first = inspectNazareTheme([
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const second = inspectNazareTheme([
+		{ path: "sections/main.liquid", contents: "{% render 'tile' %}" },
+		{ path: "snippets/tile.liquid", contents: "Tile" },
+	]);
+	const committed = new ThemeImpactIndex(first);
+	const staged = committed.fork();
+	staged.applyGraph(second);
+	assert.deepEqual(committed.toSummary(), first.impact);
+	assert.deepEqual(staged.toSummary(), second.impact);
+	assert.equal(
+		staged
+			.getDependencies("sections/main.liquid")
+			.includes("snippets/tile.liquid"),
+		true,
+	);
+	assert.equal(
+		staged
+			.getDependencies("sections/main.liquid")
+			.includes("snippets/card.liquid"),
+		false,
+	);
+});
+
 test("metafield index serves reads by definition", () => {
 	const model = analyzeNazareTheme(
 		[
