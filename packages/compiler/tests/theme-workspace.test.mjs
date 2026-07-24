@@ -12,6 +12,7 @@ import {
 	ThemeBuildSession,
 	ThemeFactIndex,
 	ThemeFactStore,
+	ThemeGraphStore,
 	ThemeImpactIndex,
 	ThemeMetafieldIndex,
 	ThemeResolverIndex,
@@ -46,6 +47,49 @@ test("impact index propagates dependencies to pages", () => {
 	assert.deepEqual(index.getAffectedPages("snippets/card.liquid"), [
 		"templates/index.json",
 	]);
+	assert.deepEqual(index.toSummary(), graph.impact);
+});
+
+test("impact index applies graph edge and node deltas transactionally", () => {
+	const template = {
+		path: "templates/index.json",
+		contents: JSON.stringify({ sections: { main: { type: "main" } } }),
+	};
+	const first = inspectNazareTheme([
+		template,
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const second = inspectNazareTheme([
+		template,
+		{ path: "sections/main.liquid", contents: "{% render 'tile' %}" },
+		{ path: "snippets/tile.liquid", contents: "Tile" },
+		{ path: "snippets/unused.liquid", contents: "Unused" },
+	]);
+	const committed = new ThemeImpactIndex(first);
+	const staged = committed.fork();
+	const delta = staged.applyGraph(second);
+	assert.deepEqual(delta.changedAffectedPageKeys, [
+		"snippets/card.liquid",
+		"snippets/tile.liquid",
+	]);
+	assert.equal(delta.unusedFilesChanged, true);
+	assert.equal(delta.unusedFileCount, 1);
+	assert.equal(staged.getUnusedFileCount(), 1);
+	assert.deepEqual(committed.toSummary(), first.impact);
+	assert.deepEqual(staged.toSummary(), second.impact);
+	assert.equal(
+		staged
+			.getDependencies("sections/main.liquid")
+			.includes("snippets/tile.liquid"),
+		true,
+	);
+	assert.equal(
+		staged
+			.getDependencies("sections/main.liquid")
+			.includes("snippets/card.liquid"),
+		false,
+	);
 });
 
 test("metafield index serves reads by definition", () => {
@@ -124,6 +168,91 @@ test("graph projection shares unchanged nodes and edges", () => {
 	assert.equal(sharedFile, firstFile);
 });
 
+test("graph store applies stable-ID records transactionally", () => {
+	const first = inspectNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const second = inspectNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+		{ path: "snippets/tile.liquid", contents: "Tile" },
+	]);
+	const committed = new ThemeGraphStore(first);
+	const firstModel = analyzeNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]).ir;
+	committed.replaceOwnership(firstModel);
+	const cardId = "file:snippets/card.liquid";
+	const card = committed.getNode(cardId);
+	const staged = committed.fork();
+	const delta = staged.applyGraph(second);
+	assert.strictEqual(staged.getNode(cardId), card);
+	const viewStore = committed.fork();
+	const configurationView = viewStore.getGraph().views.configuration;
+	viewStore.applyGraph(
+		inspectNazareTheme([
+			{ path: "snippets/card.liquid", contents: "Updated card" },
+		]),
+	);
+	assert.strictEqual(
+		viewStore.getGraph().views.configuration,
+		configurationView,
+	);
+	assert.equal(committed.getNode("file:snippets/tile.liquid"), undefined);
+	assert.ok(delta.addedNodeIds.includes("file:snippets/tile.liquid"));
+	assert.deepEqual(staged.getGraph(), second);
+	const secondModel = analyzeNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+		{ path: "snippets/tile.liquid", contents: "Tile" },
+	]).ir;
+	const tileSemanticIds = [...secondModel.files, ...secondModel.declarations]
+		.filter((record) => record.path === "snippets/tile.liquid")
+		.map((record) => record.id);
+	const selective = committed.fork();
+	const selectiveDelta = selective.applyOwnedGraph(
+		second,
+		secondModel,
+		tileSemanticIds,
+	);
+	assert.ok(selectiveDelta.addedNodeIds.includes("file:snippets/tile.liquid"));
+	assert.strictEqual(selective.getNode(cardId), card);
+	assert.deepEqual(selective.getGraph(), second);
+
+	const files = [
+		{ path: "sections/main.liquid", contents: "{% render 'card' %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	];
+	const analysis = analyzeNazareTheme(files);
+	const owned = new ThemeGraphStore(inspectNazareTheme(files));
+	owned.replaceOwnership(analysis.ir);
+	const reference = analysis.ir.references.find(
+		(record) => record.kind === "rendersSnippet",
+	);
+	assert.ok(reference);
+	assert.equal(
+		owned
+			.getOwnedEdgeIds(reference.id)
+			.some((id) => id.startsWith("edge:renders:")),
+		true,
+	);
+
+	const validationStore = new ThemeGraphStore(first);
+	const previousGraph = validationStore.getGraph();
+	const missingEndpoint = structuredClone(first);
+	missingEndpoint.edges[0].to = "missing:node";
+	assert.throws(
+		() => validationStore.applyGraph(missingEndpoint),
+		/missing to node missing:node/,
+	);
+	assert.strictEqual(validationStore.getGraph(), previousGraph);
+	const missingEvidence = structuredClone(first);
+	missingEvidence.edges[0].evidenceIds = ["missing:evidence"];
+	assert.throws(
+		() => validationStore.applyGraph(missingEvidence),
+		/missing evidence missing:evidence/,
+	);
+	assert.strictEqual(validationStore.getGraph(), previousGraph);
+});
+
 test("semantic transaction shares unchanged identified records", () => {
 	const first = analyzeNazareTheme([
 		{ path: "sections/main.liquid", contents: "<section>Main</section>" },
@@ -139,6 +268,25 @@ test("semantic transaction shares unchanged identified records", () => {
 		update.model.files.find((file) => file.path === "sections/main.liquid"),
 		first.ir.files.find((file) => file.path === "sections/main.liquid"),
 	);
+});
+
+test("semantic transaction detects changed records sharing evidence IDs", () => {
+	const files = [
+		{ path: "sections/main.liquid", contents: "{% render 'button' %}" },
+		{ path: "snippets/button.liquid", contents: "Button" },
+	];
+	const first = analyzeNazareTheme(files).ir;
+	const second = analyzeNazareTheme([
+		...files,
+		{ path: "components/button.nz.liquid", contents: "<button>NZ</button>" },
+	]).ir;
+	const referenceId = first.references[0].id;
+	assert.equal(
+		first.evidence.some((record) => record.id === referenceId),
+		true,
+	);
+	const update = new ThemeSemanticStore(first).beginUpdate(second).update;
+	assert.equal(update.changedRecordIds.includes(referenceId), true);
 });
 
 test("fact index replaces declarations and dependents transactionally", () => {
@@ -213,6 +361,31 @@ test("semantic model memo reuses unchanged resolved models", () => {
 	const first = analyzeNazareTheme(files, { memo });
 	const second = analyzeNazareTheme(files, { memo });
 	assert.equal(first.ir, second.ir);
+});
+
+test("theme check policy changes are projection-only", () => {
+	const memo = {};
+	const cache = { version: 1, entries: {} };
+	const files = [
+		{ path: "sections/main.liquid", contents: "{% render 'missing' %}" },
+	];
+	const first = analyzeNazareTheme(files, { memo, cache });
+	const baseModel = memo.model;
+	const cached = cache.entries["sections/main.liquid"];
+	const second = analyzeNazareTheme(files, {
+		memo,
+		cache,
+		themeCheck: { contents: "ignore: [" },
+	});
+	assert.strictEqual(memo.model, baseModel);
+	assert.strictEqual(cache.entries["sections/main.liquid"], cached);
+	assert.notStrictEqual(second.ir, first.ir);
+	assert.equal(
+		second.ir.issues.some(
+			(issue) => issue.code === "THEME_CHECK_CONFIG_INVALID",
+		),
+		true,
+	);
 });
 
 test("component artifacts reuse only affected dependency cache entries", () => {
@@ -472,6 +645,34 @@ test("workspace scheduler replaces data-flow inputs by source", () => {
 		session.getGraph().nodes.some((node) => node.id.includes(":subtitle")),
 		true,
 	);
+});
+
+test("workspace invalidates capability inference only for changed sources", () => {
+	let files = [
+		{
+			path: "sections/product.liquid",
+			contents: "{{ product.price }} {{ product.title }}",
+		},
+		{
+			path: "sections/cart.liquid",
+			contents: "{{ cart.items }}",
+		},
+	];
+	const session = new ThemeWorkspaceSession(files);
+	const cartCapabilities = session.capabilitiesBySource.get(
+		"sections/cart.liquid",
+	);
+	const updated = {
+		path: "sections/product.liquid",
+		contents: "{{ product.media }}",
+	};
+	files = [...files.filter((file) => file.path !== updated.path), updated];
+	session.updateFile(updated);
+	assert.strictEqual(
+		session.capabilitiesBySource.get("sections/cart.liquid"),
+		cartCapabilities,
+	);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
 });
 
 test("workspace fixed-point data flow matches cold rebuild for render cycles", () => {
@@ -785,13 +986,42 @@ test("workspace seeds snapshot-only metafield updates without reparsing Liquid",
 			{ owner: "product", namespace: "custom", key: "subtitle" },
 		]),
 	};
-	const update = session.updateExternalArtifacts({ metafields });
-	assert.equal(update.changedPaths.includes(".shopify/metafields.json"), true);
+	const added = session.updateExternalArtifacts({ metafields });
+	assert.equal(added.changedPaths.includes(".shopify/metafields.json"), true);
 	assert.strictEqual(session.cache.entries["sections/main.liquid"], cached);
 	assert.deepEqual(
 		session.getGraph(),
 		inspectNazareTheme(files, { metafields }),
 	);
+
+	const changedMetafields = {
+		contents: JSON.stringify([
+			{
+				owner: "product",
+				namespace: "custom",
+				key: "subtitle",
+				type: "single_line_text_field",
+			},
+		]),
+	};
+	session.updateExternalArtifacts({ metafields: changedMetafields });
+	assert.strictEqual(session.cache.entries["sections/main.liquid"], cached);
+	assert.deepEqual(
+		session.getGraph(),
+		inspectNazareTheme(files, { metafields: changedMetafields }),
+	);
+
+	const malformedMetafields = { contents: "{" };
+	session.updateExternalArtifacts({ metafields: malformedMetafields });
+	assert.strictEqual(session.cache.entries["sections/main.liquid"], cached);
+	assert.deepEqual(
+		session.getGraph(),
+		inspectNazareTheme(files, { metafields: malformedMetafields }),
+	);
+
+	session.updateExternalArtifacts({ metafields: undefined });
+	assert.strictEqual(session.cache.entries["sections/main.liquid"], cached);
+	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
 });
 
 test("metafield definitions inherit affected pages through theme dependencies", () => {

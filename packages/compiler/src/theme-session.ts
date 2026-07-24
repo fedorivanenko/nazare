@@ -1,3 +1,15 @@
+import {
+	createThemeCapabilityPass,
+	type ThemeCapabilityPassContext,
+} from "./theme-capability-pass.js";
+import {
+	createThemeCapabilitySignalPass,
+	type ThemeCapabilitySignalPassContext,
+} from "./theme-capability-signal-pass.js";
+import {
+	createThemeClassificationPass,
+	type ThemeClassificationPassContext,
+} from "./theme-classification-pass.js";
 import { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 import {
 	createThemeDataFlowFixedPointPass,
@@ -16,6 +28,7 @@ import {
 	type ThemeDeclarationPassRecord,
 	type ThemeDeclarationPassResult,
 } from "./theme-declaration-pass.js";
+import { ThemeDiagnosticStore } from "./theme-diagnostic-store.js";
 import { deriveThemeExpectedInputs } from "./theme-expected-input-pass.js";
 import { ThemeFactIndex } from "./theme-fact-index.js";
 import { ThemeFactStore, themeFactSourcePath } from "./theme-fact-store.js";
@@ -24,6 +37,9 @@ import type {
 	InspectNazareThemeResult,
 	ThemeAnalysisCache,
 	ThemeAnalysisMemo,
+	ThemeCapabilityRecord,
+	ThemeCapabilitySignalRecord,
+	ThemeClassificationRecord,
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
 	ThemeExpectedInputRecord,
@@ -34,10 +50,14 @@ import type {
 	ThemeSemanticModel,
 } from "./theme-facts.js";
 import {
-	shareThemeGraphRecords,
 	themeGraphFromModel,
+	themeGraphFromRecords,
+	themeGraphRecordsFromModel,
 } from "./theme-graph-output.js";
-import { impactSummary } from "./theme-impact.js";
+import {
+	THEME_GRAPH_METAFIELD_SCHEMA_OWNER,
+	ThemeGraphStore,
+} from "./theme-graph-store.js";
 import { ThemeImpactIndex } from "./theme-impact-index.js";
 import {
 	createThemeInstancePass,
@@ -155,11 +175,22 @@ export class ThemeWorkspaceSession {
 		ThemeDerivedDataFlowResult
 	>();
 	private metafieldResult = { current: emptyMetafieldAnalysis() };
+	private capabilitySignalsBySource = new Map<
+		string,
+		ThemeCapabilitySignalRecord[]
+	>();
+	private capabilitiesBySource = new Map<string, ThemeCapabilityRecord[]>();
+	private classificationsBySource = new Map<
+		string,
+		ThemeClassificationRecord[]
+	>();
+	private diagnosticStore = new ThemeDiagnosticStore();
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
 	private impactIndex: ThemeImpactIndex;
 	private graph: InspectNazareThemeResult;
+	private graphStore: ThemeGraphStore;
 	private externalFingerprint: string;
 	private revision = 0;
 
@@ -190,6 +221,9 @@ export class ThemeWorkspaceSession {
 			collection.dataFlowInputs,
 			collection.derivedDataFlow,
 			collection.metafields.current,
+			collection.capabilitySignals,
+			collection.capabilities,
+			collection.classifications,
 		);
 		const model = new ThemeResolverIndex(collectedModel).resolveModel(
 			collectedModel,
@@ -197,10 +231,11 @@ export class ThemeWorkspaceSession {
 		this.semanticStore = new ThemeSemanticStore(model);
 		this.resolverIndex = new ThemeResolverIndex(model);
 		this.metafieldIndex = new ThemeMetafieldIndex(model);
-		this.graph = themeGraphFromModel(this.semanticStore.getModel(), {
-			impact: impactSummary(this.semanticStore.getModel()),
-		});
-		this.impactIndex = new ThemeImpactIndex(this.graph);
+		const indexedGraph = graphWithIndexedImpact(this.semanticStore.getModel());
+		this.graph = indexedGraph.graph;
+		this.graphStore = new ThemeGraphStore(this.graph);
+		this.graphStore.replaceOwnership(this.semanticStore.getModel());
+		this.impactIndex = indexedGraph.index;
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
 
@@ -312,19 +347,55 @@ export class ThemeWorkspaceSession {
 			collection.dataFlowInputs,
 			collection.derivedDataFlow,
 			collection.metafields.current,
+			collection.capabilitySignals,
+			collection.capabilities,
+			collection.classifications,
 		);
 		const resolvedModel = this.resolverIndex.resolveModel(collectedModel);
 		const transaction = this.semanticStore.beginUpdate(resolvedModel);
 		const semanticUpdate = transaction.update;
 		const nextResolverIndex = new ThemeResolverIndex(semanticUpdate.model);
 		const nextMetafieldIndex = new ThemeMetafieldIndex(semanticUpdate.model);
-		const nextGraph = shareThemeGraphRecords(
-			this.graph,
-			themeGraphFromModel(semanticUpdate.model, {
-				impact: impactSummary(semanticUpdate.model),
-			}),
+		const changedSemanticIds = [
+			...semanticUpdate.addedRecordIds,
+			...semanticUpdate.changedRecordIds,
+			...semanticUpdate.removedRecordIds,
+		];
+		if (changedPaths.includes(".shopify/metafields.json")) {
+			changedSemanticIds.push(THEME_GRAPH_METAFIELD_SCHEMA_OWNER);
+		}
+		const nextGraphStore = this.graphStore.fork();
+		const selectedSemanticIds =
+			nextGraphStore.expandSemanticIds(changedSemanticIds);
+		const projectedRecords = themeGraphRecordsFromModel(
+			semanticUpdate.model,
+			selectedSemanticIds,
 		);
-		const nextImpactIndex = new ThemeImpactIndex(nextGraph);
+		const composedRecords = nextGraphStore.composeOwnedRecords(
+			projectedRecords.nodes,
+			projectedRecords.edges,
+			selectedSemanticIds,
+		);
+		const nextGraph = themeGraphFromRecords(
+			semanticUpdate.model,
+			composedRecords.nodes,
+			composedRecords.edges,
+			{
+				impact: {
+					dependencies: {},
+					dependents: {},
+					affectedPages: {},
+					unusedFiles: [],
+				},
+			},
+		);
+		nextGraphStore.applyGraph(nextGraph);
+		nextGraphStore.replaceOwnership(semanticUpdate.model);
+		const nextImpactIndex = this.impactIndex.fork();
+		nextImpactIndex.applyGraph(nextGraph);
+		nextGraph.impact = nextImpactIndex.toSummary();
+		nextGraphStore.applyGraph(nextGraph);
+		nextGraphStore.replaceOwnership(semanticUpdate.model);
 		const metafieldDefinitionIds = new Set([
 			...this.semanticStore
 				.getModel()
@@ -333,11 +404,9 @@ export class ThemeWorkspaceSession {
 				(definition) => definition.id,
 			),
 		]);
-		const changedMetafieldDefinitionIds = [
-			...semanticUpdate.addedRecordIds,
-			...semanticUpdate.changedRecordIds,
-			...semanticUpdate.removedRecordIds,
-		].filter((id) => metafieldDefinitionIds.has(id));
+		const changedMetafieldDefinitionIds = changedSemanticIds.filter((id) =>
+			metafieldDefinitionIds.has(id),
+		);
 		const metafieldAffectedPages = changedMetafieldDefinitionIds.flatMap(
 			(id) => [
 				...this.impactIndex.getAffectedPages(id),
@@ -354,6 +423,7 @@ export class ThemeWorkspaceSession {
 		this.resolverIndex = nextResolverIndex;
 		this.metafieldIndex = nextMetafieldIndex;
 		this.graph = nextGraph;
+		this.graphStore = nextGraphStore;
 		this.impactIndex = nextImpactIndex;
 		this.revision += 1;
 		return diffGraphs(
@@ -389,6 +459,10 @@ export class ThemeWorkspaceSession {
 			dataFlowInputs: this.dataFlowInputResultsBySource,
 			derivedDataFlow: this.derivedDataFlowBySource,
 			metafields: this.metafieldResult,
+			capabilitySignals: this.capabilitySignalsBySource,
+			capabilities: this.capabilitiesBySource,
+			classifications: this.classificationsBySource,
+			diagnostics: this.diagnosticStore,
 		};
 	}
 
@@ -405,6 +479,10 @@ export class ThemeWorkspaceSession {
 		this.dataFlowInputResultsBySource = state.dataFlowInputs;
 		this.derivedDataFlowBySource = state.derivedDataFlow;
 		this.metafieldResult = state.metafields;
+		this.capabilitySignalsBySource = state.capabilitySignals;
+		this.capabilitiesBySource = state.capabilities;
+		this.classificationsBySource = state.classifications;
+		this.diagnosticStore = state.diagnostics;
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
@@ -432,6 +510,9 @@ type ThemeCollectionContext = ThemeDeclarationPassContext &
 	ThemeSchemaSettingPassContext &
 	ThemeInstancePassContext &
 	ThemeLocalePassContext &
+	ThemeCapabilitySignalPassContext &
+	ThemeCapabilityPassContext &
+	ThemeClassificationPassContext &
 	ThemeMetafieldPassContext &
 	ThemeDataFlowInputPassContext &
 	ThemeDataFlowFixedPointContext;
@@ -455,6 +536,10 @@ type ThemeCollectionState = {
 	dataFlowInputs: Map<string, ThemeDataFlowInputPassResult>;
 	derivedDataFlow: Map<string, ThemeDerivedDataFlowResult>;
 	metafields: { current: ThemeMetafieldAnalysis };
+	capabilitySignals: Map<string, ThemeCapabilitySignalRecord[]>;
+	capabilities: Map<string, ThemeCapabilityRecord[]>;
+	classifications: Map<string, ThemeClassificationRecord[]>;
+	diagnostics: ThemeDiagnosticStore;
 };
 
 function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
@@ -491,9 +576,22 @@ function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext>
 			string,
 			ThemeDataFlowDerivedRecord
 		>(createThemeDataFlowFixedPointPass()),
+		incrementalThemePass<
+			ThemeCollectionContext,
+			string,
+			ThemeCapabilitySignalRecord
+		>(createThemeCapabilitySignalPass()),
 		incrementalThemePass<ThemeCollectionContext, string, ThemeMetafieldRecord>(
 			createThemeMetafieldPass(),
 		),
+		incrementalThemePass<ThemeCollectionContext, string, ThemeCapabilityRecord>(
+			createThemeCapabilityPass(),
+		),
+		incrementalThemePass<
+			ThemeCollectionContext,
+			string,
+			ThemeClassificationRecord
+		>(createThemeClassificationPass()),
 	]);
 }
 
@@ -515,6 +613,7 @@ function runCollectionPasses(
 		referencesById: state.referencesById,
 		referencesByTargetKey: state.referencesByTargetKey,
 		resolvedReferencesById: state.resolvedReferencesById,
+		diagnosticStore: state.diagnostics,
 		schemaSettingResultsBySource: state.schemaSettings,
 		instanceResultsBySource: state.instances,
 		instanceIds: {
@@ -532,6 +631,9 @@ function runCollectionPasses(
 		get dataAccessesBySource() {
 			return dataAccessesBySource(state);
 		},
+		capabilitySignalsBySource: state.capabilitySignals,
+		capabilitiesBySource: state.capabilities,
+		classificationsBySource: state.classifications,
 		metafieldResult: state.metafields,
 		dataFlowIds: {
 			dataAccess: dataAccessId,
@@ -568,9 +670,13 @@ function runCollectionPasses(
 			}
 			return {
 				records,
-				changes: [...changed]
-					.sort()
-					.map((owner): PassChange => ({ kind: "diagnosticsChanged", owner })),
+				changes: [...changed].sort().map(
+					(owner): PassChange => ({
+						kind: "diagnosticsChanged",
+						pass: "render-data-flow",
+						owner,
+					}),
+				),
 				propagatePaths: [...changed],
 			};
 		},
@@ -613,6 +719,10 @@ function cloneCollectionState(
 		dataFlowInputs: cloneDataFlowInputResults(state.dataFlowInputs),
 		derivedDataFlow: cloneDerivedDataFlowResults(state.derivedDataFlow),
 		metafields: { current: cloneMetafieldAnalysis(state.metafields.current) },
+		capabilitySignals: cloneRecordsBySource(state.capabilitySignals),
+		capabilities: cloneRecordsBySource(state.capabilities),
+		classifications: cloneRecordsBySource(state.classifications),
+		diagnostics: state.diagnostics.fork(),
 	};
 }
 
@@ -769,6 +879,10 @@ function metafieldSnapshotChanges(
 	];
 }
 
+function cloneRecordsBySource<T>(records: Map<string, T[]>): Map<string, T[]> {
+	return new Map(records);
+}
+
 function cloneDerivedDataFlowResults(
 	results: Map<string, ThemeDerivedDataFlowResult>,
 ): Map<string, ThemeDerivedDataFlowResult> {
@@ -866,6 +980,9 @@ function modelWithCollectedRecords(
 	dataFlowInputsBySource: Map<string, ThemeDataFlowInputPassResult>,
 	derivedDataFlowBySource: Map<string, ThemeDerivedDataFlowResult>,
 	metafields: ThemeMetafieldAnalysis,
+	capabilitySignalsBySource: Map<string, ThemeCapabilitySignalRecord[]>,
+	capabilitiesBySource: Map<string, ThemeCapabilityRecord[]>,
+	classificationsBySource: Map<string, ThemeClassificationRecord[]>,
 ): ThemeSemanticModel {
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
@@ -975,6 +1092,11 @@ function modelWithCollectedRecords(
 			path: metafields.path,
 			pulledAt: metafields.pulledAt ?? null,
 		},
+		capabilitySignals: uniqueById(
+			[...capabilitySignalsBySource.values()].flat(),
+		),
+		capabilities: uniqueById([...capabilitiesBySource.values()].flat()),
+		classifications: uniqueById([...classificationsBySource.values()].flat()),
 	};
 }
 
@@ -1023,6 +1145,29 @@ function diffGraphs(
 		removedEdgeIds: addedIds(currentEdges, previousEdges),
 		changedEdgeIds: changedIds(previousEdges, currentEdges),
 	};
+}
+
+function graphWithoutImpact(
+	model: ThemeSemanticModel,
+): InspectNazareThemeResult {
+	return themeGraphFromModel(model, {
+		impact: {
+			dependencies: {},
+			dependents: {},
+			affectedPages: {},
+			unusedFiles: [],
+		},
+	});
+}
+
+function graphWithIndexedImpact(model: ThemeSemanticModel): {
+	graph: InspectNazareThemeResult;
+	index: ThemeImpactIndex;
+} {
+	const graph = graphWithoutImpact(model);
+	const index = new ThemeImpactIndex(graph);
+	graph.impact = index.toSummary();
+	return { graph, index };
 }
 
 function fingerprintExternalArtifacts(

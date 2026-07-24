@@ -46,7 +46,7 @@ export function createThemeDataFlowFixedPointPass(): FixedPointPass<
 	ThemeDataFlowFixedPointContext
 > {
 	return {
-		name: "data-flow-fixed-point",
+		name: "render-data-flow-fixed-point",
 		stage: "dataFlow",
 		fixedPointGroup: "render-data-flow",
 		routes: [

@@ -1,0 +1,391 @@
+import type {
+	InspectNazareThemeResult,
+	ThemeSemanticModel,
+} from "./theme-facts.js";
+
+type ThemeGraphNode = InspectNazareThemeResult["nodes"][number];
+type ThemeGraphEdge = InspectNazareThemeResult["edges"][number];
+
+export const THEME_GRAPH_METAFIELD_SCHEMA_OWNER = "projection:metafield-schema";
+
+export type ThemeGraphStoreDelta = {
+	addedNodeIds: string[];
+	removedNodeIds: string[];
+	changedNodeIds: string[];
+	addedEdgeIds: string[];
+	removedEdgeIds: string[];
+	changedEdgeIds: string[];
+};
+
+export class ThemeGraphStore {
+	private readonly nodesById = new Map<string, ThemeGraphNode>();
+	private readonly edgesById = new Map<string, ThemeGraphEdge>();
+	private readonly nodeIdsBySemanticId = new Map<string, Set<string>>();
+	private readonly edgeIdsBySemanticId = new Map<string, Set<string>>();
+	private graph: InspectNazareThemeResult;
+
+	constructor(graph: InspectNazareThemeResult) {
+		validateGraphRecords(graph);
+		this.graph = graph;
+		for (const node of graph.nodes) this.nodesById.set(node.id, node);
+		for (const edge of graph.edges) this.edgesById.set(edge.id, edge);
+	}
+
+	fork(): ThemeGraphStore {
+		const fork = new ThemeGraphStore(this.graph);
+		fork.nodesById.clear();
+		fork.edgesById.clear();
+		for (const [id, node] of this.nodesById) fork.nodesById.set(id, node);
+		for (const [id, edge] of this.edgesById) fork.edgesById.set(id, edge);
+		copySetMap(this.nodeIdsBySemanticId, fork.nodeIdsBySemanticId);
+		copySetMap(this.edgeIdsBySemanticId, fork.edgeIdsBySemanticId);
+		return fork;
+	}
+
+	expandSemanticIds(semanticIds: Iterable<string>): Set<string> {
+		const expanded = new Set(semanticIds);
+		let changed = true;
+		while (changed) {
+			changed = false;
+			const ownedGraphIds = new Set<string>();
+			for (const semanticId of expanded) {
+				for (const id of this.getOwnedNodeIds(semanticId))
+					ownedGraphIds.add(id);
+				for (const id of this.getOwnedEdgeIds(semanticId))
+					ownedGraphIds.add(id);
+			}
+			for (const [semanticId, nodeIds] of this.nodeIdsBySemanticId) {
+				if (
+					!expanded.has(semanticId) &&
+					[...nodeIds].some((id) => ownedGraphIds.has(id))
+				) {
+					expanded.add(semanticId);
+					changed = true;
+				}
+			}
+			for (const [semanticId, edgeIds] of this.edgeIdsBySemanticId) {
+				if (
+					!expanded.has(semanticId) &&
+					[...edgeIds].some((id) => ownedGraphIds.has(id))
+				) {
+					expanded.add(semanticId);
+					changed = true;
+				}
+			}
+		}
+		return expanded;
+	}
+
+	composeOwnedRecords(
+		nodes: ThemeGraphNode[],
+		edges: ThemeGraphEdge[],
+		semanticIds: Iterable<string>,
+	): { nodes: ThemeGraphNode[]; edges: ThemeGraphEdge[] } {
+		const selected = this.expandSemanticIds(semanticIds);
+		const nodesById = new Map(this.nodesById);
+		const edgesById = new Map(this.edgesById);
+		for (const semanticId of selected) {
+			for (const id of this.getOwnedNodeIds(semanticId)) {
+				if (!hasUnselectedOwner(this.nodeIdsBySemanticId, id, selected)) {
+					nodesById.delete(id);
+				}
+			}
+			for (const id of this.getOwnedEdgeIds(semanticId)) {
+				if (!hasUnselectedOwner(this.edgeIdsBySemanticId, id, selected)) {
+					edgesById.delete(id);
+				}
+			}
+		}
+		for (const node of nodes) nodesById.set(node.id, node);
+		for (const edge of edges) edgesById.set(edge.id, edge);
+		return {
+			nodes: [...nodesById.values()],
+			edges: [...edgesById.values()],
+		};
+	}
+
+	applyOwnedGraph(
+		graph: InspectNazareThemeResult,
+		model: ThemeSemanticModel,
+		semanticIds: Iterable<string>,
+	): ThemeGraphStoreDelta {
+		const candidate = new ThemeGraphStore(graph);
+		candidate.replaceOwnership(model);
+		const affectedNodeIds = new Set<string>();
+		const affectedEdgeIds = new Set<string>();
+		for (const semanticId of semanticIds) {
+			for (const id of this.getOwnedNodeIds(semanticId))
+				affectedNodeIds.add(id);
+			for (const id of candidate.getOwnedNodeIds(semanticId)) {
+				affectedNodeIds.add(id);
+			}
+			for (const id of this.getOwnedEdgeIds(semanticId))
+				affectedEdgeIds.add(id);
+			for (const id of candidate.getOwnedEdgeIds(semanticId)) {
+				affectedEdgeIds.add(id);
+			}
+		}
+		const nodesById = new Map(this.nodesById);
+		const edgesById = new Map(this.edgesById);
+		for (const id of affectedNodeIds) {
+			const node = candidate.nodesById.get(id);
+			if (node) nodesById.set(id, node);
+			else nodesById.delete(id);
+		}
+		for (const id of affectedEdgeIds) {
+			const edge = candidate.edgesById.get(id);
+			if (edge) edgesById.set(id, edge);
+			else edgesById.delete(id);
+		}
+		const delta = this.applyGraph({
+			...graph,
+			nodes: [...nodesById.values()],
+			edges: [...edgesById.values()],
+		});
+		this.replaceOwnership(model);
+		return delta;
+	}
+
+	applyGraph(graph: InspectNazareThemeResult): ThemeGraphStoreDelta {
+		validateGraphRecords(graph);
+		const nextNodes = new Map(graph.nodes.map((node) => [node.id, node]));
+		const nextEdges = new Map(graph.edges.map((edge) => [edge.id, edge]));
+		const nodeDelta = recordDelta(this.nodesById, nextNodes);
+		const edgeDelta = recordDelta(this.edgesById, nextEdges);
+		for (const id of nodeDelta.removed) this.nodesById.delete(id);
+		for (const id of [...nodeDelta.added, ...nodeDelta.changed]) {
+			const node = nextNodes.get(id);
+			if (node) this.nodesById.set(id, node);
+		}
+		for (const id of edgeDelta.removed) this.edgesById.delete(id);
+		for (const id of [...edgeDelta.added, ...edgeDelta.changed]) {
+			const edge = nextEdges.get(id);
+			if (edge) this.edgesById.set(id, edge);
+		}
+		const views = { ...graph.views };
+		for (const key of Object.keys(graph.views) as Array<
+			keyof InspectNazareThemeResult["views"]
+		>) {
+			if (sameRecord(this.graph.views[key], graph.views[key])) {
+				(views as Record<string, unknown>)[key] = this.graph.views[key];
+			}
+		}
+		const previousEvidenceById = new Map(
+			this.graph.evidence.map((record) => [record.id, record]),
+		);
+		this.graph = {
+			...graph,
+			nodes: [...this.nodesById.values()].sort((a, b) =>
+				a.id.localeCompare(b.id),
+			),
+			edges: [...this.edgesById.values()].sort((a, b) =>
+				a.id.localeCompare(b.id),
+			),
+			evidence: graph.evidence.map((record) => {
+				const previous = previousEvidenceById.get(record.id);
+				return previous && sameRecord(previous, record) ? previous : record;
+			}),
+			views,
+			issues: sameRecord(this.graph.issues, graph.issues)
+				? this.graph.issues
+				: graph.issues,
+			metafields: sameRecord(this.graph.metafields, graph.metafields)
+				? this.graph.metafields
+				: graph.metafields,
+			themeCheck: sameRecord(this.graph.themeCheck, graph.themeCheck)
+				? this.graph.themeCheck
+				: graph.themeCheck,
+		};
+		return {
+			addedNodeIds: nodeDelta.added,
+			removedNodeIds: nodeDelta.removed,
+			changedNodeIds: nodeDelta.changed,
+			addedEdgeIds: edgeDelta.added,
+			removedEdgeIds: edgeDelta.removed,
+			changedEdgeIds: edgeDelta.changed,
+		};
+	}
+
+	replaceOwnership(model: ThemeSemanticModel): void {
+		this.nodeIdsBySemanticId.clear();
+		this.edgeIdsBySemanticId.clear();
+		const semanticIds = semanticRecordIds(model);
+		for (const node of this.nodesById.values()) {
+			if (node.kind === "storeSchema") {
+				addOwnership(
+					this.nodeIdsBySemanticId,
+					THEME_GRAPH_METAFIELD_SCHEMA_OWNER,
+					node.id,
+				);
+			}
+			if (semanticIds.has(node.id)) {
+				addOwnership(this.nodeIdsBySemanticId, node.id, node.id);
+			}
+		}
+		for (const edge of this.edgesById.values()) {
+			const owners = new Set<string>();
+			if (semanticIds.has(edge.from)) owners.add(edge.from);
+			if (semanticIds.has(edge.to)) owners.add(edge.to);
+			if ("evidenceIds" in edge) {
+				for (const evidenceId of edge.evidenceIds ?? []) {
+					if (semanticIds.has(evidenceId)) owners.add(evidenceId);
+				}
+			}
+			for (const owner of owners) {
+				addOwnership(this.edgeIdsBySemanticId, owner, edge.id);
+				for (const nodeId of [edge.from, edge.to]) {
+					const node = this.nodesById.get(nodeId);
+					if (node && isOwnerDerivedNode(node)) {
+						addOwnership(this.nodeIdsBySemanticId, owner, nodeId);
+					}
+				}
+			}
+		}
+		for (const edge of this.edgesById.values()) {
+			const owners = new Set([
+				...ownersForGraphNode(this.nodeIdsBySemanticId, edge.from),
+				...ownersForGraphNode(this.nodeIdsBySemanticId, edge.to),
+			]);
+			for (const owner of owners) {
+				addOwnership(this.edgeIdsBySemanticId, owner, edge.id);
+				for (const nodeId of [edge.from, edge.to]) {
+					const node = this.nodesById.get(nodeId);
+					if (node && isOwnerDerivedNode(node)) {
+						addOwnership(this.nodeIdsBySemanticId, owner, nodeId);
+					}
+				}
+			}
+		}
+	}
+
+	getOwnedNodeIds(semanticId: string): string[] {
+		return [...(this.nodeIdsBySemanticId.get(semanticId) ?? [])].sort();
+	}
+
+	getOwnedEdgeIds(semanticId: string): string[] {
+		return [...(this.edgeIdsBySemanticId.get(semanticId) ?? [])].sort();
+	}
+
+	getGraph(): InspectNazareThemeResult {
+		return this.graph;
+	}
+
+	getNode(id: string): ThemeGraphNode | undefined {
+		return this.nodesById.get(id);
+	}
+
+	getEdge(id: string): ThemeGraphEdge | undefined {
+		return this.edgesById.get(id);
+	}
+}
+
+function validateGraphRecords(graph: InspectNazareThemeResult): void {
+	const nodeIds = new Set(graph.nodes.map((node) => node.id));
+	const evidenceIds = new Set(graph.evidence.map((evidence) => evidence.id));
+	for (const edge of graph.edges) {
+		if (!nodeIds.has(edge.from)) {
+			throw new Error(
+				`Graph edge ${edge.id} has missing from node ${edge.from}`,
+			);
+		}
+		if (!nodeIds.has(edge.to)) {
+			throw new Error(`Graph edge ${edge.id} has missing to node ${edge.to}`);
+		}
+		validateEvidenceIds(edge, evidenceIds, `Graph edge ${edge.id}`);
+	}
+	for (const node of graph.nodes) {
+		validateEvidenceIds(node, evidenceIds, `Graph node ${node.id}`);
+	}
+}
+
+function validateEvidenceIds(
+	record: object,
+	evidenceIds: Set<string>,
+	owner: string,
+): void {
+	if (!("evidenceIds" in record) || !Array.isArray(record.evidenceIds)) return;
+	for (const evidenceId of record.evidenceIds) {
+		if (typeof evidenceId === "string" && !evidenceIds.has(evidenceId)) {
+			throw new Error(`${owner} has missing evidence ${evidenceId}`);
+		}
+	}
+}
+
+function semanticRecordIds(model: ThemeSemanticModel): Set<string> {
+	return new Set(
+		Object.values(model)
+			.flatMap((value) => (Array.isArray(value) ? value : []))
+			.flatMap((record) =>
+				record &&
+				typeof record === "object" &&
+				"id" in record &&
+				typeof record.id === "string"
+					? [record.id]
+					: [],
+			),
+	);
+}
+
+function isOwnerDerivedNode(node: ThemeGraphNode): boolean {
+	return (
+		node.kind === "unresolved" ||
+		node.kind === "shopifyObject" ||
+		node.kind === "shopifyProperty"
+	);
+}
+
+function hasUnselectedOwner(
+	graphIdsBySemanticId: Map<string, Set<string>>,
+	graphId: string,
+	selected: Set<string>,
+): boolean {
+	return [...graphIdsBySemanticId].some(
+		([semanticId, graphIds]) =>
+			!selected.has(semanticId) && graphIds.has(graphId),
+	);
+}
+
+function ownersForGraphNode(
+	nodeIdsBySemanticId: Map<string, Set<string>>,
+	nodeId: string,
+): string[] {
+	return [...nodeIdsBySemanticId]
+		.filter(([, nodeIds]) => nodeIds.has(nodeId))
+		.map(([semanticId]) => semanticId);
+}
+
+function addOwnership(
+	map: Map<string, Set<string>>,
+	semanticId: string,
+	graphId: string,
+): void {
+	const ids = map.get(semanticId) ?? new Set<string>();
+	ids.add(graphId);
+	map.set(semanticId, ids);
+}
+
+function copySetMap(
+	source: Map<string, Set<string>>,
+	target: Map<string, Set<string>>,
+): void {
+	for (const [key, values] of source) target.set(key, new Set(values));
+}
+
+function recordDelta<T>(
+	previous: Map<string, T>,
+	next: Map<string, T>,
+): { added: string[]; removed: string[]; changed: string[] } {
+	return {
+		added: [...next.keys()].filter((id) => !previous.has(id)).sort(),
+		removed: [...previous.keys()].filter((id) => !next.has(id)).sort(),
+		changed: [...next.keys()]
+			.filter(
+				(id) => previous.has(id) && !sameRecord(previous.get(id), next.get(id)),
+			)
+			.sort(),
+	};
+}
+
+function sameRecord(a: unknown, b: unknown): boolean {
+	return JSON.stringify(a) === JSON.stringify(b);
+}

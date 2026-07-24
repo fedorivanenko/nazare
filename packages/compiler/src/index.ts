@@ -144,11 +144,27 @@ export {
 	type ThemeBuildUpdate,
 } from "./theme-build-session.js";
 export {
+	createThemeCapabilityPass,
+	deriveThemeCapabilities,
+	type ThemeCapabilityPassContext,
+} from "./theme-capability-pass.js";
+export {
+	capabilitySignalId,
+	collectThemeCapabilitySignals,
+	createThemeCapabilitySignalPass,
+	type ThemeCapabilitySignalPassContext,
+} from "./theme-capability-signal-pass.js";
+export {
 	filterThemeCheckIssues,
 	parseThemeCheckPolicy,
 	type ThemeCheckPolicy,
 	type ThemeCheckPolicyInput,
 } from "./theme-check-policy.js";
+export {
+	createThemeClassificationPass,
+	deriveThemeClassifications,
+	type ThemeClassificationPassContext,
+} from "./theme-classification-pass.js";
 export { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 export {
 	collectThemeDataFlowInputs,
@@ -175,6 +191,11 @@ export {
 	type ThemeDeclarationPassRecord,
 	type ThemeDeclarationPassResult,
 } from "./theme-declaration-pass.js";
+export {
+	type OwnedThemeDiagnostic,
+	type ThemeDiagnosticOwner,
+	ThemeDiagnosticStore,
+} from "./theme-diagnostic-store.js";
 export { matchesThemeGlob } from "./theme-exclusions.js";
 export {
 	deriveThemeExpectedInputs,
@@ -227,7 +248,15 @@ export type {
 	ThemeSettingReadRecord,
 } from "./theme-facts.js";
 export { shareThemeGraphRecords } from "./theme-graph-output.js";
-export { ThemeImpactIndex } from "./theme-impact-index.js";
+export {
+	THEME_GRAPH_METAFIELD_SCHEMA_OWNER,
+	ThemeGraphStore,
+	type ThemeGraphStoreDelta,
+} from "./theme-graph-store.js";
+export {
+	ThemeImpactIndex,
+	type ThemeImpactIndexDelta,
+} from "./theme-impact-index.js";
 export {
 	collectThemeInstances,
 	createThemeInstancePass,

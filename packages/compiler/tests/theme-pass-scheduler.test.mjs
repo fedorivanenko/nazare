@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	createThemeCapabilityPass,
+	createThemeCapabilitySignalPass,
+	createThemeClassificationPass,
 	createThemeDataFlowFixedPointPass,
 	createThemeDeclarationPass,
 	createThemeMetafieldPass,
@@ -8,11 +11,36 @@ import {
 	createThemeResolutionPass,
 	fixedPointThemePass,
 	incrementalThemePass,
+	ThemeDiagnosticStore,
 	ThemeFactStore,
 	ThemePassConvergenceError,
 	ThemePassScheduler,
 	ThemeRenderDependencyIndex,
 } from "../dist/index.js";
+
+test("diagnostic store replaces only one pass and key owner", () => {
+	const original = new ThemeDiagnosticStore();
+	original.replace({ pass: "resolution", owner: "reference:a" }, [
+		{ severity: "warning", code: "A", message: "a", phase: "resolve" },
+	]);
+	original.replace({ pass: "resolution", owner: "reference:b" }, [
+		{ severity: "warning", code: "B", message: "b", phase: "resolve" },
+	]);
+	const staged = original.fork();
+	staged.replace({ pass: "resolution", owner: "reference:a" }, []);
+	assert.deepEqual(
+		original.getAll().map((diagnostic) => diagnostic.code),
+		["A", "B"],
+	);
+	assert.deepEqual(
+		staged.getAll().map((diagnostic) => diagnostic.code),
+		["B"],
+	);
+	assert.throws(
+		() => staged.replace({ pass: "", owner: "reference:c" }, []),
+		/pass owner is required/,
+	);
+});
 
 test("theme pass scheduler propagates typed changes forward deterministically", () => {
 	const scheduler = new ThemePassScheduler([
@@ -126,6 +154,124 @@ test("declaration and reference passes replace per-source outputs", () => {
 	);
 });
 
+test("capability signal pass replaces only changed source records", () => {
+	const first = {
+		kind: "detectsCapability",
+		path: "sections/main.liquid",
+		capability: "product-form",
+		confidence: 0.8,
+	};
+	const context = {
+		facts: new ThemeFactStore([first]),
+		capabilitySignalsBySource: new Map(),
+	};
+	const scheduler = new ThemePassScheduler([
+		incrementalThemePass(createThemeCapabilitySignalPass()),
+	]);
+	const initial = scheduler.execute(
+		[{ kind: "factsChanged", path: first.path }],
+		context,
+	);
+	assert.equal(context.capabilitySignalsBySource.get(first.path).length, 1);
+	assert.equal(
+		initial.changes.some((change) => change.kind === "capabilitySignalChanged"),
+		true,
+	);
+	context.facts.replaceFile(first.path, []);
+	scheduler.execute([{ kind: "factsChanged", path: first.path }], context);
+	assert.equal(context.capabilitySignalsBySource.has(first.path), false);
+});
+
+test("capability pass preserves confidence and evidence by source", () => {
+	const path = "sections/main.liquid";
+	const context = {
+		dataAccessesBySource: new Map([
+			[
+				path,
+				[
+					{
+						id: "access:price",
+						fromPath: path,
+						object: "product",
+						propertyPath: "price",
+						expression: "product.price",
+						origin: "liquid",
+					},
+				],
+			],
+		]),
+		capabilitySignalsBySource: new Map(),
+		capabilitiesBySource: new Map(),
+	};
+	const scheduler = new ThemePassScheduler([
+		incrementalThemePass(createThemeCapabilityPass()),
+	]);
+	const result = scheduler.execute(
+		[{ kind: "dataFlowChanged", sourcePath: path }],
+		context,
+	);
+	assert.deepEqual(context.capabilitiesBySource.get(path), [
+		{
+			id: `capability:${path}:displaysProductPrice`,
+			path,
+			capability: "displaysProductPrice",
+			confidence: 0.95,
+			evidenceIds: ["access:price"],
+		},
+	]);
+	assert.equal(
+		result.changes.some((change) => change.kind === "capabilityChanged"),
+		true,
+	);
+});
+
+test("classification pass preserves confidence uncertainty and evidence", () => {
+	const path = "snippets/card.liquid";
+	const priceCapability = {
+		id: `capability:${path}:displaysProductPrice`,
+		path,
+		capability: "displaysProductPrice",
+		confidence: 0.95,
+		evidenceIds: ["access:price"],
+	};
+	const context = {
+		dataAccessesBySource: new Map([
+			[
+				path,
+				[
+					{
+						id: "access:title",
+						fromPath: path,
+						object: "product",
+						propertyPath: "title",
+						expression: "product.title",
+						origin: "liquid",
+					},
+				],
+			],
+		]),
+		capabilitiesBySource: new Map([[path, [priceCapability]]]),
+		classificationsBySource: new Map(),
+	};
+	const scheduler = new ThemePassScheduler([
+		incrementalThemePass(createThemeClassificationPass()),
+	]);
+	scheduler.execute(
+		[{ kind: "capabilityChanged", id: priceCapability.id, sourcePath: path }],
+		context,
+	);
+	assert.deepEqual(context.classificationsBySource.get(path), [
+		{
+			id: `classification:${path}:productCard`,
+			path,
+			label: "productCard",
+			confidence: 0.75,
+			evidenceIds: ["access:price", "access:title"],
+			uncertainty: ["could be full product section"],
+		},
+	]);
+});
+
 test("resolution pass recomputes only references under changed target keys", () => {
 	const card = {
 		id: "snippet:snippets/card.liquid:card",
@@ -170,6 +316,7 @@ test("resolution pass recomputes only references under changed target keys", () 
 			["snippet:tile", new Map([[tileReference.id, tileReference]])],
 		]),
 		resolvedReferencesById: new Map([[tileReference.id, tileReference]]),
+		diagnosticStore: new ThemeDiagnosticStore(),
 	};
 	const pass = createThemeResolutionPass();
 	const keys = pass.collectChanges(
@@ -458,7 +605,13 @@ test("metafield snapshot changes can seed a snapshot-only pass", () => {
 				),
 			run: (keys) => ({
 				records: [...keys],
-				changes: [{ kind: "diagnosticsChanged", owner: "metafields" }],
+				changes: [
+					{
+						kind: "diagnosticsChanged",
+						pass: "metafields",
+						owner: "snapshot",
+					},
+				],
 			}),
 		}),
 	]);
