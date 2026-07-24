@@ -3,16 +3,22 @@ import type {
 	ThemeImpactSummary,
 } from "./theme-facts.js";
 
+type ImpactGraph = Pick<InspectNazareThemeResult, "nodes" | "edges">;
+type ImpactNode = InspectNazareThemeResult["nodes"][number];
+type ImpactEdge = InspectNazareThemeResult["edges"][number];
+
 export class ThemeImpactIndex {
 	private readonly dependentsByNode = new Map<string, Set<string>>();
 	private readonly dependenciesByNode = new Map<string, Set<string>>();
 	private readonly pagePathsByNode = new Map<string, string[]>();
 	private readonly nodeIdsByPath = new Map<string, Set<string>>();
 	private readonly pathByNodeId = new Map<string, string>();
+	private readonly nodesById = new Map<string, ImpactNode>();
+	private readonly edgesById = new Map<string, ImpactEdge>();
 	private summary: ThemeImpactSummary = emptyImpactSummary();
 
-	constructor(graph: InspectNazareThemeResult) {
-		this.replaceGraph(graph);
+	constructor(graph?: InspectNazareThemeResult) {
+		if (graph) this.replaceGraph(graph);
 	}
 
 	replaceGraph(graph: InspectNazareThemeResult): void {
@@ -21,28 +27,97 @@ export class ThemeImpactIndex {
 		this.pagePathsByNode.clear();
 		this.nodeIdsByPath.clear();
 		this.pathByNodeId.clear();
-		for (const edge of graph.edges) {
-			const dependencies =
-				this.dependenciesByNode.get(edge.from) ?? new Set<string>();
-			dependencies.add(edge.to);
-			this.dependenciesByNode.set(edge.from, dependencies);
-			const dependents =
-				this.dependentsByNode.get(edge.to) ?? new Set<string>();
-			dependents.add(edge.from);
-			this.dependentsByNode.set(edge.to, dependents);
+		this.nodesById.clear();
+		this.edgesById.clear();
+		for (const node of graph.nodes) this.addNode(node);
+		for (const edge of graph.edges) this.addEdge(edge);
+		this.refreshSummary();
+	}
+
+	fork(): ThemeImpactIndex {
+		const fork = new ThemeImpactIndex();
+		copySetMap(this.dependentsByNode, fork.dependentsByNode);
+		copySetMap(this.dependenciesByNode, fork.dependenciesByNode);
+		copySetMap(this.nodeIdsByPath, fork.nodeIdsByPath);
+		for (const [key, value] of this.pagePathsByNode) {
+			fork.pagePathsByNode.set(key, [...value]);
 		}
-		for (const node of graph.nodes) {
-			if ("path" in node) {
-				this.pathByNodeId.set(node.id, node.path);
-				const ids = this.nodeIdsByPath.get(node.path) ?? new Set<string>();
-				ids.add(node.id);
-				this.nodeIdsByPath.set(node.path, ids);
-			}
-			if (node.kind !== "page") continue;
-			const path = node.path;
-			this.pagePathsByNode.set(node.id, [path]);
+		for (const [key, value] of this.pathByNodeId) {
+			fork.pathByNodeId.set(key, value);
 		}
-		this.summary = impactSummaryFromGraph(graph, this.pathByNodeId);
+		for (const [key, value] of this.nodesById) fork.nodesById.set(key, value);
+		for (const [key, value] of this.edgesById) fork.edgesById.set(key, value);
+		fork.summary = this.toSummary();
+		return fork;
+	}
+
+	applyGraph(graph: InspectNazareThemeResult): void {
+		const nextNodes = new Map(graph.nodes.map((node) => [node.id, node]));
+		const nextEdges = new Map(graph.edges.map((edge) => [edge.id, edge]));
+		for (const [id, edge] of this.edgesById) {
+			const next = nextEdges.get(id);
+			if (!next || !sameRecord(edge, next)) this.removeEdge(edge);
+		}
+		for (const [id, node] of this.nodesById) {
+			const next = nextNodes.get(id);
+			if (!next || !sameRecord(node, next)) this.removeNode(node);
+		}
+		for (const [id, node] of nextNodes) {
+			const previous = this.nodesById.get(id);
+			if (!previous || !sameRecord(previous, node)) this.addNode(node);
+		}
+		for (const [id, edge] of nextEdges) {
+			const previous = this.edgesById.get(id);
+			if (!previous || !sameRecord(previous, edge)) this.addEdge(edge);
+		}
+		this.refreshSummary();
+	}
+
+	private addNode(node: ImpactNode): void {
+		this.nodesById.set(node.id, node);
+		if ("path" in node) {
+			this.pathByNodeId.set(node.id, node.path);
+			const ids = this.nodeIdsByPath.get(node.path) ?? new Set<string>();
+			ids.add(node.id);
+			this.nodeIdsByPath.set(node.path, ids);
+		}
+		if (node.kind === "page") this.pagePathsByNode.set(node.id, [node.path]);
+	}
+
+	private removeNode(node: ImpactNode): void {
+		this.nodesById.delete(node.id);
+		this.pagePathsByNode.delete(node.id);
+		if (!("path" in node)) return;
+		this.pathByNodeId.delete(node.id);
+		const ids = this.nodeIdsByPath.get(node.path);
+		ids?.delete(node.id);
+		if (ids?.size === 0) this.nodeIdsByPath.delete(node.path);
+	}
+
+	private addEdge(edge: ImpactEdge): void {
+		this.edgesById.set(edge.id, edge);
+		addValue(this.dependenciesByNode, edge.from, edge.to);
+		addValue(this.dependentsByNode, edge.to, edge.from);
+	}
+
+	private removeEdge(edge: ImpactEdge): void {
+		this.edgesById.delete(edge.id);
+		const sameEndpointsRemain = [...this.edgesById.values()].some(
+			(candidate) => candidate.from === edge.from && candidate.to === edge.to,
+		);
+		if (sameEndpointsRemain) return;
+		removeValue(this.dependenciesByNode, edge.from, edge.to);
+		removeValue(this.dependentsByNode, edge.to, edge.from);
+	}
+
+	private refreshSummary(): void {
+		this.summary = impactSummaryFromGraph(
+			{
+				nodes: [...this.nodesById.values()],
+				edges: [...this.edgesById.values()],
+			},
+			this.pathByNodeId,
+		);
 	}
 
 	toSummary(): ThemeImpactSummary {
@@ -100,7 +175,7 @@ export class ThemeImpactIndex {
 }
 
 function impactSummaryFromGraph(
-	graph: InspectNazareThemeResult,
+	graph: ImpactGraph,
 	pathByNodeId: Map<string, string>,
 ): ThemeImpactSummary {
 	const dependencies = new Map<string, Set<string>>();
@@ -216,6 +291,27 @@ function addValue(
 	const values = map.get(key) ?? new Set<string>();
 	values.add(value);
 	map.set(key, values);
+}
+
+function removeValue(
+	map: Map<string, Set<string>>,
+	key: string,
+	value: string,
+): void {
+	const values = map.get(key);
+	values?.delete(value);
+	if (values?.size === 0) map.delete(key);
+}
+
+function copySetMap(
+	source: Map<string, Set<string>>,
+	target: Map<string, Set<string>>,
+): void {
+	for (const [key, values] of source) target.set(key, new Set(values));
+}
+
+function sameRecord(a: unknown, b: unknown): boolean {
+	return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function sortedRecord(map: Map<string, Set<string>>): Record<string, string[]> {
