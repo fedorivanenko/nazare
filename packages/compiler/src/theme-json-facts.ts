@@ -33,7 +33,7 @@ export function collectJsonThemeFacts(
 	if (isTemplateLikeJson(path)) {
 		const sections = (parsed as { sections?: unknown }).sections;
 		if (sections && typeof sections === "object" && !Array.isArray(sections)) {
-			for (const section of Object.values(sections)) {
+			for (const [instanceId, section] of Object.entries(sections)) {
 				if (!section || typeof section !== "object") continue;
 				const type = (section as { type?: unknown }).type;
 				facts.push({
@@ -42,7 +42,19 @@ export function collectJsonThemeFacts(
 					targetName: typeof type === "string" ? type : undefined,
 					static: typeof type === "string",
 				});
+				facts.push({
+					kind: "sectionInstance",
+					templatePath: path,
+					instanceId,
+					sectionType: typeof type === "string" ? type : undefined,
+					static: typeof type === "string",
+				});
 			}
+		}
+	}
+	if (path.startsWith("locales/") && path.endsWith(".json")) {
+		for (const key of flattenLocaleKeys(parsed)) {
+			facts.push({ kind: "definesLocaleKey", path, key });
 		}
 	}
 	if (path === "config/settings_schema.json" && Array.isArray(parsed)) {
@@ -68,6 +80,20 @@ export function collectJsonThemeFacts(
 		}
 	}
 	return { facts, issues: [] };
+}
+
+function flattenLocaleKeys(value: unknown, prefix = ""): string[] {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+	const keys: string[] = [];
+	for (const [key, child] of Object.entries(value)) {
+		const fullKey = prefix ? `${prefix}.${key}` : key;
+		if (child && typeof child === "object" && !Array.isArray(child)) {
+			keys.push(...flattenLocaleKeys(child, fullKey));
+			continue;
+		}
+		keys.push(fullKey);
+	}
+	return keys;
 }
 
 function isTemplateLikeJson(path: string): boolean {

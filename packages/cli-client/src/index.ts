@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
 	checkComponentScripts,
 	compileNazareArtifact,
+	inspectNazareTheme,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
 import { registryFromEnv } from "@nazare/registry";
@@ -65,6 +66,11 @@ export async function main(
 		// `init` scaffolds the project's explicit build config so add/build work.
 		if (command === "init") {
 			return await runInit(projectRoot, cliOptions, output);
+		}
+
+		// Whole-theme read-only inspection.
+		if (command === "inspect") {
+			return await runInspect(projectRoot, cliOptions, output);
 		}
 
 		// Registry config commands update project-level nazare.theme.json.
@@ -295,6 +301,110 @@ async function runInit(
 		),
 	);
 	return 0;
+}
+
+async function runInspect(
+	projectRoot: string,
+	cliOptions: CliOptions,
+	output: Output,
+): Promise<number> {
+	const [target, dirArg] = cliOptions.positionals;
+	if (target !== "theme") {
+		output.error("Usage: nazare inspect theme [dir] --format json");
+		return 1;
+	}
+	const format = cliOptions.format ?? "json";
+	if (format !== "json") {
+		output.error(`Unsupported inspect format ${format}; expected json`);
+		return 1;
+	}
+	const inspectRoot =
+		dirArg ?? (await readProjectManifest(projectRoot)).build?.sourceRoot;
+	if (!inspectRoot) {
+		output.error(
+			'Usage: nazare inspect theme [dir] --format json (or set "build.sourceRoot" in nazare.theme.json)',
+		);
+		return 1;
+	}
+	const root = resolve(projectRoot, inspectRoot);
+	if (isOutsideRoot(projectRoot, root)) {
+		output.error(`${root} is outside the project root ${projectRoot}`);
+		return 1;
+	}
+	const files = await collectThemeInputFiles(root, projectRoot);
+	const inspected = inspectNazareTheme(files, {
+		root: relative(projectRoot, root).split(sep).join("/") || ".",
+		strictness: cliOptions.strictness,
+	});
+	output.log(JSON.stringify(inspected, null, 2));
+	return hasErrors(
+		inspected.issues.filter((issue) => issue.severity === "error"),
+	)
+		? 1
+		: 0;
+}
+
+function isOutsideRoot(root: string, path: string): boolean {
+	const relativePath = relative(root, path);
+	return relativePath.startsWith("..") || relativePath.startsWith(sep);
+}
+
+async function collectThemeInputFiles(
+	root: string,
+	projectRoot: string,
+): Promise<{ path: string; contents: string }[]> {
+	const ignored = new Set(["node_modules", ".git", "dist", ".nazare-out"]);
+	const files: { path: string; contents: string }[] = [];
+	async function walk(dir: string): Promise<void> {
+		for (const entry of await readdir(dir, { withFileTypes: true })) {
+			if (ignored.has(entry.name)) continue;
+			const abs = join(dir, entry.name);
+			if (entry.isDirectory()) {
+				await walk(abs);
+				continue;
+			}
+			if (!entry.isFile()) continue;
+			const rel = relative(root, abs).split(sep).join("/");
+			if (!isInspectThemeFile(rel)) continue;
+			files.push({
+				path: rel,
+				contents: shouldReadInspectContents(rel)
+					? await readFile(abs, "utf8")
+					: "",
+			});
+		}
+	}
+	const rootStat = await stat(root);
+	if (rootStat.isFile()) {
+		const path = relative(projectRoot, root).split(sep).join("/");
+		if (isInspectThemeFile(path)) {
+			files.push({
+				path,
+				contents: shouldReadInspectContents(path)
+					? await readFile(root, "utf8")
+					: "",
+			});
+		}
+	} else {
+		await walk(root);
+	}
+	return files.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function isInspectThemeFile(path: string): boolean {
+	return shouldReadInspectContents(path) || path.startsWith("assets/");
+}
+
+function shouldReadInspectContents(path: string): boolean {
+	return (
+		path.endsWith(".nz.liquid") ||
+		/^sections\/[^/]+\.liquid$/.test(path) ||
+		/^snippets\/[^/]+\.liquid$/.test(path) ||
+		/^templates\/.+\.(json|liquid)$/.test(path) ||
+		/^layout\/[^/]+\.liquid$/.test(path) ||
+		path === "config/settings_schema.json" ||
+		path === "config/settings_data.json"
+	);
 }
 
 async function writeDumpFiles(

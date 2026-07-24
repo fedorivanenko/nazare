@@ -24,6 +24,7 @@ import { collectJsonThemeFacts } from "./theme-json-facts.js";
 import { collectPlainLiquidThemeFacts } from "./theme-liquid-facts.js";
 import { buildThemeSemanticModel } from "./theme-model.js";
 import { collectNazareThemeFacts } from "./theme-nazare-facts.js";
+import { collectSourceThemeFacts } from "./theme-source-facts.js";
 
 export function analyzeNazareTheme(
 	files: ThemeInputFile[],
@@ -62,7 +63,6 @@ export function buildNazareThemeWorkspace(
 		{
 			...options,
 			initialIssues: [...normalized.issues, ...scopeIssues],
-			nazarePaths: scopePaths,
 		},
 	);
 	const readFile = (path: string): string | undefined =>
@@ -108,7 +108,6 @@ function analyzeNormalizedThemeFiles(
 	byPath: Map<string, string>,
 	options: AnalyzeNazareThemeOptions & {
 		initialIssues?: Diagnostic[];
-		nazarePaths?: Set<string>;
 	} = {},
 ): ThemeAnalysis {
 	const facts: ThemeFact[] = [];
@@ -120,6 +119,9 @@ function analyzeNormalizedThemeFiles(
 	for (const file of files) {
 		const fileKind = classifyThemeFile(file.path);
 		facts.push({ kind: "file", path: file.path, fileKind });
+		if (file.path.endsWith(".liquid")) {
+			facts.push(...collectSourceThemeFacts(file.path, file.contents));
+		}
 		if (fileKind === "asset") {
 			facts.push({
 				kind: "declaresAsset",
@@ -129,7 +131,21 @@ function analyzeNormalizedThemeFiles(
 			facts.push({ kind: "declaresAsset", path: file.path, name: file.path });
 			continue;
 		}
-		if (fileKind === "nazareComponent" || options.nazarePaths?.has(file.path)) {
+		if (fileKind === "layout") {
+			facts.push({
+				kind: "declaresLayout",
+				path: file.path,
+				name: themeNameFromPath(file.path),
+			});
+		}
+		if (fileKind === "locale") {
+			facts.push({
+				kind: "declaresLocale",
+				path: file.path,
+				name: themeNameFromPath(file.path),
+			});
+		}
+		if (fileKind === "nazareComponent") {
 			const result = collectNazareThemeFacts(file.path, file.contents, {
 				readFile,
 				strictness: options.strictness,
@@ -182,6 +198,16 @@ function buildScopeIssues(
 			},
 		];
 	}
+	if (!path.endsWith(".nz.liquid")) {
+		return [
+			{
+				severity: "error",
+				code: "THEME_SCOPE_UNSUPPORTED_FILE_KIND",
+				message: `Theme build scope file must be a .nz.liquid component: ${scope.path}`,
+				phase: "parse",
+			},
+		];
+	}
 	return [];
 }
 
@@ -204,7 +230,7 @@ function scopedNazareClosure(
 		if (!path || visited.has(path)) continue;
 		visited.add(path);
 		const source = byPath.get(path);
-		if (source === undefined || !path.endsWith(".liquid")) continue;
+		if (source === undefined || !path.endsWith(".nz.liquid")) continue;
 		const ast = parseNazareLiquid(source, path);
 		for (const node of ast.nodes) {
 			if (

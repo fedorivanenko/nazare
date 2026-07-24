@@ -2,10 +2,18 @@ import type {
 	InspectNazareThemeResult,
 	SemanticThemeGraphEdge,
 	SemanticThemeGraphNode,
+	ThemeGraphViews,
+	ThemeImpactSummary,
 	ThemeReference,
 	ThemeSemanticModel,
 } from "./theme-facts.js";
-import { fileId, schemaId } from "./theme-model.js";
+import {
+	blockId,
+	dataObjectId,
+	dataPropertyId,
+	fileId,
+	schemaId,
+} from "./theme-model.js";
 
 export function themeGraphFromModel(
 	model: ThemeSemanticModel,
@@ -59,6 +67,22 @@ export function themeGraphFromModel(
 				path: declaration.path,
 			});
 		}
+		if (declaration.kind === "layout") {
+			pushNode({
+				id: declaration.id,
+				kind: "layout",
+				name: declaration.name,
+				path: declaration.path,
+			});
+		}
+		if (declaration.kind === "locale") {
+			pushNode({
+				id: declaration.id,
+				kind: "locale",
+				name: declaration.name,
+				path: declaration.path,
+			});
+		}
 		if (declaration.kind === "asset") {
 			pushNode({
 				id: declaration.id,
@@ -83,6 +107,21 @@ export function themeGraphFromModel(
 			to: declaration.id,
 		});
 	}
+	for (const page of model.pages) {
+		pushNode({
+			id: page.id,
+			kind: "page",
+			name: page.name,
+			path: page.path,
+			pageType: page.pageType,
+		});
+		pushEdge({
+			id: `edge:pageUsesTemplate:${page.id}->${page.templateDeclarationId}`,
+			kind: "pageUsesTemplate",
+			from: page.id,
+			to: page.templateDeclarationId,
+		});
+	}
 	for (const schema of model.schemas) {
 		pushNode({
 			id: schema.id,
@@ -96,6 +135,43 @@ export function themeGraphFromModel(
 			from: fileId(schema.path),
 			to: schema.id,
 		});
+	}
+	for (const localeKey of model.localeKeys) {
+		pushNode({
+			id: localeKey.id,
+			kind: "localeKey",
+			path: localeKey.path,
+			key: localeKey.key,
+		});
+		pushEdge({
+			id: `edge:declares:${fileId(localeKey.path)}->${localeKey.id}`,
+			kind: "declares",
+			from: fileId(localeKey.path),
+			to: localeKey.id,
+		});
+	}
+	for (const localeReference of model.localeReferences) {
+		const targets =
+			localeReference.resolvedLocaleKeyIds.length > 0
+				? localeReference.resolvedLocaleKeyIds
+				: [`unresolved:locale:${localeReference.key ?? localeReference.id}`];
+		for (const to of targets) {
+			if (to.startsWith("unresolved:")) {
+				pushNode({
+					id: to,
+					kind: "unresolved",
+					targetKind: "localeKey",
+					name: localeReference.key,
+				});
+			}
+			pushEdge({
+				id: `edge:referencesLocaleKey:${localeReference.id}->${to}`,
+				kind: "referencesLocaleKey",
+				from: fileId(localeReference.fromPath),
+				to,
+				key: localeReference.key,
+			});
+		}
 	}
 	for (const setting of model.settings) {
 		pushNode({
@@ -111,6 +187,218 @@ export function themeGraphFromModel(
 			kind: "definesSetting",
 			from: schemaId(setting.path, setting.schemaPath),
 			to: setting.id,
+		});
+	}
+	for (const block of model.blocks) {
+		pushNode({
+			id: block.id,
+			kind: "block",
+			path: block.path,
+			blockType: block.blockType,
+			name: block.name,
+		});
+		pushEdge({
+			id: `edge:definesBlock:${fileId(block.path)}->${block.id}`,
+			kind: "definesBlock",
+			from: fileId(block.path),
+			to: block.id,
+		});
+	}
+	for (const setting of model.blockSettings) {
+		pushNode({
+			id: setting.id,
+			kind: "blockSetting",
+			path: setting.path,
+			blockType: setting.blockType,
+			settingId: setting.settingId,
+			settingType: setting.settingType,
+		});
+		pushEdge({
+			id: `edge:definesBlockSetting:${blockId(setting.path, setting.blockType)}->${setting.id}`,
+			kind: "definesBlockSetting",
+			from: blockId(setting.path, setting.blockType),
+			to: setting.id,
+		});
+	}
+	for (const instance of model.sectionInstances) {
+		pushNode({
+			id: instance.id,
+			kind: "sectionInstance",
+			templatePath: instance.templatePath,
+			instanceId: instance.instanceId,
+			sectionType: instance.sectionType,
+		});
+		pushEdge({
+			id: `edge:templateContainsSectionInstance:${instance.id}`,
+			kind: "templateContainsSectionInstance",
+			from: fileId(instance.templatePath),
+			to: instance.id,
+		});
+		const to =
+			instance.resolvedDeclarationId ??
+			`unresolved:section:${instance.sectionType ?? instance.id}`;
+		if (!instance.resolvedDeclarationId) {
+			pushNode({
+				id: to,
+				kind: "unresolved",
+				targetKind: "section",
+				name: instance.sectionType,
+			});
+		}
+		pushEdge({
+			id: `edge:instanceOf:${instance.id}`,
+			kind: "instanceOf",
+			from: instance.id,
+			to,
+			targetName: instance.sectionType,
+		});
+	}
+	for (const settingRead of model.settingReads) {
+		const to =
+			settingRead.resolvedSettingId ??
+			`unresolved:setting:${settingRead.settingObject}:${settingRead.settingId}`;
+		if (!settingRead.resolvedSettingId) {
+			pushNode({
+				id: to,
+				kind: "unresolved",
+				targetKind: "setting",
+				name: `${settingRead.settingObject}.settings.${settingRead.settingId}`,
+			});
+		}
+		pushEdge({
+			id: `edge:readsSetting:${settingRead.id}`,
+			kind: "readsSetting",
+			from: fileId(settingRead.fromPath),
+			to,
+		});
+	}
+	for (const dataAccess of model.dataAccesses) {
+		const objectId = dataObjectId(dataAccess.object);
+		pushNode({
+			id: objectId,
+			kind: "shopifyObject",
+			object: dataAccess.object,
+		});
+		const to = dataAccess.propertyPath
+			? dataPropertyId(dataAccess.object, dataAccess.propertyPath)
+			: objectId;
+		if (dataAccess.propertyPath) {
+			pushNode({
+				id: to,
+				kind: "shopifyProperty",
+				object: dataAccess.object,
+				propertyPath: dataAccess.propertyPath,
+			});
+			pushEdge({
+				id: `edge:declares:${objectId}->${to}`,
+				kind: "declares",
+				from: objectId,
+				to,
+			});
+		}
+		pushEdge({
+			id: `edge:accessesData:${dataAccess.id}`,
+			kind: "accessesData",
+			from: fileId(dataAccess.fromPath),
+			to,
+			expression: dataAccess.expression,
+		});
+	}
+	for (const argument of model.renderArguments) {
+		pushNode({
+			id: argument.id,
+			kind: "renderArgument",
+			argumentName: argument.argumentName,
+			valueExpression: argument.valueExpression,
+			fromPath: argument.fromPath,
+			targetName: argument.targetName,
+		});
+		pushEdge({
+			id: `edge:passesArgument:${argument.id}`,
+			kind: "passesArgument",
+			from: fileId(argument.fromPath),
+			to: argument.id,
+			argumentName: argument.argumentName,
+			valueExpression: argument.valueExpression,
+		});
+		if (argument.sourceObject && !argument.sourceObject.endsWith(".settings")) {
+			const objectId = dataObjectId(argument.sourceObject);
+			pushNode({
+				id: objectId,
+				kind: "shopifyObject",
+				object: argument.sourceObject,
+			});
+			const to = argument.sourcePath
+				? dataPropertyId(argument.sourceObject, argument.sourcePath)
+				: objectId;
+			if (argument.sourcePath) {
+				pushNode({
+					id: to,
+					kind: "shopifyProperty",
+					object: argument.sourceObject,
+					propertyPath: argument.sourcePath,
+				});
+				pushEdge({
+					id: `edge:declares:${objectId}->${to}`,
+					kind: "declares",
+					from: objectId,
+					to,
+				});
+			}
+			pushEdge({
+				id: `edge:argumentValue:${argument.id}`,
+				kind: "accessesData",
+				from: argument.id,
+				to,
+				expression: argument.valueExpression,
+			});
+		}
+	}
+	for (const input of model.expectedInputs) {
+		pushNode({
+			id: input.id,
+			kind: "expectedInput",
+			path: input.path,
+			name: input.name,
+			required: input.required,
+			evidenceIds: input.evidenceIds,
+		});
+		pushEdge({
+			id: `edge:expectsInput:${fileId(input.path)}->${input.id}`,
+			kind: "expectsInput",
+			from: fileId(input.path),
+			to: input.id,
+		});
+	}
+	for (const capability of model.capabilities) {
+		pushNode({
+			id: capability.id,
+			kind: "capability",
+			capability: capability.capability,
+			confidence: capability.confidence,
+			evidenceIds: capability.evidenceIds,
+		});
+		pushEdge({
+			id: `edge:hasCapability:${fileId(capability.path)}->${capability.id}`,
+			kind: "hasCapability",
+			from: fileId(capability.path),
+			to: capability.id,
+		});
+	}
+	for (const classification of model.classifications) {
+		pushNode({
+			id: classification.id,
+			kind: "classification",
+			label: classification.label,
+			confidence: classification.confidence,
+			evidenceIds: classification.evidenceIds,
+			uncertainty: classification.uncertainty,
+		});
+		pushEdge({
+			id: `edge:classifiedAs:${fileId(classification.path)}->${classification.id}`,
+			kind: "classifiedAs",
+			from: fileId(classification.path),
+			to: classification.id,
 		});
 	}
 	for (const reference of model.references) {
@@ -161,13 +449,181 @@ export function themeGraphFromModel(
 		}
 	}
 
+	const sortedNodes = nodes.sort((a, b) => a.id.localeCompare(b.id));
+	const sortedEdges = edges.sort((a, b) => a.id.localeCompare(b.id));
 	return {
 		version: 1,
 		root: model.root,
-		nodes: nodes.sort((a, b) => a.id.localeCompare(b.id)),
-		edges: edges.sort((a, b) => a.id.localeCompare(b.id)),
+		nodes: sortedNodes,
+		edges: sortedEdges,
+		evidence: model.evidence,
+		impact: impactSummary(model),
+		views: graphViews(sortedNodes, sortedEdges),
 		issues: model.issues,
 	};
+}
+
+function graphViews(
+	nodes: SemanticThemeGraphNode[],
+	edges: SemanticThemeGraphEdge[],
+): ThemeGraphViews {
+	const view = (
+		nodeKinds: Set<SemanticThemeGraphNode["kind"]>,
+		edgeKinds: Set<SemanticThemeGraphEdge["kind"]>,
+	) => ({
+		nodeIds: nodes
+			.filter((node) => nodeKinds.has(node.kind))
+			.map((node) => node.id)
+			.sort((a, b) => a.localeCompare(b)),
+		edgeIds: edges
+			.filter((edge) => edgeKinds.has(edge.kind))
+			.map((edge) => edge.id)
+			.sort((a, b) => a.localeCompare(b)),
+	});
+	return {
+		themeStructure: view(
+			new Set([
+				"file",
+				"template",
+				"section",
+				"sectionInstance",
+				"snippet",
+				"component",
+				"asset",
+				"layout",
+			]),
+			new Set([
+				"declares",
+				"renders",
+				"imports",
+				"referencesAsset",
+				"templateContainsSection",
+				"templateContainsSectionInstance",
+				"instanceOf",
+			]),
+		),
+		shopifyData: view(
+			new Set(["file", "shopifyObject", "shopifyProperty"]),
+			new Set(["accessesData", "declares"]),
+		),
+		storefrontArchitecture: view(
+			new Set([
+				"page",
+				"template",
+				"sectionInstance",
+				"section",
+				"snippet",
+				"capability",
+				"classification",
+			]),
+			new Set([
+				"pageUsesTemplate",
+				"templateContainsSectionInstance",
+				"instanceOf",
+				"renders",
+				"hasCapability",
+				"classifiedAs",
+			]),
+		),
+		configuration: view(
+			new Set([
+				"file",
+				"schema",
+				"setting",
+				"block",
+				"blockSetting",
+				"locale",
+				"localeKey",
+			]),
+			new Set([
+				"definesSchema",
+				"definesSetting",
+				"definesBlock",
+				"definesBlockSetting",
+				"readsSetting",
+				"referencesLocaleKey",
+			]),
+		),
+		changeImpact: view(
+			new Set(nodes.map((node) => node.kind)),
+			new Set(edges.map((edge) => edge.kind)),
+		),
+	};
+}
+
+function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
+	const declarationPathById = new Map(
+		model.declarations.map((declaration) => [declaration.id, declaration.path]),
+	);
+	const dependencies = new Map<string, Set<string>>();
+	const dependents = new Map<string, Set<string>>();
+	const add = (from: string, to: string | undefined) => {
+		if (!to || from === to) return;
+		dependencies.set(from, dependencies.get(from) ?? new Set());
+		dependencies.get(from)?.add(to);
+		dependents.set(to, dependents.get(to) ?? new Set());
+		dependents.get(to)?.add(from);
+	};
+	for (const reference of model.references) {
+		add(
+			reference.fromPath,
+			reference.resolvedDeclarationId
+				? declarationPathById.get(reference.resolvedDeclarationId)
+				: undefined,
+		);
+	}
+	for (const instance of model.sectionInstances) {
+		add(
+			instance.templatePath,
+			instance.resolvedDeclarationId
+				? declarationPathById.get(instance.resolvedDeclarationId)
+				: undefined,
+		);
+	}
+	const affectedPages = new Map<string, Set<string>>();
+	for (const page of model.pages) {
+		const visited = new Set<string>();
+		const stack = [page.path];
+		while (stack.length > 0) {
+			const path = stack.pop();
+			if (!path || visited.has(path)) continue;
+			visited.add(path);
+			affectedPages.set(path, affectedPages.get(path) ?? new Set());
+			affectedPages.get(path)?.add(page.path);
+			for (const dependency of dependencies.get(path) ?? [])
+				stack.push(dependency);
+		}
+	}
+	const declaredFiles = new Set(model.files.map((file) => file.path));
+	const entryFiles = new Set([
+		...model.pages.map((page) => page.path),
+		...model.declarations
+			.filter(
+				(declaration) =>
+					declaration.kind === "layout" || declaration.kind === "locale",
+			)
+			.map((declaration) => declaration.path),
+	]);
+	const referencedFiles = new Set([...dependents.keys(), ...entryFiles]);
+	return {
+		dependencies: sortedRecord(dependencies),
+		dependents: sortedRecord(dependents),
+		affectedPages: sortedRecord(affectedPages),
+		unusedFiles: [...declaredFiles]
+			.filter((path) => !referencedFiles.has(path))
+			.sort((a, b) => a.localeCompare(b)),
+	};
+}
+
+function sortedRecord(map: Map<string, Set<string>>): Record<string, string[]> {
+	return Object.fromEntries(
+		[...map.entries()]
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([key, values]) => [
+				key,
+				[...values].sort((a, b) => a.localeCompare(b)),
+			]),
+	);
 }
 
 function unresolvedNodeId(reference: ThemeReference): string {

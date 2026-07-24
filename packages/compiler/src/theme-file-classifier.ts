@@ -4,6 +4,7 @@ export type ThemeFileKind =
 	| "templateJson"
 	| "templateLiquid"
 	| "layout"
+	| "locale"
 	| "asset"
 	| "settingsSchema"
 	| "settingsData"
@@ -36,6 +37,7 @@ export function classifyThemeFile(path: string): ThemeFileKind {
 	if (/^templates\/.+\.json$/.test(normalized)) return "templateJson";
 	if (/^templates\/.+\.liquid$/.test(normalized)) return "templateLiquid";
 	if (/^layout\/[^/]+\.liquid$/.test(normalized)) return "layout";
+	if (/^locales\/[^/]+\.json$/.test(normalized)) return "locale";
 	if (normalized.startsWith("assets/")) return "asset";
 	if (normalized === "config/settings_schema.json") return "settingsSchema";
 	if (normalized === "config/settings_data.json") return "settingsData";
