@@ -249,6 +249,10 @@ export type {
 } from "./theme-facts.js";
 export { shareThemeGraphRecords } from "./theme-graph-output.js";
 export {
+	ThemeGraphStore,
+	type ThemeGraphStoreDelta,
+} from "./theme-graph-store.js";
+export {
 	ThemeImpactIndex,
 	type ThemeImpactIndexDelta,
 } from "./theme-impact-index.js";

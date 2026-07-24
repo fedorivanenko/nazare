@@ -49,10 +49,8 @@ import type {
 	ThemeRenderSiteRecord,
 	ThemeSemanticModel,
 } from "./theme-facts.js";
-import {
-	shareThemeGraphRecords,
-	themeGraphFromModel,
-} from "./theme-graph-output.js";
+import { themeGraphFromModel } from "./theme-graph-output.js";
+import { ThemeGraphStore } from "./theme-graph-store.js";
 import { ThemeImpactIndex } from "./theme-impact-index.js";
 import {
 	createThemeInstancePass,
@@ -185,6 +183,7 @@ export class ThemeWorkspaceSession {
 	private metafieldIndex: ThemeMetafieldIndex;
 	private impactIndex: ThemeImpactIndex;
 	private graph: InspectNazareThemeResult;
+	private graphStore: ThemeGraphStore;
 	private externalFingerprint: string;
 	private revision = 0;
 
@@ -227,6 +226,7 @@ export class ThemeWorkspaceSession {
 		this.metafieldIndex = new ThemeMetafieldIndex(model);
 		const indexedGraph = graphWithIndexedImpact(this.semanticStore.getModel());
 		this.graph = indexedGraph.graph;
+		this.graphStore = new ThemeGraphStore(this.graph);
 		this.impactIndex = indexedGraph.index;
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
@@ -348,13 +348,13 @@ export class ThemeWorkspaceSession {
 		const semanticUpdate = transaction.update;
 		const nextResolverIndex = new ThemeResolverIndex(semanticUpdate.model);
 		const nextMetafieldIndex = new ThemeMetafieldIndex(semanticUpdate.model);
-		const nextGraph = shareThemeGraphRecords(
-			this.graph,
-			graphWithoutImpact(semanticUpdate.model),
-		);
+		const nextGraphStore = this.graphStore.fork();
+		nextGraphStore.applyGraph(graphWithoutImpact(semanticUpdate.model));
+		const nextGraph = nextGraphStore.getGraph();
 		const nextImpactIndex = this.impactIndex.fork();
 		nextImpactIndex.applyGraph(nextGraph);
 		nextGraph.impact = nextImpactIndex.toSummary();
+		nextGraphStore.applyGraph(nextGraph);
 		const metafieldDefinitionIds = new Set([
 			...this.semanticStore
 				.getModel()
@@ -384,6 +384,7 @@ export class ThemeWorkspaceSession {
 		this.resolverIndex = nextResolverIndex;
 		this.metafieldIndex = nextMetafieldIndex;
 		this.graph = nextGraph;
+		this.graphStore = nextGraphStore;
 		this.impactIndex = nextImpactIndex;
 		this.revision += 1;
 		return diffGraphs(

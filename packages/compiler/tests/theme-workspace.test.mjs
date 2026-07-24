@@ -12,6 +12,7 @@ import {
 	ThemeBuildSession,
 	ThemeFactIndex,
 	ThemeFactStore,
+	ThemeGraphStore,
 	ThemeImpactIndex,
 	ThemeMetafieldIndex,
 	ThemeResolverIndex,
@@ -165,6 +166,25 @@ test("graph projection shares unchanged nodes and edges", () => {
 		(node) => node.id === "file:snippets/card.liquid",
 	);
 	assert.equal(sharedFile, firstFile);
+});
+
+test("graph store applies stable-ID records transactionally", () => {
+	const first = inspectNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const second = inspectNazareTheme([
+		{ path: "snippets/card.liquid", contents: "Card" },
+		{ path: "snippets/tile.liquid", contents: "Tile" },
+	]);
+	const committed = new ThemeGraphStore(first);
+	const cardId = "file:snippets/card.liquid";
+	const card = committed.getNode(cardId);
+	const staged = committed.fork();
+	const delta = staged.applyGraph(second);
+	assert.strictEqual(staged.getNode(cardId), card);
+	assert.equal(committed.getNode("file:snippets/tile.liquid"), undefined);
+	assert.ok(delta.addedNodeIds.includes("file:snippets/tile.liquid"));
+	assert.deepEqual(staged.getGraph(), second);
 });
 
 test("semantic transaction shares unchanged identified records", () => {
