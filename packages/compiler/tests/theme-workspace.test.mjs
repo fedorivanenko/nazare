@@ -53,7 +53,8 @@ test("metafield index serves reads by definition", () => {
 		[
 			{
 				path: "snippets/card.liquid",
-				contents: "{{ product.metafields.custom.subtitle }}",
+				contents:
+					"{{ product.metafields.custom.subtitle }} {{ product.metafields.custom.missing }}",
 			},
 		],
 		{
@@ -66,6 +67,7 @@ test("metafield index serves reads by definition", () => {
 						key: "subtitle",
 						type: "single_line_text_field",
 					},
+					{ owner: "product", namespace: "custom", key: "unused" },
 				]),
 			},
 		},
@@ -77,6 +79,11 @@ test("metafield index serves reads by definition", () => {
 	assert.deepEqual(index.getAffectedSources(definition.id), [
 		"snippets/card.liquid",
 	]);
+	assert.deepEqual(index.getConsumedDefinitionIds(), [definition.id]);
+	assert.deepEqual(index.getUnconsumedDefinitionIds(), [
+		"metafield:product:custom:unused",
+	]);
+	assert.equal(index.getBrokenReadIds().length, 1);
 });
 
 test("resolver index serves declaration dependents", () => {
