@@ -799,6 +799,19 @@ test("ThemeProgram periodically validates canonical indexes and cold rebuilds", 
 	assert.deepEqual(program.getGraph(), inspectNazareTheme([updated]));
 });
 
+test("ThemeProgram warm updates skip canonical semantic construction", () => {
+	const program = new ThemeProgram([
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const coldMemoModel = program.memo.model;
+	program.updateFile({
+		path: "snippets/card.liquid",
+		contents: "Updated card",
+	});
+	assert.strictEqual(program.memo.model, coldMemoModel);
+	assert.notStrictEqual(program.getModel(), coldMemoModel);
+});
+
 test("ThemeProgram owns committed incremental workspace state", () => {
 	const program = new ThemeProgram([
 		{ path: "snippets/card.liquid", contents: "Card" },
