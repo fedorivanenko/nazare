@@ -102,14 +102,15 @@ test("buildTheme places an installed plain-Liquid component by its manifest kind
 			}),
 			"nazare/c-button/c-button.liquid": "<a>{{ label }}</a>\n",
 			"nazare/c-button/c-button.css": ".nazare-button{}\n",
-			"nazare/s-hero/nazare.json": JSON.stringify({
+			"nazare/components/s-hero/nazare.json": JSON.stringify({
 				id: "@nazare/s-hero",
 				version: "0.1.0",
 				kind: "section",
 				entry: "s-hero.liquid",
 				files: ["s-hero.liquid"],
 			}),
-			"nazare/s-hero/s-hero.liquid": "<section>Hero</section>\n",
+			// Nested one level deeper: a workspace may group installs in a folder.
+			"nazare/components/s-hero/s-hero.liquid": "<section>Hero</section>\n",
 		},
 		async (projectRoot) => {
 			const result = await build(projectRoot);

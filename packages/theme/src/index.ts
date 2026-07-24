@@ -763,9 +763,10 @@ function readPlainComponentFolders(
 	const folders = new Map<string, PlainComponentFolder>();
 	for (const file of sourceFiles) {
 		const sourceRelative = relativeSourcePath(sourceRoot, file);
-		const segments = sourceRelative.split("/");
-		if (segments.length !== 2 || segments[1] !== COMPONENT_MANIFEST) continue;
-		const folder = segments[0];
+		// Any depth: a workspace may group installs under src/components/<name>/.
+		const suffix = `/${COMPONENT_MANIFEST}`;
+		if (!sourceRelative.endsWith(suffix)) continue;
+		const folder = sourceRelative.slice(0, -suffix.length);
 		if (!folder) continue;
 		const raw = readProjectFile(file);
 		if (raw === undefined) continue;
@@ -798,11 +799,12 @@ function plainComponentOutputPath(
 	sourceRelative: string,
 	folders: Map<string, PlainComponentFolder>,
 ): string | undefined {
-	const segments = sourceRelative.split("/");
-	if (segments.length !== 2) return undefined;
-	const [folder, name] = segments;
-	if (!folder || !name) return undefined;
+	const separator = sourceRelative.lastIndexOf("/");
+	if (separator <= 0) return undefined;
+	const folder = sourceRelative.slice(0, separator);
+	const name = sourceRelative.slice(separator + 1);
 	const component = folders.get(folder);
+	// Only files the manifest declares, and only at the component root.
 	if (!component?.files.has(name)) return undefined;
 	if (isPlainLiquidThemeFile(name)) {
 		const directory =
