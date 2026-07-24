@@ -11,11 +11,36 @@ import {
 	createThemeResolutionPass,
 	fixedPointThemePass,
 	incrementalThemePass,
+	ThemeDiagnosticStore,
 	ThemeFactStore,
 	ThemePassConvergenceError,
 	ThemePassScheduler,
 	ThemeRenderDependencyIndex,
 } from "../dist/index.js";
+
+test("diagnostic store replaces only one pass and key owner", () => {
+	const original = new ThemeDiagnosticStore();
+	original.replace({ pass: "resolution", owner: "reference:a" }, [
+		{ severity: "warning", code: "A", message: "a", phase: "resolve" },
+	]);
+	original.replace({ pass: "resolution", owner: "reference:b" }, [
+		{ severity: "warning", code: "B", message: "b", phase: "resolve" },
+	]);
+	const staged = original.fork();
+	staged.replace({ pass: "resolution", owner: "reference:a" }, []);
+	assert.deepEqual(
+		original.getAll().map((diagnostic) => diagnostic.code),
+		["A", "B"],
+	);
+	assert.deepEqual(
+		staged.getAll().map((diagnostic) => diagnostic.code),
+		["B"],
+	);
+	assert.throws(
+		() => staged.replace({ pass: "", owner: "reference:c" }, []),
+		/pass owner is required/,
+	);
+});
 
 test("theme pass scheduler propagates typed changes forward deterministically", () => {
 	const scheduler = new ThemePassScheduler([
@@ -291,6 +316,7 @@ test("resolution pass recomputes only references under changed target keys", () 
 			["snippet:tile", new Map([[tileReference.id, tileReference]])],
 		]),
 		resolvedReferencesById: new Map([[tileReference.id, tileReference]]),
+		diagnosticStore: new ThemeDiagnosticStore(),
 	};
 	const pass = createThemeResolutionPass();
 	const keys = pass.collectChanges(
