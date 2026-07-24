@@ -276,3 +276,23 @@ test("plain Liquid settings scanner handles range endpoints", () => {
 		),
 	);
 });
+
+test("plain Liquid settings scanner reads through filters and logical expressions", () => {
+	const source = `{% assign heading = section.settings.title | default: "Hi" | upcase %}
+{% if section.settings.title != blank and section.settings.subtitle != blank %}{{ heading }}{% endif %}
+{% schema %}
+{"name":"Filters","settings":[{"type":"text","id":"title"},{"type":"text","id":"subtitle"}]}
+{% endschema %}`;
+	const result = compilePlainLiquid(source, "sections/filters.liquid");
+
+	assert.equal(result.canEmit, true);
+	assert.deepEqual(
+		[...new Set(result.ast.settingsReads.map((read) => read.name))].sort(),
+		["subtitle", "title"],
+	);
+	assert.ok(
+		!result.issues.some(
+			(issue) => issue.code === "LIQUID_UNSCANNED_SETTINGS_EXPRESSION",
+		),
+	);
+});

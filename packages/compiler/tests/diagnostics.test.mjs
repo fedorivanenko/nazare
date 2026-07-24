@@ -86,6 +86,12 @@ const cases = [
 		},
 	},
 	{
+		name: "a string literal may contain the other quote character",
+		files: { "link.nz.liquid": LINK },
+		src: `{% import Link from "./link.nz.liquid" %}\n{% render Link { href: "https://x.dev", text: "data-x='1'" } %}`,
+		clean: true,
+	},
+	{
 		name: "special props accept valid string literals",
 		files: { "special.nz.liquid": SPECIAL_LITERALS },
 		src: `{% import Special from "./special.nz.liquid" %}\n{% render Special { href: "https://x.dev", color: "oklch(60% 0.2 30)", handle: "product-handle", text: "Go" } %}`,

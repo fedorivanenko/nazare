@@ -123,8 +123,9 @@ function visitLiquidExpression(
 			return;
 		case "NamedArgument":
 		case "Comparison":
-		case "Condition":
-		case "Filter":
+		case "LogicalExpression":
+		case "BooleanExpression":
+		case "LiquidFilter":
 			visitKnownChildren(value, source, file, diagnostics, visitLookup);
 			return;
 		case "String":
