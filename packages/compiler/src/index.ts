@@ -191,6 +191,11 @@ export {
 	type ThemeDeclarationPassRecord,
 	type ThemeDeclarationPassResult,
 } from "./theme-declaration-pass.js";
+export {
+	type OwnedThemeDiagnostic,
+	type ThemeDiagnosticOwner,
+	ThemeDiagnosticStore,
+} from "./theme-diagnostic-store.js";
 export { matchesThemeGlob } from "./theme-exclusions.js";
 export {
 	deriveThemeExpectedInputs,

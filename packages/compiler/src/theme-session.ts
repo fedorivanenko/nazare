@@ -28,6 +28,7 @@ import {
 	type ThemeDeclarationPassRecord,
 	type ThemeDeclarationPassResult,
 } from "./theme-declaration-pass.js";
+import { ThemeDiagnosticStore } from "./theme-diagnostic-store.js";
 import { deriveThemeExpectedInputs } from "./theme-expected-input-pass.js";
 import { ThemeFactIndex } from "./theme-fact-index.js";
 import { ThemeFactStore, themeFactSourcePath } from "./theme-fact-store.js";
@@ -179,6 +180,7 @@ export class ThemeWorkspaceSession {
 		string,
 		ThemeClassificationRecord[]
 	>();
+	private diagnosticStore = new ThemeDiagnosticStore();
 	private semanticStore: ThemeSemanticStore;
 	private resolverIndex: ThemeResolverIndex;
 	private metafieldIndex: ThemeMetafieldIndex;
@@ -422,6 +424,7 @@ export class ThemeWorkspaceSession {
 			capabilitySignals: this.capabilitySignalsBySource,
 			capabilities: this.capabilitiesBySource,
 			classifications: this.classificationsBySource,
+			diagnostics: this.diagnosticStore,
 		};
 	}
 
@@ -441,6 +444,7 @@ export class ThemeWorkspaceSession {
 		this.capabilitySignalsBySource = state.capabilitySignals;
 		this.capabilitiesBySource = state.capabilities;
 		this.classificationsBySource = state.classifications;
+		this.diagnosticStore = state.diagnostics;
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
@@ -497,6 +501,7 @@ type ThemeCollectionState = {
 	capabilitySignals: Map<string, ThemeCapabilitySignalRecord[]>;
 	capabilities: Map<string, ThemeCapabilityRecord[]>;
 	classifications: Map<string, ThemeClassificationRecord[]>;
+	diagnostics: ThemeDiagnosticStore;
 };
 
 function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
@@ -570,6 +575,7 @@ function runCollectionPasses(
 		referencesById: state.referencesById,
 		referencesByTargetKey: state.referencesByTargetKey,
 		resolvedReferencesById: state.resolvedReferencesById,
+		diagnosticStore: state.diagnostics,
 		schemaSettingResultsBySource: state.schemaSettings,
 		instanceResultsBySource: state.instances,
 		instanceIds: {
@@ -674,6 +680,7 @@ function cloneCollectionState(
 		capabilitySignals: cloneRecordsBySource(state.capabilitySignals),
 		capabilities: cloneRecordsBySource(state.capabilities),
 		classifications: cloneRecordsBySource(state.classifications),
+		diagnostics: state.diagnostics.fork(),
 	};
 }
 
