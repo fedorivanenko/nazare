@@ -29,6 +29,7 @@ import {
 	type ThemeDeclarationPassResult,
 } from "./theme-declaration-pass.js";
 import { ThemeDiagnosticStore } from "./theme-diagnostic-store.js";
+import { deriveThemeEvidence } from "./theme-evidence-pass.js";
 import { deriveThemeExpectedInputs } from "./theme-expected-input-pass.js";
 import { ThemeFactIndex } from "./theme-fact-index.js";
 import { ThemeFactStore, themeFactSourcePath } from "./theme-fact-store.js";
@@ -364,7 +365,7 @@ export class ThemeProgram {
 				this.options.metafields,
 			),
 		);
-		const collectedModel = modelWithCollectedRecords(
+		const collectedBaseModel = modelWithCollectedRecords(
 			analysis.ir,
 			collection.declarations,
 			collection.resolvedReferencesById,
@@ -378,6 +379,10 @@ export class ThemeProgram {
 			collection.capabilities,
 			collection.classifications,
 		);
+		const collectedModel = {
+			...collectedBaseModel,
+			evidence: deriveThemeEvidence(collectedBaseModel, nextFactStore.all()),
+		};
 		const transaction = this.semanticStore.beginUpdate(collectedModel);
 		const semanticUpdate = transaction.update;
 		const nextMetafieldIndex = new ThemeMetafieldIndex(semanticUpdate.model);

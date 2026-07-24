@@ -10,32 +10,22 @@ import {
 	type ThemeDeclarationPassContext,
 	type ThemeDeclarationPassRecord,
 } from "./theme-declaration-pass.js";
+import { deriveThemeEvidenceRecords } from "./theme-evidence-pass.js";
 import {
 	deriveThemeExpectedInputs,
-	docParamEvidenceId,
 	themeDocContractIssues,
 } from "./theme-expected-input-pass.js";
 import { ThemeFactStore } from "./theme-fact-store.js";
 import type {
-	ThemeBlockInstanceRecord,
-	ThemeCapabilitySignalRecord,
-	ThemeDataAccessRecord,
 	ThemeDeclaration,
-	ThemeEvidenceRecord,
 	ThemeExpectedInputRecord,
 	ThemeFact,
 	ThemeFileRecord,
-	ThemeLocaleReferenceRecord,
 	ThemePageRecord,
 	ThemeReference,
 	ThemeRenderArgumentRecord,
 	ThemeRenderSiteRecord,
-	ThemeSchemaRecord,
-	ThemeSectionInstanceRecord,
 	ThemeSemanticModel,
-	ThemeSettingReadRecord,
-	ThemeSettingRecord,
-	ThemeVariableReadRecord,
 } from "./theme-facts.js";
 import { inferCapabilities, inferClassifications } from "./theme-inference.js";
 import { collectThemeInstances } from "./theme-instance-pass.js";
@@ -224,7 +214,7 @@ export function buildThemeSemanticModel(
 	modelIssues.push(...metafields.issues);
 	const capabilities = inferCapabilities(dataAccesses, capabilitySignals);
 	const classifications = inferClassifications(capabilities, dataAccesses);
-	const evidence = evidenceRecords({
+	const evidence = deriveThemeEvidenceRecords({
 		references,
 		sectionInstances,
 		blockInstances,
@@ -461,109 +451,6 @@ function pageRecords(declarations: ThemeDeclaration[]): ThemePageRecord[] {
 function pageTypeFromTemplateName(name: string): string {
 	const [pageType] = name.split(".");
 	return pageType || "unknown";
-}
-
-function evidenceRecords(records: {
-	references: ThemeReference[];
-	sectionInstances: ThemeSectionInstanceRecord[];
-	blockInstances: ThemeBlockInstanceRecord[];
-	localeReferences: ThemeLocaleReferenceRecord[];
-	schemas: ThemeSchemaRecord[];
-	settings: ThemeSettingRecord[];
-	settingReads: ThemeSettingReadRecord[];
-	dataAccesses: ThemeDataAccessRecord[];
-	variableReads: ThemeVariableReadRecord[];
-	renderArguments: ThemeRenderArgumentRecord[];
-	capabilitySignals: ThemeCapabilitySignalRecord[];
-	docParams: Extract<ThemeFact, { kind: "declaresDocParam" }>[];
-}): ThemeEvidenceRecord[] {
-	return [
-		...records.docParams.map((param) => ({
-			id: docParamEvidenceId(param.path, param.name),
-			kind: "docParam" as const,
-			file: param.path,
-			span: param.span,
-			extractor: "theme-source-facts",
-		})),
-		...records.sectionInstances.map((instance) => ({
-			id: instance.id,
-			kind: "templateConfig" as const,
-			file: instance.templatePath,
-			extractor: "theme-json-facts",
-		})),
-		...records.blockInstances.map((instance) => ({
-			id: instance.id,
-			kind: "templateConfig" as const,
-			file: instance.ownerPath,
-			extractor: "theme-json-facts",
-		})),
-		...records.references.map((reference) => ({
-			id: reference.id,
-			kind:
-				reference.kind === "rendersSnippet"
-					? ("renderCall" as const)
-					: ("dependency" as const),
-			file: reference.fromPath,
-			span: reference.span,
-			extractor: "theme-liquid-dependencies",
-		})),
-		...records.localeReferences.map((reference) => ({
-			id: reference.id,
-			kind: "dependency" as const,
-			file: reference.fromPath,
-			span: reference.span,
-			extractor: "theme-source-facts",
-		})),
-		...records.schemas.map((schema) => ({
-			id: schema.id,
-			kind: "schema" as const,
-			file: schema.path,
-			span: schema.span,
-			extractor: "theme-schema",
-		})),
-		...records.settings.map((setting) => ({
-			id: setting.id,
-			kind: "schemaSetting" as const,
-			file: setting.path,
-			span: setting.span,
-			extractor: "theme-schema",
-		})),
-		...records.settingReads.map((read) => ({
-			id: read.id,
-			kind: "settingRead" as const,
-			file: read.fromPath,
-			span: read.span,
-			extractor: "theme-source-facts",
-		})),
-		...records.dataAccesses.map((access) => ({
-			id: access.id,
-			kind: "dataRead" as const,
-			file: access.fromPath,
-			span: access.span,
-			extractor: "theme-source-facts",
-		})),
-		...records.variableReads.map((read) => ({
-			id: read.id,
-			kind: "dataRead" as const,
-			file: read.fromPath,
-			span: read.span,
-			extractor: "theme-source-facts",
-		})),
-		...records.renderArguments.map((argument) => ({
-			id: argument.id,
-			kind: "renderArgument" as const,
-			file: argument.fromPath,
-			span: argument.span,
-			extractor: "theme-source-facts",
-		})),
-		...records.capabilitySignals.map((signal) => ({
-			id: signal.id,
-			kind: "dataRead" as const,
-			file: signal.path,
-			span: signal.span,
-			extractor: "theme-source-facts",
-		})),
-	];
 }
 
 /**

@@ -196,6 +196,11 @@ export {
 	type ThemeDiagnosticOwner,
 	ThemeDiagnosticStore,
 } from "./theme-diagnostic-store.js";
+export {
+	deriveThemeEvidence,
+	deriveThemeEvidenceRecords,
+	type ThemeEvidenceInputs,
+} from "./theme-evidence-pass.js";
 export { matchesThemeGlob } from "./theme-exclusions.js";
 export {
 	deriveThemeExpectedInputs,
