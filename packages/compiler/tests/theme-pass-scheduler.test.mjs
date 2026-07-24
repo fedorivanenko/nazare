@@ -3,6 +3,7 @@ import test from "node:test";
 import {
 	createThemeDataFlowFixedPointPass,
 	createThemeDeclarationPass,
+	createThemeMetafieldPass,
 	createThemeReferencePass,
 	createThemeResolutionPass,
 	fixedPointThemePass,
@@ -331,6 +332,58 @@ test("theme pass scheduler bounds fixed-point work", () => {
 			error instanceof ThemePassConvergenceError &&
 			error.diagnostic.budget === "work" &&
 			error.diagnostic.observed === 3,
+	);
+});
+
+test("metafield pass owns definition and Liquid read creation", () => {
+	const scheduler = new ThemePassScheduler([
+		incrementalThemePass(createThemeMetafieldPass()),
+	]);
+	const context = {
+		metafieldSnapshot: {
+			contents: JSON.stringify({
+				definitions: [
+					{ owner: "product", namespace: "custom", key: "subtitle" },
+				],
+			}),
+		},
+		dataAccessesBySource: new Map([
+			[
+				"sections/main.liquid",
+				[
+					{
+						id: "access:subtitle",
+						fromPath: "sections/main.liquid",
+						object: "product",
+						propertyPath: "metafields.custom.subtitle",
+						expression: "product.metafields.custom.subtitle",
+						origin: "liquid",
+					},
+				],
+			],
+		]),
+		metafieldResult: {
+			current: {
+				definitions: [],
+				reads: [],
+				issues: [],
+				state: "unknown",
+				path: ".shopify/metafields.json",
+			},
+		},
+	};
+	const result = scheduler.execute(
+		[{ kind: "dataFlowChanged", sourcePath: "sections/main.liquid" }],
+		context,
+	);
+	assert.equal(context.metafieldResult.current.definitions.length, 1);
+	assert.equal(
+		context.metafieldResult.current.reads[0].definitionId,
+		"metafield:product:custom:subtitle",
+	);
+	assert.deepEqual(
+		result.changes.filter((change) => change.kind === "metafieldReadChanged"),
+		[{ kind: "metafieldReadChanged", id: "metafield-read:access:subtitle" }],
 	);
 });
 
