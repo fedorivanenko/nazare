@@ -126,6 +126,16 @@ import {
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
 import { analyzeNazareTheme, inspectNazareTheme } from "./theme-workspace.js";
 
+export type ThemeUpdateTelemetry = {
+	filesParsed: number;
+	passKeysProcessed: number;
+	semanticRecordsReplaced: number;
+	graphRecordsReplaced: number;
+	outputsEmitted: number;
+	elapsedMs: number;
+	peakMemoryBytes: number;
+};
+
 export type ThemeGraphUpdate = {
 	revision: number;
 	graph: InspectNazareThemeResult;
@@ -139,6 +149,7 @@ export type ThemeGraphUpdate = {
 	addedEdgeIds: string[];
 	removedEdgeIds: string[];
 	changedEdgeIds: string[];
+	telemetry: ThemeUpdateTelemetry;
 };
 
 export class ThemeProgram {
@@ -334,6 +345,8 @@ export class ThemeProgram {
 		changedPaths: string[],
 		factChangedPaths: string[],
 	): ThemeGraphUpdate {
+		const startedAt = telemetryNow();
+		const memoryAtStart = telemetryMemory();
 		const previous = this.graph;
 		const analysis = analyzeNazareTheme(this.files(), this.options);
 		const nextFactStore = new ThemeFactStore(this.factStore.all());
@@ -478,6 +491,14 @@ export class ThemeProgram {
 				),
 				...metafieldAffectedPages,
 			],
+			{
+				filesParsed: factChangedPaths.length,
+				passKeysProcessed: collection.processedPassKeys,
+				semanticRecordsReplaced: changedSemanticIds.length,
+				outputsEmitted: 0,
+				elapsedMs: telemetryNow() - startedAt,
+				peakMemoryBytes: Math.max(memoryAtStart, telemetryMemory()),
+			},
 		);
 	}
 
@@ -499,6 +520,7 @@ export class ThemeProgram {
 			capabilities: this.capabilitiesBySource,
 			classifications: this.classificationsBySource,
 			diagnostics: this.diagnosticStore,
+			processedPassKeys: 0,
 		};
 	}
 
@@ -579,6 +601,7 @@ type ThemeCollectionState = {
 	capabilities: Map<string, ThemeCapabilityRecord[]>;
 	classifications: Map<string, ThemeClassificationRecord[]>;
 	diagnostics: ThemeDiagnosticStore;
+	processedPassKeys: number;
 };
 
 function createCollectionScheduler(): ThemePassScheduler<ThemeCollectionContext> {
@@ -730,13 +753,14 @@ function runCollectionPasses(
 		},
 		id: referenceId,
 	};
-	scheduler.execute(
+	const execution = scheduler.execute(
 		[...new Set(changedPaths)]
 			.sort((a, b) => a.localeCompare(b))
 			.map((path): PassChange => ({ kind: "factsChanged", path }))
 			.concat(additionalChanges),
 		context,
 	);
+	state.processedPassKeys = execution.trace.length;
 	return state;
 }
 
@@ -762,6 +786,7 @@ function cloneCollectionState(
 		capabilities: cloneRecordsBySource(state.capabilities),
 		classifications: cloneRecordsBySource(state.classifications),
 		diagnostics: state.diagnostics.fork(),
+		processedPassKeys: 0,
 	};
 }
 
@@ -1155,12 +1180,20 @@ function diffGraphs(
 	indexedInvalidation: string[],
 	changedSemanticRecordIds: string[],
 	indexedAffectedPages: string[],
+	telemetry: Omit<ThemeUpdateTelemetry, "graphRecordsReplaced"> = {
+		filesParsed: 0,
+		passKeysProcessed: 0,
+		semanticRecordsReplaced: 0,
+		outputsEmitted: 0,
+		elapsedMs: 0,
+		peakMemoryBytes: telemetryMemory(),
+	},
 ): ThemeGraphUpdate {
 	const previousNodes = new Map(previous.nodes.map((node) => [node.id, node]));
 	const currentNodes = new Map(current.nodes.map((node) => [node.id, node]));
 	const previousEdges = new Map(previous.edges.map((edge) => [edge.id, edge]));
 	const currentEdges = new Map(current.edges.map((edge) => [edge.id, edge]));
-	return {
+	const update: ThemeGraphUpdate = {
 		revision,
 		graph: current,
 		changedPaths: [...new Set(changedPaths)].sort(),
@@ -1183,7 +1216,27 @@ function diffGraphs(
 		addedEdgeIds: addedIds(previousEdges, currentEdges),
 		removedEdgeIds: addedIds(currentEdges, previousEdges),
 		changedEdgeIds: changedIds(previousEdges, currentEdges),
+		telemetry: { ...telemetry, graphRecordsReplaced: 0 },
 	};
+	update.telemetry.graphRecordsReplaced =
+		update.addedNodeIds.length +
+		update.removedNodeIds.length +
+		update.changedNodeIds.length +
+		update.addedEdgeIds.length +
+		update.removedEdgeIds.length +
+		update.changedEdgeIds.length;
+	return update;
+}
+
+function telemetryNow(): number {
+	return globalThis.performance?.now() ?? Date.now();
+}
+
+function telemetryMemory(): number {
+	const processLike = globalThis as typeof globalThis & {
+		process?: { memoryUsage?: () => { heapUsed: number } };
+	};
+	return processLike.process?.memoryUsage?.().heapUsed ?? 0;
 }
 
 function graphWithoutImpact(

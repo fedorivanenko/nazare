@@ -352,6 +352,7 @@ export {
 export {
 	type ThemeGraphUpdate,
 	ThemeProgram,
+	type ThemeUpdateTelemetry,
 	ThemeWorkspaceSession,
 } from "./theme-session.js";
 export {
