@@ -71,6 +71,16 @@ export function collectNazareThemeFacts(
 		snippetNameByImportAlias.get(targetName) ?? targetName;
 
 	for (const node of projected.syntax) {
+		if (node.kind === "prop-declaration") {
+			facts.push({
+				kind: "declaresInput",
+				path,
+				name: node.name,
+				required: node.required,
+				paramType: node.typeExpression,
+				span: node.span,
+			});
+		}
 		if (node.kind === "component") {
 			facts.push({
 				kind: "declaresComponent",
@@ -149,8 +159,24 @@ export function collectNazareThemeFacts(
 	// Source facts walk the component's LiquidHTML AST, which the parser built
 	// from script/style-blanked text (same offsets) — behavior code can never
 	// produce a data-read fact.
+	const frontendBindings = new Set([
+		"props",
+		...frontendResult.ast.nodes.flatMap((node) =>
+			(node.type === "NazareStyle" || node.type === "NazareScript") &&
+			node.bindingName
+				? [node.bindingName]
+				: [],
+		),
+	]);
 	facts.push(
-		...collectSourceThemeFacts(path, contents, frontendResult.ast.liquidAst),
+		...collectSourceThemeFacts(
+			path,
+			contents,
+			frontendResult.ast.liquidAst,
+		).filter(
+			(fact) =>
+				fact.kind !== "readsFreeVariable" || !frontendBindings.has(fact.name),
+		),
 	);
 	if (frontendResult.ast.schema) {
 		const schemaPath = "schema";

@@ -39,7 +39,9 @@ export function findUnsupportedModuleSyntax(
 		if (ts.isImportEqualsDeclaration(node)) record(node);
 		if (
 			ts.isCallExpression(node) &&
-			node.expression.kind === ts.SyntaxKind.ImportKeyword
+			(node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+				(ts.isIdentifier(node.expression) &&
+					node.expression.text === "require"))
 		) {
 			record(node);
 		}

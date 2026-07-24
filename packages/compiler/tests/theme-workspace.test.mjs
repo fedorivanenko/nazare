@@ -1216,7 +1216,7 @@ test("workspace propagates changed metafield definitions to affected pages", () 
 	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
 });
 
-test("metafield parser does not infer arbitrary nested objects", () => {
+test("metafield parser rejects arbitrary nested objects", () => {
 	const graph = inspectNazareTheme(
 		[
 			{
@@ -1232,8 +1232,15 @@ test("metafield parser does not infer arbitrary nested objects", () => {
 			},
 		},
 	);
+	assert.equal(graph.metafields.state, "invalid");
 	assert.equal(graph.metafields.consumedDefinitionIds.length, 0);
-	assert.equal(graph.metafields.brokenReadIds.length, 1);
+	assert.equal(graph.metafields.brokenReadIds.length, 0);
+	assert.equal(
+		graph.issues.some(
+			(issue) => issue.code === "THEME_METAFIELDS_SHAPE_INVALID",
+		),
+		true,
+	);
 });
 
 test("global metafield reads keep owner unknown", () => {
@@ -1388,6 +1395,50 @@ test("workspace strictly checks plain Liquid and component scripts before emit",
 	]);
 	assert.equal(hasIssue(scripts, "SCRIPT_TYPE_ERROR"), true);
 	assert.deepEqual(scripts.emitted.files, []);
+});
+
+test("workspace rejects malformed JavaScript and direct require calls", () => {
+	const malformed = buildNazareThemeWorkspace([
+		{
+			path: "components/malformed.nz.liquid",
+			contents:
+				'<div></div>{% script lang="js" %}export default island(({ root }) => { root.remove( ; });{% endscript %}',
+		},
+	]);
+	assert.equal(hasIssue(malformed, "SCRIPT_TYPE_ERROR"), true);
+	assert.deepEqual(malformed.emitted.files, []);
+
+	const requireCall = buildNazareThemeWorkspace([
+		{
+			path: "components/require.nz.liquid",
+			contents:
+				'<div></div>{% script lang="js" %}const helper = require("./helper.js"); export default island(() => helper());{% endscript %}',
+		},
+		{ path: "components/helper.js", contents: "export default () => {};" },
+	]);
+	assert.equal(hasIssue(requireCall, "SCRIPT_MODULE_SYNTAX_UNSUPPORTED"), true);
+	assert.deepEqual(requireCall.emitted.files, []);
+});
+
+test("workspace rejects invalid CSS instead of emitting it unchanged", () => {
+	const result = buildNazareThemeWorkspace([
+		{
+			path: "components/card.nz.liquid",
+			contents:
+				"{% stylesheet styles %}.card { color: red;{% endstylesheet %}<div>Card</div>",
+		},
+	]);
+	assert.equal(hasIssue(result, "EMIT_CSS_INVALID"), true);
+	assert.deepEqual(result.emitted.files, []);
+});
+
+test("workspace rejects conflicting output paths", () => {
+	const result = buildNazareThemeWorkspace([
+		{ path: "components/a/card.nz.liquid", contents: "<div>A</div>" },
+		{ path: "components/b/card.nz.liquid", contents: "<div>B</div>" },
+	]);
+	assert.equal(hasIssue(result, "THEME_OUTPUT_COLLISION"), true);
+	assert.deepEqual(result.emitted.files, []);
 });
 
 test("invalid script emission is an error and clean-only output is empty", () => {

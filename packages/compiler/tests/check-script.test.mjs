@@ -82,7 +82,7 @@ export default island(({ refs }) => {
 	);
 });
 
-test("check-script: js scripts are skipped", () => {
+test("check-script: js scripts receive syntax checks without type checks", () => {
 	const result = compileNazareArtifact(
 		`<div ref="root"></div>\n{% script lang="js" %}\nexport default island(({ refs }) => refs.root.whatever());\n{% endscript %}`,
 		"component.nz.liquid",

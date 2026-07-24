@@ -397,8 +397,15 @@ test("cli: build reports a conflict when two components emit the same path", asy
 			);
 			assert.notEqual(built.status, 0);
 			const output = JSON.parse(built.stdout);
-			assert.equal(output.conflicts.length, 1);
-			assert.match(output.conflicts[0], /snippets\/widget\.liquid/);
+			assert.equal(output.conflicts.length, 0);
+			assert.equal(
+				output.issues.some(
+					(issue) =>
+						issue.code === "THEME_OUTPUT_COLLISION" &&
+						/snippets\/widget\.liquid/.test(issue.message),
+				),
+				true,
+			);
 		},
 	);
 });
@@ -705,7 +712,7 @@ test("cli: inspect rejects roots whose symlink target escapes the project", asyn
 	}
 });
 
-test("cli: inspect rejects malformed nested cache records", async () => {
+test("cli: inspect rejects cache facts owned by another source", async () => {
 	await withProject({ "snippets/card.liquid": "{{ title }}" }, async (cwd) => {
 		const first = await runCli(
 			cwd,
@@ -718,7 +725,9 @@ test("cli: inspect rejects malformed nested cache records", async () => {
 		assert.equal(first.status, 0, first.stderr);
 		const cachePath = join(cwd, ".nazare-out", "inspect-cache-v2.json");
 		const cache = JSON.parse(readFileSync(cachePath, "utf8"));
-		cache.entries["snippets/card.liquid"].facts = [null];
+		cache.entries["snippets/card.liquid"].facts = [
+			{ kind: "file", path: "snippets/other.liquid", fileKind: "snippet" },
+		];
 		writeFileSync(cachePath, JSON.stringify(cache));
 
 		const second = await runCli(

@@ -115,7 +115,11 @@ export type SemanticThemeGraphNode =
 			provenance: "declared" | "inferred";
 			inferredRequirement: "required" | "optional" | "unknown";
 			declaredType?: string;
-			origin: "freeVariable" | "ambientShopifyContext" | "docParam";
+			origin:
+				| "freeVariable"
+				| "ambientShopifyContext"
+				| "docParam"
+				| "nazareProp";
 			propertyPaths: string[];
 			evidenceIds: string[];
 	  }

@@ -844,6 +844,19 @@ export function emitImplicitRootElement(
 	};
 }
 
+export function emitInvalidCss(
+	componentName: string,
+	detail: string,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "EMIT_CSS_INVALID",
+		message: `Invalid CSS in ${componentName}: ${detail}`,
+		span,
+	};
+}
+
 export function emitScriptWithoutRoot(componentName: string): Diagnostic {
 	return {
 		severity: "error",

@@ -45,7 +45,7 @@ test("buildTheme copies Shopify theme folders", async () => {
 	await withProject(
 		{
 			"nazare/layout/theme.liquid": "{{ content_for_layout }}\n",
-			"nazare/templates/product.json": '{"sections":{}}',
+			"nazare/templates/product.json": '{"sections":{},"order":[]}',
 			"nazare/sections/hero.liquid": "<section>Hero</section>\n",
 			"nazare/snippets/price.liquid": "<span>{{ price }}</span>\n",
 			"nazare/assets/theme.css": "body{}\n",
@@ -61,7 +61,7 @@ test("buildTheme copies Shopify theme folders", async () => {
 			);
 			assert.equal(
 				readOutput(projectRoot, "templates/product.json"),
-				'{"sections":{}}',
+				'{"sections":{},"order":[]}',
 			);
 		},
 	);
@@ -438,7 +438,7 @@ test("buildTheme seeds merchant data on a first build", async () => {
 		{
 			"nazare/config/settings_data.json":
 				'{"current":{"colors_accent":"#000"}}',
-			"nazare/templates/index.json": '{"sections":{}}',
+			"nazare/templates/index.json": '{"sections":{},"order":[]}',
 		},
 		async (projectRoot) => {
 			const result = await build(projectRoot);
@@ -556,7 +556,7 @@ test("buildTheme preserves target settings_data over the source seed on rebuild"
 
 test("buildTheme keeps a merchant-added template that the source never had", async () => {
 	await withProject(
-		{ "nazare/templates/index.json": '{"sections":{}}' },
+		{ "nazare/templates/index.json": '{"sections":{},"order":[]}' },
 		async (projectRoot) => {
 			await build(projectRoot);
 			// A merchant creates a new template variant in the admin.
@@ -576,7 +576,10 @@ test("buildTheme keeps a merchant-added template that the source never had", asy
 
 test("buildTheme preserves section-group JSON but regenerates section code", async () => {
 	await withProject(
-		{ "nazare/sections/header-group.json": '{"type":"header","sections":{}}' },
+		{
+			"nazare/sections/header-group.json":
+				'{"type":"header","sections":{},"order":[]}',
+		},
 		async (projectRoot) => {
 			await build(projectRoot);
 			writeFileSync(

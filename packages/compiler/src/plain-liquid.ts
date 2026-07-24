@@ -112,10 +112,14 @@ export function parsePlainLiquid(
 			const liquidOnlySource = sourceForLiquidOnlyAnalysis(analysisSource);
 			ast = containsLiquidSyntax(liquidOnlySource)
 				? toLiquidAST(liquidOnlySource, {
-						mode: "strict",
-						allowUnclosedDocumentNode: false,
+						mode: "tolerant",
+						allowUnclosedDocumentNode: true,
 					})
 				: emptyAst();
+			const unclosedBlock = findUnclosedLiquidBlock(ast);
+			if (unclosedBlock) {
+				throw new Error(`Unclosed Liquid ${unclosedBlock} block`);
+			}
 		} else {
 			ast = toLiquidHtmlAST(analysisSource, {
 				mode: "strict",
@@ -187,6 +191,19 @@ function sourceForLiquidAnalysis(source: string): string {
  * parse could have produced is lost. Textual capability heuristics run against
  * the raw source elsewhere and are unaffected.
  */
+function findUnclosedLiquidBlock(ast: DocumentNode): string | undefined {
+	let unclosed: string | undefined;
+	walk(ast, (node) => {
+		if (unclosed || !isLiquidTag(node)) return;
+		const blockEnd = (node as { blockEndPosition?: { start?: unknown } })
+			.blockEndPosition;
+		if (blockEnd?.start === -1 && typeof node.name === "string") {
+			unclosed = node.name;
+		}
+	});
+	return unclosed;
+}
+
 function containsLiquidSyntax(maskedSource: string): boolean {
 	return maskedSource.includes("{{") || maskedSource.includes("{%");
 }
