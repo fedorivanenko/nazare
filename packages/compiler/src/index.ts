@@ -159,7 +159,6 @@ export {
 	type ThemeCapabilitySignalPassContext,
 } from "./theme-capability-signal-pass.js";
 export {
-	filterThemeCheckIssues,
 	parseThemeCheckPolicy,
 	type ThemeCheckPolicy,
 	type ThemeCheckPolicyInput,

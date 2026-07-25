@@ -7,10 +7,7 @@ import {
 	createThemeCapabilitySignalPass,
 	type ThemeCapabilitySignalPassContext,
 } from "./theme-capability-signal-pass.js";
-import {
-	filterThemeCheckIssues,
-	parseThemeCheckPolicy,
-} from "./theme-check-policy.js";
+import { parseThemeCheckPolicy } from "./theme-check-policy.js";
 import {
 	createThemeClassificationPass,
 	type ThemeClassificationPassContext,
@@ -403,17 +400,14 @@ export class ThemeProgram {
 			collection.classifications,
 		);
 		const themeCheckPolicy = parseThemeCheckPolicy(this.options.themeCheck);
-		const ownedIssues = filterThemeCheckIssues(
-			[
-				...deriveOwnedSemanticIssues(
-					collectedBaseModel,
-					collection,
-					analysis.issues,
-				),
-				...themeCheckPolicy.issues,
-			],
-			themeCheckPolicy,
-		);
+		const ownedIssues = [
+			...deriveOwnedSemanticIssues(
+				collectedBaseModel,
+				collection,
+				analysis.issues,
+			),
+			...themeCheckPolicy.issues,
+		];
 		const collectedModel = {
 			...collectedBaseModel,
 			evidence: [...collection.evidenceBySource.values()]

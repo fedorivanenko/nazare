@@ -30,7 +30,10 @@ import type {
 import { inferCapabilities, inferClassifications } from "./theme-inference.js";
 import { collectThemeInstances } from "./theme-instance-pass.js";
 import { collectThemeLocales } from "./theme-locale-pass.js";
-import { analyzeMetafields } from "./theme-metafields.js";
+import {
+	analyzeMetafields,
+	type ThemeMetafieldSnapshot,
+} from "./theme-metafields.js";
 import {
 	incrementalThemePass,
 	type PassChange,
@@ -91,12 +94,22 @@ function collectScheduledDeclarationAndReferenceRecords(facts: ThemeFact[]): {
 	return { files, declarations, references };
 }
 
+/**
+ * What the model reports before a .theme-check.yml has been read. The policy
+ * is a reported overlay applied by analyzeNormalizedThemeFiles, not an input to
+ * derivation, so the model itself never sees one.
+ */
+const UNCONFIGURED_THEME_CHECK: ThemeSemanticModel["themeCheck"] = {
+	path: ".theme-check.yml",
+	ignoredChecks: [],
+};
+
 export function buildThemeSemanticModel(
 	facts: ThemeFact[],
 	issues: Diagnostic[],
 	options: {
 		root?: string;
-		metafields?: import("./theme-metafields.js").ThemeMetafieldSnapshot;
+		metafields?: ThemeMetafieldSnapshot;
 	} = {},
 ): ThemeSemanticModel {
 	const {
@@ -282,10 +295,7 @@ export function buildThemeSemanticModel(
 			path: metafields.path,
 			pulledAt: metafields.pulledAt ?? null,
 		},
-		themeCheck: {
-			path: ".theme-check.yml",
-			ignoredChecks: [],
-		},
+		themeCheck: UNCONFIGURED_THEME_CHECK,
 		variableReads: dedupeById(variableReads).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),

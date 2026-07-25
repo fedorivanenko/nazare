@@ -1,3 +1,8 @@
+// Reads the theme's .theme-check.yml so the graph can report which Shopify
+// Theme Check checks the theme suppresses. This is reported, never applied:
+// Nazare's diagnostics carry their own codes and are not Theme Check findings,
+// so there is nothing here for an `ignore:` entry to suppress. Running Theme
+// Check remains Theme Check's job.
 import type { Diagnostic } from "@nazare/core";
 
 export type ThemeCheckPolicyInput = {
@@ -89,25 +94,4 @@ export function parseThemeCheckPolicy(
 		ignoredChecks: [...new Set(ignoredChecks)].sort(),
 		issues: [],
 	};
-}
-
-const THEME_CHECK_DIAGNOSTIC_MAP: ReadonlyMap<string, readonly string[]> =
-	new Map();
-
-export function filterThemeCheckIssues(
-	issues: Diagnostic[],
-	policy: ThemeCheckPolicy,
-): Diagnostic[] {
-	if (
-		policy.ignoredChecks.length === 0 ||
-		THEME_CHECK_DIAGNOSTIC_MAP.size === 0
-	) {
-		return issues;
-	}
-	const suppressedCodes = new Set(
-		policy.ignoredChecks.flatMap(
-			(check) => THEME_CHECK_DIAGNOSTIC_MAP.get(check) ?? [],
-		),
-	);
-	return issues.filter((issue) => !suppressedCodes.has(issue.code));
 }

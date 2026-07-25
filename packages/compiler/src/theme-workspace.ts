@@ -12,10 +12,7 @@ import {
 	createDependencyResolver,
 	type DependencyResolver,
 } from "./resolver.js";
-import {
-	filterThemeCheckIssues,
-	parseThemeCheckPolicy,
-} from "./theme-check-policy.js";
+import { parseThemeCheckPolicy } from "./theme-check-policy.js";
 import {
 	partitionExcludedThemeFiles,
 	themeExclusionIssues,
@@ -380,6 +377,10 @@ function analyzeNormalizedThemeFiles(
 			delete options.memo.projectedModel;
 		}
 	}
+	// The theme-check policy is reported, not derived from: it overlays one
+	// field and contributes its own parse diagnostics. Keeping it out of the
+	// model fingerprint means editing .theme-check.yml -- which the graph server
+	// watches -- costs this overlay rather than a whole-theme rebuild.
 	const projectionFingerprint = JSON.stringify(themeCheckPolicy);
 	if (
 		options.memo?.projectionFingerprint === projectionFingerprint &&
@@ -392,23 +393,20 @@ function analyzeNormalizedThemeFiles(
 			issues: options.memo.projectedModel.issues,
 		};
 	}
-	const filteredIssues = filterThemeCheckIssues(
-		[...baseModel.issues, ...themeCheckPolicy.issues],
-		themeCheckPolicy,
-	);
+	const projectedIssues = [...baseModel.issues, ...themeCheckPolicy.issues];
 	const ir: ThemeSemanticModel = {
 		...baseModel,
 		themeCheck: {
 			path: themeCheckPolicy.path,
 			ignoredChecks: themeCheckPolicy.ignoredChecks,
 		},
-		issues: filteredIssues,
+		issues: projectedIssues,
 	};
 	if (options.memo) {
 		options.memo.projectionFingerprint = projectionFingerprint;
 		options.memo.projectedModel = ir;
 	}
-	return { ir, artifacts, facts, issues: filteredIssues };
+	return { ir, artifacts, facts, issues: projectedIssues };
 }
 
 function themeFileFingerprint(
