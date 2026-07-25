@@ -23,7 +23,7 @@ unit with a `nazare.json` and its files:
 runnable demo of a serverless registry:
 
 ```sh
-nazare registry add local file:examples/registry
+nazare registry connect local file:examples/registry
 nazare registry use local
 nazare add @nazare/counter        # pulls its @nazare/cn dependency too
 ```

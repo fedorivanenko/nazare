@@ -149,9 +149,15 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 			"component.nz.liquid": `<div></div>\n{% script %}\nexport default island(({ refs }) => refs.missing);\n{% endscript %}`,
 		},
 		async (cwd) => {
-			const strict = await runCli(cwd, "artifact", "component.nz.liquid");
+			const strict = await runCli(
+				cwd,
+				"inspect",
+				"artifact",
+				"component.nz.liquid",
+			);
 			const loose = await runCli(
 				cwd,
+				"inspect",
 				"artifact",
 				"component.nz.liquid",
 				"--strictness",
@@ -174,7 +180,7 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 	);
 });
 
-test("cli: build validates dependencies, validate checks only the entry", async () => {
+test("cli: build validates dependencies, check looks at the entry only", async () => {
 	await withProject(
 		{
 			"component.nz.liquid": `{% import Child from "./child.nz.liquid" %}\n{% render Child {} %}`,
@@ -197,8 +203,8 @@ test("cli: build validates dependencies, validate checks only the entry", async 
 				),
 			);
 
-			// validate compiles the entry only — the child is not checked here.
-			const validated = await runCli(cwd, "validate", "component.nz.liquid");
+			// check compiles the entry only — the child is not checked here.
+			const validated = await runCli(cwd, "check", "component.nz.liquid");
 			assert.equal(validated.status, 0, validated.stderr);
 			assert.ok(
 				!JSON.parse(validated.stdout).issues.some(
@@ -398,14 +404,7 @@ test("cli: build reports a conflict when two components emit the same path", asy
 			assert.notEqual(built.status, 0);
 			const output = JSON.parse(built.stdout);
 			assert.equal(output.conflicts.length, 1);
-			assert.equal(
-				output.issues.some(
-					(issue) =>
-						issue.code === "THEME_OUTPUT_COLLISION" &&
-						/snippets\/widget\.liquid/.test(issue.message),
-				),
-				true,
-			);
+			assert.match(output.conflicts[0], /snippets\/widget\.liquid/);
 		},
 	);
 });
@@ -476,7 +475,13 @@ test("cli: pack is available on the main nazare command", {
 			"nazare/button/button.ts": "export const button = 1;\n",
 		},
 		async (cwd) => {
-			const packed = await runCli(cwd, "pack", "nazare/button");
+			const packed = await runCli(
+				cwd,
+				"registry",
+				"publish",
+				"nazare/button",
+				"--pack",
+			);
 			assert.equal(packed.status, 0, packed.stderr);
 			const output = JSON.parse(packed.stdout);
 			assert.deepEqual(output.packed, {
@@ -489,7 +494,7 @@ test("cli: pack is available on the main nazare command", {
 	);
 });
 
-test("cli: registry add/use stores project registry and add reads it", async () => {
+test("cli: registry connect/use stores project registry and add reads it", async () => {
 	await withProject(
 		{
 			".registry/nazare/button/0.1.0.json": JSON.stringify({
@@ -509,7 +514,7 @@ test("cli: registry add/use stores project registry and add reads it", async () 
 			const addedRegistry = await runCli(
 				cwd,
 				"registry",
-				"add",
+				"connect",
 				"local",
 				"file:.registry",
 			);
@@ -546,42 +551,99 @@ test("cli: registry add/use stores project registry and add reads it", async () 
 	);
 });
 
-test("cli: inspect honors inspect.exclude and reports every excluded file", async () => {
+test("cli: inspect names the view first and rejects an unknown one", async () => {
 	await withProject(
-		{
-			"nazare.theme.json": JSON.stringify({
-				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
-				inspect: { exclude: ["snippets/reploChunk.*.liquid"] },
-			}),
-			"sections/main.liquid": "{% render 'card' %}",
-			"snippets/card.liquid": "{{ product.title }}",
-			"snippets/reploChunk.abc.0.liquid": "<div>generated</div>",
-		},
+		{ "component.nz.liquid": "<div>hi</div>\n" },
 		async (cwd) => {
-			const result = await runCli(
+			const ir = await runCli(cwd, "inspect", "ir", "component.nz.liquid");
+			assert.equal(ir.status, 0, ir.stderr);
+			assert.ok(JSON.parse(ir.stdout).ir);
+
+			const unknown = await runCli(
 				cwd,
 				"inspect",
-				"theme",
-				".",
-				"--format",
-				"json",
+				"nope",
+				"component.nz.liquid",
 			);
-			assert.equal(result.status, 0);
-			const graph = JSON.parse(result.stdout);
+			assert.equal(unknown.status, 1);
+			assert.match(unknown.stderr, /nazare inspect <ast\|ir\|/);
 
-			const excluded = graph.issues.filter(
-				(issue) => issue.code === "THEME_FILE_EXCLUDED",
+			// The old top-level spellings are gone, not aliased.
+			const removed = await runCli(cwd, "ir", "component.nz.liquid");
+			assert.equal(removed.status, 1);
+			assert.match(removed.stderr, /Unknown command ir/);
+		},
+	);
+});
+
+test("cli: registry verbs answer under the namespace and at the top level", async () => {
+	await withProject(
+		{
+			".registry/nazare/button/0.1.0.json": JSON.stringify({
+				id: "@nazare/button",
+				version: "0.1.0",
+				dependencies: {},
+				files: {
+					"nazare.json": JSON.stringify({
+						id: "@nazare/button",
+						version: "0.1.0",
+					}),
+					"button.nz.liquid": "<button>Button</button>\n",
+				},
+			}),
+		},
+		async (cwd) => {
+			const connected = await runCli(
+				cwd,
+				"registry",
+				"connect",
+				"local",
+				"file:.registry",
 			);
-			assert.equal(excluded.length, 1);
-			assert.equal(excluded[0].span.file, "snippets/reploChunk.abc.0.liquid");
-			assert.equal(
-				graph.nodes.some((node) => node.id.includes("reploChunk")),
-				false,
+			assert.equal(connected.status, 0, connected.stderr);
+
+			// The namespaced spelling is canonical...
+			const namespaced = await runCli(
+				cwd,
+				"registry",
+				"add",
+				"@nazare/button",
+				"--source-root",
+				"nazare",
 			);
-			assert.equal(
-				graph.nodes.some((node) => node.id.includes("snippets/card.liquid")),
-				true,
+			assert.equal(namespaced.status, 0, namespaced.stderr);
+			assert.ok(existsSync(join(cwd, "nazare/button/button.nz.liquid")));
+
+			// ...and the top-level alias reaches the same command: it sees the
+			// install the namespaced spelling just recorded, and skips it.
+			const aliased = await runCli(
+				cwd,
+				"add",
+				"@nazare/button",
+				"--source-root",
+				"nazare",
 			);
+			assert.equal(aliased.status, 0, aliased.stderr);
+			assert.deepEqual(JSON.parse(aliased.stdout).skipped, [
+				{ id: "@nazare/button", version: "0.1.0" },
+			]);
+		},
+	);
+});
+
+test("cli: a successful build prints the Shopify CLI handoff", async () => {
+	await withProject(
+		{
+			"nazare/component.nz.liquid": "<div>hi</div>\n",
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: "nazare", outDir: "theme" },
+			}),
+		},
+		async (cwd) => {
+			const built = await runCli(cwd, "build");
+			assert.equal(built.status, 0, built.stderr);
+			// Nazare stops at the theme directory; the Shopify CLI uploads it.
+			assert.match(built.stdout, /shopify theme push --path theme/);
 		},
 	);
 });
@@ -613,61 +675,6 @@ test("cli: inspect can render a concise human report", async () => {
 	);
 });
 
-test("cli: inspect loads metafield snapshot and reports graph queries", {
-	smoke: true,
-}, async () => {
-	await withProject(
-		{
-			"nazare.theme.json": JSON.stringify({
-				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
-			}),
-			"snippets/card.liquid": "{{ product.metafields.custom.subtitle }}",
-			".shopify/metafields.json": JSON.stringify([
-				{ owner: "product", namespace: "custom", key: "subtitle" },
-			]),
-		},
-		async (cwd) => {
-			const result = await runCli(
-				cwd,
-				"inspect",
-				"theme",
-				".",
-				"--format",
-				"json",
-			);
-			assert.equal(result.status, 0);
-			const graph = JSON.parse(result.stdout);
-			assert.equal(graph.metafields.state, "present");
-			assert.equal(graph.metafields.consumedDefinitionIds.length, 1);
-		},
-	);
-});
-
-test("cli: inspect treats missing external artifacts as unknown", {
-	smoke: true,
-}, async () => {
-	await withProject(
-		{
-			"nazare.theme.json": JSON.stringify({
-				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
-			}),
-			"snippets/card.liquid": "{{ product.metafields.custom.subtitle }}",
-		},
-		async (cwd) => {
-			const result = await runCli(
-				cwd,
-				"inspect",
-				"theme",
-				".",
-				"--format",
-				"json",
-			);
-			assert.equal(result.status, 0);
-			assert.equal(JSON.parse(result.stdout).metafields.state, "unknown");
-		},
-	);
-});
-
 test("cli: inspect discards a malformed cache and analyzes from source", async () => {
 	await withProject(
 		{
@@ -694,30 +701,6 @@ test("cli: inspect discards a malformed cache and analyzes from source", async (
 			);
 		},
 	);
-});
-
-test("cli: inspect rejects roots whose symlink target escapes the project", async () => {
-	const outside = mkdtempSync(join(tmpdir(), "nazare-cli-outside-"));
-	try {
-		writeFileSync(join(outside, "secret.liquid"), "outside");
-		await withProject({}, async (cwd) => {
-			symlinkSync(outside, join(cwd, "linked-theme"), "dir");
-			const result = await runCli(
-				cwd,
-				"inspect",
-				"theme",
-				"linked-theme",
-				"--format",
-				"json",
-			);
-
-			assert.equal(result.status, 1);
-			assert.match(result.stderr, /resolves outside the project root/);
-			assert.doesNotMatch(result.stdout, /secret/);
-		});
-	} finally {
-		await rm(outside, { recursive: true, force: true });
-	}
 });
 
 test("cli: inspect discards cache facts owned by another source", async () => {
@@ -766,6 +749,76 @@ test("cli: inspect discards cache facts owned by another source", async () => {
 	});
 });
 
+test("cli: inspect honors inspect.exclude and reports every excluded file", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+				inspect: { exclude: ["snippets/reploChunk.*.liquid"] },
+			}),
+			"sections/main.liquid": "{% render 'card' %}",
+			"snippets/card.liquid": "{{ product.title }}",
+			"snippets/reploChunk.abc.0.liquid": "<div>generated</div>",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 0);
+			const graph = JSON.parse(result.stdout);
+
+			const excluded = graph.issues.filter(
+				(issue) => issue.code === "THEME_FILE_EXCLUDED",
+			);
+			assert.equal(excluded.length, 1);
+			assert.equal(excluded[0].span.file, "snippets/reploChunk.abc.0.liquid");
+			assert.equal(
+				graph.nodes.some((node) => node.id.includes("reploChunk")),
+				false,
+			);
+			assert.equal(
+				graph.nodes.some((node) => node.id.includes("snippets/card.liquid")),
+				true,
+			);
+		},
+	);
+});
+
+test("cli: inspect loads metafield snapshot and reports graph queries", {
+	smoke: true,
+}, async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+			}),
+			"snippets/card.liquid": "{{ product.metafields.custom.subtitle }}",
+			".shopify/metafields.json": JSON.stringify([
+				{ owner: "product", namespace: "custom", key: "subtitle" },
+			]),
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 0);
+			const graph = JSON.parse(result.stdout);
+			assert.equal(graph.metafields.state, "present");
+			assert.equal(graph.metafields.consumedDefinitionIds.length, 1);
+		},
+	);
+});
+
 test("cli: inspect rejects a malformed inspect.exclude instead of ignoring it", async () => {
 	await withProject(
 		{
@@ -786,6 +839,55 @@ test("cli: inspect rejects a malformed inspect.exclude instead of ignoring it", 
 			);
 			assert.equal(result.status, 1);
 			assert.match(result.stderr, /inspect\.exclude/);
+		},
+	);
+});
+
+test("cli: inspect rejects roots whose symlink target escapes the project", async () => {
+	const outside = mkdtempSync(join(tmpdir(), "nazare-cli-outside-"));
+	try {
+		writeFileSync(join(outside, "secret.liquid"), "outside");
+		await withProject({}, async (cwd) => {
+			symlinkSync(outside, join(cwd, "linked-theme"), "dir");
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				"linked-theme",
+				"--format",
+				"json",
+			);
+
+			assert.equal(result.status, 1);
+			assert.match(result.stderr, /resolves outside the project root/);
+			assert.doesNotMatch(result.stdout, /secret/);
+		});
+	} finally {
+		await rm(outside, { recursive: true, force: true });
+	}
+});
+
+test("cli: inspect treats missing external artifacts as unknown", {
+	smoke: true,
+}, async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+			}),
+			"snippets/card.liquid": "{{ product.metafields.custom.subtitle }}",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 0);
+			assert.equal(JSON.parse(result.stdout).metafields.state, "unknown");
 		},
 	);
 });
