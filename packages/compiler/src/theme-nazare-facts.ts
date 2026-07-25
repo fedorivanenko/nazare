@@ -178,6 +178,13 @@ export function collectNazareThemeFacts(
 				fact.kind !== "readsFreeVariable" || !frontendBindings.has(fact.name),
 		),
 	);
+	facts.push(
+		...sourceResult.facts.filter(
+			(fact) =>
+				fact.kind !== "readsFreeVariable" || !frontendBindings.has(fact.name),
+		),
+	);
+	issues.push(...sourceResult.issues);
 	if (frontendResult.ast.schema) {
 		const schemaPath = "schema";
 		facts.push({

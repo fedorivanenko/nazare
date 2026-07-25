@@ -49,6 +49,8 @@ export type EmitThemeOptions = {
 export type EmittedFile = {
 	path: string;
 	contents: string;
+	/** Explicit co-ownership marker for immutable workspace runtime outputs. */
+	ownership?: "shared";
 };
 
 export type EmitResult = {
@@ -244,7 +246,11 @@ export function emitScriptFiles(
 	return {
 		files: [
 			{ path: `assets/${options.name}.js`, contents: componentScript.contents },
-			{ path: "assets/nazare-runtime.js", contents: runtimeSource },
+			{
+				path: "assets/nazare-runtime.js",
+				contents: runtimeSource,
+				ownership: "shared",
+			},
 		],
 		issues: componentScript.issues,
 	};

@@ -8,13 +8,6 @@ export function collectJsonThemeFacts(
 ): { facts: ThemeFact[]; issues: Diagnostic[] } {
 	const facts: ThemeFact[] = [];
 	const issues: Diagnostic[] = [];
-	if (path.startsWith("templates/") && path.endsWith(".json")) {
-		facts.push({
-			kind: "declaresTemplate",
-			path,
-			name: themeNameFromPath(path),
-		});
-	}
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(stripShopifyJsonPreamble(contents));
@@ -60,6 +53,23 @@ export function collectJsonThemeFacts(
 				"Settings data root must be an object",
 			),
 		);
+	}
+	if (issues.some((issue) => issue.severity === "error")) {
+		return { facts: [], issues };
+	}
+	if (path.startsWith("templates/") && path.endsWith(".json")) {
+		facts.push({
+			kind: "declaresTemplate",
+			path,
+			name: themeNameFromPath(path),
+		});
+	}
+	if (path.startsWith("locales/") && path.endsWith(".json")) {
+		facts.push({
+			kind: "declaresLocale",
+			path,
+			name: themeNameFromPath(path),
+		});
 	}
 	return { facts, issues };
 }
