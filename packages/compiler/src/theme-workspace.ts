@@ -114,6 +114,11 @@ export function buildNazareThemeWorkspace(
 	);
 	const allIssues: Diagnostic[] = [...analysis.issues];
 	const emitted: EmitResult = { files: [], issues: [] };
+	const emittedOwnershipByPath = new Map<
+		string,
+		{ owner: string; contents: string; shared: boolean }
+	>();
+	let hasOutputCollision = false;
 	const dependencyIssuesByPath = new Map<string, Diagnostic[]>();
 	for (const artifact of selected) {
 		const dependencyIssues = checkDependencies(artifact.ast, readFile, {
@@ -172,7 +177,30 @@ export function buildNazareThemeWorkspace(
 				readFile,
 			},
 		);
-		emitted.files.push(...result.files);
+		for (const file of result.files) {
+			const outputPath = normalizeThemePath(file.path);
+			const existing = emittedOwnershipByPath.get(outputPath);
+			if (!existing) {
+				emittedOwnershipByPath.set(outputPath, {
+					owner: artifact.path,
+					contents: file.contents,
+					shared: file.ownership === "shared",
+				});
+				emitted.files.push({ ...file, path: outputPath });
+				continue;
+			}
+			if (
+				existing.shared &&
+				file.ownership === "shared" &&
+				existing.contents === file.contents
+			) {
+				continue;
+			}
+			hasOutputCollision = true;
+			pushUniqueDiagnostics(allIssues, [
+				outputCollisionIssue(outputPath, existing.owner, artifact.path),
+			]);
+		}
 		emitted.issues.push(...result.issues);
 		pushUniqueDiagnostics(allIssues, result.issues);
 		return {
@@ -181,7 +209,10 @@ export function buildNazareThemeWorkspace(
 			emitted: result,
 		};
 	});
-	if (hasErrors(allIssues) && !buildOptions.emitOnError) {
+	if (
+		hasOutputCollision ||
+		(hasErrors(allIssues) && !buildOptions.emitOnError)
+	) {
 		emitted.files = [];
 		artifacts = artifacts.map((artifact) => {
 			if (!artifact.emitted) return artifact;
@@ -586,6 +617,19 @@ function normalizeInputFiles(files: ThemeInputFile[]): {
 			.sort((a, b) => a.path.localeCompare(b.path)),
 		byPath,
 		issues,
+	};
+}
+
+function outputCollisionIssue(
+	path: string,
+	firstOwner: string,
+	secondOwner: string,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "THEME_OUTPUT_COLLISION",
+		message: `Output ${path} has multiple owners: ${firstOwner} and ${secondOwner}`,
+		phase: "emit",
 	};
 }
 

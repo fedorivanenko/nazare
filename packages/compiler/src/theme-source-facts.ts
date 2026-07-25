@@ -5,7 +5,7 @@
 // AST — a token in a comment, string, or script body can never become a fact.
 // Settings reads are NOT collected here: the parser already produces them
 // (scanSettingsReadsFromLiquidAst), callers map those directly.
-import type { SourceSpan } from "@nazare/core";
+import type { Diagnostic, SourceSpan } from "@nazare/core";
 import {
 	type LiquidHtmlNode,
 	NodeTypes,
@@ -176,8 +176,9 @@ export function collectSourceThemeFacts(
 	path: string,
 	source: string,
 	ast: ReturnType<typeof toLiquidHtmlAST>,
-): ThemeFact[] {
+): { facts: ThemeFact[]; issues: Diagnostic[] } {
 	const facts: ThemeFact[] = [];
+	const issues: Diagnostic[] = [];
 	const localDefinitions = new Map<string, LocalDefinition[]>();
 	const guardedNames = new Set<string>();
 	const defaultedNames = new Set<string>();
@@ -450,9 +451,14 @@ export function collectSourceThemeFacts(
 			(tagName === "render" || tagName === "include") &&
 			isRenderMarkup(tag.markup)
 		) {
-			facts.push(
-				...renderArgumentFacts(path, source, tag.markup, tag.position),
+			const renderResult = renderArgumentFacts(
+				path,
+				source,
+				tag.markup,
+				tag.position,
 			);
+			facts.push(...renderResult.facts);
+			issues.push(...renderResult.issues);
 		}
 		// Capture markup declares its destination; it is not a variable read.
 		// Child outputs are separate AST nodes and remain visited by walk().
@@ -557,7 +563,7 @@ export function collectSourceThemeFacts(
 		}
 	}
 
-	return facts;
+	return { facts, issues };
 }
 
 const definiteAssignmentsByConditional = new WeakMap<object, Set<string>>();
@@ -903,16 +909,31 @@ function renderArgumentFacts(
 	source: string,
 	markup: RenderMarkupLike,
 	tagPosition: SourceRange,
-): ThemeFact[] {
+): { facts: ThemeFact[]; issues: Diagnostic[] } {
+	const facts: ThemeFact[] = [];
+	const issues: Diagnostic[] = [];
 	// Arguments attribute to a site only when the target is static; a dynamic
 	// {% render block %} has no name to check arguments against.
-	if (!isLiquidString(markup.snippet)) return [];
+	if (!isLiquidString(markup.snippet)) {
+		if (
+			(Array.isArray(markup.args) && markup.args.length > 0) ||
+			markup.variable
+		) {
+			issues.push({
+				severity: "warning",
+				code: "THEME_DYNAMIC_RENDER_ARGUMENTS_UNSCANNED",
+				message: `Cannot attribute arguments for dynamic render target in ${path}`,
+				phase: "parse",
+				span: spanFromOffsets(source, path, tagPosition),
+			});
+		}
+		return { facts, issues };
+	}
 	const targetName = markup.snippet.value;
 	const siteId = renderSiteKey(
 		path,
 		spanFromOffsets(source, path, tagPosition),
 	);
-	const facts: ThemeFact[] = [];
 	const implicitLookup = markup.variable?.name as PositionedLookup | undefined;
 	if (
 		markup.variable?.type === "RenderVariableExpression" &&
@@ -950,7 +971,7 @@ function renderArgumentFacts(
 			span: rangeSpan(path, source, argument.position),
 		});
 	}
-	return facts;
+	return { facts, issues };
 }
 
 /** sourceObject/sourcePath of an argument whose value is a plain lookup. */
