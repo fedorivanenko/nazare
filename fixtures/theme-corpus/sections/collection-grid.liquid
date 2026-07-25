@@ -1,0 +1,13 @@
+<section>
+  {% for filter in collection.filters %}
+    {% for value in filter.active_values %}
+      <span>{{ value.label }}</span>
+    {% endfor %}
+  {% endfor %}
+  {% for product in collection.products %}
+    {% render 'product-card', product: product %}
+  {% endfor %}
+</section>
+{% schema %}
+{ "name": "Collection grid", "settings": [] }
+{% endschema %}

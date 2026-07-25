@@ -1,0 +1,7 @@
+{% component snippet %}
+
+{% props {
+  label: string.setting({ label: "Label", default: "Buy" }),
+} %}
+
+<button type="button">{{ props.label }}</button>

@@ -1,0 +1,8 @@
+<footer>
+  <p>{{ 'footer.copyright' | t }}</p>
+  <p>{{ 'footer.missing_key' | t }}</p>
+  {{ section.settings.note }}
+</footer>
+{% schema %}
+{ "name": "Footer", "settings": [{ "id": "note", "type": "richtext", "label": "Note" }] }
+{% endschema %}

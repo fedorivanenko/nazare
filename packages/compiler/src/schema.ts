@@ -123,6 +123,17 @@ function settingFor(
 	return setting;
 }
 
+/**
+ * The theme-editor input a prop type maps to, or undefined when none exists.
+ * The check pass uses this to reject .setting() on types with no input —
+ * otherwise the setting would vanish from the schema without a trace.
+ */
+export function settingInputFor(
+	type: SemanticType,
+): { type: string; extra?: Partial<ThemeSchemaSetting> } | undefined {
+	return settingInput(unwrapNil(type));
+}
+
 /** Settings describe the value's shape; optionality (T | nil) is not part of it. */
 function unwrapNil(type: SemanticType): SemanticType {
 	if (type.kind !== "union") return type;

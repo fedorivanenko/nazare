@@ -1,0 +1,7 @@
+{% form 'localization' %}
+  <select name="country_code">
+    {% for country in localization.available_countries %}
+      <option value="{{ country.iso_code }}">{{ country.name }}</option>
+    {% endfor %}
+  </select>
+{% endform %}

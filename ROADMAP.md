@@ -77,9 +77,10 @@ Nazare
 │
 └── Inspect / partial
     ├── AST, IR, schema, artifact, and graph output / built
-    ├── Theme structure / planned
-    ├── Dependency graph / planned
-    ├── Component and schema inventory / planned
+    ├── Theme structure / built
+    ├── Dependency graph / built
+    ├── Component and schema inventory / built
+    ├── Shopify metafield join and impact queries / built
     ├── Duplication and dead-code analysis / planned
     │
     ├── Migrate / planned

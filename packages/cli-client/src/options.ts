@@ -10,6 +10,7 @@ export type CliOptions = {
 	store?: string;
 	theme?: string;
 	json?: boolean;
+	format?: string;
 	positionals: string[];
 };
 
@@ -71,6 +72,12 @@ export function parseCliOptions(args: string[]): CliOptions {
 			index += theme.consumed - 1;
 			continue;
 		}
+		const format = readValueOption(args, index, "--format");
+		if (format) {
+			options.format = format.value;
+			index += format.consumed - 1;
+			continue;
+		}
 		if (arg === "--pull") {
 			options.pull = true;
 			continue;
@@ -109,6 +116,9 @@ export function printHelp(output: Output = console): void {
   nazare init                       scaffold build config in nazare.theme.json (prompts for src/out dirs)
   nazare build [source-root|file]   source root from arg or nazare.theme.json build.sourceRoot
                                     --pull reconciles against a live theme first
+  nazare inspect theme [dir]        inspect a theme and print semantic graph JSON (dir defaults to build.sourceRoot)
+  nazare graph-server [dir]         serve graph queries over newline-delimited JSON stdio
+                                    dir defaults to nazare.theme.json build.sourceRoot; unset is an error
   nazare add <@scope/name>          copy a component + deps into the source root
   nazare update [@scope/name]       re-fetch latest; all installed if omitted
   nazare diff <@scope/name>         show registry update vs local installed files
@@ -130,6 +140,7 @@ Options:
   --store <domain>                  build --pull: Shopify store to pull from
   --theme <id|name>                 build --pull: theme to pull from
   --json                            build: print the raw result as JSON
+  --format json|text|dot            inspect: output JSON, human report, or Graphviz DOT
 
 Env:
   NAZARE_REGISTRY                   registry base URL, or file:<dir> for a local one

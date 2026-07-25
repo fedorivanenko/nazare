@@ -1,0 +1,7 @@
+<section>
+  <h1>{{ section.settings.heading }}</h1>
+  {{ 'hero.svg' | asset_url | img_tag }}
+</section>
+{% schema %}
+{ "name": "Hero", "settings": [{ "id": "heading", "type": "text", "label": "Heading" }] }
+{% endschema %}

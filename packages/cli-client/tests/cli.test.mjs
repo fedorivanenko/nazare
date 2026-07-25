@@ -5,6 +5,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -397,7 +398,14 @@ test("cli: build reports a conflict when two components emit the same path", asy
 			assert.notEqual(built.status, 0);
 			const output = JSON.parse(built.stdout);
 			assert.equal(output.conflicts.length, 1);
-			assert.match(output.conflicts[0], /snippets\/widget\.liquid/);
+			assert.equal(
+				output.issues.some(
+					(issue) =>
+						issue.code === "THEME_OUTPUT_COLLISION" &&
+						/snippets\/widget\.liquid/.test(issue.message),
+				),
+				true,
+			);
 		},
 	);
 });
@@ -533,6 +541,250 @@ test("cli: registry add/use stores project registry and add reads it", async () 
 			assert.deepEqual(manifest.registries, { local: "file:.registry" });
 			assert.deepEqual(manifest.installed, { "@nazare/button": "0.1.0" });
 			assert.ok(manifest.installedFiles["@nazare/button"]["button.nz.liquid"]);
+		},
+	);
+});
+
+test("cli: inspect honors inspect.exclude and reports every excluded file", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+				inspect: { exclude: ["snippets/reploChunk.*.liquid"] },
+			}),
+			"sections/main.liquid": "{% render 'card' %}",
+			"snippets/card.liquid": "{{ product.title }}",
+			"snippets/reploChunk.abc.0.liquid": "<div>generated</div>",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 0);
+			const graph = JSON.parse(result.stdout);
+
+			const excluded = graph.issues.filter(
+				(issue) => issue.code === "THEME_FILE_EXCLUDED",
+			);
+			assert.equal(excluded.length, 1);
+			assert.equal(excluded[0].span.file, "snippets/reploChunk.abc.0.liquid");
+			assert.equal(
+				graph.nodes.some((node) => node.id.includes("reploChunk")),
+				false,
+			);
+			assert.equal(
+				graph.nodes.some((node) => node.id.includes("snippets/card.liquid")),
+				true,
+			);
+		},
+	);
+});
+
+test("cli: inspect can render a concise human report", async () => {
+	await withProject(
+		{
+			"sections/main.liquid": "{% render 'card' %}",
+			"snippets/card.liquid": "{{ product.title }}",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"text",
+			);
+			assert.equal(result.status, 0);
+			assert.deepEqual(result.stdout.trim().split("\n"), [
+				"Theme graph: 2 files",
+				"Pages 0 · sections 1 · snippets 1 · components 0",
+				"Unresolved 0 · metafield reads without definitions 0",
+				"Affected pages 0",
+				"Issues 0 (0 errors, 0 warnings)",
+			]);
+		},
+	);
+});
+
+test("cli: inspect loads metafield snapshot and reports graph queries", {
+	smoke: true,
+}, async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+			}),
+			"snippets/card.liquid": "{{ product.metafields.custom.subtitle }}",
+			".shopify/metafields.json": JSON.stringify([
+				{ owner: "product", namespace: "custom", key: "subtitle" },
+			]),
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 0);
+			const graph = JSON.parse(result.stdout);
+			assert.equal(graph.metafields.state, "present");
+			assert.equal(graph.metafields.consumedDefinitionIds.length, 1);
+		},
+	);
+});
+
+test("cli: inspect treats missing external artifacts as unknown", {
+	smoke: true,
+}, async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+			}),
+			"snippets/card.liquid": "{{ product.metafields.custom.subtitle }}",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 0);
+			assert.equal(JSON.parse(result.stdout).metafields.state, "unknown");
+		},
+	);
+});
+
+test("cli: inspect discards a malformed cache and analyzes from source", async () => {
+	await withProject(
+		{
+			"snippets/card.liquid": "{{ product.title }}",
+			".nazare-out/inspect-cache-v2.json": "{invalid",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			// A cache is an optimization. An unusable one is reported and replaced,
+			// never a reason to fail the command.
+			assert.equal(result.status, 0, result.stderr);
+			assert.match(result.stderr, /Discarded theme analysis cache/);
+			assert.match(result.stderr, /invalid JSON/);
+			const graph = JSON.parse(result.stdout);
+			assert.ok(
+				graph.nodes.some((node) => node.id === "file:snippets/card.liquid"),
+			);
+		},
+	);
+});
+
+test("cli: inspect rejects roots whose symlink target escapes the project", async () => {
+	const outside = mkdtempSync(join(tmpdir(), "nazare-cli-outside-"));
+	try {
+		writeFileSync(join(outside, "secret.liquid"), "outside");
+		await withProject({}, async (cwd) => {
+			symlinkSync(outside, join(cwd, "linked-theme"), "dir");
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				"linked-theme",
+				"--format",
+				"json",
+			);
+
+			assert.equal(result.status, 1);
+			assert.match(result.stderr, /resolves outside the project root/);
+			assert.doesNotMatch(result.stdout, /secret/);
+		});
+	} finally {
+		await rm(outside, { recursive: true, force: true });
+	}
+});
+
+test("cli: inspect discards cache facts owned by another source", async () => {
+	await withProject({ "snippets/card.liquid": "{{ title }}" }, async (cwd) => {
+		const first = await runCli(
+			cwd,
+			"inspect",
+			"theme",
+			".",
+			"--format",
+			"json",
+		);
+		assert.equal(first.status, 0, first.stderr);
+		const cachePath = join(cwd, ".nazare-out", "inspect-cache-v2.json");
+		const cache = JSON.parse(readFileSync(cachePath, "utf8"));
+		cache.entries["snippets/card.liquid"].facts = [
+			{ kind: "file", path: "snippets/other.liquid", fileKind: "snippet" },
+		];
+		writeFileSync(cachePath, JSON.stringify(cache));
+
+		const second = await runCli(
+			cwd,
+			"inspect",
+			"theme",
+			".",
+			"--format",
+			"json",
+		);
+		// Ownership validation still rejects the entry; it just costs a cold
+		// rebuild rather than the whole command.
+		assert.equal(second.status, 0, second.stderr);
+		assert.match(second.stderr, /Discarded theme analysis cache/);
+		assert.match(second.stderr, /snippets\/card\.liquid/);
+		const graph = JSON.parse(second.stdout);
+		assert.ok(
+			graph.nodes.some((node) => node.id === "file:snippets/card.liquid"),
+		);
+		// The discarded cache is replaced by a valid one, so the next run is warm
+		// and every cached fact belongs to the file that owns the entry.
+		const rewritten = JSON.parse(readFileSync(cachePath, "utf8"));
+		const entry = rewritten.entries["snippets/card.liquid"];
+		assert.ok(entry.facts.length > 0);
+		for (const fact of entry.facts) {
+			assert.equal(fact.path ?? fact.fromPath, "snippets/card.liquid");
+		}
+	});
+});
+
+test("cli: inspect rejects a malformed inspect.exclude instead of ignoring it", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: ".", outDir: ".nazare-out/theme" },
+				inspect: { exclude: "snippets/*.liquid" },
+			}),
+			"snippets/card.liquid": "{{ product.title }}",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"theme",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 1);
+			assert.match(result.stderr, /inspect\.exclude/);
 		},
 	);
 });

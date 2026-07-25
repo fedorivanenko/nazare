@@ -1,0 +1,7 @@
+{
+  "sections": {
+    "hero": { "type": "hero", "settings": { "heading": "Welcome" } },
+    "featured": { "type": "featured-collection", "settings": { "count": 4 } }
+  },
+  "order": ["hero", "featured"]
+}

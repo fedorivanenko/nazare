@@ -35,8 +35,12 @@ export function isRelativeSpecifier(specifier: string): boolean {
 	return specifier.startsWith("./") || specifier.startsWith("../");
 }
 
-/** "components/link/link.nz.liquid" -> "link" (all extensions stripped). */
+/**
+ * "components/link/link.nz.liquid" -> "link": the emitted theme-file name of a
+ * component. Only the known compiler extensions are stripped, so a dot in the
+ * name itself ("promo.v2.nz.liquid" -> "promo.v2") survives.
+ */
 export function baseNameOf(path: string): string {
 	const name = path.split("/").at(-1) ?? path;
-	return name.split(".")[0];
+	return name.replace(/(\.nz)?\.liquid$|\.(ts|js|css|json)$/, "");
 }

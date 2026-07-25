@@ -1,0 +1,4 @@
+{{ block.settings.image | image_url: width: 600 | image_tag }}
+{% schema %}
+{ "name": "Image", "settings": [{ "id": "image", "type": "image_picker", "label": "Image" }] }
+{% endschema %}

@@ -1,7 +1,9 @@
 import type { Id } from "@nazare/core";
 
-// Single owner of every ID format in the compiler. IDs are opaque outside
-// this module: construct them here, never parse data back out of one.
+// Single owner of every artifact-layer ID format (syntax and symbol layers).
+// Theme-graph IDs are the other namespace and live in theme-model.ts. IDs are
+// opaque outside their owning module: construct them there, never parse data
+// back out of one.
 
 // Syntax layer
 

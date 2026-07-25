@@ -1,0 +1,6 @@
+<aside>
+  {% for item in cart.items %}
+    <p>{{ item.title }} × {{ item.quantity }}</p>
+  {% endfor %}
+  <form action="{{ routes.cart_change_url }}" method="post"></form>
+</aside>

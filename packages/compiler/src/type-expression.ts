@@ -82,9 +82,20 @@ export function parseTypeExpression(source: string): ParsedTypeExpression {
 	const unknownCalls = ast.calls
 		.map((call) => call.name)
 		.filter((name) => !knownCallNames.has(name));
-	const error = unknownCalls.length
-		? `unknown call${unknownCalls.length === 1 ? "" : "s"}: ${unknownCalls.join(", ")}`
-		: undefined;
+	const unknownTypes = unknownTypeNames(ast);
+	const errors = [
+		...(unknownCalls.length
+			? [
+					`unknown call${unknownCalls.length === 1 ? "" : "s"}: ${unknownCalls.join(", ")}`,
+				]
+			: []),
+		...(unknownTypes.length
+			? [
+					`unknown type name${unknownTypes.length === 1 ? "" : "s"}: ${unknownTypes.join(", ")}`,
+				]
+			: []),
+	];
+	const error = errors.length ? errors.join("; ") : undefined;
 
 	const settingCall = ast.calls.find((call) => call.name === "setting");
 	const settingArgument = settingCall?.arguments[0];
@@ -120,6 +131,35 @@ export function parseTypeExpression(source: string): ParsedTypeExpression {
 			),
 		error,
 	};
+}
+
+/**
+ * Every type name the expression uses that resolves to no known type. A typo
+ * like `strng` would otherwise silently become `unknown` and disable all
+ * checking of the prop; here it fails the parse instead. Uppercase names are
+ * nominal object types and always legal; `object("Name")` arguments are
+ * nominal by construction and not checked.
+ */
+function unknownTypeNames(ast: TypeExpressionAst): string[] {
+	const names: string[] = [];
+	const consider = (name: string): void => {
+		if (namedValueType(name).kind === "unknown") names.push(name);
+	};
+
+	if (ast.base.name !== "array" && ast.base.name !== "object") {
+		consider(ast.base.name);
+	}
+	if (ast.base.name === "array" && ast.base.argument !== undefined) {
+		consider(ast.base.argument);
+	}
+	for (const call of ast.calls) {
+		if (call.name !== "or" && call.name !== "returns") continue;
+		for (const argument of call.arguments) {
+			if (isTypeRef(argument)) consider(argument.typeRef);
+		}
+	}
+
+	return names;
 }
 
 const numberConstraintCalls = ["min", "max", "step", "unit"] as const;

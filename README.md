@@ -8,7 +8,7 @@ The ecosystem offers many excellent tools, but each addresses only part of the p
 
 - Dawn provides a strong starting point, but large customizations eventually inherit the same maintenance challenges as any other theme.
 
-- Theme Check catches many mistakes, but it analyzes existing code rather than making relationships between components explicit.
+- Theme Check validates Shopify theme conventions; Inspect adds the missing whole-theme relationship graph and change-impact queries.
 
 - Shopify CLI improves local development and deployment, but it doesn't change how themes are structured or how developers reason about them.
 
@@ -579,6 +579,8 @@ nazare publish [dir]                publish a component folder
 nazare validate <file>              check one `.nz.liquid` file
 nazare schema <file>                print generated Shopify schema
 nazare graph <file>                 print component dependency graph
+nazare inspect theme [dir]          print whole-theme semantic graph JSON
+nazare graph-server [dir]           serve graph queries and file updates over stdio
 nazare ast <file>                   print parsed AST
 nazare ir <file>                    print compiler IR
 nazare artifact <file>              print full compiler artifact
@@ -593,6 +595,14 @@ Common options and environment variables:
 --source-root <dir>                 add/update/build source root (else `nazare.theme.json` build.sourceRoot)
 --out-dir <dir>                     build output directory (else `nazare.theme.json` build.outDir)
 --pull                              build: fetch live theme data before building
+
+Graph server requests are newline-delimited JSON. Supported methods include
+`initialize`, `summary`, `node`, `dependencies`, `dependents`, `affectedPages`,
+`build`, `buildUpdate`, `updateFile`, `removeFile`, `watch`, `unwatch`, and
+`reload`. `watch` emits
+`graph/update` and `build/update` notifications with revisions and graph/output
+deltas on file changes.
+
 --store <domain>                    build --pull: Shopify store to pull from
 --theme <id|name>                   build --pull: theme to pull from
 --json                              build: print the raw result as JSON
@@ -612,7 +622,7 @@ export default island(({ root }) => {
 
 ## Known gaps
 
-Nazare reconciles merchant-editable state and checks cross-component contracts, but a few pre-upload safety nets are not built yet. Until they are, keep the Shopify CLI and Theme Check in your workflow before pushing.
+Nazare reconciles merchant-editable state and exposes cross-component impact, but it does not replace Shopify validation. Keep Shopify CLI and Theme Check in your workflow before pushing.
 
 - **Shopify schema-rule validation.** Generated `{% schema %}` is checked as JSON and for Nazare contracts, but not against Shopify's editor and upload limits (max settings and blocks per section, block-type character rules, preset shape, section-group compatibility). An over-large or malformed schema fails at push time, not at build.
 - **Liquid dialect validation.** Emitted Liquid targets a known Shopify subset through span-based lowering, but there is no post-codegen dialect validator and no Theme Check or `shopify theme push --dry-run` hook in the build. Run Theme Check yourself before pushing.

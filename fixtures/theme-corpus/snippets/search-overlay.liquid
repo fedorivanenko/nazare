@@ -1,0 +1,6 @@
+<div>
+  {% for result in predictive_search.resources.products %}
+    <a href="{{ result.url }}">{{ result.title }}</a>
+  {% endfor %}
+  {% if search.performed %}<p>{{ search.results_count }}</p>{% endif %}
+</div>

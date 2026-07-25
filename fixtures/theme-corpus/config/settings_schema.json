@@ -1,0 +1,10 @@
+[
+  { "name": "theme_info", "theme_name": "Corpus", "theme_version": "1.0.0", "theme_author": "Nazare" },
+  {
+    "name": "Global",
+    "settings": [
+      { "id": "default_partial", "type": "text", "label": "Default partial" },
+      { "id": "accent", "type": "color", "label": "Accent" }
+    ]
+  }
+]
