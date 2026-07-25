@@ -168,15 +168,10 @@ export function collectNazareThemeFacts(
 				: [],
 		),
 	]);
-	facts.push(
-		...collectSourceThemeFacts(
-			path,
-			contents,
-			frontendResult.ast.liquidAst,
-		).filter(
-			(fact) =>
-				fact.kind !== "readsFreeVariable" || !frontendBindings.has(fact.name),
-		),
+	const sourceResult = collectSourceThemeFacts(
+		path,
+		contents,
+		frontendResult.ast.liquidAst,
 	);
 	facts.push(
 		...sourceResult.facts.filter(
