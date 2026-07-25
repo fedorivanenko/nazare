@@ -120,6 +120,9 @@ export function parseTypeExpression(source: string): ParsedTypeExpression {
 						default: settingObject?.default ?? defaultCallValue,
 					}
 				: undefined,
+			// Recorded whether or not the prop is a setting: a snippet prop's
+			// `.default()` has no schema to land in, but tooling still needs it.
+			defaultValue: settingObject?.default ?? defaultCallValue,
 		},
 		required: ast.calls.some((call) => call.name === "required"),
 		hasDefault:

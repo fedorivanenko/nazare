@@ -72,4 +72,12 @@ export type SettingMetadata = {
 export type PropTypeInfo = {
 	valueType: SemanticType;
 	setting?: SettingMetadata;
+	/**
+	 * The declared default, from `.default(v)` or a setting's `default`.
+	 * `hasDefault` on the contract prop says a default exists; this says what it
+	 * is. Tooling off the schema path (preview controls, editor completions)
+	 * cannot recover the value otherwise — a snippet prop's `.default()` never
+	 * reaches a Shopify schema.
+	 */
+	defaultValue?: unknown;
 };

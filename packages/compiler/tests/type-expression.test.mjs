@@ -208,3 +208,22 @@ test("type-expression: escaped quotes in strings", () => {
 	);
 	assert.equal(parsed.typeInfo.setting?.label, `Say "hi"`);
 });
+
+test("type-expression: a default value is recorded with or without a setting", () => {
+	// A snippet prop's default never reaches a Shopify schema, so `setting` is
+	// undefined — but the value itself has to survive for tooling to read.
+	const plain = parseTypeExpression(`string.enum("sm", "md").default("md")`);
+	assert.equal(plain.hasDefault, true);
+	assert.equal(plain.typeInfo.setting, undefined);
+	assert.equal(plain.typeInfo.defaultValue, "md");
+
+	const setting = parseTypeExpression(
+		`number.setting({ label: "Count", default: 3 })`,
+	);
+	assert.equal(setting.typeInfo.defaultValue, 3);
+
+	assert.equal(
+		parseTypeExpression("string.required()").typeInfo.defaultValue,
+		undefined,
+	);
+});
