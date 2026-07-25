@@ -9,5 +9,31 @@
     "price.nz.liquid",
     "price.css",
     "price.js"
-  ]
+  ],
+  "preview": {
+    "stories": [
+      {
+        "name": "on sale",
+        "props": {
+          "price": { "$fixture": "price" },
+          "compare_at_price": { "$fixture": "compare_at_price" },
+          "show_compare_at": true
+        },
+        "note": "Compare-at above the price, so the strikethrough shows. show_compare_at is passed explicitly: emit does not materialize a snippet prop's default, so an omitted value arrives nil."
+      },
+      {
+        "name": "full price",
+        "props": { "price": { "$fixture": "price" } },
+        "note": "No compare-at: the strikethrough is absent, not empty."
+      },
+      {
+        "name": "compare-at suppressed",
+        "props": {
+          "price": { "$fixture": "price" },
+          "compare_at_price": { "$fixture": "compare_at_price" },
+          "show_compare_at": false
+        }
+      }
+    ]
+  }
 }

@@ -7,5 +7,33 @@
   "dependencies": {},
   "files": [
     "link.nz.liquid"
-  ]
+  ],
+  "preview": {
+    "stories": [
+      {
+        "name": "default",
+        "props": {
+          "href": "/collections/all",
+          "text": "Shop all"
+        }
+      },
+      {
+        "name": "new tab",
+        "props": {
+          "href": "https://shopify.dev",
+          "text": "Read the docs",
+          "new_tab": true
+        },
+        "note": "Adds target and rel; the visual is unchanged."
+      },
+      {
+        "name": "long label",
+        "props": {
+          "href": "/collections/all",
+          "text": "Shop the entire winter collection today"
+        },
+        "note": "A label a real merchant will write, which no derived story would try."
+      }
+    ]
+  }
 }
