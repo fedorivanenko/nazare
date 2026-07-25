@@ -1243,6 +1243,42 @@ test("metafield parser rejects arbitrary nested objects", () => {
 	);
 });
 
+test("metafield snapshot shape is recognized, not guessed", () => {
+	const inspect = (contents) =>
+		inspectNazareTheme(
+			[
+				{
+					path: "snippets/card.liquid",
+					contents: "{{ product.metafields.custom.subtitle }}",
+				},
+			],
+			{ metafields: { contents } },
+		);
+
+	// A store with no metafield definitions exports an empty list. That is a
+	// valid snapshot, so the read is reported as undefined rather than the
+	// snapshot being rejected.
+	const empty = inspect("[]");
+	assert.equal(empty.metafields.state, "present");
+	assert.equal(empty.metafields.brokenReadIds.length, 1);
+
+	// A JSON array of unrelated values is not a snapshot. Accepting it produced
+	// zero definitions and one unresolved-metafield warning per read, with
+	// nothing saying the snapshot had not been understood.
+	for (const contents of ["[1,2,3]", "{}", JSON.stringify({ foo: "bar" })]) {
+		const graph = inspect(contents);
+		assert.equal(graph.metafields.state, "invalid", contents);
+		assert.equal(
+			graph.issues.some(
+				(issue) => issue.code === "THEME_METAFIELDS_SHAPE_INVALID",
+			),
+			true,
+			contents,
+		);
+		assert.equal(graph.metafields.brokenReadIds.length, 0, contents);
+	}
+});
+
 test("global metafield reads keep owner unknown", () => {
 	const graph = inspectNazareTheme(
 		[

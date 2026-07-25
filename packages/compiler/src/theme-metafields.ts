@@ -63,7 +63,8 @@ export function collectMetafieldDefinitions(
 			};
 		}
 	}
-	if (snapshot && !isSupportedMetafieldSnapshot(value)) {
+	const scan = scanDefinitionCandidates(value);
+	if (snapshot && !scan.recognized) {
 		return {
 			definitions: [],
 			state: "invalid",
@@ -80,7 +81,7 @@ export function collectMetafieldDefinitions(
 		};
 	}
 	const definitions: ThemeMetafieldDefinitionRecord[] = [];
-	for (const item of findDefinitionCandidates(value)) {
+	for (const item of scan.candidates) {
 		const owner = normalizeOwner(
 			stringValue(item.owner ?? item.ownerType ?? item.resourceType),
 		);
@@ -221,45 +222,52 @@ const METAFIELD_OWNER_NAMES = new Set([
 	"variant",
 ]);
 
-function isSupportedMetafieldSnapshot(value: unknown): boolean {
-	if (Array.isArray(value)) return true;
-	if (!isRecord(value)) return false;
-	if (
-		stringValue(value.namespace) &&
-		stringValue(value.key) &&
-		(value.owner || value.ownerType || value.resourceType)
-	) {
-		return true;
-	}
-	return Object.keys(value).some(
-		(key) =>
-			METAFIELD_CONTAINER_KEYS.has(key) ||
-			METAFIELD_OWNER_NAMES.has(key.toLowerCase()),
-	);
-}
+/**
+ * Result of reading a snapshot. `recognized` says the value was structurally a
+ * metafield snapshot, which is not the same as it containing definitions: a
+ * store with no metafields exports an empty list, and that is valid.
+ *
+ * Recognition is a result of the scan rather than a separate predicate. Two
+ * functions encoding these shape rules had to agree about every accepted
+ * layout, and nothing made them: the previous predicate accepted any array,
+ * so `[1, 2, 3]` was a supported snapshot that yielded no definitions and one
+ * THEME_METAFIELD_UNRESOLVED warning per metafield read in the theme.
+ */
+type MetafieldSnapshotScan = {
+	recognized: boolean;
+	candidates: Record<string, unknown>[];
+};
 
-function findDefinitionCandidates(value: unknown): Record<string, unknown>[] {
+function scanDefinitionCandidates(value: unknown): MetafieldSnapshotScan {
 	if (Array.isArray(value)) {
-		return value.flatMap((item) =>
-			isRecord(item) ? findDefinitionCandidates(item) : [],
-		);
+		const scans = value.map((item) => scanDefinitionCandidates(item));
+		return {
+			// An empty list is a recognized, empty snapshot; a list holding
+			// anything unrecognizable is not a snapshot at all.
+			recognized: scans.every((scan) => scan.recognized),
+			candidates: scans.flatMap((scan) => scan.candidates),
+		};
 	}
-	if (!isRecord(value)) return [];
+	if (!isRecord(value)) return { recognized: false, candidates: [] };
 	if (
 		stringValue(value.namespace) &&
 		stringValue(value.key) &&
 		(value.owner || value.ownerType || value.resourceType)
 	) {
-		return [value];
+		return { recognized: true, candidates: [value] };
 	}
+	let recognized = false;
 	const candidates: Record<string, unknown>[] = [];
 	for (const [key, child] of Object.entries(value)) {
 		if (METAFIELD_CONTAINER_KEYS.has(key)) {
-			candidates.push(...findDefinitionCandidates(child));
+			const scan = scanDefinitionCandidates(child);
+			recognized ||= scan.recognized;
+			candidates.push(...scan.candidates);
 			continue;
 		}
 		if (!METAFIELD_OWNER_NAMES.has(key.toLowerCase()) || !isRecord(child))
 			continue;
+		recognized = true;
 		for (const [namespace, keys] of Object.entries(child)) {
 			if (!isRecord(keys)) continue;
 			for (const [metafieldKey, definition] of Object.entries(keys)) {
@@ -273,7 +281,7 @@ function findDefinitionCandidates(value: unknown): Record<string, unknown>[] {
 			}
 		}
 	}
-	return candidates;
+	return { recognized, candidates };
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === "object" && !Array.isArray(value);
