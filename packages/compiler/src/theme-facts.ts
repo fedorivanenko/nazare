@@ -253,6 +253,15 @@ export type ThemeFact =
 			via: "guard" | "default";
 	  }
 	| {
+			/** A Nazare prop declaration: authoritative component input. */
+			kind: "declaresInput";
+			path: string;
+			name: string;
+			required: boolean;
+			paramType?: string;
+			span?: SourceSpan;
+	  }
+	| {
 			/** A `@param` in a `{% doc %}` block: the author's own statement of
 			 * this component's interface, which outranks source inference. */
 			kind: "declaresDocParam";
