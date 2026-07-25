@@ -1285,6 +1285,15 @@ test("workspace strictly checks plain Liquid and component scripts before emit",
 	assert.deepEqual(scripts.emitted.files, []);
 });
 
+test("workspace rejects duplicate output ownership", () => {
+	const built = buildNazareThemeWorkspace([
+		{ path: "one/widget.nz.liquid", contents: "same" },
+		{ path: "two/widget.nz.liquid", contents: "same" },
+	]);
+	assert.equal(hasIssue(built, "THEME_OUTPUT_COLLISION"), true);
+	assert.deepEqual(built.emitted.files, []);
+});
+
 test("invalid script emission is an error and clean-only output is empty", () => {
 	const built = buildNazareThemeWorkspace([
 		{
