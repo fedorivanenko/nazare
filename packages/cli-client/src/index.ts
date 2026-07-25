@@ -401,7 +401,12 @@ async function runInspect(
 	const metafields = await readMetafieldSnapshot(projectRoot);
 	const themeCheck = await readThemeCheckPolicy(projectRoot);
 	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v2.json");
-	const cache = await readThemeAnalysisCache(cachePath);
+	const { cache, discardedReason } = await readThemeAnalysisCache(cachePath);
+	if (discardedReason) {
+		output.error(
+			`Discarded theme analysis cache ${cachePath} (${discardedReason}); analyzing from source.`,
+		);
+	}
 	const inspected = inspectNazareTheme(files, {
 		root:
 			relative(canonicalProjectRoot, canonicalRoot).split(sep).join("/") || ".",
@@ -471,32 +476,41 @@ function isOutsideRoot(root: string, path: string): boolean {
 	);
 }
 
+/**
+ * Reads the persisted fact cache. The cache is an optimization, never an
+ * input: anything unusable — unreadable, malformed, written by an older
+ * compiler — is discarded and the analysis runs from source. Discarding is
+ * reported rather than silent, because a cache that never loads is a
+ * performance bug worth seeing, and failing the command over one turns a
+ * stale file into an outage.
+ */
 async function readThemeAnalysisCache(
 	path: string,
-): Promise<ThemeAnalysisCache> {
+): Promise<{ cache: ThemeAnalysisCache; discardedReason?: string }> {
+	const empty: ThemeAnalysisCache = { version: 1, entries: {} };
 	let raw: string;
 	try {
 		raw = await readFile(path, "utf8");
 	} catch (error) {
-		if (isMissingFileError(error)) return { version: 1, entries: {} };
-		throw new Error(
-			`Unable to read theme analysis cache ${path}: ${errorMessage(error)}`,
-		);
+		if (isMissingFileError(error)) return { cache: empty };
+		return {
+			cache: empty,
+			discardedReason: `unreadable: ${errorMessage(error)}`,
+		};
 	}
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);
 	} catch (error) {
-		throw new Error(
-			`Invalid JSON in theme analysis cache ${path}: ${errorMessage(error)}`,
-		);
+		return {
+			cache: empty,
+			discardedReason: `invalid JSON: ${errorMessage(error)}`,
+		};
 	}
 	try {
-		return parsePersistedInspectFactCache(parsed);
+		return { cache: parsePersistedInspectFactCache(parsed) };
 	} catch (error) {
-		throw new Error(
-			`Invalid theme analysis cache ${path}: ${errorMessage(error)}`,
-		);
+		return { cache: empty, discardedReason: errorMessage(error) };
 	}
 }
 

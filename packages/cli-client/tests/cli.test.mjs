@@ -667,7 +667,7 @@ test("cli: inspect treats missing external artifacts as unknown", {
 	);
 });
 
-test("cli: inspect rejects a malformed cache instead of silently replacing it", async () => {
+test("cli: inspect discards a malformed cache and analyzes from source", async () => {
 	await withProject(
 		{
 			"snippets/card.liquid": "{{ product.title }}",
@@ -682,8 +682,15 @@ test("cli: inspect rejects a malformed cache instead of silently replacing it", 
 				"--format",
 				"json",
 			);
-			assert.equal(result.status, 1);
-			assert.match(result.stderr, /Invalid JSON in theme analysis cache/);
+			// A cache is an optimization. An unusable one is reported and replaced,
+			// never a reason to fail the command.
+			assert.equal(result.status, 0, result.stderr);
+			assert.match(result.stderr, /Discarded theme analysis cache/);
+			assert.match(result.stderr, /invalid JSON/);
+			const graph = JSON.parse(result.stdout);
+			assert.ok(
+				graph.nodes.some((node) => node.id === "file:snippets/card.liquid"),
+			);
 		},
 	);
 });
@@ -712,7 +719,7 @@ test("cli: inspect rejects roots whose symlink target escapes the project", asyn
 	}
 });
 
-test("cli: inspect rejects cache facts owned by another source", async () => {
+test("cli: inspect discards cache facts owned by another source", async () => {
 	await withProject({ "snippets/card.liquid": "{{ title }}" }, async (cwd) => {
 		const first = await runCli(
 			cwd,
@@ -738,8 +745,23 @@ test("cli: inspect rejects cache facts owned by another source", async () => {
 			"--format",
 			"json",
 		);
-		assert.equal(second.status, 1);
-		assert.match(second.stderr, /Invalid theme analysis cache/);
+		// Ownership validation still rejects the entry; it just costs a cold
+		// rebuild rather than the whole command.
+		assert.equal(second.status, 0, second.stderr);
+		assert.match(second.stderr, /Discarded theme analysis cache/);
+		assert.match(second.stderr, /snippets\/card\.liquid/);
+		const graph = JSON.parse(second.stdout);
+		assert.ok(
+			graph.nodes.some((node) => node.id === "file:snippets/card.liquid"),
+		);
+		// The discarded cache is replaced by a valid one, so the next run is warm
+		// and every cached fact belongs to the file that owns the entry.
+		const rewritten = JSON.parse(readFileSync(cachePath, "utf8"));
+		const entry = rewritten.entries["snippets/card.liquid"];
+		assert.ok(entry.facts.length > 0);
+		for (const fact of entry.facts) {
+			assert.equal(fact.path ?? fact.fromPath, "snippets/card.liquid");
+		}
 	});
 });
 
