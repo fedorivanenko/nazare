@@ -193,7 +193,9 @@ export async function buildTheme(
 	// Storefront locale files from source. These are the developer's translations,
 	// merged field-by-field with the merchant's edits rather than copied over.
 	const sourceLocales = new Map<string, PlannedFile>();
-	const conflicts: string[] = [];
+	const conflicts: string[] = workspaceBuild.issues
+		.filter((issue) => issue.code === "THEME_OUTPUT_COLLISION")
+		.map((issue) => issue.message);
 	const issues: Diagnostic[] = [...workspaceBuild.issues];
 	const notes: Diagnostic[] = [];
 	const compiled: string[] = [];
