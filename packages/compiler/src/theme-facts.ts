@@ -8,6 +8,8 @@ import type { NazareAst } from "./ast.js";
 import type { EmitResult } from "./emit.js";
 import type { ThemeFileKind } from "./theme-file-classifier.js";
 
+export type ThemeEvidenceStrength = "suggestive" | "strong" | "direct";
+
 export interface ThemeInputFile {
 	path: string;
 	contents: string;
@@ -183,10 +185,18 @@ export type ThemeFact =
 			name: string;
 	  }
 	| {
+			kind: "declaresInput";
+			path: string;
+			name: string;
+			required: boolean;
+			paramType?: string;
+			span?: SourceSpan;
+	  }
+	| {
 			kind: "detectsCapability";
 			path: string;
 			capability: string;
-			confidence: number;
+			evidenceStrength: ThemeEvidenceStrength;
 			span?: SourceSpan;
 	  };
 
@@ -336,7 +346,7 @@ export type ThemeCapabilityRecord = {
 	id: string;
 	path: string;
 	capability: string;
-	confidence: number;
+	evidenceStrength: ThemeEvidenceStrength;
 	evidenceIds: string[];
 };
 
@@ -344,7 +354,7 @@ export type ThemeCapabilitySignalRecord = {
 	id: string;
 	path: string;
 	capability: string;
-	confidence: number;
+	evidenceStrength: ThemeEvidenceStrength;
 	span?: SourceSpan;
 };
 
@@ -352,7 +362,7 @@ export type ThemeClassificationRecord = {
 	id: string;
 	path: string;
 	label: string;
-	confidence: number;
+	evidenceStrength: ThemeEvidenceStrength;
 	evidenceIds: string[];
 	uncertainty: string[];
 };
@@ -366,6 +376,7 @@ export type ThemeEvidenceRecord = {
 		| "dataRead"
 		| "renderCall"
 		| "renderArgument"
+		| "inputDeclaration"
 		| "dependency";
 	file: string;
 	span?: SourceSpan;
@@ -377,6 +388,8 @@ export type ThemeExpectedInputRecord = {
 	path: string;
 	name: string;
 	required: boolean;
+	provenance: "declared" | "inferred";
+	declaredType?: string;
 	evidenceIds: string[];
 };
 
@@ -513,20 +526,22 @@ export type SemanticThemeGraphNode =
 			path: string;
 			name: string;
 			required: boolean;
+			provenance: "declared" | "inferred";
+			declaredType?: string;
 			evidenceIds: string[];
 	  }
 	| {
 			id: string;
 			kind: "capability";
 			capability: string;
-			confidence: number;
+			evidenceStrength: ThemeEvidenceStrength;
 			evidenceIds: string[];
 	  }
 	| {
 			id: string;
 			kind: "classification";
 			label: string;
-			confidence: number;
+			evidenceStrength: ThemeEvidenceStrength;
 			evidenceIds: string[];
 			uncertainty: string[];
 	  }

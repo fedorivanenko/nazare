@@ -20,17 +20,25 @@ export function themeGraphFromModel(
 ): InspectNazareThemeResult {
 	const nodes: SemanticThemeGraphNode[] = [];
 	const edges: SemanticThemeGraphEdge[] = [];
-	const nodeIds = new Set<string>();
-	const edgeIds = new Set<string>();
+	const nodesById = new Map<string, SemanticThemeGraphNode>();
+	const edgesById = new Map<string, SemanticThemeGraphEdge>();
 
 	const pushNode = (node: SemanticThemeGraphNode) => {
-		if (nodeIds.has(node.id)) return;
-		nodeIds.add(node.id);
+		const existing = nodesById.get(node.id);
+		if (existing) {
+			if (JSON.stringify(existing) === JSON.stringify(node)) return;
+			throw new Error(`Conflicting semantic graph node id ${node.id}`);
+		}
+		nodesById.set(node.id, node);
 		nodes.push(node);
 	};
 	const pushEdge = (edge: SemanticThemeGraphEdge) => {
-		if (edgeIds.has(edge.id)) return;
-		edgeIds.add(edge.id);
+		const existing = edgesById.get(edge.id);
+		if (existing) {
+			if (JSON.stringify(existing) === JSON.stringify(edge)) return;
+			throw new Error(`Conflicting semantic graph edge id ${edge.id}`);
+		}
+		edgesById.set(edge.id, edge);
 		edges.push(edge);
 	};
 
@@ -365,6 +373,8 @@ export function themeGraphFromModel(
 			path: input.path,
 			name: input.name,
 			required: input.required,
+			provenance: input.provenance,
+			declaredType: input.declaredType,
 			evidenceIds: input.evidenceIds,
 		});
 		pushEdge({
@@ -379,7 +389,7 @@ export function themeGraphFromModel(
 			id: capability.id,
 			kind: "capability",
 			capability: capability.capability,
-			confidence: capability.confidence,
+			evidenceStrength: capability.evidenceStrength,
 			evidenceIds: capability.evidenceIds,
 		});
 		pushEdge({
@@ -394,7 +404,7 @@ export function themeGraphFromModel(
 			id: classification.id,
 			kind: "classification",
 			label: classification.label,
-			confidence: classification.confidence,
+			evidenceStrength: classification.evidenceStrength,
 			evidenceIds: classification.evidenceIds,
 			uncertainty: classification.uncertainty,
 		});

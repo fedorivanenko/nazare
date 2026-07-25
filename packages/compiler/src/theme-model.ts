@@ -42,6 +42,7 @@ export function buildThemeSemanticModel(
 	const settingReads: ThemeSettingReadRecord[] = [];
 	const dataAccesses: ThemeDataAccessRecord[] = [];
 	const variableReads: ThemeVariableReadRecord[] = [];
+	const declaredInputs: Extract<ThemeFact, { kind: "declaresInput" }>[] = [];
 	const guardedObjects = new Set<string>();
 	const renderSiteFacts: Extract<ThemeFact, { kind: "rendersSnippet" }>[] = [];
 	const renderArguments: ThemeRenderArgumentRecord[] = [];
@@ -171,6 +172,7 @@ export function buildThemeSemanticModel(
 		if (fact.kind === "guardsObject") {
 			guardedObjects.add(`${fact.fromPath}:${fact.name}`);
 		}
+		if (fact.kind === "declaresInput") declaredInputs.push(fact);
 		if (fact.kind === "readsShopifyData") {
 			dataAccesses.push({
 				id: dataAccessId(fact.fromPath, fact.expression, fact.span),
@@ -186,7 +188,7 @@ export function buildThemeSemanticModel(
 				id: capabilitySignalId(fact.path, fact.capability, fact.span),
 				path: fact.path,
 				capability: fact.capability,
-				confidence: fact.confidence,
+				evidenceStrength: fact.evidenceStrength,
 				span: fact.span,
 			});
 		}
@@ -324,6 +326,7 @@ export function buildThemeSemanticModel(
 		dataAccesses,
 		variableReads,
 		guardedObjects,
+		declaredInputs,
 	);
 	const renderSites = renderSiteRecords(
 		renderSiteFacts,
@@ -349,6 +352,7 @@ export function buildThemeSemanticModel(
 		variableReads,
 		renderArguments,
 		capabilitySignals,
+		declaredInputs,
 	});
 
 	const settingByPathAndId = new Map(
@@ -655,6 +659,7 @@ function evidenceRecords(records: {
 	variableReads: ThemeVariableReadRecord[];
 	renderArguments: ThemeRenderArgumentRecord[];
 	capabilitySignals: ThemeCapabilitySignalRecord[];
+	declaredInputs: Extract<ThemeFact, { kind: "declaresInput" }>[];
 }): ThemeEvidenceRecord[] {
 	return [
 		...records.references.map((reference) => ({
@@ -716,6 +721,13 @@ function evidenceRecords(records: {
 			span: argument.span,
 			extractor: "theme-source-facts",
 		})),
+		...records.declaredInputs.map((input) => ({
+			id: declaredInputId(input.path, input.name),
+			kind: "inputDeclaration" as const,
+			file: input.path,
+			span: input.span,
+			extractor: "theme-nazare-facts",
+		})),
 		...records.capabilitySignals.map((signal) => ({
 			id: signal.id,
 			kind: "dataRead" as const,
@@ -738,6 +750,7 @@ function expectedInputRecords(
 	dataAccesses: ThemeDataAccessRecord[],
 	variableReads: ThemeVariableReadRecord[],
 	guardedObjects: Set<string>,
+	declaredInputs: Extract<ThemeFact, { kind: "declaresInput" }>[],
 ): ThemeExpectedInputRecord[] {
 	const componentPaths = new Set(
 		declarations
@@ -762,9 +775,21 @@ function expectedInputRecords(
 			path,
 			name,
 			required: !guardedObjects.has(`${path}:${name}`),
+			provenance: "inferred",
 			evidenceIds: [evidenceId],
 		});
 	};
+	for (const input of declaredInputs) {
+		byId.set(expectedInputId(input.path, input.name), {
+			id: expectedInputId(input.path, input.name),
+			path: input.path,
+			name: input.name,
+			required: input.required,
+			provenance: "declared",
+			declaredType: input.paramType,
+			evidenceIds: [declaredInputId(input.path, input.name)],
+		});
+	}
 	for (const access of dataAccesses) {
 		if (!componentPaths.has(access.fromPath)) continue;
 		if (!CONTEXT_INPUT_OBJECTS.has(access.object)) continue;
@@ -920,7 +945,16 @@ function reference(options: {
 
 function dedupeById<T extends { id: string }>(items: T[]): T[] {
 	const seen = new Map<string, T>();
-	for (const item of items) seen.set(item.id, item);
+	for (const item of items) {
+		const existing = seen.get(item.id);
+		if (!existing) {
+			seen.set(item.id, item);
+			continue;
+		}
+		if (JSON.stringify(existing) !== JSON.stringify(item)) {
+			throw new Error(`Conflicting theme semantic record id ${item.id}`);
+		}
+	}
 	return [...seen.values()];
 }
 
@@ -1029,6 +1063,10 @@ export function variableReadId(
 
 export function expectedInputId(path: string, name: string): string {
 	return `expected-input:${path}:${name}`;
+}
+
+export function declaredInputId(path: string, name: string): string {
+	return `declared-input:${path}:${name}`;
 }
 
 export function capabilitySignalId(

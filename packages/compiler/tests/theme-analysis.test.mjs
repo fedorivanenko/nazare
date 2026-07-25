@@ -330,3 +330,47 @@ test("theme source facts ignore non-Liquid regions and keep repeated references 
 		false,
 	);
 });
+
+test("malformed JSON contributes no authoritative semantic facts", () => {
+	const analysis = analyzeNazareTheme([
+		{ path: "templates/index.json", contents: "{}" },
+	]);
+	assert.equal(
+		analysis.issues.some(
+			(issue) => issue.code === "THEME_TEMPLATE_MISSING_SECTIONS",
+		),
+		true,
+	);
+	assert.equal(analysis.ir.declarations.length, 0);
+	assert.equal(analysis.ir.pages.length, 0);
+});
+
+test("Nazare props are declared inputs, not a synthetic props input", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "card.nz.liquid",
+			contents: "{% props title: string.required() %}{{ props.title }}",
+		},
+	]);
+	assert.deepEqual(
+		analysis.ir.expectedInputs.map((input) => [
+			input.name,
+			input.required,
+			input.provenance,
+		]),
+		[["title", true, "declared"]],
+	);
+});
+
+test("production analysis rejects unclosed Liquid", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "snippets/broken.liquid",
+			contents: "{% if product %}{{ product.title }}",
+		},
+	]);
+	assert.equal(
+		analysis.issues.some((issue) => issue.code === "NAZARE_PARSE_LIQUID"),
+		true,
+	);
+});

@@ -3,59 +3,60 @@ import type {
 	ThemeCapabilitySignalRecord,
 	ThemeClassificationRecord,
 	ThemeDataAccessRecord,
+	ThemeEvidenceStrength,
 } from "./theme-facts.js";
 
 type AccessCapabilityRule = {
 	name: string;
-	confidence: number;
+	evidenceStrength: ThemeEvidenceStrength;
 	matches: (access: ThemeDataAccessRecord) => boolean;
 };
 
 const ACCESS_CAPABILITY_RULES: AccessCapabilityRule[] = [
 	{
 		name: "displaysProductPrice",
-		confidence: 0.95,
+		evidenceStrength: "direct",
 		matches: (access) =>
 			access.object === "product" && access.propertyPath === "price",
 	},
 	{
 		name: "displaysProductMedia",
-		confidence: 0.85,
+		evidenceStrength: "strong",
 		matches: (access) =>
 			access.object === "product" &&
 			/(^|\.)(featured_image|media|images)$/.test(access.propertyPath ?? ""),
 	},
 	{
 		name: "displaysCartItems",
-		confidence: 0.9,
+		evidenceStrength: "direct",
 		matches: (access) =>
 			access.object === "cart" && /(^|\.)items/.test(access.propertyPath ?? ""),
 	},
 	{
 		name: "usesCart",
-		confidence: 0.75,
+		evidenceStrength: "strong",
 		matches: (access) => access.object === "cart",
 	},
 	{
 		name: "usesSearch",
-		confidence: 0.75,
+		evidenceStrength: "strong",
 		matches: (access) => access.object === "search",
 	},
 	{
 		name: "displaysRecommendations",
-		confidence: 0.85,
+		evidenceStrength: "strong",
 		matches: (access) => access.object === "recommendations",
 	},
 	{
 		name: "usesLocalization",
-		confidence: 0.85,
+		evidenceStrength: "strong",
 		matches: (access) => access.object === "localization",
 	},
 ];
 
 type ClassificationRule = {
 	label: string;
-	confidence: number;
+	evidenceStrength: ThemeEvidenceStrength;
 	evidenceCapabilities: string[];
 	evidenceDataExpressions?: string[];
 	matches: (capabilities: Set<string>, data: Set<string>) => boolean;
@@ -65,7 +66,7 @@ type ClassificationRule = {
 const CLASSIFICATION_RULES: ClassificationRule[] = [
 	{
 		label: "productForm",
-		confidence: 0.9,
+		evidenceStrength: "direct",
 		evidenceCapabilities: ["addsToCart", "selectsVariants"],
 		matches: (capabilities) =>
 			capabilities.has("addsToCart") && capabilities.has("selectsVariants"),
@@ -73,7 +74,7 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
 	},
 	{
 		label: "productCard",
-		confidence: 0.75,
+		evidenceStrength: "strong",
 		evidenceCapabilities: ["displaysProductPrice", "displaysProductMedia"],
 		evidenceDataExpressions: ["product.title"],
 		matches: (capabilities, data) =>
@@ -83,7 +84,7 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
 	},
 	{
 		label: "cartDrawer",
-		confidence: 0.65,
+		evidenceStrength: "suggestive",
 		evidenceCapabilities: ["updatesCart", "displaysCartItems"],
 		matches: (capabilities) =>
 			capabilities.has("updatesCart") || capabilities.has("displaysCartItems"),
@@ -91,21 +92,21 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
 	},
 	{
 		label: "searchOverlay",
-		confidence: 0.8,
+		evidenceStrength: "strong",
 		evidenceCapabilities: ["performsPredictiveSearch"],
 		matches: (capabilities) => capabilities.has("performsPredictiveSearch"),
 		uncertainty: [],
 	},
 	{
 		label: "collectionGrid",
-		confidence: 0.75,
+		evidenceStrength: "strong",
 		evidenceCapabilities: ["filtersCollections"],
 		matches: (capabilities) => capabilities.has("filtersCollections"),
 		uncertainty: [],
 	},
 	{
 		label: "localizationSelector",
-		confidence: 0.7,
+		evidenceStrength: "suggestive",
 		evidenceCapabilities: ["usesLocalization"],
 		matches: (capabilities) => capabilities.has("usesLocalization"),
 		uncertainty: [],
@@ -120,13 +121,16 @@ export function inferCapabilities(
 	const add = (
 		path: string,
 		capability: string,
-		confidence: number,
+		evidenceStrength: ThemeEvidenceStrength,
 		evidenceId: string,
 	): void => {
 		const id = `capability:${path}:${capability}`;
 		const existing = byId.get(id);
 		if (existing) {
-			existing.confidence = Math.max(existing.confidence, confidence);
+			existing.evidenceStrength = strongerEvidence(
+				existing.evidenceStrength,
+				evidenceStrength,
+			);
 			existing.evidenceIds = [
 				...new Set([...existing.evidenceIds, evidenceId]),
 			];
@@ -136,17 +140,17 @@ export function inferCapabilities(
 			id,
 			path,
 			capability,
-			confidence,
+			evidenceStrength,
 			evidenceIds: [evidenceId],
 		});
 	};
 	for (const signal of capabilitySignals) {
-		add(signal.path, signal.capability, signal.confidence, signal.id);
+		add(signal.path, signal.capability, signal.evidenceStrength, signal.id);
 	}
 	for (const access of dataAccesses) {
 		for (const rule of ACCESS_CAPABILITY_RULES) {
 			if (rule.matches(access)) {
-				add(access.fromPath, rule.name, rule.confidence, access.id);
+				add(access.fromPath, rule.name, rule.evidenceStrength, access.id);
 			}
 		}
 	}
@@ -196,7 +200,7 @@ export function inferClassifications(
 				id: `classification:${path}:${rule.label}`,
 				path,
 				label: rule.label,
-				confidence: rule.confidence,
+				evidenceStrength: rule.evidenceStrength,
 				evidenceIds: [...new Set(evidenceIds)].sort((a, b) =>
 					a.localeCompare(b),
 				),
@@ -205,4 +209,16 @@ export function inferClassifications(
 		}
 	}
 	return records;
+}
+
+function strongerEvidence(
+	left: ThemeEvidenceStrength,
+	right: ThemeEvidenceStrength,
+): ThemeEvidenceStrength {
+	const rank: Record<ThemeEvidenceStrength, number> = {
+		suggestive: 0,
+		strong: 1,
+		direct: 2,
+	};
+	return rank[left] >= rank[right] ? left : right;
 }

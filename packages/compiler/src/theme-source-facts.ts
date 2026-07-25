@@ -5,7 +5,7 @@
 // AST — a token in a comment, string, or script body can never become a fact.
 // Settings reads are NOT collected here: the parser already produces them
 // (scanSettingsReadsFromLiquidAst), callers map those directly.
-import type { SourceSpan } from "@nazare/core";
+import type { Diagnostic, SourceSpan } from "@nazare/core";
 import {
 	type LiquidHtmlNode,
 	NodeTypes,
@@ -22,7 +22,11 @@ import {
 	visitLiquidExpressions,
 } from "./liquid-expressions.js";
 import { spanFromOffsets } from "./source.js";
-import { renderSiteKey, type ThemeFact } from "./theme-facts.js";
+import {
+	renderSiteKey,
+	type ThemeEvidenceStrength,
+	type ThemeFact,
+} from "./theme-facts.js";
 
 /** Shopify objects whose reads become readsShopifyData facts. */
 export const SHOPIFY_DATA_OBJECTS = new Set([
@@ -89,26 +93,26 @@ const ASSET_FILTER_NAMES = new Set(["asset_url", "asset_img_url"]);
 
 type LookupCapabilityRule = {
 	capability: string;
-	confidence: number;
+	evidenceStrength: ThemeEvidenceStrength;
 	matches: (object: string, propertyPath: string) => boolean;
 };
 
 const lookupCapabilityRules: LookupCapabilityRule[] = [
 	{
 		capability: "addsToCart",
-		confidence: 0.95,
+		evidenceStrength: "direct",
 		matches: (object, path) => object === "routes" && path === "cart_add_url",
 	},
 	{
 		capability: "updatesCart",
-		confidence: 0.9,
+		evidenceStrength: "direct",
 		matches: (object, path) =>
 			object === "routes" &&
 			(path === "cart_change_url" || path === "cart_update_url"),
 	},
 	{
 		capability: "selectsVariants",
-		confidence: 0.85,
+		evidenceStrength: "strong",
 		matches: (object, path) =>
 			object === "product" &&
 			(/(^|\.)variants($|\.)/.test(path) ||
@@ -116,12 +120,12 @@ const lookupCapabilityRules: LookupCapabilityRule[] = [
 	},
 	{
 		capability: "performsPredictiveSearch",
-		confidence: 0.9,
+		evidenceStrength: "direct",
 		matches: (object) => object === "predictive_search",
 	},
 	{
 		capability: "filtersCollections",
-		confidence: 0.8,
+		evidenceStrength: "strong",
 		matches: (object, path) =>
 			(object === "collection" && /(^|\.)filters($|\.)/.test(path)) ||
 			(object === "filter" && (path === "active_values" || path === "values")),
@@ -131,26 +135,30 @@ const lookupCapabilityRules: LookupCapabilityRule[] = [
 // Signals only visible as literal text (form actions, input names, JS calls
 // in inline <script>). These are heuristics by nature; they run over source
 // with comments and raw/script/stylesheet bodies blanked so dead text can
-// never signal, and they carry their own confidence.
+// never signal, and they carry their own evidenceStrength.
 const textCapabilityRules: Array<{
 	capability: string;
-	confidence: number;
+	evidenceStrength: ThemeEvidenceStrength;
 	pattern: RegExp;
 }> = [
-	{ capability: "addsToCart", confidence: 0.95, pattern: /\/cart\/add/g },
+	{
+		capability: "addsToCart",
+		evidenceStrength: "direct",
+		pattern: /\/cart\/add/g,
+	},
 	{
 		capability: "updatesCart",
-		confidence: 0.9,
+		evidenceStrength: "direct",
 		pattern: /\/cart\/(?:change|update)/g,
 	},
 	{
 		capability: "selectsVariants",
-		confidence: 0.85,
+		evidenceStrength: "strong",
 		pattern: /name=["']id["']/g,
 	},
 	{
 		capability: "performsPredictiveSearch",
-		confidence: 0.9,
+		evidenceStrength: "direct",
 		pattern: /(?:predictive_search|\/search\/suggest)/g,
 	},
 ];
@@ -159,8 +167,26 @@ export function collectSourceThemeFacts(
 	path: string,
 	source: string,
 	ast: ReturnType<typeof toLiquidHtmlAST>,
-): ThemeFact[] {
+): { facts: ThemeFact[]; issues: Diagnostic[] } {
 	const facts: ThemeFact[] = [];
+	const issues: Diagnostic[] = [];
+	const unscannedKeys = new Set<string>();
+	const reportUnscanned = (value: unknown): void => {
+		const candidate = value as { type?: unknown; position?: SourceRange };
+		const type =
+			typeof candidate?.type === "string" ? candidate.type : typeof value;
+		const position = candidate?.position;
+		const key = `${type}:${position?.start ?? "unknown"}:${position?.end ?? "unknown"}`;
+		if (unscannedKeys.has(key)) return;
+		unscannedKeys.add(key);
+		issues.push({
+			severity: "warning",
+			code: "THEME_SOURCE_EXPRESSION_UNSCANNED",
+			message: `Unsupported Liquid expression shape ${type} in ${path}`,
+			phase: "parse",
+			span: rangeSpan(path, source, position),
+		});
+	};
 	const firstAssignmentOffsetByName = new Map<string, number>();
 	const guardedNames = new Set<string>();
 	const unguardedNames = new Set<string>();
@@ -194,14 +220,14 @@ export function collectSourceThemeFacts(
 
 	const pushCapability = (
 		capability: string,
-		confidence: number,
+		evidenceStrength: ThemeEvidenceStrength,
 		span?: SourceSpan,
 	): void => {
 		facts.push({
 			kind: "detectsCapability",
 			path,
 			capability,
-			confidence,
+			evidenceStrength,
 			span,
 		});
 	};
@@ -241,7 +267,7 @@ export function collectSourceThemeFacts(
 		}
 		for (const rule of lookupCapabilityRules) {
 			if (rule.matches(lookup.name, propertyPath)) {
-				pushCapability(rule.capability, rule.confidence, span);
+				pushCapability(rule.capability, rule.evidenceStrength, span);
 			}
 		}
 	};
@@ -268,12 +294,18 @@ export function collectSourceThemeFacts(
 			(tagName === "render" || tagName === "include") &&
 			isRenderMarkup(tag.markup)
 		) {
-			facts.push(
-				...renderArgumentFacts(path, source, tag.markup, tag.position),
+			const result = renderArgumentFacts(
+				path,
+				source,
+				tag.markup,
+				tag.position,
 			);
+			facts.push(...result.facts);
+			issues.push(...result.issues);
 		}
 
 		visitLiquidExpressions(tag.markup, {
+			onUnscanned: reportUnscanned,
 			onLookup: (lookup) => handleLookup(lookup, inCondition),
 			onVariable: (variable) => {
 				const filterNames = namesOfFilters(variable.filters);
@@ -338,7 +370,7 @@ export function collectSourceThemeFacts(
 			if (match.index === undefined) continue;
 			pushCapability(
 				rule.capability,
-				rule.confidence,
+				rule.evidenceStrength,
 				spanFromOffsets(source, path, {
 					start: match.index,
 					end: match.index + match[0].length,
@@ -347,7 +379,7 @@ export function collectSourceThemeFacts(
 		}
 	}
 
-	return facts;
+	return { facts, issues };
 }
 
 function expressionStart(value: unknown): number {
@@ -404,30 +436,54 @@ function renderArgumentFacts(
 	source: string,
 	markup: RenderMarkupLike,
 	tagPosition: SourceRange,
-): ThemeFact[] {
-	// Arguments attribute to a site only when the target is static; a dynamic
-	// {% render block %} has no name to check arguments against.
-	if (!isLiquidString(markup.snippet)) return [];
+): { facts: ThemeFact[]; issues: Diagnostic[] } {
+	const facts: ThemeFact[] = [];
+	const issues: Diagnostic[] = [];
+	if (!isLiquidString(markup.snippet)) {
+		if (
+			(Array.isArray(markup.args) && markup.args.length > 0) ||
+			markup.variable
+		) {
+			issues.push({
+				severity: "warning",
+				code: "THEME_DYNAMIC_RENDER_ARGUMENTS_UNSCANNED",
+				message: `Cannot attribute arguments for dynamic render target in ${path}`,
+				phase: "parse",
+				span: spanFromOffsets(source, path, tagPosition),
+			});
+		}
+		return { facts, issues };
+	}
 	const targetName = markup.snippet.value;
 	const siteId = renderSiteKey(
 		path,
 		spanFromOffsets(source, path, tagPosition),
 	);
-	const facts: ThemeFact[] = [];
 	for (const argument of namedArguments(markup.args)) {
-		const valueSource = sliceRange(source, argumentValueRange(argument));
+		const valueRange = argumentValueRange(argument);
+		const valueSource = sliceRange(source, valueRange);
+		if (!valueRange || !valueSource) {
+			issues.push({
+				severity: "warning",
+				code: "THEME_RENDER_ARGUMENT_POSITION_MISSING",
+				message: `Render argument ${argument.name} has no source value position in ${path}`,
+				phase: "parse",
+				span: rangeSpan(path, source, argument.position),
+			});
+			continue;
+		}
 		facts.push({
 			kind: "passesRenderArgument",
 			fromPath: path,
 			targetName,
 			siteId,
 			argumentName: argument.name,
-			valueExpression: valueSource ?? "",
+			valueExpression: valueSource,
 			...argumentSource(argument.value),
 			span: rangeSpan(path, source, argument.position),
 		});
 	}
-	return facts;
+	return { facts, issues };
 }
 
 /** sourceObject/sourcePath of an argument whose value is a plain lookup. */

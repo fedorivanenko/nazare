@@ -64,7 +64,9 @@ export function collectPlainLiquidThemeFacts(
 		});
 	}
 	if (ast.factsCollected) {
-		facts.push(...collectSourceThemeFacts(path, contents, ast.liquidAst));
+		const sourceResult = collectSourceThemeFacts(path, contents, ast.liquidAst);
+		facts.push(...sourceResult.facts);
+		issues.push(...sourceResult.issues);
 	}
 	facts.push(...schemaFacts(path, ast, issues));
 	return { facts, issues };

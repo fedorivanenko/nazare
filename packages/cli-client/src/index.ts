@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	readdir,
+	readFile,
+	realpath,
+	stat,
+	writeFile,
+} from "node:fs/promises";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
@@ -50,8 +57,9 @@ export async function main(
 		const readProjectFile = (path: string): string | undefined => {
 			try {
 				return readFileSync(join(projectRoot, path), "utf8");
-			} catch {
-				return undefined;
+			} catch (error) {
+				if (isFileNotFoundError(error)) return undefined;
+				throw error;
 			}
 		};
 
@@ -327,13 +335,21 @@ async function runInspect(
 		return 1;
 	}
 	const root = resolve(projectRoot, inspectRoot);
-	if (isOutsideRoot(projectRoot, root)) {
-		output.error(`${root} is outside the project root ${projectRoot}`);
+	const canonicalProjectRoot = await realpath(projectRoot);
+	const canonicalRoot = await realpath(root);
+	if (isOutsideRoot(canonicalProjectRoot, canonicalRoot)) {
+		output.error(
+			`${canonicalRoot} is outside the project root ${canonicalProjectRoot}`,
+		);
 		return 1;
 	}
-	const files = await collectThemeInputFiles(root, projectRoot);
+	const files = await collectThemeInputFiles(
+		canonicalRoot,
+		canonicalProjectRoot,
+	);
 	const inspected = inspectNazareTheme(files, {
-		root: relative(projectRoot, root).split(sep).join("/") || ".",
+		root:
+			relative(canonicalProjectRoot, canonicalRoot).split(sep).join("/") || ".",
 		strictness: cliOptions.strictness,
 	});
 	output.log(JSON.stringify(inspected, null, 2));
@@ -342,6 +358,14 @@ async function runInspect(
 	)
 		? 1
 		: 0;
+}
+
+function isFileNotFoundError(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		"code" in error &&
+		(error as NodeJS.ErrnoException).code === "ENOENT"
+	);
 }
 
 function isOutsideRoot(root: string, path: string): boolean {

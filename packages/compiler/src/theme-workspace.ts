@@ -33,7 +33,7 @@ import { collectNazareThemeFacts } from "./theme-nazare-facts.js";
 export const THEME_ANALYSIS_DEFAULTS = {
 	root: ".",
 	strictness: "strict",
-	plainLiquidParseMode: "tolerant",
+	plainLiquidParseMode: "strict",
 } as const;
 
 export const THEME_BUILD_DEFAULTS = {
@@ -96,7 +96,20 @@ export function buildNazareThemeWorkspace(
 		scopePaths,
 	);
 	const allIssues: Diagnostic[] = [...analysis.issues];
+	pushUniqueDiagnostics(
+		allIssues,
+		artifactCompletenessIssues(
+			analysis.artifacts,
+			filesToAnalyze,
+			buildOptions.scope,
+		),
+	);
 	const emitted: EmitResult = { files: [], issues: [] };
+	const emittedOwnershipByPath = new Map<
+		string,
+		{ owner: string; contents: string; shared: boolean }
+	>();
+	let hasOutputCollision = false;
 	const dependencyIssuesByPath = new Map<string, Diagnostic[]>();
 	for (const artifact of selected) {
 		const dependencyIssues = checkDependencies(artifact.ast, readFile, {
@@ -154,7 +167,35 @@ export function buildNazareThemeWorkspace(
 				readFile,
 			},
 		);
-		emitted.files.push(...result.files);
+		for (const file of result.files) {
+			const outputPath = normalizeThemePath(file.path);
+			const existing = emittedOwnershipByPath.get(outputPath);
+			if (!existing) {
+				emittedOwnershipByPath.set(outputPath, {
+					owner: artifact.path,
+					contents: file.contents,
+					shared: file.ownership === "shared",
+				});
+				emitted.files.push({ ...file, path: outputPath });
+				continue;
+			}
+			if (
+				existing.shared &&
+				file.ownership === "shared" &&
+				existing.contents === file.contents
+			) {
+				continue;
+			}
+			hasOutputCollision = true;
+			pushUniqueDiagnostics(allIssues, [
+				{
+					severity: "error",
+					code: "THEME_OUTPUT_COLLISION",
+					message: `Output ${outputPath} has multiple owners: ${existing.owner} and ${artifact.path}`,
+					phase: "emit",
+				},
+			]);
+		}
 		emitted.issues.push(...result.issues);
 		pushUniqueDiagnostics(allIssues, result.issues);
 		return {
@@ -163,7 +204,10 @@ export function buildNazareThemeWorkspace(
 			emitted: result,
 		};
 	});
-	if (hasErrors(allIssues) && !buildOptions.emitOnError) {
+	if (
+		hasOutputCollision ||
+		(hasErrors(allIssues) && !buildOptions.emitOnError)
+	) {
 		emitted.files = [];
 		artifacts = artifacts.map((artifact) => {
 			if (!artifact.emitted) return artifact;
@@ -222,13 +266,6 @@ function analyzeNormalizedThemeFiles(
 		if (fileKind === "layout") {
 			facts.push({
 				kind: "declaresLayout",
-				path: file.path,
-				name: themeNameFromPath(file.path),
-			});
-		}
-		if (fileKind === "locale") {
-			facts.push({
-				kind: "declaresLocale",
 				path: file.path,
 				name: themeNameFromPath(file.path),
 			});
@@ -397,6 +434,41 @@ function normalizeInputFiles(files: ThemeInputFile[]): {
 		byPath,
 		issues,
 	};
+}
+
+function artifactCompletenessIssues(
+	artifacts: ThemeBuildResult["artifacts"],
+	analyzedFiles: ThemeInputFile[],
+	scope: NonNullable<BuildNazareThemeWorkspaceOptions["scope"]>,
+): Diagnostic[] {
+	const expectedPaths =
+		scope.kind === "file"
+			? [normalizeThemePath(scope.path)]
+			: analyzedFiles
+					.filter((file) => classifyThemeFile(file.path) === "nazareComponent")
+					.map((file) => file.path);
+	const counts = new Map<string, number>();
+	for (const artifact of artifacts) {
+		counts.set(artifact.path, (counts.get(artifact.path) ?? 0) + 1);
+	}
+	return expectedPaths.flatMap((path): Diagnostic[] => {
+		const count = counts.get(path) ?? 0;
+		if (count === 1) return [];
+		return [
+			{
+				severity: "error",
+				code:
+					count === 0
+						? "THEME_INTERNAL_ARTIFACT_MISSING"
+						: "THEME_INTERNAL_ARTIFACT_DUPLICATE",
+				message:
+					count === 0
+						? `Compiler produced no artifact for ${path}`
+						: `Compiler produced ${count} artifacts for ${path}`,
+				phase: "check",
+			},
+		];
+	});
 }
 
 function pushUniqueDiagnostics(
