@@ -203,6 +203,16 @@ export function buildThemeSemanticModel(
 		if (fact.kind === "guardsObject") {
 			guardedObjects.add(`${fact.fromPath}:${fact.name}`);
 		}
+		if (fact.kind === "declaresInput") {
+			docParams.push({
+				kind: "declaresDocParam",
+				path: fact.path,
+				name: fact.name,
+				required: fact.required,
+				paramType: fact.paramType,
+				span: fact.span,
+			});
+		}
 		if (fact.kind === "declaresDocParam") {
 			docParams.push(fact);
 		}
