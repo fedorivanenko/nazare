@@ -35,6 +35,7 @@ import {
 	classifyThemeFile,
 	isUnsafeThemePath,
 	normalizeThemePath,
+	themeAssetNameFromPath,
 	themeNameFromPath,
 } from "./theme-file-classifier.js";
 import { themeGraphFromModel } from "./theme-graph-output.js";
@@ -288,7 +289,7 @@ function analyzeNormalizedThemeFiles(
 			facts.push({
 				kind: "declaresAsset",
 				path: file.path,
-				name: themeNameFromPath(file.path),
+				name: themeAssetNameFromPath(file.path),
 			});
 			saveCacheEntry();
 			continue;

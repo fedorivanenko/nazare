@@ -56,7 +56,23 @@ export function classifyThemeFile(path: string): ThemeFileKind {
 	return "other";
 }
 
-/** The theme-facing name of a file: its basename, known extensions stripped. */
+/**
+ * The theme-facing name of a file: its basename, known extensions stripped.
+ * Matches how Liquid addresses these entities — `{% section 'main-product' %}`,
+ * `{% render 'price' %}`, `{{ 'shop.title' | t }}`. Not for assets: see
+ * themeAssetNameFromPath.
+ */
 export function themeNameFromPath(path: string): string {
 	return baseNameOf(normalizeThemePath(path));
+}
+
+/**
+ * The theme-facing name of an asset: its full basename, extension included,
+ * because that is how Liquid addresses one — `{{ 'theme.css' | asset_url }}`.
+ * Stripping the extension collapsed every theme.css/theme.js pair into one
+ * name and reported the two files as duplicate declarations of `theme`.
+ */
+export function themeAssetNameFromPath(path: string): string {
+	const normalized = normalizeThemePath(path);
+	return normalized.split("/").at(-1) ?? normalized;
 }
