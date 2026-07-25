@@ -1,6 +1,7 @@
 # build artifacts
 node_modules/
 dist/
+.astro/
 .release/
 *.tsbuildinfo
 

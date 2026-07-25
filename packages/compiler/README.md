@@ -64,7 +64,7 @@ emitTheme
   - Shopify schema generation
 ```
 
-`compileArtifact()` runs the generic frontend-based compile pipeline. It selects a frontend, projects frontend output through shared compiler passes, and returns either `ok: true` with compiler facts or `ok: false` with diagnostics only. `compileNazareArtifact()` is the compatibility wrapper for `.nz.liquid`. `buildNazareTheme()` runs Nazare compile, checks dependencies, then emits theme files.
+`compileArtifact()` runs the generic frontend-based compile pipeline. It selects a frontend, projects frontend output through shared compiler passes, and returns either `ok: true` with compiler facts or `ok: false` with diagnostics only. `compileNazareArtifact()` is the compatibility wrapper for `.nz.liquid`. `buildNazareThemeWorkspace()` analyzes a theme workspace, selects a build scope, then emits theme files.
 
 ## Main entry points
 
@@ -103,7 +103,7 @@ Built-in frontend support:
 
 ### `compilePlainLiquid(source, file)`
 
-Parses one existing Shopify `.liquid` file without interpreting Nazare syntax. Returns Liquid parse diagnostics, authored schema diagnostics, static/dynamic dependencies from `{% render %}`, `{% include %}`, `{% section %}`, `{% sections %}`, and `{% layout %}`, plus a `canEmit` flag. Strict parsing is the default; pass `{ parseMode: "tolerant" }` for editor/preview tooling.
+Parses one existing Shopify `.liquid` file without interpreting Nazare syntax. Returns Liquid parse diagnostics, authored schema diagnostics, static/dynamic dependencies from `{% render %}`, `{% include %}`, `{% section %}`, `{% sections %}`, and `{% layout %}`, plus a `canEmit` flag. Strict HTML + Liquid parsing is the default; pass `{ parseMode: "liquid-only" }` to mask HTML while retaining strict Liquid structure validation.
 
 Use this for coexistence mode: legacy theme files stay plain Shopify Liquid, but the compiler can still validate and index them beside `.nz.liquid` components.
 
@@ -129,17 +129,45 @@ Returns:
 - `contracts` — imported component contracts;
 - `canEmit` — false if compile errors exist.
 
-### `buildNazareTheme(source, file, options)`
+### `analyzeNazareTheme(files, options)` / `inspectNazareTheme(files, options)`
 
-Compiles and emits Shopify theme files.
+Build deterministic whole-theme semantics from ordinary Shopify theme files and optional Nazare components. `analyzeNazareTheme()` returns canonical version 2 `ThemeSemanticModel` IR. `inspectNazareTheme()` projects that IR into stable version 2 graph nodes, edges, evidence, query views, and impact indexes.
+
+Semantic output distinguishes:
+
+- direct source facts, carrying source evidence;
+- derived value-flow facts, such as a passed `product` becoming `product.price` inside a snippet;
+- inferred inputs, with `required`, `optional`, or `unknown` requirement state;
+- capabilities/classifications, carrying categorical evidence strength and uncertainty;
+- unresolved dynamic or missing targets.
+
+Graph structure includes pages, templates, layouts, section groups, section and block instances, reusable theme blocks, render sites, render arguments, input satisfaction, Shopify data properties, settings, assets, locales, and optional Shopify metafield definitions. Render calls project explicitly as:
+
+```txt
+caller file → render site → target snippet
+                    └────→ argument → expected input
+                                      → Shopify data or setting origin
+```
+
+Theme analysis uses `liquid-only` parsing by default: HTML is masked to avoid branch-balancing false positives, while Liquid structure is validated strictly. A failed parse emits diagnostics and never fabricates skipped facts. Pass `.shopify/metafields.json` through `options.metafields` to join store definitions with theme reads; missing snapshots remain `unknown`, never proof of absence. Inspect output exposes consumed, unconsumed, broken, and page-impact queries. Pass `.theme-check.yml` through `options.themeCheck` to validate and expose the configured ignore list. Shopify rule names are not assumed to match Inspect diagnostics.
+
+### `buildNazareThemeWorkspace(files, options)`
+
+Analyzes workspace files and emits Shopify theme files for the selected scope.
+
+Scopes:
+
+- `{ kind: "workspace" }` — emit all buildable `.nz.liquid` artifacts.
+- `{ kind: "closure", path }` — analyze and emit an entry plus its transitive component-import closure.
+- `{ kind: "file", path }` — analyze the import closure but emit only the entry artifact, while using workspace files as dependency read context.
 
 Adds:
 
-- dependency diagnostics;
+- analysis diagnostics;
 - emitted Liquid/CSS/JS/runtime files;
 - `emittedOnError`, showing whether emit ran despite errors.
 
-By default `emitOnError` is `false`, so build pipelines skip output when errors exist. Tooling previews that need best-effort output must pass `emitOnError: true` explicitly.
+Workspace builds use exported `THEME_BUILD_DEFAULTS`: strict checking, strict plain-Liquid parsing, workspace scope, and `emitOnError: false`. Build pipelines expose no output when errors exist. Tooling previews that need best-effort output must pass `emitOnError: true` explicitly. Analysis/inspect uses exported `THEME_ANALYSIS_DEFAULTS`, including `liquid-only` parsing that masks HTML while rejecting malformed Liquid structure.
 
 ## Minimal compile
 
@@ -191,12 +219,15 @@ console.log(result.issues);
 ## Build theme files
 
 ```ts
-import { buildNazareTheme } from "@nazare/compiler";
+import { buildNazareThemeWorkspace } from "@nazare/compiler";
 
-const built = buildNazareTheme(source, "components/heading.nz.liquid", {
-	name: "heading",
-	readFile: (path) => files[path],
-});
+const built = buildNazareThemeWorkspace(
+	[{ path: "components/heading.nz.liquid", contents: source }],
+	{
+		name: "heading",
+		scope: { kind: "file", path: "components/heading.nz.liquid" },
+	},
+);
 
 for (const file of built.emitted.files) {
 	console.log(file.path);

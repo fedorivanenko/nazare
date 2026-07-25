@@ -54,8 +54,8 @@ Props are read as `props.name` inside Liquid expressions.
 Rules:
 
 - prop names must be unique;
-- undeclared `props.x` is an error;
-- section/block props must use `.setting()` because they receive values from Shopify editor settings, not render arguments.
+- undeclared `props.x` is an error in `strict` mode;
+- section/block props must use `.setting()` in `strict` mode because they receive values from Shopify editor settings, not render arguments.
 
 ### Type expression DSL
 
@@ -158,11 +158,12 @@ export default island(({ root, refs, data }) => {
 Rules:
 
 - `ref="name"` values must be static identifiers;
-- refs must be unique;
-- `refs.name` must refer to a declared ref;
-- `data.<ref>.<property>` must match a `data-*` binding on that ref;
-- scripts must default-export an `island(...)` setup for runtime registration;
-- behavior imports can use relative `.ts`/`.js` imports only.
+- refs must be unique in `strict` mode;
+- `refs.name` must refer to a declared ref in `strict` mode;
+- `data.<ref>.<property>` must match a `data-*` binding on that ref in `strict` mode;
+- scripts must have a default export for runtime registration;
+- TypeScript script checking provides an `island(...)` helper type, but the fast compile pass does not prove that the default export is specifically an `island(...)` call;
+- relative `.ts`/`.js` imports inside behavior scripts are bundled at emit time; bare package imports are not allowed.
 
 ## Islands
 
@@ -175,8 +176,9 @@ A behavior imported by name can be mounted on a subtree:
 
 Rules:
 
-- `island="name"` must name an imported behavior;
-- one behavior placement per component in v1;
+- `island="name"` must name an imported behavior in `strict` mode;
+- multiple different behavior placements are allowed;
+- the same behavior can be placed at most once per component in `strict` mode;
 - without `island`, behavior mounts on the component root.
 
 ## Root selection

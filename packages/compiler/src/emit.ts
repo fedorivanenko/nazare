@@ -15,12 +15,17 @@ import type {
 } from "@nazare/core";
 import { NodeTypes } from "@shopify/liquid-html-parser";
 import type { NazareAst } from "./ast.js";
-import { bundleScript } from "./bundle.js";
-import { rewriteCssClasses, scopedClassName } from "./css-modules.js";
+import { bundleScript, indent } from "./bundle.js";
+import {
+	cssParseError,
+	rewriteCssClasses,
+	scopedClassName,
+} from "./css-modules.js";
 import { type DataBindingKind, dataChannelFromIR } from "./data-channel.js";
 import {
 	emitAmbiguousRoot,
 	emitImplicitRootElement,
+	emitInvalidCss,
 	emitMultipleRootMarkers,
 	emitOverlappingEdits,
 	emitScriptWithoutDefaultExport,
@@ -44,6 +49,8 @@ export type EmitThemeOptions = {
 export type EmittedFile = {
 	path: string;
 	contents: string;
+	/** Explicit co-ownership marker for immutable workspace runtime outputs. */
+	ownership?: "shared";
 };
 
 export type EmitResult = {
@@ -190,6 +197,13 @@ export function emitCssFiles(
 ): EmitResult {
 	const styles = compiled.ir.syntax.filter((node) => node.kind === "style");
 	if (styles.length === 0) return { files: [], issues: [] };
+	const issues = styles.flatMap((style) => {
+		const detail = cssParseError(style.source);
+		return detail
+			? [emitInvalidCss(options.name, detail, style.bodySpan ?? style.span)]
+			: [];
+	});
+	if (issues.length > 0) return { files: [], issues };
 
 	// Bound sheets (css modules) scope by class rewrite; unbound sheets pass
 	// through untouched, as vanilla Shopify would.
@@ -232,7 +246,11 @@ export function emitScriptFiles(
 	return {
 		files: [
 			{ path: `assets/${options.name}.js`, contents: componentScript.contents },
-			{ path: "assets/nazare-runtime.js", contents: runtimeSource },
+			{
+				path: "assets/nazare-runtime.js",
+				contents: runtimeSource,
+				ownership: "shared",
+			},
 		],
 		issues: componentScript.issues,
 	};
@@ -248,7 +266,10 @@ function emitLiquid(
 	const edits: SourceEdit[] = [];
 	const snippetNamesByLocalName = new Map<string, string>();
 	const argumentsById = new Map<Id, PropArgumentSyntaxNode>();
-	const expressionsById = new Map<Id, { source: string; start: number }>();
+	const expressionsById = new Map<
+		Id,
+		{ source: string; start: number | undefined }
+	>();
 	const hoistedBySiteId = new Map<Id, HoistedSetting[]>();
 	for (const setting of resolveHoistedSettings(compiled.ir, compiled.contracts)
 		.hoisted) {
@@ -266,7 +287,9 @@ function emitLiquid(
 		if (node.kind === "expression") {
 			expressionsById.set(node.id, {
 				source: node.source,
-				start: node.span ? offsetFromPosition(source, node.span.start) : 0,
+				start: node.span
+					? offsetFromPosition(source, node.span.start)
+					: undefined,
 			});
 		}
 	}
@@ -283,12 +306,16 @@ function emitLiquid(
 	const loweredArgument = (expressionId: Id): string => {
 		const expression = expressionsById.get(expressionId);
 		if (!expression) return "";
-		const end = expression.start + expression.source.length;
+		// Without a span the expression cannot be located for lowering; pass the
+		// authored text through rather than guessing at offset 0.
+		const startOffset = expression.start;
+		if (startOffset === undefined) return expression.source;
+		const end = startOffset + expression.source.length;
 		const localEdits = lower.references
-			.filter((ref) => ref.start >= expression.start && ref.end <= end)
+			.filter((ref) => ref.start >= startOffset && ref.end <= end)
 			.map((ref) => ({
-				start: ref.start - expression.start,
-				end: ref.end - expression.start,
+				start: ref.start - startOffset,
+				end: ref.end - startOffset,
 				replacement: lower.replacementFor(ref.node),
 			}))
 			.filter((edit): edit is SourceEdit => edit.replacement !== undefined);
@@ -304,11 +331,11 @@ function emitLiquid(
 			node.type === "NazareScript" ||
 			node.type === "NazareStyle"
 		) {
-			edits.push({ ...editRange(source, node.span), replacement: "" });
+			edits.push({ ...spanOffsets(source, node.span), replacement: "" });
 		}
 		if (node.type === "NazareBlocks") {
 			edits.push({
-				...editRange(source, node.span),
+				...spanOffsets(source, node.span),
 				replacement: "{% content_for 'blocks' %}",
 			});
 		}
@@ -317,13 +344,13 @@ function emitLiquid(
 	for (const node of compiled.ir.syntax) {
 		if (node.kind === "element-ref" && node.span) {
 			edits.push({
-				...editRange(source, node.span),
+				...spanOffsets(source, node.span),
 				replacement: `data-nz-ref="${node.name}"`,
 			});
 		}
 		if (node.kind === "island-placement" && node.span) {
 			edits.push({
-				...editRange(source, node.span),
+				...spanOffsets(source, node.span),
 				replacement: `data-nz-island="${node.name}"`,
 			});
 		}
@@ -355,7 +382,7 @@ function emitLiquid(
 			);
 			const argumentList = [...authored, ...generated].join(", ");
 			edits.push({
-				...editRange(source, node.span),
+				...spanOffsets(source, node.span),
 				replacement: argumentList
 					? `{% render '${snippetName}', ${argumentList} %}`
 					: `{% render '${snippetName}' %}`,
@@ -565,18 +592,10 @@ function dataDescriptor(
 	for (const [refName, bindings] of dataChannelFromIR(ir)) {
 		descriptor[refName] = {};
 		for (const binding of bindings.values()) {
-			descriptor[refName][binding.property] = dataDescriptorKind(binding.kind);
+			descriptor[refName][binding.property] = binding.kind;
 		}
 	}
 	return descriptor;
-}
-
-function dataDescriptorKind(kind: DataBindingKind): DataBindingKind {
-	if (kind === "string" || kind === "number" || kind === "boolean") {
-		return kind;
-	}
-	const exhaustive: never = kind;
-	return exhaustive;
 }
 
 function emitComponentScript(
@@ -693,22 +712,6 @@ function spanOffsets(
 	};
 }
 
-function editRange(
-	source: string,
-	span:
-		| {
-				start: { line: number; column: number };
-				end: { line: number; column: number };
-		  }
-		| undefined,
-): { start: number; end: number } {
-	if (!span) return { start: 0, end: 0 };
-	return {
-		start: offsetFromPosition(source, span.start),
-		end: offsetFromPosition(source, span.end),
-	};
-}
-
 function applyEdits(source: string, edits: SourceEdit[]): string {
 	assertNonOverlappingEdits(edits);
 	const ordered = [...edits].sort((a, b) => b.start - a.start);
@@ -728,11 +731,4 @@ function assertNonOverlappingEdits(edits: SourceEdit[]): void {
 		if (current.start >= previous.end) continue;
 		throw new OverlappingEmitEditsError(previous, current);
 	}
-}
-
-function indent(text: string, prefix: string): string {
-	return text
-		.split("\n")
-		.map((line) => (line ? prefix + line : line))
-		.join("\n");
 }

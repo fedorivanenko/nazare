@@ -1,0 +1,80 @@
+---
+import { type CodeLanguage, highlightCode } from "../lib/highlight";
+
+interface Props {
+	code: string;
+	language?: CodeLanguage | string;
+	title?: string;
+}
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template uses these values.
+const { code, language = "text", title } = Astro.props;
+// biome-ignore lint/correctness/noUnusedVariables: Astro template renders this value.
+const languageLabel = String(language);
+// biome-ignore lint/correctness/noUnusedVariables: Astro template injects highlighted HTML.
+const html = (await highlightCode(code.trim(), language))
+	.replace("--shiki-light-bg:#fff", "--shiki-light-bg:var(--muted)")
+	.replace("--shiki-dark-bg:#24292e", "--shiki-dark-bg:var(--muted)");
+---
+
+<figure class="code-block">
+	<div class="code-block__bar">
+		<div class="code-block__label">
+			<span class="code-block__language">{languageLabel}</span>
+			{title ? <figcaption class="code-block__title">{title}</figcaption> : null}
+		</div>
+		<button class="code-block__copy" type="button" data-copy-code={code.trim()} aria-label="Copy code">
+			<svg
+				class="code-block__copy-icon"
+				xmlns="http://www.w3.org/2000/svg"
+				width="16"
+				height="16"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"
+			>
+				<rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect>
+				<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+			</svg>
+		</button>
+	</div>
+	<Fragment set:html={html} />
+</figure>
+
+<script>
+	async function copyText(text: string) {
+		if (navigator.clipboard?.writeText) {
+			await navigator.clipboard.writeText(text);
+			return;
+		}
+
+		const textarea = document.createElement("textarea");
+		textarea.value = text;
+		textarea.setAttribute("readonly", "");
+		textarea.style.position = "fixed";
+		textarea.style.opacity = "0";
+		document.body.append(textarea);
+		textarea.select();
+		document.execCommand("copy");
+		textarea.remove();
+	}
+
+	for (const button of document.querySelectorAll<HTMLButtonElement>(
+		"[data-copy-code]",
+	)) {
+		button.addEventListener("click", async () => {
+			const code = button.dataset.copyCode;
+			if (!code) return;
+
+			await copyText(code);
+			button.setAttribute("aria-label", "Copied");
+			window.setTimeout(() => {
+				button.setAttribute("aria-label", "Copy code");
+			}, 1200);
+		});
+	}
+</script>

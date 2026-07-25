@@ -36,9 +36,33 @@ export type HoistResolution = {
 	issues: Diagnostic[];
 };
 
+// Pure derivation from (ir, contracts), both immutable after bind — memoized
+// per object pair because check, contract derivation, schema, and emit all
+// ask for the same resolution in one compile.
+const resolutionByIR = new WeakMap<
+	ArtifactIR,
+	WeakMap<ArtifactContract[], HoistResolution>
+>();
+
 export function resolveHoistedSettings(
 	ir: ArtifactIR,
 	contracts: ArtifactContract[] = [],
+): HoistResolution {
+	let byContracts = resolutionByIR.get(ir);
+	if (!byContracts) {
+		byContracts = new WeakMap();
+		resolutionByIR.set(ir, byContracts);
+	}
+	const cached = byContracts.get(contracts);
+	if (cached) return cached;
+	const resolution = resolveHoistedSettingsUncached(ir, contracts);
+	byContracts.set(contracts, resolution);
+	return resolution;
+}
+
+function resolveHoistedSettingsUncached(
+	ir: ArtifactIR,
+	contracts: ArtifactContract[],
 ): HoistResolution {
 	const index = indexArtifactIR(ir);
 	const contractsBySymbolId = new Map(

@@ -88,7 +88,7 @@ function plainLiquidOptions(
 ): { options: PlainLiquidOptions; issues: Diagnostic[] } {
 	const parseMode = frontendOptions?.parseMode;
 	if (parseMode === undefined) return { options: {}, issues: [] };
-	if (parseMode === "strict" || parseMode === "tolerant") {
+	if (parseMode === "strict" || parseMode === "liquid-only") {
 		return { options: { parseMode }, issues: [] };
 	}
 	return {
@@ -98,7 +98,7 @@ function plainLiquidOptions(
 				severity: "error",
 				code: "PLAIN_LIQUID_INVALID_FRONTEND_OPTION",
 				message:
-					'Invalid plain Liquid frontend option parseMode; expected "strict" or "tolerant"',
+					'Invalid plain Liquid frontend option parseMode; expected "strict" or "liquid-only"',
 			},
 		],
 	};

@@ -1,0 +1,76 @@
+---
+import "../../styles/global.css";
+
+// biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
+import CodeBlock from "../../components/CodeBlock.astro";
+// biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
+import Footer from "../../components/Footer.astro";
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const nazareExample = [
+	"---",
+	"props:",
+	"  title: string",
+	"  price?: number",
+	"---",
+	"",
+	'<section class="product-card">',
+	"  <h2>{{ title }}</h2>",
+	"  {% if price %}",
+	"    <p>{{ price | money }}</p>",
+	"  {% endif %}",
+	"</section>",
+].join("\n");
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="generator" content={Astro.generator} />
+		<script is:inline>
+			(() => {
+				try {
+					const theme = localStorage.getItem("theme");
+					if (theme === "dark" || theme === "light") {
+						document.documentElement.dataset.theme = theme;
+					}
+				} catch {}
+			})();
+		</script>
+		<title>Docs | Nazare</title>
+		<meta
+			name="description"
+			content="Nazare documentation. Generated docs will live under this route."
+		/>
+	</head>
+	<body>
+		<header class="site-header">
+			<a href="/">Nazare</a>
+			<nav aria-label="Primary navigation">
+				<a href="/language">Language</a>
+				<a href="https://github.com/fedorivanenko/nazare">GitHub</a>
+			</nav>
+		</header>
+		<main class="site-shell stack">
+			<section class="card stack">
+				<p class="muted">Documentation</p>
+				<h1 class="heading--title">Docs route ready for generated content.</h1>
+				<p>
+					This placeholder keeps <code>/docs</code> available. Later, generated docs can be
+					written into <code>src/content/docs</code> or emitted as Astro pages under
+					<code>src/pages/docs</code>.
+				</p>
+				<ul>
+					<li>Getting started</li>
+					<li>Compiler</li>
+					<li>Theme authoring</li>
+					<li>Registry</li>
+					<li>CLI</li>
+				</ul>
+				<CodeBlock code={nazareExample} language="nz.liquid" title="product-card.nz.liquid" />
+			</section>
+		</main>
+		<Footer />
+	</body>
+</html>

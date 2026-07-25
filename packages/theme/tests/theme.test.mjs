@@ -45,7 +45,7 @@ test("buildTheme copies Shopify theme folders", async () => {
 	await withProject(
 		{
 			"nazare/layout/theme.liquid": "{{ content_for_layout }}\n",
-			"nazare/templates/product.json": '{"sections":{}}',
+			"nazare/templates/product.json": '{"sections":{},"order":[]}',
 			"nazare/sections/hero.liquid": "<section>Hero</section>\n",
 			"nazare/snippets/price.liquid": "<span>{{ price }}</span>\n",
 			"nazare/assets/theme.css": "body{}\n",
@@ -61,7 +61,7 @@ test("buildTheme copies Shopify theme folders", async () => {
 			);
 			assert.equal(
 				readOutput(projectRoot, "templates/product.json"),
-				'{"sections":{}}',
+				'{"sections":{},"order":[]}',
 			);
 		},
 	);
@@ -395,7 +395,9 @@ test("buildTheme reports invalid JSON", async () => {
 		{ "nazare/templates/product.json": "{ nope" },
 		async (projectRoot) => {
 			const result = await build(projectRoot);
-			assert.equal(result.issues[0].code, "THEME_INVALID_JSON");
+			assert.ok(
+				result.issues.some((issue) => issue.code === "THEME_JSON_PARSE_ERROR"),
+			);
 		},
 	);
 });
@@ -436,7 +438,7 @@ test("buildTheme seeds merchant data on a first build", async () => {
 		{
 			"nazare/config/settings_data.json":
 				'{"current":{"colors_accent":"#000"}}',
-			"nazare/templates/index.json": '{"sections":{}}',
+			"nazare/templates/index.json": '{"sections":{},"order":[]}',
 		},
 		async (projectRoot) => {
 			const result = await build(projectRoot);
@@ -554,7 +556,7 @@ test("buildTheme preserves target settings_data over the source seed on rebuild"
 
 test("buildTheme keeps a merchant-added template that the source never had", async () => {
 	await withProject(
-		{ "nazare/templates/index.json": '{"sections":{}}' },
+		{ "nazare/templates/index.json": '{"sections":{},"order":[]}' },
 		async (projectRoot) => {
 			await build(projectRoot);
 			// A merchant creates a new template variant in the admin.
@@ -574,7 +576,10 @@ test("buildTheme keeps a merchant-added template that the source never had", asy
 
 test("buildTheme preserves section-group JSON but regenerates section code", async () => {
 	await withProject(
-		{ "nazare/sections/header-group.json": '{"type":"header","sections":{}}' },
+		{
+			"nazare/sections/header-group.json":
+				'{"type":"header","sections":{},"order":[]}',
+		},
 		async (projectRoot) => {
 			await build(projectRoot);
 			writeFileSync(
@@ -1052,4 +1057,55 @@ test("a locale the merchant added with no source is preserved", async () => {
 			'{"greeting":"Bonjour"}',
 		);
 	});
+});
+
+test("single-file builds emit the complete imported component closure", async () => {
+	await withProject(
+		{
+			"entry.nz.liquid":
+				'{% import Child from "./child.nz.liquid" %}<div>{% render Child {} %}</div>',
+			"child.nz.liquid": "<span>Child</span>",
+		},
+		async (projectRoot) => {
+			const result = await buildTheme({
+				projectRoot,
+				sourceRoot: "entry.nz.liquid",
+				outDir: ".nazare-out/theme",
+			});
+			assert.deepEqual(result.issues, []);
+			assert.equal(
+				existsSync(
+					join(projectRoot, ".nazare-out/theme/snippets/entry.liquid"),
+				),
+				true,
+			);
+			assert.equal(
+				existsSync(
+					join(projectRoot, ".nazare-out/theme/snippets/child.liquid"),
+				),
+				true,
+			);
+		},
+	);
+});
+
+test("theme builds use strict root-relative validation", async () => {
+	await withProject(
+		{
+			"nazare/config/settings_schema.json": "{}",
+			"nazare/sections/broken.liquid": "{% if %}",
+		},
+		async (projectRoot) => {
+			const result = await build(projectRoot);
+			assert.ok(
+				result.issues.some(
+					(issue) => issue.code === "THEME_SETTINGS_SCHEMA_INVALID_ROOT",
+				),
+			);
+			assert.ok(
+				result.issues.some((issue) => issue.code === "NAZARE_PARSE_LIQUID"),
+			);
+			assert.deepEqual(result.written, []);
+		},
+	);
 });

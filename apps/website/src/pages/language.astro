@@ -1,0 +1,180 @@
+---
+import "../styles/global.css";
+
+// biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
+import CodeBlock from "../components/CodeBlock.astro";
+// biome-ignore lint/correctness/noUnusedImports: Astro template renders this component.
+import Footer from "../components/Footer.astro";
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const componentExample = [
+	'{% import ProductCard from "./product-card.nz.liquid" %}',
+	"{% component section %}",
+	"{% props {",
+	'  title: string.setting({ label: "Title", default: "Featured products" }),',
+	"  products: array(ShopifyProduct).required(),",
+	"  showVendor: boolean.default(false),",
+	"} %}",
+	"",
+	"<section nz-root>",
+	"  <h2>{{ props.title }}</h2>",
+	"  {% for product in props.products %}",
+	"    {% render ProductCard { product: product, showVendor: props.showVendor } %}",
+	"  {% endfor %}",
+	"  {% blocks %}",
+	"</section>",
+].join("\n");
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const typeDslExample = [
+	"string.required()",
+	'url.setting({ label: "Link" })',
+	"number.min(0).max(10).step(1).default(1)",
+	'string.enum("small", "large")',
+	"array(ShopifyProduct)",
+	"function.returns(nil)",
+].join("\n");
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const styleScriptExample = [
+	"{% stylesheet styles %}",
+	".card { display: grid; gap: 1rem; }",
+	"{% endstylesheet %}",
+	"",
+	'<article class="{{ styles.card }}" ref="card" data-product-id="{{ props.product.id }}">',
+	"  ...",
+	"</article>",
+	"",
+	'{% script lang="ts" %}',
+	"export default island(({ refs, data }) => {",
+	"  console.log(refs.card, data.card.productId);",
+	"});",
+	"{% endscript %}",
+].join("\n");
+
+// biome-ignore lint/correctness/noUnusedVariables: Astro template passes this example into CodeBlock.
+const emitExample = [
+	"sections/featured-products.liquid",
+	"snippets/product-card.liquid",
+	"assets/featured-products.css",
+	"assets/featured-products.js",
+	"assets/nazare-runtime.js",
+].join("\n");
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="generator" content={Astro.generator} />
+		<script is:inline>
+			(() => {
+				try {
+					const theme = localStorage.getItem("theme");
+					if (theme === "dark" || theme === "light") {
+						document.documentElement.dataset.theme = theme;
+					}
+				} catch {}
+			})();
+		</script>
+		<title>Language Spec | Nazare</title>
+		<meta
+			name="description"
+			content="Nazare language spec for type-safe Shopify Liquid components, props, imports, styles, scripts, blocks, diagnostics, and emit output."
+		/>
+	</head>
+	<body>
+		<header class="site-header">
+			<a href="/" aria-label="Nazare home">Nazare</a>
+			<nav aria-label="Primary navigation">
+				<a href="/docs">Docs</a>
+				<a href="https://github.com/fedorivanenko/nazare">GitHub</a>
+			</nav>
+		</header>
+		<main class="site-shell stack">
+			<section class="stack">
+				<p class="muted">Language spec</p>
+				<h1 class="heading--title">Nazare adds a typed component layer to Shopify Liquid.</h1>
+				<p>
+					A <code>.nz.liquid</code> file is Liquid plus a small set of compile-time tags
+					and attributes. Nazare checks those constructs during development, then emits
+					vanilla Shopify theme files.
+				</p>
+				<CodeBlock code={componentExample} language="nz.liquid" title="featured-products.nz.liquid" />
+			</section>
+
+			<section class="stack">
+				<h2 class="heading--subtitle">File kinds</h2>
+				<p>Files are snippets by default. One optional <code>{"{% component %}"}</code> tag changes output kind.</p>
+				<ul>
+					<li><code>{"{% component snippet %}"}</code> emits to <code>snippets/</code>.</li>
+					<li><code>{"{% component section %}"}</code> emits to <code>sections/</code> with generated schema.</li>
+					<li><code>{"{% component block %}"}</code> emits to <code>blocks/</code> with generated schema and preset.</li>
+				</ul>
+			</section>
+
+			<section class="stack">
+				<h2 class="heading--subtitle">Imports and rendering</h2>
+				<p>
+					Imports make dependencies explicit. Component imports are capitalized;
+					behavior and style imports are lowercase. Specifiers must be relative and stay
+					inside the project.
+				</p>
+				<p>
+					Render calls use object arguments: <code>{'{% render Link { href: props.href, text: "Read more" } %}'}</code>.
+					Nazare reports missing required props, unknown props, and type mismatches.
+				</p>
+			</section>
+
+			<section class="stack">
+				<h2 class="heading--subtitle">Props and type DSL</h2>
+				<p>
+					Props are declared with <code>{"{% props { ... } %}"}</code> and read as
+					<code>props.name</code>. In strict mode, undeclared <code>props.x</code> is an error.
+				</p>
+				<CodeBlock code={typeDslExample} language="text" title="type expressions" />
+				<p>
+					Section and block props use <code>.setting()</code> when values come from Shopify
+					editor settings instead of render arguments.
+				</p>
+			</section>
+
+			<section class="stack">
+				<h2 class="heading--subtitle">Blocks, styles, refs, and scripts</h2>
+				<p>
+					Sections can expose one <code>{"{% blocks %}"}</code> slot, optionally limited to
+					imported block components. Bound stylesheets behave like CSS modules. Refs and
+					<code>data-*</code> bindings give behavior scripts typed DOM handles.
+				</p>
+				<CodeBlock code={styleScriptExample} language="nz.liquid" title="styles and behavior" />
+			</section>
+
+			<section class="stack">
+				<h2 class="heading--subtitle">Islands and roots</h2>
+				<p>
+					Behavior can be imported and mounted with <code>island="name"</code>. Without an
+					island attribute, behavior mounts on the component root. <code>nz-root</code>
+					selects that runtime root and is stripped during emit.
+				</p>
+			</section>
+
+			<section class="stack">
+				<h2 class="heading--subtitle">Diagnostics and emit</h2>
+				<p>
+					Diagnostics carry severity and phase: parse, resolve, check, validate, or emit.
+					Strict mode checks package-author contracts; loose mode keeps migration builds
+					minimal.
+				</p>
+				<CodeBlock code={emitExample} language="text" title="vanilla Shopify output" />
+				<p>
+					Compiler invariant: parse locates → resolve reads files → syntax flattens →
+					bind resolves → check judges → emit projects.
+				</p>
+				<p>
+					<a href="https://github.com/fedorivanenko/nazare/blob/main/LANGUAGE.md">Full source spec</a>
+				</p>
+			</section>
+		</main>
+		<Footer />
+	</body>
+</html>

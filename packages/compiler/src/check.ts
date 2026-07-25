@@ -1,8 +1,8 @@
 // Check pass: judges the IR against imported package contracts — missing
 // required props, unknown arguments, type assignability, and value-level
 // range constraints. Every diagnostic about *user* code at a render site
-// originates here; structural self-invariants live in validate.ts. Owns the
-// assignability relation between SemanticTypes.
+// originates here; structural self-invariants live in validate.ts. The
+// assignability relation itself lives in assignability.ts.
 import type {
 	ArtifactContract,
 	ArtifactIR,
@@ -15,14 +15,20 @@ import type {
 	SemanticType,
 	SourceSpan,
 } from "@nazare/core";
+import { isAssignable, literalValueViolation } from "./assignability.js";
 import { cssClassTokens } from "./css-modules.js";
-import { dataChannelFromIR, resolveDataBinding } from "./data-channel.js";
+import {
+	dataChannelFromIR,
+	propTypesByExpression,
+	resolveDataBinding,
+} from "./data-channel.js";
 import {
 	blocksSlotNotABlock,
 	blocksSlotOutsideSection,
 	blocksSlotUnknownReference,
 	duplicateIsland,
 	duplicateRef,
+	importBasenameCollision,
 	multipleBlocksSlots,
 	propTypeMismatch,
 	propValueInvalid,
@@ -32,6 +38,7 @@ import {
 	scriptModuleSyntaxUnsupported,
 	scriptReservedContextShadowed,
 	sectionPropWithoutSetting,
+	settingTypeUnsupported,
 	uncheckedDataBindingType,
 	uncheckedPropArgumentType,
 	unknownDataAccess,
@@ -47,8 +54,11 @@ import {
 } from "./diagnostics.js";
 import { resolveHoistedSettings } from "./hoist.js";
 import { type ArtifactIRIndex, indexArtifactIR } from "./ir-index.js";
+import { baseNameOf } from "./paths.js";
+import { settingInputFor } from "./schema.js";
 import { findUnsupportedModuleSyntax } from "./script-modules.js";
 import { findReservedContextShadows } from "./script-scan.js";
+import { spanWithinBody } from "./source.js";
 import { componentKindFromIR } from "./symbols.js";
 
 export type CompilerMode = "loose" | "strict";
@@ -91,6 +101,11 @@ export const CHECK_RULES: readonly CheckRule[] = [
 		run: (ir) => checkScriptConstraints(ir),
 	},
 	{
+		name: "emit-name-constraints",
+		modes: ["loose", "strict"],
+		run: (ir) => checkEmitNameConstraints(indexArtifactIR(ir)),
+	},
+	{
 		name: "component-authoring-constraints",
 		modes: ["strict"],
 		run: (ir, contracts) => checkComponentAuthoringConstraints(ir, contracts),
@@ -127,7 +142,6 @@ export function checkContractConstraints(
 	const contractsByComponentSymbolId = new Map(
 		contracts.map((contract) => [contract.componentSymbolId, contract]),
 	);
-	const settingTypesByName = settingTypesByNameFromIR(ir, index);
 
 	for (const node of index.nodesOfKind("render-site")) {
 		const [renderTarget] = index.renderTargetsBySiteId.get(node.id) ?? [];
@@ -154,13 +168,7 @@ export function checkContractConstraints(
 		}
 
 		issues.push(
-			...checkRenderSiteAgainstContract(
-				index,
-				node,
-				contract,
-				settingTypesByName,
-				options,
-			),
+			...checkRenderSiteAgainstContract(index, node, contract, options),
 		);
 	}
 
@@ -180,8 +188,64 @@ export function checkComponentAuthoringConstraints(
 		...checkPropsReferences(index),
 		...checkDataChannel(ir, index),
 		...checkPropProvenanceForKind(index, kind),
+		...checkSettingProjections(index),
 		...resolveHoistedSettings(ir, contracts).issues,
 	];
+}
+
+/**
+ * Emitted theme files are named by file basename, so two imported components
+ * with the same basename would overwrite each other's emitted snippet and
+ * every {% render %} of either would target whichever file emitted last.
+ */
+function checkEmitNameConstraints(index: ArtifactIRIndex): Diagnostic[] {
+	const issues: Diagnostic[] = [];
+	const firstPathByBaseName = new Map<string, string>();
+
+	for (const node of index.nodesOfKind("import")) {
+		const baseName = baseNameOf(node.path);
+		const firstPath = firstPathByBaseName.get(baseName);
+		if (firstPath === undefined) {
+			firstPathByBaseName.set(baseName, node.path);
+			continue;
+		}
+		// The same file imported twice is one emitted file — no clobbering.
+		if (firstPath === node.path) continue;
+		issues.push(
+			importBasenameCollision(
+				firstPath,
+				node.path,
+				baseName,
+				node.id,
+				node.span,
+			),
+		);
+	}
+
+	return issues;
+}
+
+/**
+ * Every prop that opted into a setting must have a type the theme editor can
+ * input; otherwise schema emission would drop the setting with no trace.
+ */
+function checkSettingProjections(index: ArtifactIRIndex): Diagnostic[] {
+	const issues: Diagnostic[] = [];
+
+	for (const prop of index.nodesOfKind("prop-declaration")) {
+		if (!prop.typeInfo.setting) continue;
+		if (settingInputFor(prop.typeInfo.valueType)) continue;
+		issues.push(
+			settingTypeUnsupported(
+				prop.name,
+				prop.typeInfo.valueType.kind,
+				prop.id,
+				prop.span,
+			),
+		);
+	}
+
+	return issues;
 }
 
 export function checkScriptConstraints(ir: ArtifactIR): Diagnostic[] {
@@ -194,21 +258,6 @@ export function checkScriptConstraints(ir: ArtifactIR): Diagnostic[] {
 
 export function checkStyleConstraints(ir: ArtifactIR): Diagnostic[] {
 	return checkStyleBindings(indexArtifactIR(ir));
-}
-
-function settingTypesByNameFromIR(
-	ir: ArtifactIR,
-	index: ArtifactIRIndex,
-): Map<string, SemanticType | undefined> {
-	const settingTypesByName = new Map(
-		ir.symbols
-			.filter((symbol) => symbol.kind === "setting")
-			.map((symbol) => [symbol.name, symbol.semanticType]),
-	);
-	for (const node of index.nodesOfKind("prop-declaration")) {
-		settingTypesByName.set(`props.${node.name}`, node.typeInfo.valueType);
-	}
-	return settingTypesByName;
 }
 
 /**
@@ -277,27 +326,6 @@ function checkStyleBindings(index: ArtifactIRIndex): Diagnostic[] {
 	return issues;
 }
 
-/** Maps an offset range inside a style/script body onto file coordinates. */
-function spanWithinBody(
-	bodySource: string,
-	bodySpan: SourceSpan | undefined,
-	range: { start: number; end: number },
-): SourceSpan | undefined {
-	if (!bodySpan) return undefined;
-	const before = bodySource.slice(0, range.start);
-	const bodyLine = before.split("\n").length - 1;
-	const lastNewline = before.lastIndexOf("\n");
-	const character = range.start - (lastNewline + 1);
-	const line = bodySpan.start.line + bodyLine;
-	const column =
-		bodyLine === 0 ? bodySpan.start.column + character : character + 1;
-	return {
-		file: bodySpan.file,
-		start: { line, column },
-		end: { line, column: column + (range.end - range.start) },
-	};
-}
-
 function checkScriptReservedContexts(index: ArtifactIRIndex): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 
@@ -316,32 +344,14 @@ function checkScriptReservedContexts(index: ArtifactIRIndex): Diagnostic[] {
 	return issues;
 }
 
-/** Module syntax in behavior scripts breaks the emitted IIFE until bundling exists. */
+/** Module syntax in behavior scripts that nothing downstream can handle. */
 function checkScriptModuleSyntax(index: ArtifactIRIndex): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 
 	for (const script of index.nodesOfKind("script")) {
 		for (const found of findUnsupportedModuleSyntax(script.source)) {
-			const base = script.bodySpan;
-			const span: SourceSpan | undefined = base
-				? {
-						file: base.file,
-						start: {
-							line: base.start.line + found.line,
-							column:
-								found.line === 0
-									? base.start.column + found.character
-									: found.character + 1,
-						},
-						end: {
-							line: base.start.line + found.line,
-							column:
-								(found.line === 0
-									? base.start.column + found.character
-									: found.character + 1) + found.text.length,
-						},
-					}
-				: script.span;
+			const span =
+				spanWithinBody(script.source, script.bodySpan, found) ?? script.span;
 			issues.push(scriptModuleSyntaxUnsupported(found.text, script.id, span));
 		}
 	}
@@ -398,7 +408,7 @@ function checkDataChannel(
 	const channel = dataChannelFromIR(ir);
 	const readProperties = new Set<string>();
 	const scripts = index.nodesOfKind("script");
-	const propTypesByExpression = propTypesByExpressionFromIR(ir);
+	const propTypes = propTypesByExpression(ir);
 
 	for (const script of scripts) {
 		for (const access of script.dataAccesses ?? []) {
@@ -412,7 +422,7 @@ function checkDataChannel(
 
 	for (const node of index.nodesOfKind("element-ref")) {
 		for (const binding of node.dataBindings ?? []) {
-			const bindingType = propTypesByExpression.get(binding.expression.trim());
+			const bindingType = propTypes.get(binding.expression.trim());
 			const bindingResolution = resolveDataBinding(
 				binding.property,
 				bindingType,
@@ -585,7 +595,6 @@ function checkRenderSiteAgainstContract(
 	index: ArtifactIRIndex,
 	renderSite: RenderSiteSyntaxNode,
 	contract: ArtifactContract,
-	settingTypesByName: Map<string, SemanticType | undefined>,
 	options: CheckContractConstraintsOptions,
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
@@ -637,7 +646,7 @@ function checkRenderSiteAgainstContract(
 			expressionNode?.kind === "expression"
 				? (expressionNode as ExpressionSyntaxNode)
 				: undefined;
-		const expressionType = inferExpressionType(expression, settingTypesByName);
+		const expressionType = inferExpressionType(expression, index);
 		if (
 			options.reportUncheckedExpressionTypes &&
 			typeHasUnknown(expressionType) &&
@@ -699,18 +708,6 @@ function checkRenderSiteAgainstContract(
 	return issues;
 }
 
-function propTypesByExpressionFromIR(
-	ir: ArtifactIR,
-): Map<string, SemanticType> {
-	const propTypes = new Map<string, SemanticType>();
-	for (const node of ir.syntax) {
-		if (node.kind === "prop-declaration") {
-			propTypes.set(`props.${node.name}`, node.typeInfo.valueType);
-		}
-	}
-	return propTypes;
-}
-
 function typeHasUnknown(type: SemanticType | undefined): boolean {
 	if (!type) return true;
 	if (type.kind === "unknown") return true;
@@ -723,312 +720,22 @@ function typeHasUnknown(type: SemanticType | undefined): boolean {
 	return false;
 }
 
+/**
+ * A render argument's type: the syntactic inference for literals, otherwise
+ * the symbol the bind pass resolved the expression to (props.x or
+ * section.settings.x — the one place that resolution is decided). Anything
+ * bind could not resolve is unknown.
+ */
 function inferExpressionType(
 	expression: ExpressionSyntaxNode | undefined,
-	settingTypesByName: Map<string, SemanticType | undefined>,
+	index: ArtifactIRIndex,
 ): SemanticType | undefined {
 	if (!expression) return { kind: "unknown" };
 	if (expression.inferredType) return expression.inferredType;
-	return (
-		settingTypesByName.get(expression.source.trim()) ?? { kind: "unknown" }
-	);
-}
-
-/**
- * Checks a known numeric value against the constraints of the target number
- * type. Returns the reason the value is rejected, or undefined when the
- * value is accepted by at least one (possibly unconstrained) number member.
- */
-function literalValueViolation(
-	literal: SemanticType | undefined,
-	target: SemanticType,
-): string | undefined {
-	if (!literal) return undefined;
-	if (target.kind === "union") {
-		let firstViolation: string | undefined;
-		for (const member of target.members) {
-			if (!isAssignable(literal, member)) continue;
-			const violation = literalValueViolation(literal, member);
-			if (violation === undefined) return undefined;
-			firstViolation ??= violation;
-		}
-		return firstViolation;
-	}
-	if (literal.kind === "number-literal") {
-		return rangeViolation(literal.value, target);
-	}
-	if (literal.kind !== "string-literal") return undefined;
-	if (target.kind === "url") return validateUrlLiteral(literal.value);
-	if (target.kind === "color") return validateColorLiteral(literal.value);
-	if (target.kind === "handle") return validateHandleLiteral(literal.value);
-	return undefined;
-}
-
-function validateUrlLiteral(value: string): string | undefined {
-	return value.trim() === "" ? "expected a non-empty URL or path" : undefined;
-}
-
-function validateColorLiteral(value: string): string | undefined {
-	const trimmed = value.trim();
-	if (/^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(trimmed)) {
-		return undefined;
-	}
-	if (
-		/^(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\([^)]*\)$/.test(
-			trimmed,
-		)
-	) {
-		return undefined;
-	}
-	if (/^var\(--[A-Za-z0-9_-]+\)$/.test(trimmed)) return undefined;
-	if (cssColorKeywords.has(trimmed.toLowerCase())) return undefined;
-	return "expected a CSS color literal";
-}
-
-function validateHandleLiteral(value: string): string | undefined {
-	return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)
-		? undefined
-		: "expected a Shopify handle slug like product-handle";
-}
-
-function rangeViolation(
-	value: number,
-	target: SemanticType,
-): string | undefined {
-	const numberMembers =
-		target.kind === "number"
-			? [target]
-			: target.kind === "union"
-				? target.members.filter((member) => member.kind === "number")
-				: [];
-	if (numberMembers.length === 0) return undefined;
-
-	let reason: string | undefined;
-	for (const member of numberMembers) {
-		const constraints = member.constraints;
-		if (!constraints) return undefined;
-		if (constraints.min !== undefined && value < constraints.min) {
-			reason ??= `below minimum ${constraints.min}`;
-			continue;
-		}
-		if (constraints.max !== undefined && value > constraints.max) {
-			reason ??= `above maximum ${constraints.max}`;
-			continue;
-		}
-		if (constraints.step !== undefined && constraints.step > 0) {
-			const offset = value - (constraints.min ?? 0);
-			const remainder = Math.abs(offset % constraints.step);
-			if (remainder > 1e-9 && constraints.step - remainder > 1e-9) {
-				reason ??= `not aligned to step ${constraints.step}`;
-				continue;
-			}
-		}
-		return undefined;
-	}
-
-	return reason;
-}
-
-function isAssignable(
-	from: SemanticType | undefined,
-	to: SemanticType | undefined,
-): boolean {
-	if (!from || !to) return true;
-	if (from.kind === "unknown" || to.kind === "unknown") return true;
-	if (to.kind === "union") {
-		return to.members.some((member) => isAssignable(from, member));
-	}
-	if (from.kind === "union") {
-		return from.members.every((member) => isAssignable(member, to));
-	}
-	if (from.kind === "string-literal" && to.kind === "string-literal") {
-		return from.value === to.value;
-	}
-	if (from.kind === "number-literal" && to.kind === "number-literal") {
-		return from.value === to.value;
-	}
-	if (from.kind === "string-literal" && to.kind === "string") return true;
-	if (from.kind === "string-literal" && acceptsValidatedStringLiteral(to))
-		return true;
-	if (from.kind === "number-literal" && to.kind === "number") return true;
-	if (from.kind === "literal") return true;
-	if (from.kind === "array" && to.kind === "array") {
-		return isAssignable(from.element, to.element);
-	}
-	if (from.kind === "function" && to.kind === "function") {
-		return isAssignable(from.returns, to.returns);
-	}
-	if (from.kind === "object" && to.kind === "object") {
-		return isObjectAssignable(from, to);
-	}
-	return from.kind === to.kind;
-}
-
-function acceptsValidatedStringLiteral(type: SemanticType): boolean {
-	return type.kind === "url" || type.kind === "color" || type.kind === "handle";
-}
-
-const cssColorKeywords = new Set([
-	"aliceblue",
-	"antiquewhite",
-	"aqua",
-	"aquamarine",
-	"azure",
-	"beige",
-	"bisque",
-	"black",
-	"blanchedalmond",
-	"blue",
-	"blueviolet",
-	"brown",
-	"burlywood",
-	"cadetblue",
-	"chartreuse",
-	"chocolate",
-	"coral",
-	"cornflowerblue",
-	"cornsilk",
-	"crimson",
-	"cyan",
-	"darkblue",
-	"darkcyan",
-	"darkgoldenrod",
-	"darkgray",
-	"darkgreen",
-	"darkgrey",
-	"darkkhaki",
-	"darkmagenta",
-	"darkolivegreen",
-	"darkorange",
-	"darkorchid",
-	"darkred",
-	"darksalmon",
-	"darkseagreen",
-	"darkslateblue",
-	"darkslategray",
-	"darkslategrey",
-	"darkturquoise",
-	"darkviolet",
-	"deeppink",
-	"deepskyblue",
-	"dimgray",
-	"dimgrey",
-	"dodgerblue",
-	"firebrick",
-	"floralwhite",
-	"forestgreen",
-	"fuchsia",
-	"gainsboro",
-	"ghostwhite",
-	"gold",
-	"goldenrod",
-	"gray",
-	"green",
-	"greenyellow",
-	"grey",
-	"honeydew",
-	"hotpink",
-	"indianred",
-	"indigo",
-	"ivory",
-	"khaki",
-	"lavender",
-	"lavenderblush",
-	"lawngreen",
-	"lemonchiffon",
-	"lightblue",
-	"lightcoral",
-	"lightcyan",
-	"lightgoldenrodyellow",
-	"lightgray",
-	"lightgreen",
-	"lightgrey",
-	"lightpink",
-	"lightsalmon",
-	"lightseagreen",
-	"lightskyblue",
-	"lightslategray",
-	"lightslategrey",
-	"lightsteelblue",
-	"lightyellow",
-	"lime",
-	"limegreen",
-	"linen",
-	"magenta",
-	"maroon",
-	"mediumaquamarine",
-	"mediumblue",
-	"mediumorchid",
-	"mediumpurple",
-	"mediumseagreen",
-	"mediumslateblue",
-	"mediumspringgreen",
-	"mediumturquoise",
-	"mediumvioletred",
-	"midnightblue",
-	"mintcream",
-	"mistyrose",
-	"moccasin",
-	"navajowhite",
-	"navy",
-	"oldlace",
-	"olive",
-	"olivedrab",
-	"orange",
-	"orangered",
-	"orchid",
-	"palegoldenrod",
-	"palegreen",
-	"paleturquoise",
-	"palevioletred",
-	"papayawhip",
-	"peachpuff",
-	"peru",
-	"pink",
-	"plum",
-	"powderblue",
-	"purple",
-	"rebeccapurple",
-	"red",
-	"rosybrown",
-	"royalblue",
-	"saddlebrown",
-	"salmon",
-	"sandybrown",
-	"seagreen",
-	"seashell",
-	"sienna",
-	"silver",
-	"skyblue",
-	"slateblue",
-	"slategray",
-	"slategrey",
-	"snow",
-	"springgreen",
-	"steelblue",
-	"tan",
-	"teal",
-	"thistle",
-	"tomato",
-	"transparent",
-	"turquoise",
-	"violet",
-	"wheat",
-	"white",
-	"whitesmoke",
-	"yellow",
-	"yellowgreen",
-	"currentcolor",
-]);
-
-function isObjectAssignable(
-	from: Extract<SemanticType, { kind: "object" }>,
-	to: Extract<SemanticType, { kind: "object" }>,
-): boolean {
-	if (from.name && to.name) return from.name === to.name;
-	if (!to.fields) return true;
-	if (!from.fields) return false;
-	return Object.entries(to.fields).every(([fieldName, fieldType]) =>
-		isAssignable(from.fields?.[fieldName], fieldType),
-	);
+	const [reference] =
+		index.symbolReferencesByExpressionId.get(expression.id) ?? [];
+	const symbol = reference
+		? index.symbolById.get(reference.symbolId)
+		: undefined;
+	return symbol?.semanticType ?? { kind: "unknown" };
 }

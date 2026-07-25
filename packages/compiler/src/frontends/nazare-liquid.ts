@@ -20,6 +20,7 @@ export const nazareLiquidFrontend: CompilerFrontend = {
 		const contractResolution = resolveComponentContracts(
 			parsedAst,
 			input.readFile,
+			input.dependencyResolver,
 		);
 		const assetResolution = resolveAssetImports(parsedAst, input.readFile);
 
