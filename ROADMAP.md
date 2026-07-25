@@ -10,6 +10,7 @@ Nazare
 ├── Build
 │   ├── Types / built
 │   │   ├── .nz.liquid
+│   │   ├── Plain .liquid parsing/pass-through
 │   │   ├── Typed props
 │   │   ├── Explicit imports
 │   │   ├── Composition
@@ -104,7 +105,7 @@ Nazare
 - **Phase 0 — Prerequisites & quick fixes**
   - Product: Build > Types, Build > Editor Tooling, Runtime > Runtime asset emission.
   - Emit explicit `defer` scripts instead of Shopify `script_tag`.
-  - Audit issues #42-#46: regex block extraction, `emitOnError` default, overlap diagnostic, `url`/`string` assignability, dependency-check caching.
+  - Audit issues #42-#46: regex block extraction, `emitOnError` default, overlap diagnostic, `url`/`string` assignability, dependency-check caching. _(Done: #42-#46 fixes merged.)_
   - Add TextMate grammar + VS Code extension shell for highlighting only.
 
 - **Phase 1 — Runtime: hydration + load strategy**
@@ -129,13 +130,15 @@ Nazare
 - **Phase 3 — Shared analysis host**
   - Internal enabler for Build > Editor Tooling, Build > Dev, Build > Validate, and Inspect.
   - Build VFS overlay on the `ReadFile` seam.
-  - Add reverse-dependency index, contract cache, contract-diff invalidation, and positional index.
+  - Add reverse-dependency index, contract cache, contract-diff invalidation, and positional index. _(Partial: dependency AST/contract cache merged.)_
+  - Add compiler frontend seam so `.nz.liquid`, plain `.liquid`, and future direct-IR inputs share projection/check/validate/contract ownership. _(Done.)_
   - Add diagnostic phases: `lint`, `store-schema`, `render`.
   - Emit source maps back to `.nz.liquid`.
 
 - **Phase 4 — Dev server**
   - Product: Build > Dev, Build > Validate.
   - Add `nazare dev`: watcher, incremental rebuild, dev-mode baseline handling, and `shopify theme dev` feed.
+  - Add plain Shopify Liquid parser/frontend for coexistence analysis and pass-through builds. _(Done: parses schema, settings reads, and static theme dependencies.)_
   - Support coexistence mode: mix `.nz.liquid` components with existing `.liquid`, SCSS, global JS, and current theme layouts.
   - Add output diff reports so migrations can review generated Liquid/schema/layout changes.
   - Run Theme Check on emitted output in `dev` and `build --check`.
@@ -179,7 +182,7 @@ Nazare
   - Cross-cutting product capabilities: Build > Types, Build > Assets, Runtime, Inspect > Migrate, Build > Validate.
   - **M0** Document staged adoption playbooks from `notes/alkamind-migration-audit.md` and `notes/climatic-health-migration-audit.md`.
   - **M1** Ship low-blast-radius coexistence: keep existing Liquid/SCSS/global JS while adding `.nz.liquid` components.
-  - **M2** Provide contracts-first migration tooling for implicit snippet locals and static `{% render %}` calls.
+  - **M2** Provide contracts-first migration tooling for implicit snippet locals and static `{% render %}` calls, backed by raw Liquid contract inference. _(Partial: plain Liquid parser extracts schema, settings reads, and static theme dependencies; implicit snippet-local contract inference remains.)_
   - **M3** Preserve legacy asset patterns: Tailwind v4 app builds, SCSS entrypoints, committed/global JS replacement path, public assets, preload order.
   - **M4** Support island migration adapters for selector-driven JS, custom elements, third-party globals, cart/product flows, and teardown.
   - **M5** Add migration safety reports: output diffs, schema drift, Theme Check, render/visual regression gates.
@@ -200,6 +203,7 @@ Nazare
 - Phase 1 strategy-aware mount is reused by re-hydration.
 - Phases 0, 1, and 2 can proceed in parallel with Phase 3.
 - Playground shares the pure compiler + `ReadFile` seam with LSP.
+- Plain Liquid parser/frontend feeds coexistence mode, migration reports, and future workshop/playground previews.
 - Registry browser needs R1.
 - Curated AJAX components exercise Phase 1 hydration.
 - Track M pulls from both real-theme audits and should shape Phase 1, Phase 2, Phase 4, and Phase 6 acceptance criteria.
