@@ -1243,6 +1243,47 @@ test("metafield parser rejects arbitrary nested objects", () => {
 	);
 });
 
+test("metafield snapshot in the shape the Shopify CLI writes resolves reads", () => {
+	// Each owner maps to a list of definitions carrying their own key and
+	// namespace, and an owner with none is an empty list. The extractor only
+	// understood an owner -> namespace -> key nesting, so every real snapshot
+	// produced zero definitions while still reporting state "present", and every
+	// metafield read in the theme was reported as undefined.
+	const graph = inspectNazareTheme(
+		[
+			{
+				path: "snippets/card.liquid",
+				contents:
+					"{{ product.metafields.custom.subtitle }}{{ product.metafields.custom.absent }}",
+			},
+		],
+		{
+			metafields: {
+				contents: JSON.stringify({
+					article: [],
+					product: [
+						{
+							key: "subtitle",
+							namespace: "custom",
+							name: "Subtitle",
+							type: { name: "single_line_text_field", category: "TEXT" },
+						},
+					],
+				}),
+			},
+		},
+	);
+	assert.equal(graph.metafields.state, "present");
+	assert.deepEqual(graph.metafields.consumedDefinitionIds, [
+		"metafield:product:custom:subtitle",
+	]);
+	assert.equal(graph.metafields.brokenReadIds.length, 1);
+	const definition = graph.nodes.find(
+		(node) => node.id === "metafield:product:custom:subtitle",
+	);
+	assert.equal(definition.type, "single_line_text_field");
+});
+
 test("metafield snapshot shape is recognized, not guessed", () => {
 	const inspect = (contents) =>
 		inspectNazareTheme(

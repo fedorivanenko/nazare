@@ -265,8 +265,26 @@ function scanDefinitionCandidates(value: unknown): MetafieldSnapshotScan {
 			candidates.push(...scan.candidates);
 			continue;
 		}
-		if (!METAFIELD_OWNER_NAMES.has(key.toLowerCase()) || !isRecord(child))
+		if (!METAFIELD_OWNER_NAMES.has(key.toLowerCase())) continue;
+		// What `shopify` writes to .shopify/metafields.json: each owner maps to a
+		// list of definitions that carry their own key and namespace. An owner
+		// with no definitions is an empty list, which is why an owner key alone
+		// is enough to recognize the file.
+		if (Array.isArray(child)) {
+			recognized = true;
+			for (const definition of child) {
+				if (!isRecord(definition)) continue;
+				if (
+					!stringValue(definition.key) ||
+					!stringValue(definition.namespace)
+				) {
+					continue;
+				}
+				candidates.push({ ...definition, owner: key });
+			}
 			continue;
+		}
+		if (!isRecord(child)) continue;
 		recognized = true;
 		for (const [namespace, keys] of Object.entries(child)) {
 			if (!isRecord(keys)) continue;

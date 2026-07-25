@@ -1,7 +1,16 @@
 {
-  "product": {
-    "custom": {
-      "subtitle": { "name": "Subtitle", "type": "single_line_text_field" }
+  "article": [],
+  "collection": [],
+  "product": [
+    {
+      "key": "subtitle",
+      "namespace": "custom",
+      "name": "Subtitle",
+      "description": "Short line under the product title.",
+      "type": {
+        "name": "single_line_text_field",
+        "category": "TEXT"
+      }
     }
-  }
+  ]
 }
