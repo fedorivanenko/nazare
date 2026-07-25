@@ -134,7 +134,7 @@ function collectTemplateFacts(
 		);
 		return;
 	}
-	if (!Array.isArray(parsed.order)) {
+	if (parsed.order !== undefined && !Array.isArray(parsed.order)) {
 		issues.push(
 			invalidJsonShape(
 				path,
@@ -142,7 +142,7 @@ function collectTemplateFacts(
 				'Template "order" must be an array of section instance ids',
 			),
 		);
-	} else {
+	} else if (Array.isArray(parsed.order)) {
 		const seenOrderIds = new Set<string>();
 		for (const [orderIndex, instanceId] of parsed.order.entries()) {
 			if (typeof instanceId !== "string" || !instanceId) {

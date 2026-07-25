@@ -397,7 +397,7 @@ test("cli: build reports a conflict when two components emit the same path", asy
 			);
 			assert.notEqual(built.status, 0);
 			const output = JSON.parse(built.stdout);
-			assert.equal(output.conflicts.length, 0);
+			assert.equal(output.conflicts.length, 1);
 			assert.equal(
 				output.issues.some(
 					(issue) =>
