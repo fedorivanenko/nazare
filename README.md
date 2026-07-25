@@ -288,6 +288,7 @@ Publish your own component:
   "id": "@acme/button",
   "version": "1.0.0",
   "entry": "button.nz.liquid",
+  "license": "MIT",
   "files": ["button.nz.liquid", "button.css", "button.ts"],
   "dependencies": {}
 }
@@ -300,6 +301,18 @@ export NAZARE_TOKEN=your-publish-token
 
 nazare pack ./components/button
 nazare publish ./components/button
+```
+
+`license` is required to publish — a component is source your installers own and
+redistribute, so the terms have to travel with it. Add `"source"` when a
+component is derived from or modelled on someone else's work, so the attribution
+travels too:
+
+```json
+{
+  "license": "MIT",
+  "source": "Settings vocabulary follows Shopify Dawn (Shopify Inc.)"
+}
 ```
 
 Update installed components:

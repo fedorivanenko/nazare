@@ -39,6 +39,14 @@ export async function buildRegistryComponent(
 	if (!manifest.id || !manifest.version) {
 		throw new Error(`${MANIFEST} must declare both "id" and "version"`);
 	}
+	// A component is source the installer owns and redistributes. Publishing one
+	// with no stated terms hands them code they cannot legally use, and the
+	// registry has no way to tell them so afterwards.
+	if (typeof manifest.license !== "string" || manifest.license.trim() === "") {
+		throw new Error(
+			`${manifest.id}: ${MANIFEST} must declare a "license" (an SPDX id, e.g. "MIT")`,
+		);
+	}
 
 	const files: Record<string, string> = { [MANIFEST]: manifestRaw };
 	for (const relativePath of manifest.files ?? []) {

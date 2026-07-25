@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "kind": "section",
   "entry": "disclosure.nz.liquid",
+  "license": "MIT",
   "dependencies": {},
   "files": [
     "disclosure.nz.liquid"

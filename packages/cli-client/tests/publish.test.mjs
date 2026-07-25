@@ -33,6 +33,7 @@ const manifest = (overrides) => ({
 	id: "@nazare/counter",
 	version: "0.1.0",
 	entry: "counter.ts",
+	license: "MIT",
 	dependencies: {},
 	files: ["counter.ts"],
 	...overrides,
@@ -213,4 +214,38 @@ test("publish uploads, then a second publish of the same version conflicts", asy
 	} finally {
 		await rm(registryDir, { recursive: true, force: true });
 	}
+});
+
+test("a component with no license is refused", async () => {
+	await withComponent(
+		{
+			"nazare.json": manifest({ license: undefined }),
+			"counter.ts": "export const counter = 1;\n",
+		},
+		async (dir) => {
+			// Publishing hands the installer source they own; unstated terms make
+			// that source unusable, and the registry cannot say so afterwards.
+			await assert.rejects(
+				buildRegistryComponent(dir),
+				/must declare a "license"/,
+			);
+		},
+	);
+});
+
+test("attribution travels with the component", async () => {
+	await withComponent(
+		{
+			"nazare.json": manifest({
+				source: "Settings vocabulary follows Shopify Dawn (Shopify Inc.)",
+			}),
+			"counter.ts": "export const counter = 1;\n",
+		},
+		async (dir) => {
+			const component = await buildRegistryComponent(dir);
+			const published = JSON.parse(component.files["nazare.json"]);
+			assert.equal(published.license, "MIT");
+			assert.match(published.source, /Shopify Dawn/);
+		},
+	);
 });
