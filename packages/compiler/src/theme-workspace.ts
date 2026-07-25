@@ -314,13 +314,10 @@ function analyzeNormalizedThemeFiles(
 				name: themeNameFromPath(file.path),
 			});
 		}
-		if (fileKind === "locale") {
-			facts.push({
-				kind: "declaresLocale",
-				path: file.path,
-				name: themeNameFromPath(file.path),
-			});
-		}
+		// Locale declarations come from collectJsonThemeFacts, which owns every
+		// declaration derived from a JSON file's path. Declaring one here too
+		// emitted the fact twice; dedupeById hid it from the batch model and the
+		// pass pipeline surfaced it as a duplicate record.
 		if (fileKind === "nazareComponent") {
 			const result = collectNazareThemeFacts(file.path, file.contents, {
 				readFile,

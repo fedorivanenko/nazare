@@ -1,0 +1,14 @@
+{
+  "sections": {
+    "main": {
+      "type": "main-product",
+      "blocks": {
+        "title": { "type": "text", "settings": { "body": "Product title" } },
+        "gallery": { "type": "image" }
+      },
+      "block_order": ["title", "gallery"],
+      "settings": { "show_recommendations": true }
+    }
+  },
+  "order": ["main"]
+}

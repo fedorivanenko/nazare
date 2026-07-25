@@ -20,7 +20,7 @@ import {
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const manifestPath = join(
 	repositoryRoot,
-	"notes/theme-graph-production-corpus-golden.json",
+	"fixtures/theme-graph-corpus.json",
 );
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const options = parseArguments(process.argv.slice(2));
@@ -30,6 +30,13 @@ const agreementScores = {};
 
 for (const [slug, expected] of Object.entries(manifest.themes)) {
 	if (options.only.size > 0 && !options.only.has(slug)) continue;
+	// External themes live on individual machines. They are an extra signal, not
+	// the proof: an unconfigured one is skipped so the committed corpus still
+	// gates every change, everywhere.
+	if (!expected.repositoryRoot && !isExternalThemeConfigured(slug, expected)) {
+		console.log(`SKIP ${slug}: not configured on this machine`);
+		continue;
+	}
 	try {
 		const graph = loadGraph(slug, expected, options);
 		checkGraph(slug, graph, expected);
@@ -59,6 +66,12 @@ if (failures.length > 0) {
 	process.exitCode = 1;
 } else {
 	console.log("\nAll production corpus golden queries passed.");
+}
+
+function isExternalThemeConfigured(slug, expected) {
+	if (options.graphPaths.has(slug) || options.projectRoots.has(slug)) return true;
+	const configured = process.env[expected.rootEnv] || expandHome(expected.defaultRoot);
+	return Boolean(configured) && existsSync(configured);
 }
 
 function parseArguments(args) {
@@ -94,13 +107,18 @@ function loadGraph(slug, expected, options) {
 	const graphPath = options.graphPaths.get(slug);
 	if (graphPath) return JSON.parse(readFileSync(graphPath, "utf8"));
 
-	const configuredRoot =
-		options.projectRoots.get(slug) ||
-		process.env[expected.rootEnv] ||
-		expandHome(expected.defaultRoot);
+	// A theme committed to this repository needs no configuration and runs
+	// everywhere; only external themes fall back to env vars and home paths.
+	const configuredRoot = expected.repositoryRoot
+		? join(repositoryRoot, expected.repositoryRoot)
+		: options.projectRoots.get(slug) ||
+			process.env[expected.rootEnv] ||
+			expandHome(expected.defaultRoot);
 	if (!configuredRoot || !existsSync(configuredRoot)) {
 		throw new Error(
-			`corpus root missing; set ${expected.rootEnv}, pass --project ${slug}=path, or pass --graph ${slug}=path`,
+			expected.repositoryRoot
+				? `corpus root missing from this repository: ${expected.repositoryRoot}`
+				: `corpus root missing; set ${expected.rootEnv}, pass --project ${slug}=path, or pass --graph ${slug}=path`,
 		);
 	}
 	const cliPath = join(

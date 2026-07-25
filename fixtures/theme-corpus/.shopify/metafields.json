@@ -1,0 +1,7 @@
+{
+  "product": {
+    "custom": {
+      "subtitle": { "name": "Subtitle", "type": "single_line_text_field" }
+    }
+  }
+}

@@ -1,6 +1,58 @@
 {
   "version": 1,
   "themes": {
+    "fixture-theme": {
+      "repositoryRoot": "fixtures/theme-corpus",
+      "minimums": { "nodes": 180, "edges": 290, "evidence": 125 },
+      "requiredNodeIds": [
+        "page:templates/product.json",
+        "page:templates/index.json",
+        "layout:layout/theme.liquid:theme",
+        "sectionGroup:sections/header-group.json:header-group",
+        "themeBlock:blocks/text.liquid:text",
+        "template:templates/search.liquid:search",
+        "section:sections/main-product.liquid:main-product",
+        "snippet:snippets/product-card.liquid:product-card",
+        "component:components/c-card.nz.liquid:components/c-card.nz.liquid",
+        "locale:locales/fr.json:fr",
+        "shopify-property:product.price",
+        "shopify-property:cart.items",
+        "metafield:product:custom:subtitle",
+        "classification:snippets/product-card.liquid:productCard",
+        "classification:sections/main-product.liquid:productForm",
+        "classification:snippets/cart-drawer.liquid:cartDrawer",
+        "classification:snippets/search-overlay.liquid:searchOverlay",
+        "classification:sections/collection-grid.liquid:collectionGrid",
+        "classification:snippets/localization-form.liquid:localizationSelector",
+        "classification:sections/header.liquid:navigation",
+        "capability:sections/main-product.liquid:addsToCart",
+        "capability:snippets/search-overlay.liquid:performsPredictiveSearch",
+        "expected-input:snippets/product-card.liquid:product"
+      ],
+      "requiredEdges": [
+        { "kind": "accessesData", "from": "file:snippets/price.liquid", "to": "shopify-property:product.price" },
+        { "kind": "accessesData", "from": "file:snippets/cart-drawer.liquid", "to": "shopify-property:cart.items" },
+        { "kind": "readsSetting", "from": "file:sections/footer.liquid", "to": "setting:sections/footer.liquid:schema:note" },
+        { "kind": "readsMetafield", "from": "file:snippets/product-card.liquid" },
+        { "kind": "renders", "from": "file:sections/main-product.liquid" },
+        { "kind": "imports", "from": "file:components/c-card.nz.liquid" },
+        { "kind": "containsSectionGroup", "from": "file:layout/theme.liquid" },
+        { "kind": "referencesLocaleKey", "from": "file:sections/footer.liquid" }
+      ],
+      "impact": [
+        { "artifact": "snippets/price.liquid", "dependent": "snippets/product-card.liquid" },
+        { "artifact": "snippets/product-card.liquid", "dependent": "sections/featured-collection.liquid" },
+        { "artifact": "snippets/price.liquid", "affectedPage": "templates/product.json" }
+      ],
+      "requiredUnusedFile": "sections/unused-promo.liquid",
+      "issueMaximums": {
+        "NAZARE_PARSE_LIQUID": 0,
+        "PLAIN_LIQUID_FACTS_SKIPPED": 0,
+        "THEME_RENDER_ARGUMENT_MISSING": 0,
+        "THEME_UNRESOLVED_SETTING_READ": 0,
+        "THEME_AMBIGUOUS_REFERENCE": 0
+      }
+    },
     "alkamind-nazare": {
       "rootEnv": "NAZARE_CORPUS_ALKAMIND_NAZARE",
       "defaultRoot": "~/Coding/hyuman/alkamind/alkamind-nazare",

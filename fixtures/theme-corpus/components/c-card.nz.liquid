@@ -1,0 +1,12 @@
+{% component section %}
+
+{% import CButton from "./c-button.nz.liquid" %}
+
+{% props {
+  title: string.setting({ label: "Title", default: "Card" }),
+} %}
+
+<article>
+  <h3>{{ props.title }}</h3>
+  {% render CButton { label: "Buy" } %}
+</article>

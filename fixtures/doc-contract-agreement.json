@@ -1,6 +1,15 @@
 {
 	"version": 1,
 	"themes": {
+		"fixture-theme": {
+			"declared": 5,
+			"compared": 5,
+			"agree": 3,
+			"declaredOptionalButInferredRequired": 0,
+			"declaredRequiredButInferredOptional": 0,
+			"declaredRequiredButInferredUnknown": 0,
+			"other": 2
+		},
 		"alkamind-nazare": {
 			"declared": 131,
 			"compared": 131,

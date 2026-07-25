@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const baselinePath = join(
 	repositoryRoot,
-	"notes/doc-contract-agreement.json",
+	"fixtures/doc-contract-agreement.json",
 );
 
 if (fileURLToPath(import.meta.url) === resolve(process.argv[1] ?? "")) {

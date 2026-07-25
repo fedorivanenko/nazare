@@ -1,0 +1,8 @@
+<section>
+  {% for product in collection.products limit: section.settings.count %}
+    {% render 'product-card', product: product %}
+  {% endfor %}
+</section>
+{% schema %}
+{ "name": "Featured collection", "settings": [{ "id": "count", "type": "range", "label": "Count", "min": 2, "max": 12, "step": 2, "default": 4 }] }
+{% endschema %}

@@ -1,0 +1,4 @@
+{
+  "sections": { "grid": { "type": "collection-grid" } },
+  "order": ["grid"]
+}

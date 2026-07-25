@@ -1,0 +1,3 @@
+{% for media in product.media %}
+  {{ media | image_url: width: 800 | image_tag }}
+{% endfor %}

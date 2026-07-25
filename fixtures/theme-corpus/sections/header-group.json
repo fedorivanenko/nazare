@@ -1,0 +1,6 @@
+{
+  "type": "header",
+  "name": "Header group",
+  "sections": { "header": { "type": "header" } },
+  "order": ["header"]
+}

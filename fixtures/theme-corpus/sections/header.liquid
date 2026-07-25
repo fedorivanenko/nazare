@@ -1,0 +1,12 @@
+<header>
+  <nav>
+    {% for link in linklists.main-menu.links %}
+      <a href="{{ link.url }}">{{ link.title }}</a>
+    {% endfor %}
+  </nav>
+  {% render 'search-overlay' %}
+  {% render 'cart-drawer' %}
+</header>
+{% schema %}
+{ "name": "Header", "settings": [{ "id": "sticky", "type": "checkbox", "label": "Sticky" }] }
+{% endschema %}
