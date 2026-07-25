@@ -286,8 +286,15 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 
 function inferExpressionType(source: string): SemanticType | undefined {
 	const trimmed = source.trim();
-	const stringLiteral = trimmed.match(/^["']([^"']*)["']$/);
-	if (stringLiteral) return { kind: "string-literal", value: stringLiteral[1] };
+	// Only the delimiting quote is forbidden inside; the other one is ordinary
+	// content (`attributes: "data-x='1'"` is a literal, not an unknown shape).
+	const stringLiteral = trimmed.match(/^"([^"]*)"$|^'([^']*)'$/);
+	if (stringLiteral) {
+		return {
+			kind: "string-literal",
+			value: stringLiteral[1] ?? stringLiteral[2] ?? "",
+		};
+	}
 	const numberLiteral = Number(trimmed);
 	if (trimmed !== "" && Number.isFinite(numberLiteral)) {
 		return { kind: "number-literal", value: numberLiteral };

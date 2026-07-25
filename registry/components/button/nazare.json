@@ -1,0 +1,11 @@
+{
+  "id": "@nazare/button",
+  "version": "0.1.0",
+  "kind": "snippet",
+  "entry": "button.nz.liquid",
+  "license": "MIT",
+  "dependencies": {},
+  "files": [
+    "button.nz.liquid"
+  ]
+}

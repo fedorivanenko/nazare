@@ -90,6 +90,81 @@ test("buildTheme compiles .nz.liquid and does not copy the source file", async (
 	);
 });
 
+test("buildTheme places an installed plain-Liquid component by its manifest kind", async () => {
+	await withProject(
+		{
+			"nazare/c-button/nazare.json": JSON.stringify({
+				id: "@nazare/c-button",
+				version: "0.1.0",
+				kind: "snippet",
+				entry: "c-button.liquid",
+				files: ["c-button.liquid", "c-button.css"],
+			}),
+			"nazare/c-button/c-button.liquid": "<a>{{ label }}</a>\n",
+			"nazare/c-button/c-button.css": ".nazare-button{}\n",
+			"nazare/components/s-hero/nazare.json": JSON.stringify({
+				id: "@nazare/s-hero",
+				version: "0.1.0",
+				kind: "section",
+				entry: "s-hero.liquid",
+				files: ["s-hero.liquid"],
+			}),
+			// Nested one level deeper: a workspace may group installs in a folder.
+			"nazare/components/s-hero/s-hero.liquid": "<section>Hero</section>\n",
+		},
+		async (projectRoot) => {
+			const result = await build(projectRoot);
+			assert.deepEqual(result.issues, []);
+			assert.equal(
+				readOutput(projectRoot, "snippets/c-button.liquid"),
+				"<a>{{ label }}</a>\n",
+			);
+			assert.equal(
+				readOutput(projectRoot, "assets/c-button.css"),
+				".nazare-button{}\n",
+			);
+			assert.equal(
+				readOutput(projectRoot, "sections/s-hero.liquid"),
+				"<section>Hero</section>\n",
+			);
+			// The manifest itself is not a theme file.
+			assert.equal(
+				existsSync(join(projectRoot, ".nazare-out/theme/snippets/nazare.json")),
+				false,
+			);
+		},
+	);
+});
+
+test("buildTheme leaves a .nz.liquid component's own files to the compiler", async () => {
+	await withProject(
+		{
+			"nazare/notice/nazare.json": JSON.stringify({
+				id: "@nazare/notice",
+				version: "0.1.0",
+				kind: "snippet",
+				entry: "notice.nz.liquid",
+				files: ["notice.nz.liquid", "notice.css"],
+			}),
+			"nazare/notice/notice.nz.liquid": "<div>Notice</div>\n",
+			"nazare/notice/notice.css": ".notice{}\n",
+		},
+		async (projectRoot) => {
+			const result = await build(projectRoot);
+			assert.deepEqual(result.issues, []);
+			assert.equal(
+				readOutput(projectRoot, "snippets/notice.liquid").includes("Notice"),
+				true,
+			);
+			// A CSS module belongs to the compiler's emit, not a raw asset copy.
+			assert.equal(
+				existsSync(join(projectRoot, ".nazare-out/theme/assets/notice.css")),
+				false,
+			);
+		},
+	);
+});
+
 test("buildTheme writes nothing when compile errors exist", async () => {
 	await withProject(
 		{

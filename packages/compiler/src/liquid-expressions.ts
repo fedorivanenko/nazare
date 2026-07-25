@@ -106,8 +106,15 @@ export function visitLiquidExpressions(
 		case "RenderVariableExpression":
 		case "RenderAliasExpression":
 		case "NamedArgument":
+		// `{% content_for 'block', type: x, id: y %}` carries its arguments here,
+		// so its settings reads are reachable through the usual child walk.
+		case "ContentForMarkup":
 		case "Comparison":
 		case "Condition":
+		// `{% if a and b %}` parses its operands into a BooleanExpression; without
+		// it the whole condition reported as an unscannable shape and the setting
+		// reads inside it were never collected.
+		case "BooleanExpression":
 			visitKnownChildren(value, visitor);
 			return;
 		case "Range":

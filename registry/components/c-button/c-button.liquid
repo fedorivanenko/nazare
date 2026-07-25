@@ -1,0 +1,69 @@
+{% doc %}
+  Call-to-action button. Renders as a link, a form button, or an inert span.
+
+  Renders nothing when `label` is blank, or when `tag` is `a` with no `url` —
+  a dead link is never emitted.
+
+  @param {string} label - Button text. Blank renders nothing.
+  @param {string} [url] - Destination. Required when tag is 'a'.
+  @param {string} [scheme] - solid (default), outline, or ghost
+  @param {string} [size] - md (default) or sm
+  @param {string} [tag] - a (default), button, or span
+  @param {string} [type] - button (default), submit, or reset. tag 'button' only.
+  @param {string} [name] - Form field name. tag 'button' only.
+  @param {string} [class] - Appended to the root classes, so it wins on conflict.
+  @param {string} [attributes] - Raw attribute string, injected unescaped.
+{% enddoc %}
+
+{% comment %}
+  Alias first, then validate each variant against its whitelist: an unset or
+  unrecognized value falls back rather than emitting a dead class.
+{% endcomment %}
+{% assign button_label = label %}
+{% assign button_url = url %}
+{% assign button_scheme = 'solid' %}
+{% if scheme == 'outline' or scheme == 'ghost' %}
+  {% assign button_scheme = scheme %}
+{% endif %}
+{% assign button_size = 'md' %}
+{% if size == 'sm' %}
+  {% assign button_size = 'sm' %}
+{% endif %}
+{% assign button_tag = 'a' %}
+{% if tag == 'button' or tag == 'span' %}
+  {% assign button_tag = tag %}
+{% endif %}
+{% assign button_type = 'button' %}
+{% if type == 'submit' or type == 'reset' %}
+  {% assign button_type = type %}
+{% endif %}
+{% assign button_class = 'nazare-button nazare-button--' | append: button_scheme | append: ' nazare-button--' | append: button_size %}
+{% if class != blank %}
+  {% assign button_class = button_class | append: ' ' | append: class %}
+{% endif %}
+
+{% capture button_markup %}
+  {%- if button_label != blank -%}
+    {%- if button_tag == 'button' -%}
+      <button
+        class="{{ button_class }}"
+        type="{{ button_type }}"
+        {% if name != blank %}name="{{ name }}"{% endif %}
+        {{ attributes }}
+      >{{ button_label }}</button>
+    {%- elsif button_tag == 'span' -%}
+      <span class="{{ button_class }}" {{ attributes }}>{{ button_label }}</span>
+    {%- elsif button_url != blank -%}
+      <a class="{{ button_class }}" href="{{ button_url }}" {{ attributes }}>{{ button_label }}</a>
+    {%- endif -%}
+  {%- endif -%}
+{% endcapture %}
+
+{% comment %}
+  The stylesheet ships with the markup, so a render that emits nothing — blank
+  label, or an `a` with no url — also emits no asset tag.
+{% endcomment %}
+{% if button_markup != blank %}
+  {{ button_markup }}
+  {{ 'c-button.css' | asset_url | stylesheet_tag }}
+{% endif %}
