@@ -238,6 +238,9 @@ export class ThemeGraphStore {
 }
 
 function validateGraphRecords(graph: InspectNazareThemeResult): void {
+	assertUniqueIdentifiedRecords(graph.nodes, "graph node");
+	assertUniqueIdentifiedRecords(graph.edges, "graph edge");
+	assertUniqueIdentifiedRecords(graph.evidence, "graph evidence");
 	const nodeIds = new Set(graph.nodes.map((node) => node.id));
 	const evidenceIds = new Set(graph.evidence.map((evidence) => evidence.id));
 	for (const edge of graph.edges) {
@@ -253,6 +256,25 @@ function validateGraphRecords(graph: InspectNazareThemeResult): void {
 	}
 	for (const node of graph.nodes) {
 		validateEvidenceIds(node, evidenceIds, `Graph node ${node.id}`);
+	}
+}
+
+function assertUniqueIdentifiedRecords<T extends { id: string }>(
+	records: T[],
+	kind: string,
+): void {
+	const seen = new Map<string, T>();
+	for (const record of records) {
+		const existing = seen.get(record.id);
+		if (!existing) {
+			seen.set(record.id, record);
+			continue;
+		}
+		throw new Error(
+			JSON.stringify(existing) === JSON.stringify(record)
+				? `Duplicate ${kind} id ${record.id}`
+				: `Conflicting ${kind} id ${record.id}`,
+		);
 	}
 }
 

@@ -66,19 +66,27 @@ export function themeGraphFromModel(
 ): InspectNazareThemeResult {
 	const nodes: SemanticThemeGraphNode[] = [];
 	const edges: SemanticThemeGraphEdge[] = [];
-	const nodeIds = new Set<string>();
-	const edgeIds = new Set<string>();
+	const nodesById = new Map<string, SemanticThemeGraphNode>();
+	const edgesById = new Map<string, SemanticThemeGraphEdge>();
 	const projects = (id: string): boolean =>
 		!options.selectedSemanticIds || options.selectedSemanticIds.has(id);
 
 	const pushNode = (node: SemanticThemeGraphNode) => {
-		if (nodeIds.has(node.id)) return;
-		nodeIds.add(node.id);
+		const existing = nodesById.get(node.id);
+		if (existing) {
+			if (sameIdentifiedRecord(existing, node)) return;
+			throw new Error(`Conflicting semantic graph node id ${node.id}`);
+		}
+		nodesById.set(node.id, node);
 		nodes.push(node);
 	};
 	const pushEdge = (edge: SemanticThemeGraphEdge) => {
-		if (edgeIds.has(edge.id)) return;
-		edgeIds.add(edge.id);
+		const existing = edgesById.get(edge.id);
+		if (existing) {
+			if (sameIdentifiedRecord(existing, edge)) return;
+			throw new Error(`Conflicting semantic graph edge id ${edge.id}`);
+		}
+		edgesById.set(edge.id, edge);
 		edges.push(edge);
 	};
 
@@ -1072,6 +1080,10 @@ function graphViews(
 			new Set(edges.map((edge) => edge.kind)),
 		),
 	};
+}
+
+function sameIdentifiedRecord(left: object, right: object): boolean {
+	return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function unresolvedNodeId(reference: ThemeReference): string {

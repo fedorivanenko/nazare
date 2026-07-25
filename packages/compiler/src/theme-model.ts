@@ -143,6 +143,7 @@ export function buildThemeSemanticModel(
 	const guardedObjects = new Set(dataFlowInputs.guardedObjects);
 	const defaultedObjects = new Set(dataFlowInputs.defaultedObjects);
 	const docParams = dataFlowInputs.docParams;
+	const declaredInputs = dataFlowInputs.declaredInputs;
 	const renderSiteFacts = dataFlowInputs.renderSiteFacts;
 	const renderArguments = dataFlowInputs.renderArguments;
 	const capabilitySignals = collectThemeCapabilitySignals(
@@ -186,7 +187,7 @@ export function buildThemeSemanticModel(
 		variableReads,
 		guardedObjects,
 		defaultedObjects,
-		docParams,
+		declaredInputs,
 		renderArguments,
 	);
 	modelIssues.push(
@@ -232,6 +233,10 @@ export function buildThemeSemanticModel(
 		renderArguments,
 		capabilitySignals,
 		docParams,
+		declaredInputs: declaredInputs.filter(
+			(input): input is Extract<ThemeFact, { kind: "declaresInput" }> =>
+				input.kind === "declaresInput",
+		),
 	});
 
 	modelIssues.push(...settingResolution.issues, ...localeResolution.issues);
@@ -556,7 +561,16 @@ export function referenceId(reference: Omit<ThemeReference, "id">): string {
 
 function dedupeById<T extends { id: string }>(items: T[]): T[] {
 	const seen = new Map<string, T>();
-	for (const item of items) seen.set(item.id, item);
+	for (const item of items) {
+		const existing = seen.get(item.id);
+		if (!existing) {
+			seen.set(item.id, item);
+			continue;
+		}
+		if (JSON.stringify(existing) !== JSON.stringify(item)) {
+			throw new Error(`Conflicting theme semantic record id ${item.id}`);
+		}
+	}
 	return [...seen.values()];
 }
 

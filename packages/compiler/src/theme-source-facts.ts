@@ -5,7 +5,7 @@
 // AST — a token in a comment, string, or script body can never become a fact.
 // Settings reads are NOT collected here: the parser already produces them
 // (scanSettingsReadsFromLiquidAst), callers map those directly.
-import type { SourceSpan } from "@nazare/core";
+import type { Diagnostic, SourceSpan } from "@nazare/core";
 import {
 	type LiquidHtmlNode,
 	NodeTypes,
@@ -176,8 +176,26 @@ export function collectSourceThemeFacts(
 	path: string,
 	source: string,
 	ast: ReturnType<typeof toLiquidHtmlAST>,
-): ThemeFact[] {
+): { facts: ThemeFact[]; issues: Diagnostic[] } {
 	const facts: ThemeFact[] = [];
+	const issues: Diagnostic[] = [];
+	const unscannedKeys = new Set<string>();
+	const reportUnscanned = (value: unknown): void => {
+		const candidate = value as { type?: unknown; position?: SourceRange };
+		const type =
+			typeof candidate?.type === "string" ? candidate.type : typeof value;
+		const position = candidate?.position;
+		const key = `${type}:${position?.start ?? "unknown"}:${position?.end ?? "unknown"}`;
+		if (unscannedKeys.has(key)) return;
+		unscannedKeys.add(key);
+		issues.push({
+			severity: "warning",
+			code: "THEME_SOURCE_EXPRESSION_UNSCANNED",
+			message: `Unsupported Liquid expression shape ${type} in ${path}`,
+			phase: "parse",
+			span: rangeSpan(path, source, position),
+		});
+	};
 	const localDefinitions = new Map<string, LocalDefinition[]>();
 	const guardedNames = new Set<string>();
 	const defaultedNames = new Set<string>();
@@ -253,6 +271,7 @@ export function collectSourceThemeFacts(
 			}
 		}
 		visitLiquidExpressions(tag.markup, {
+			onUnscanned: reportUnscanned,
 			onAssign: (markup) => {
 				const assignmentStart = expressionStart(markup);
 				const offset = markup.position?.end ?? assignmentStart;
@@ -450,15 +469,21 @@ export function collectSourceThemeFacts(
 			(tagName === "render" || tagName === "include") &&
 			isRenderMarkup(tag.markup)
 		) {
-			facts.push(
-				...renderArgumentFacts(path, source, tag.markup, tag.position),
+			const renderArguments = renderArgumentFacts(
+				path,
+				source,
+				tag.markup,
+				tag.position,
 			);
+			facts.push(...renderArguments.facts);
+			issues.push(...renderArguments.issues);
 		}
 		// Capture markup declares its destination; it is not a variable read.
 		// Child outputs are separate AST nodes and remain visited by walk().
 		if (tagName === "capture") return;
 
 		visitLiquidExpressions(tag.markup, {
+			onUnscanned: reportUnscanned,
 			onLookup: (lookup) =>
 				handleLookup(
 					lookup,
@@ -557,7 +582,7 @@ export function collectSourceThemeFacts(
 		}
 	}
 
-	return facts;
+	return { facts, issues };
 }
 
 const definiteAssignmentsByConditional = new WeakMap<object, Set<string>>();
@@ -903,16 +928,31 @@ function renderArgumentFacts(
 	source: string,
 	markup: RenderMarkupLike,
 	tagPosition: SourceRange,
-): ThemeFact[] {
-	// Arguments attribute to a site only when the target is static; a dynamic
-	// {% render block %} has no name to check arguments against.
-	if (!isLiquidString(markup.snippet)) return [];
+): { facts: ThemeFact[]; issues: Diagnostic[] } {
+	const facts: ThemeFact[] = [];
+	const issues: Diagnostic[] = [];
+	// Arguments attribute to a site only when the target is static. Preserve
+	// incompleteness explicitly instead of silently returning no argument facts.
+	if (!isLiquidString(markup.snippet)) {
+		if (
+			(Array.isArray(markup.args) && markup.args.length > 0) ||
+			markup.variable !== undefined
+		) {
+			issues.push({
+				severity: "warning",
+				code: "THEME_DYNAMIC_RENDER_ARGUMENTS_UNSCANNED",
+				message: `Cannot attribute arguments for dynamic render target in ${path}`,
+				phase: "parse",
+				span: spanFromOffsets(source, path, tagPosition),
+			});
+		}
+		return { facts, issues };
+	}
 	const targetName = markup.snippet.value;
 	const siteId = renderSiteKey(
 		path,
 		spanFromOffsets(source, path, tagPosition),
 	);
-	const facts: ThemeFact[] = [];
 	const implicitLookup = markup.variable?.name as PositionedLookup | undefined;
 	if (
 		markup.variable?.type === "RenderVariableExpression" &&
@@ -938,19 +978,30 @@ function renderArgumentFacts(
 		});
 	}
 	for (const argument of namedArguments(markup.args)) {
-		const valueSource = sliceRange(source, argumentValueRange(argument));
+		const valueRange = argumentValueRange(argument);
+		const valueSource = sliceRange(source, valueRange);
+		if (!valueRange || valueSource === undefined || valueSource.length === 0) {
+			issues.push({
+				severity: "warning",
+				code: "THEME_RENDER_ARGUMENT_POSITION_MISSING",
+				message: `Render argument ${argument.name} has no source value position in ${path}`,
+				phase: "parse",
+				span: rangeSpan(path, source, argument.position),
+			});
+			continue;
+		}
 		facts.push({
 			kind: "passesRenderArgument",
 			fromPath: path,
 			targetName,
 			siteId,
 			argumentName: argument.name,
-			valueExpression: valueSource ?? "",
+			valueExpression: valueSource,
 			...argumentSource(argument.value),
 			span: rangeSpan(path, source, argument.position),
 		});
 	}
-	return facts;
+	return { facts, issues };
 }
 
 /** sourceObject/sourcePath of an argument whose value is a plain lookup. */

@@ -8,13 +8,6 @@ export function collectJsonThemeFacts(
 ): { facts: ThemeFact[]; issues: Diagnostic[] } {
 	const facts: ThemeFact[] = [];
 	const issues: Diagnostic[] = [];
-	if (path.startsWith("templates/") && path.endsWith(".json")) {
-		facts.push({
-			kind: "declaresTemplate",
-			path,
-			name: themeNameFromPath(path),
-		});
-	}
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(stripShopifyJsonPreamble(contents));
@@ -61,6 +54,34 @@ export function collectJsonThemeFacts(
 			),
 		);
 	}
+	// JSON-derived semantics are authoritative only when the complete file-kind
+	// schema is valid. Inspection still retains the file record and diagnostics,
+	// but malformed structures cannot become declarations, pages, settings, or
+	// locale keys in the canonical model.
+	if (issues.some((issue) => issue.severity === "error")) {
+		return { facts: [], issues };
+	}
+	if (path.startsWith("templates/") && path.endsWith(".json")) {
+		facts.push({
+			kind: "declaresTemplate",
+			path,
+			name: themeNameFromPath(path),
+		});
+	}
+	if (path.startsWith("sections/") && path.endsWith(".json")) {
+		facts.push({
+			kind: "declaresSectionGroup",
+			path,
+			name: themeNameFromPath(path),
+		});
+	}
+	if (path.startsWith("locales/") && path.endsWith(".json")) {
+		facts.push({
+			kind: "declaresLocale",
+			path,
+			name: themeNameFromPath(path),
+		});
+	}
 	return { facts, issues };
 }
 
@@ -104,7 +125,16 @@ function collectTemplateFacts(
 		);
 		return;
 	}
-	if (!("sections" in parsed)) return;
+	if (!("sections" in parsed)) {
+		issues.push(
+			invalidJsonShape(
+				path,
+				"THEME_TEMPLATE_MISSING_SECTIONS",
+				'Template must contain a "sections" object',
+			),
+		);
+		return;
+	}
 	if (!isRecord(parsed.sections)) {
 		issues.push(
 			invalidJsonShape(
@@ -114,6 +144,48 @@ function collectTemplateFacts(
 			),
 		);
 		return;
+	}
+	if (parsed.order !== undefined && !Array.isArray(parsed.order)) {
+		issues.push(
+			invalidJsonShape(
+				path,
+				"THEME_TEMPLATE_INVALID_ORDER",
+				'Template "order" must be an array of section instance ids',
+			),
+		);
+	} else if (Array.isArray(parsed.order)) {
+		const seenOrderIds = new Set<string>();
+		for (const [orderIndex, instanceId] of parsed.order.entries()) {
+			if (typeof instanceId !== "string" || !instanceId) {
+				issues.push(
+					invalidJsonShape(
+						path,
+						"THEME_TEMPLATE_INVALID_ORDER_ID",
+						`Template order entry ${orderIndex} must be a non-empty string`,
+					),
+				);
+				continue;
+			}
+			if (!(instanceId in parsed.sections)) {
+				issues.push(
+					invalidJsonShape(
+						path,
+						"THEME_TEMPLATE_UNKNOWN_ORDER_ID",
+						`Template order references missing section ${instanceId}`,
+					),
+				);
+			}
+			if (seenOrderIds.has(instanceId)) {
+				issues.push(
+					invalidJsonShape(
+						path,
+						"THEME_TEMPLATE_DUPLICATE_ORDER_ID",
+						`Template order repeats section ${instanceId}`,
+					),
+				);
+			}
+			seenOrderIds.add(instanceId);
+		}
 	}
 	for (const [instanceId, section] of Object.entries(parsed.sections)) {
 		if (!isRecord(section)) {

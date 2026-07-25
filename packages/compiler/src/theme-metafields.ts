@@ -63,6 +63,22 @@ export function collectMetafieldDefinitions(
 			};
 		}
 	}
+	if (snapshot && !isSupportedMetafieldSnapshot(value)) {
+		return {
+			definitions: [],
+			state: "invalid",
+			path,
+			pulledAt: snapshot.pulledAt,
+			issues: [
+				{
+					severity: "warning",
+					code: "THEME_METAFIELDS_SHAPE_INVALID",
+					message: `Unsupported metafield snapshot shape in ${path}`,
+					phase: "parse",
+				},
+			],
+		};
+	}
 	const definitions: ThemeMetafieldDefinitionRecord[] = [];
 	for (const item of findDefinitionCandidates(value)) {
 		const owner = normalizeOwner(
@@ -204,6 +220,23 @@ const METAFIELD_OWNER_NAMES = new Set([
 	"shop",
 	"variant",
 ]);
+
+function isSupportedMetafieldSnapshot(value: unknown): boolean {
+	if (Array.isArray(value)) return true;
+	if (!isRecord(value)) return false;
+	if (
+		stringValue(value.namespace) &&
+		stringValue(value.key) &&
+		(value.owner || value.ownerType || value.resourceType)
+	) {
+		return true;
+	}
+	return Object.keys(value).some(
+		(key) =>
+			METAFIELD_CONTAINER_KEYS.has(key) ||
+			METAFIELD_OWNER_NAMES.has(key.toLowerCase()),
+	);
+}
 
 function findDefinitionCandidates(value: unknown): Record<string, unknown>[] {
 	if (Array.isArray(value)) {

@@ -68,6 +68,49 @@ test("theme analysis cache reuses unchanged files and invalidates edits", () => 
 	assert.equal(cache.entries["locales/en.json"], undefined);
 });
 
+test("theme cache fingerprints strictness", () => {
+	const cache = { version: 1, entries: {} };
+	const files = [
+		{
+			path: "components/card.nz.liquid",
+			contents:
+				"<div></div>{% script %}export default island(({ refs }) => refs.missing);{% endscript %}",
+		},
+	];
+	assert.equal(
+		analyzeNazareTheme(files, { cache, strictness: "loose" }).issues.length,
+		0,
+	);
+	assert.equal(
+		analyzeNazareTheme(files, { cache, strictness: "strict" }).issues.some(
+			(issue) => issue.code === "CONSTRAINT_UNKNOWN_REF",
+		),
+		true,
+	);
+});
+
+test("Nazare props become declared inputs without leaking reserved bindings", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "components/card.nz.liquid",
+			contents: [
+				"{% props title: string.required() %}",
+				"{% stylesheet styles %}.card {}{% endstylesheet %}",
+				'<div class="{{ styles.card }}">{{ props.title }}</div>',
+			].join("\n"),
+		},
+	]);
+
+	assert.deepEqual(
+		analysis.ir.expectedInputs.map((input) => [
+			input.name,
+			input.requirement,
+			input.origin,
+		]),
+		[["title", "required", "nazareProp"]],
+	);
+});
+
 test("theme input validation rejects invalid JSON shapes and unsafe paths", () => {
 	for (const [path, contents, code] of [
 		["config/settings_schema.json", "{}", "THEME_SETTINGS_SCHEMA_INVALID_ROOT"],
@@ -82,6 +125,27 @@ test("theme input validation rejects invalid JSON shapes and unsafe paths", () =
 		assert.equal(hasIssue([{ path, contents }], code), true, path);
 	}
 
+	for (const [contents, code] of [
+		["{}", "THEME_TEMPLATE_MISSING_SECTIONS"],
+		['{"sections":{},"order":"bad"}', "THEME_TEMPLATE_INVALID_ORDER"],
+		['{"sections":{},"order":["missing"]}', "THEME_TEMPLATE_UNKNOWN_ORDER_ID"],
+	]) {
+		assert.equal(
+			hasIssue([{ path: "templates/index.json", contents }], code),
+			true,
+		);
+	}
+
+	const malformedTemplate = analyzeNazareTheme([
+		{ path: "templates/index.json", contents: "{}" },
+	]);
+	assert.deepEqual(
+		malformedTemplate.facts.map((fact) => fact.kind),
+		["file"],
+	);
+	assert.equal(malformedTemplate.ir.declarations.length, 0);
+	assert.equal(malformedTemplate.ir.pages.length, 0);
+
 	for (const path of [
 		"",
 		".",
@@ -95,6 +159,25 @@ test("theme input validation rejects invalid JSON shapes and unsafe paths", () =
 			JSON.stringify(path),
 		);
 	}
+});
+
+test("dynamic render arguments report incomplete extraction", () => {
+	const analysis = analyzeNazareTheme([
+		{
+			path: "snippets/dynamic.liquid",
+			contents: "{% render target, card: product %}",
+		},
+	]);
+	assert.equal(
+		analysis.issues.some(
+			(issue) => issue.code === "THEME_DYNAMIC_RENDER_ARGUMENTS_UNSCANNED",
+		),
+		true,
+	);
+	assert.equal(
+		analysis.facts.some((fact) => fact.kind === "passesRenderArgument"),
+		false,
+	);
 });
 
 test("theme analysis accepts Shopify-generated JSON preambles", () => {

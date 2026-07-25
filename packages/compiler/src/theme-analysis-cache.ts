@@ -1,9 +1,14 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
+import { themeFactSourcePath } from "./theme-fact-store.js";
 import type {
 	ThemeAnalysisCache,
 	ThemeAnalysisCacheEntry,
 	ThemeFact,
 } from "./theme-facts.js";
+import {
+	isUnsafeThemePath,
+	normalizeThemePath,
+} from "./theme-file-classifier.js";
 
 const PERSISTED_THEME_ANALYSIS_CACHE_VERSION = 2;
 
@@ -20,9 +25,13 @@ export function parsePersistedInspectFactCache(
 		);
 	}
 	if (!isRecord(value.entries)) throw new Error("expected entries object");
-	const entries: Record<string, ThemeAnalysisCacheEntry> = {};
+	const entries: Record<string, ThemeAnalysisCacheEntry> = Object.create(null);
 	for (const [path, entry] of Object.entries(value.entries)) {
-		if (!isPersistedEntry(entry)) {
+		const normalizedPath = normalizeThemePath(path);
+		if (normalizedPath !== path || isUnsafeThemePath(path)) {
+			throw new Error(`unsafe cache entry path ${JSON.stringify(path)}`);
+		}
+		if (!isPersistedEntry(entry, path)) {
 			throw new Error(`invalid cache entry for ${JSON.stringify(path)}`);
 		}
 		entries[path] = entry;
@@ -50,12 +59,18 @@ export function serializePersistedInspectFactCache(
 	});
 }
 
-function isPersistedEntry(value: unknown): value is ThemeAnalysisCacheEntry {
+function isPersistedEntry(
+	value: unknown,
+	path: string,
+): value is ThemeAnalysisCacheEntry {
 	return (
 		isRecord(value) &&
 		typeof value.fingerprint === "string" &&
+		value.fingerprint.length > 0 &&
 		Array.isArray(value.facts) &&
-		value.facts.every(isThemeFact) &&
+		value.facts.every(
+			(fact) => isThemeFact(fact) && themeFactSourcePath(fact) === path,
+		) &&
 		Array.isArray(value.issues) &&
 		value.issues.every(isDiagnostic) &&
 		value.artifact === undefined
@@ -204,6 +219,14 @@ function isThemeFact(value: unknown): value is ThemeFact {
 				isString(value.fromPath) &&
 				isString(value.name) &&
 				(value.via === "guard" || value.via === "default")
+			);
+		case "declaresInput":
+			return (
+				isString(value.path) &&
+				isString(value.name) &&
+				isBoolean(value.required) &&
+				isOptionalString(value.paramType) &&
+				isOptionalSpan(value.span)
 			);
 		case "declaresDocParam":
 			return (
