@@ -153,6 +153,48 @@ test("Tree-sitter Nazare malformed syntax diagnostics match legacy", () => {
 	}
 });
 
+test("Tree-sitter malformed corpus fails closed without partial facts", () => {
+	const sources = [
+		`{% component %}`,
+		`{% import Card %}`,
+		`{% render Card %}`,
+		`{% blocks Card, %}`,
+		`{% props { title: } %}`,
+		`{{ product.title`,
+		`{% script %}const broken = true;`,
+		`{% stylesheet %}.broken { color: red; }`,
+	];
+	for (const source of sources) {
+		const compiled = compileArtifact({
+			source,
+			file: "malformed-corpus.nz.liquid",
+			sourceFrontend: "tree-sitter",
+		});
+		assert.equal(compiled.canEmit, false, source);
+		assert.ok(
+			compiled.issues.some((issue) => issue.severity === "error"),
+			source,
+		);
+		if (compiled.frontendMetadata.authoritative === false) {
+			assert.deepEqual(compiled.ast.nodes, [], source);
+		}
+	}
+});
+
+test("Tree-sitter rejects unclosed Liquid that the tolerant legacy parser accepted", () => {
+	const source = `{% if product %}<div>`;
+	const legacy = compileArtifact({ source, file: "unclosed.nz.liquid" });
+	const treeSitter = compileArtifact({
+		source,
+		file: "unclosed.nz.liquid",
+		sourceFrontend: "tree-sitter",
+	});
+	assert.equal(legacy.canEmit, true);
+	assert.equal(treeSitter.canEmit, false);
+	assert.equal(treeSitter.frontendMetadata.authoritative, false);
+	assert.deepEqual(treeSitter.ast.nodes, []);
+});
+
 test("invalid Nazare CST cannot leak partial projected facts", () => {
 	const source = `{% component snippet %}{% script lang="ts" %}const x = 1;`;
 	const compiled = compileArtifact({

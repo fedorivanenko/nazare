@@ -117,8 +117,11 @@ same Tree-sitter adapter when selected, including schema validation and complete
 theme-corpus fact parity. Strict mode now validates HTML through a masked
 `tree-sitter-html` pass while Liquid-only mode intentionally skips HTML errors.
 Linux and macOS CI enforce a maximum 0.9 Tree-sitter/legacy frontend-time ratio.
-Broader malformed-corpus coverage and successful CI performance runs remain the
-final default-cutover gates.
+A broader malformed corpus now gates fail-closed behavior and verifies that no
+partial facts escape invalid CSTs. One intentional tightening is recorded:
+Tree-sitter rejects unclosed Liquid blocks that the tolerant legacy Nazare parser
+accepted. Successful Linux/macOS CI performance runs remain the final
+default-cutover gate.
 
 ## Rejected alternatives
 
