@@ -1,9 +1,18 @@
 export {
 	type LiquidDependencyKind,
+	type LiquidSyntaxBlock,
+	type LiquidSyntaxConditional,
 	type LiquidSyntaxDependency,
+	type LiquidSyntaxDocParam,
 	type LiquidSyntaxFacts,
+	type LiquidSyntaxGuard,
+	type LiquidSyntaxLocalBinding,
+	type LiquidSyntaxLookup,
+	type LiquidSyntaxRead,
+	type LiquidSyntaxRenderArgument,
 	type LiquidSyntaxSchema,
 	type LiquidSyntaxSettingsRead,
+	type LiquidSyntaxStringReference,
 	liquidSyntaxFacts,
 } from "./adapters/liquid.js";
 export {
