@@ -13,6 +13,7 @@ import {
 	storyDocument,
 	storyDocuments,
 	storyId,
+	workbenchPage,
 } from "../dist/index.js";
 
 const PRICE = `{% props {
@@ -350,6 +351,25 @@ test("storyBase frames the stories instead of inlining them", async () => {
 	assert.ok(!page.includes('class="btn btn--outline"'));
 	// A framed story is openable on its own, the way a Storybook story is.
 	assert.ok(page.includes('class="story-open"'));
+});
+
+test("the workbench lists every story and shows one at a time", async () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid", {
+		packageId: "@nazare/button",
+	});
+	const page = workbenchPage([await renderComponentStories(component)]);
+
+	// One canvas, not one frame per story: the sidebar chooses what it shows.
+	assert.equal(page.match(/<iframe/g).length, 1);
+	assert.equal(page.match(/data-story="/g).length, 4);
+	// The sidebar entries are real links to the story documents, so the shell
+	// degrades to "open the story on its own" with no JavaScript.
+	assert.ok(page.includes('href="./stories/button--scheme-outline.html"'));
+	// The component's documentation travels with it, shown for the selected one.
+	assert.ok(page.includes('data-panel="button"'));
+	assert.ok(page.includes("nazare add @nazare/button"));
+	assert.ok(page.includes("<th>Default</th>"));
+	assert.ok(page.includes("{{ label }}"));
 });
 
 test("without storyBase the page is still self-contained", async () => {

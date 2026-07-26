@@ -13,65 +13,24 @@
 // global selector can restyle its neighbour. Passing `storyBase` switches to
 // isolated frames, where each story is its own document (see story-document.ts)
 // and the shell only embeds it. The rendered model is the same either way.
-import type { Diagnostic } from "@nazare/core";
-import type { PreviewControl } from "./controls.js";
-import { escapeHtml, escapeJson } from "./html.js";
+import { escapeHtml } from "./html.js";
+import {
+	renderCode,
+	renderControlsJson,
+	renderControlsTable,
+	renderInstall,
+	renderIssues,
+	renderKindLine,
+} from "./panels.js";
 import type { RenderedComponent, RenderedStory } from "./render.js";
 import { storyBody } from "./story-document.js";
 import { componentId, storyFileName } from "./story-id.js";
 import { FRAME_MESSAGE, TOKEN_STYLES } from "./theme.js";
 
-const formatValue = (value: unknown): string =>
-	value === undefined ? "—" : JSON.stringify(value);
-
 const formatProps = (props: Record<string, unknown>): string =>
 	Object.entries(props)
 		.map(([name, value]) => `${name}: ${JSON.stringify(value)}`)
 		.join(", ");
-
-function copyButton(text: string, label = "Copy"): string {
-	return `<button class="copy" type="button" data-copy="${escapeHtml(text)}" aria-label="${escapeHtml(label)}">${escapeHtml(label)}</button>`;
-}
-
-/** The props table, shadcn's docs shape: prop, type, default, required. */
-function renderControlsTable(controls: PreviewControl[]): string {
-	if (controls.length === 0) {
-		return '<p class="empty-note">No typed props — plain Liquid declares none, so its stories supply their own values.</p>';
-	}
-	const rows = controls
-		.map(
-			(control) => `
-            <tr>
-              <td><code>${escapeHtml(control.name)}</code></td>
-              <td><span class="type">${escapeHtml(
-								control.options
-									? control.options.map((option) => `"${option}"`).join(" | ")
-									: control.typeExpression,
-							)}</span></td>
-              <td><code class="muted">${escapeHtml(formatValue(control.value))}</code></td>
-              <td>${control.required ? '<span class="badge badge--required">required</span>' : '<span class="muted">—</span>'}</td>
-            </tr>`,
-		)
-		.join("");
-	return `
-        <table class="props">
-          <thead><tr><th>Prop</th><th>Type</th><th>Default</th><th>Required</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>`;
-}
-
-function renderIssues(issues: Diagnostic[]): string {
-	const reportable = issues.filter((issue) => issue.severity !== "info");
-	if (reportable.length === 0) return "";
-	return `<ul class="issues">${reportable
-		.map(
-			(issue) =>
-				`<li class="issue issue--${issue.severity}"><code>${escapeHtml(
-					issue.code,
-				)}</code> ${escapeHtml(issue.message)}</li>`,
-		)
-		.join("")}</ul>`;
-}
 
 /**
  * The stage: the story itself, inline or framed. A framed stage opens at a
@@ -117,25 +76,13 @@ function renderComponent(
 	storyBase?: string,
 ): string {
 	const id = componentId(component.name);
-	const kind = component.componentKind ?? "plain Liquid";
-	const install = component.packageId
-		? `nazare add ${component.packageId}`
-		: undefined;
 	return `
       <section class="component" id="${id}">
         <div class="component-head">
           <h2>${escapeHtml(component.name)}</h2>
-          <p class="component-sub">
-            <span class="badge">${escapeHtml(kind)}</span>
-            <span class="badge badge--muted">${escapeHtml(component.frontend)}</span>
-            <code class="muted">${escapeHtml(component.file)}</code>
-          </p>
+          ${renderKindLine(component)}
         </div>
-        ${
-					install
-						? `<div class="install"><code>${escapeHtml(install)}</code>${copyButton(install)}</div>`
-						: ""
-				}
+        ${renderInstall(component)}
         ${renderIssues(component.issues)}
         <div class="tabs">
           <input class="tab-input" type="radio" name="tabs-${id}" id="tab-${id}-preview" checked>
@@ -150,16 +97,11 @@ function renderComponent(
 							.join("")}</div>
           </div>
           <div class="tab-panel tab-panel--code">
-            <div class="code">
-              ${copyButton(component.template, "Copy")}
-              <pre><code>${escapeHtml(component.template)}</code></pre>
-            </div>
+            ${renderCode(component)}
           </div>
         </div>
         ${renderControlsTable(component.controls)}
-        <script type="application/json" class="controls-json">${escapeJson(
-					component.controls,
-				)}</script>
+        ${renderControlsJson(component.controls)}
       </section>`;
 }
 

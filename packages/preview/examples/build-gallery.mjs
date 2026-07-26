@@ -14,6 +14,7 @@ import {
 	snippetLibrary,
 	storiesFor,
 	storyDocuments,
+	workbenchPage,
 } from "../dist/index.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -96,10 +97,21 @@ for (const file of storyDocuments(rendered, { base: "../" })) {
 	writeFileSync(join(storyDir, file.path), file.contents);
 }
 
+// index.html is the workbench: pick a story on the left, see it full width.
 writeFileSync(
 	join(outDir, "index.html"),
+	workbenchPage(rendered, {
+		title: "Nazare registry",
+		storyBase: "./stories/",
+	}),
+);
+
+// all.html is the catalogue: every story of every component at once. Useful for
+// a sweep over the whole registry, and the shape a docs site would embed.
+writeFileSync(
+	join(outDir, "all.html"),
 	galleryPage(rendered, {
-		title: "Nazare registry — preview",
+		title: "Nazare registry — every story",
 		stylesheets: [...stylesheets],
 		storyBase: "./stories/",
 	}),

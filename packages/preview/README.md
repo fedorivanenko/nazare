@@ -56,6 +56,20 @@ host, it still renders and reads `?theme=dark`.
 Leave `storyBase` off and the gallery is a single self-contained file again, with
 the shared cascade that implies. Both modes render the same story model.
 
+## Two shells
+
+`workbenchPage()` is the one to work in: story list on the left, one story in the
+canvas, full width. Selection is a URL fragment (`#button--scheme-outline`), so a
+story survives a reload and can be linked; the sidebar entries are real links to
+the story documents, so with JavaScript off, clicking one opens that story on its
+own rather than doing nothing.
+
+`galleryPage()` is the catalogue: every story of every component at once, for a
+sweep over the whole registry or for embedding in a docs site.
+
+Both draw their per-component documentation — install command, diagnostics, props
+table, emitted Liquid — from the same `panels.ts`.
+
 ## Fixtures and authored stories
 
 Storefront data lives in the preview, not in the components: one canonical mock
@@ -109,7 +123,8 @@ node packages/preview/examples/build-gallery.mjs
 open .nazare-out/preview/index.html
 ```
 
-Renders every component in `registry/components/`, writing `index.html` plus one
-document per story under `stories/`. Compile diagnostics are listed per component
+Renders every component in `registry/components/`, writing the workbench to
+`index.html`, the whole-registry catalogue to `all.html`, and one document per
+story under `stories/`. Compile diagnostics are listed per component
 rather than failing the page, and a story that throws reports its error in place
 — in its own document, so the rest of the page is unaffected.

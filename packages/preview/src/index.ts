@@ -54,3 +54,4 @@ export {
 	storyDocuments,
 } from "./story-document.js";
 export { componentId, slug, storyFileName, storyId } from "./story-id.js";
+export { type WorkbenchPageOptions, workbenchPage } from "./workbench.js";
