@@ -75,12 +75,17 @@ parsing remains outside this source layer.
 The dedicated Nazare grammar uses external scanner tokens for raw script and
 stylesheet bodies. Closing tags inside strings, comments, regex literals, and
 template literals remain embedded content instead of terminating parent nodes.
-Phase 2 plain-Liquid adapter now derives dependencies, settings reads, schema,
+Phase 2 plain-Liquid adapter derives dependencies, settings reads, schema,
 blocks, conditionals, local bindings, reads, guards, render arguments, asset and
 locale references, and LiquidDoc parameters directly from CST. Corpus and
-focused differential tests compare every family with `@nazare/scan`. Phase 3
-must still add/query explicit nodes for remaining HTML markers and prove Nazare
-IR parity before compiler selection.
+focused differential tests compare every family with `@nazare/scan`.
+
+Phase 3 source adapter now exposes Nazare component/import/props/render/blocks,
+script/stylesheet, prop/style reference, HTML ref/data/island/root facts. HTML
+facts use `tree-sitter-html` over masked Liquid template regions, preserving
+original UTF-16 offsets while preventing embedded syntax from becoming HTML.
+Committed Nazare corpus files and focused legacy-parser comparisons pass.
+Compiler frontend selection and full IR/output parity remain cutover gates.
 
 ## Rejected alternatives
 
