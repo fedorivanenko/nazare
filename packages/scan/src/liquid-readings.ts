@@ -291,6 +291,8 @@ export type LiquidRenderArgument = {
 	/** The render tag this argument belongs to. */
 	siteRange: Range;
 	range: Range;
+	/** Bound by `with`/`for` rather than named explicitly. */
+	implicit: boolean;
 };
 
 const QUOTED_HEAD = /^\s*(?:'([^']*)'|"([^"]*)")/;
@@ -329,6 +331,7 @@ export function liquidRenderArguments(
 				source,
 				siteRange: token.range,
 				range: source?.range ?? token.range,
+				implicit: true,
 			});
 		}
 
@@ -345,6 +348,7 @@ export function liquidRenderArguments(
 				source,
 				siteRange: token.range,
 				range: argument.range,
+				implicit: false,
 			});
 		}
 	}
