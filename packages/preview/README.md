@@ -145,6 +145,133 @@ that declares nothing — plain Liquid with no `{% doc %}` block — is not
 second-guessed, because inferring an interface from the template's body would be
 the preview inventing a contract nobody wrote.
 
+## Architecture
+
+### The spine
+
+Each step is pure over its input:
+
+```txt
+source ──▶ compile ──▶ template + declaration ──▶ controls ──▶ stories ──▶ render ──▶ documents ──▶ shell
+        (compiler)     (emitted Liquid;           (knobs)      (cases)   (liquidjs)  (one per      (page)
+                        contract | doc | schema)                                      story)
+```
+
+Nothing in the package touches a filesystem, a server, or a clock. Every
+function takes what it needs and returns a value, so the I/O belongs to the
+caller — which is why the two runners live in `examples/` rather than in `src/`,
+and why a dev server can reuse every pass unchanged.
+
+### The passes
+
+**Source → component.** `previewComponentFromSource(source, file, options)`
+branches on the extension: `.nz.liquid` through `buildNazareThemeWorkspace` with
+its import closure walked via `options.readFile`, anything else through
+`buildPlainLiquid` and `collectPlainLiquidThemeFacts`.
+
+```ts
+type PreviewComponent = {
+  name; file; packageId?;
+  frontend: "nazare" | "plain";
+  componentKind?: "snippet" | "section" | "block";  // decides the render scope
+  template: string;        // emitted Liquid, not the source
+  assets: PreviewAsset[];  // emitted stylesheets and behaviors
+  contract?: ArtifactContract;
+  controls: PreviewControl[];
+  issues: Diagnostic[];    // compile diagnostics, reported and not thrown
+};
+```
+
+**Declaration → controls.** Three sources, one shape:
+
+| Frontend | Declaration | Pass |
+| --- | --- | --- |
+| Nazare | `{% props %}`, via the contract | `controlsFromContract` |
+| Plain snippet | `{% doc %}` `@param` | `controlsFromDocParams` |
+| Plain section | `{% schema %}` settings | `controlsFromSchemaSource` |
+
+All three produce `PreviewControl { name, label, kind, required, options?,
+range?, value, typeExpression }` — the argTypes equivalent, derived rather than
+written.
+
+**Controls → stories.** `generatedStories` is the defaults plus one story per
+enum member. `storiesFor(component, manifest?, sidecar?)` layers the authored
+cases on top. Names are unique in the result, which is what keeps story ids from
+colliding.
+
+**Stories → rendered.** `renderComponentStories(component, stories?, options)`
+assigns each story its id, computes which props it `changed`, validates it
+against the declaration, and renders it in the scope the kind dictates.
+
+```ts
+type RenderedStory = {
+  id: string;          // "button--scheme-outline"
+  story: PreviewStory; // { name, props, note?, fixtures? }
+  html: string;
+  changed: string[];
+  issues: StoryIssue[];
+  error?: string;      // a render that threw, reported in place
+};
+```
+
+**Rendered → documents → shell.** `storyDocuments()` returns one standalone page
+per story; `workbenchPage()` and `galleryPage()` return the shells that embed
+them. All three return strings.
+
+### Entry points
+
+| To do this | Call |
+| --- | --- |
+| Preview one file | `previewComponentFromSource` |
+| Take only the knobs, for an editor panel | `controlsFromContract`, `plainLiquidControls` |
+| Render stories without a page | `renderComponentStories` |
+| Render a template yourself | `createPreviewEngine`, `renderPreview` |
+| Build a static site or serve a dev server | `storyDocuments`, `workbenchPage` |
+| Sweep the whole registry at once | `galleryPage` |
+| Check a story is well-formed | `validateStory` |
+| Address a story in a URL, a file, a snapshot | `storyId`, `componentId`, `storyFileName` |
+| Reach the shared storefront data | `shopifyFixtures`, `resolveFixtures` |
+
+### Two boundaries
+
+**The compiler.** The preview uses four entry points and no internals:
+`buildNazareThemeWorkspace`, `buildPlainLiquid`, `parseNazareLiquid`,
+`collectPlainLiquidThemeFacts`. No theme session stands up to preview one file.
+
+**The browser.** A shell and a story frame are separate documents, and exchange
+exactly two messages, both named in `theme.ts`:
+
+- frame → shell: `nazare-preview:height`, because the shell cannot measure the
+  layout of a document it does not own.
+- shell → frame: `nazare-preview:theme`, because the frame cannot see the
+  shell's `data-theme`.
+
+The rest of the state is in the URL — the story in the fragment, the viewport in
+the query — so a reload, a link, and a fresh tab all arrive at the same place.
+
+### The files
+
+```txt
+component.ts         source → PreviewComponent
+controls.ts          contract → controls
+plain-controls.ts    doc params / schema settings → controls
+stories.ts           controls + authored cases → stories
+story-validation.ts  story vs. declaration → issues
+engine.ts            liquidjs, plus the Shopify tags and filters it lacks
+render.ts            stories → html
+story-document.ts    one story → one standalone page
+story-id.ts          identity: component, story, filename
+workbench.ts         the shell to work in
+gallery.ts           the whole-registry catalogue
+fixtures.ts          shared storefront stand-in data
+panels.ts            per-component documentation, shared by both shells
+theme.ts, html.ts    shared tokens, frame messages, escaping
+```
+
+`examples/build-gallery.mjs` (the registry) and `examples/preview-theme.mjs` (any
+theme directory) are pure I/O around the above, and the shape a `nazare preview`
+command would take.
+
 ## What it is not
 
 liquidjs implements the Liquid *language*; Shopify's runtime adds tags, filters,
