@@ -35,7 +35,10 @@ export function collectTreeSitterSourceThemeFacts(
 	const bindings: Binding[] = liquid.localBindings.map((binding) => ({
 		name: binding.name,
 		scope: narrowToBranch(binding.scope, branchBodies),
-		alias: bareLookup(binding.value),
+		alias:
+			binding.via === "for" || binding.via === "tablerow"
+				? collectionElementAlias(binding.value)
+				: bareLookup(binding.value),
 	}));
 	promoteDefiniteAssignments(
 		bindings,
@@ -212,6 +215,19 @@ function bareLookup(value: string | undefined): Binding["alias"] {
 	const match = value.trim().match(/^([A-Za-z_$][\w$]*)(?:\.([\w$.]+))?$/);
 	if (!match) return undefined;
 	return { root: match[1] as string, path: match[2]?.split(".") ?? [] };
+}
+
+function collectionElementAlias(value: string | undefined): Binding["alias"] {
+	const collection = bareLookup(value);
+	if (!collection) return undefined;
+	const propertyPath = collection.path.join(".");
+	if (collection.root === "collection" && propertyPath === "products") {
+		return { root: "product", path: [] };
+	}
+	if (collection.root === "product" && propertyPath === "variants") {
+		return { root: "variant", path: [] };
+	}
+	return undefined;
 }
 
 function narrowToBranch(scope: Range, branches: Range[]): Range {

@@ -112,7 +112,9 @@ locations. On the current local baseline the compiler frontend is about
 112-KB synthetic source. Theme source inference now consumes the same Tree-sitter Liquid facts; the
 Tree-sitter Nazare path never parses authored source with Shopify. Focused
 malformed component/import/render/blocks/stylesheet/attribute and unclosed-raw
-parity is gated in tests. Plain-Liquid workspace fact cutover, broader malformed
+parity is gated in tests. Plain-Liquid compiler and workspace facts now use the
+same Tree-sitter adapter when selected, including schema validation and complete
+theme-corpus fact parity. Strict-HTML diagnostic parity, broader malformed
 corpus coverage, and stable cross-platform performance thresholds remain
 default-cutover gates.
 

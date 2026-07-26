@@ -3,13 +3,13 @@ import {
 	liquidSyntaxFacts,
 	parseSourceDocument,
 } from "@nazare/source";
+import { toLiquidHtmlAST } from "@shopify/liquid-html-parser";
 import { checkVanillaSchema } from "../check-vanilla.js";
 import type { CompileInput, CompilerFrontend } from "../frontend.js";
 import { fileSyntaxId } from "../ids.js";
 import { markDiagnostics } from "../pipeline.js";
 import {
 	dependencyPath,
-	parsePlainLiquid,
 	plainLiquidFactsSkipped,
 	validateDependencyName,
 } from "../plain-liquid.js";
@@ -20,7 +20,7 @@ import {
 	plainLiquidOptions,
 } from "./plain-liquid.js";
 
-/** Opt-in bridge: Tree-sitter owns mechanical facts; Shopify parser remains semantic/schema oracle. */
+/** Canonical plain-Liquid frontend backed by Tree-sitter facts. */
 export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 	name: "tree-sitter-plain-liquid",
 	accepts(file: string): boolean {
@@ -28,11 +28,6 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 	},
 	compile(input: CompileInput) {
 		const optionResolution = plainLiquidOptions(input.frontendOptions);
-		const compatibilityAst = parsePlainLiquid(
-			input.source,
-			input.file,
-			optionResolution.options,
-		);
 		const document = parseSourceDocument(
 			createDefaultSourceParserRegistry(),
 			input.file,
@@ -88,22 +83,38 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 					};
 				})
 			: [];
-		const ast = {
-			...compatibilityAst,
-			schema: syntaxFacts.schema ? compatibilityAst.schema : undefined,
-			settingsReads,
-			dependencies,
-			factsCollected: syntaxFacts.authoritative,
-		};
 		const treeIssues = document.issues.map((issue) => ({
 			severity: "error" as const,
 			code: issue.code,
 			message: issue.message,
 			span: spanFromOffsets(input.source, input.file, issue.range),
 		}));
+		const ast = {
+			file: input.file,
+			liquidAst: toLiquidHtmlAST("", {
+				mode: "tolerant" as const,
+				allowUnclosedDocumentNode: true,
+			}),
+			nodes: [] as [],
+			schema: syntaxFacts.schema
+				? {
+						source: syntaxFacts.schema.body,
+						span: spanFromOffsets(
+							input.source,
+							input.file,
+							syntaxFacts.schema.range,
+						),
+					}
+				: undefined,
+			settingsReads,
+			dependencies,
+			diagnostics: treeIssues,
+			notes: [] as [],
+			factsCollected: syntaxFacts.authoritative,
+			parseMode: optionResolution.options.parseMode ?? "strict",
+		};
 		const issues = [
 			...markDiagnostics(optionResolution.issues, "parse"),
-			...markDiagnostics(compatibilityAst.diagnostics, "parse"),
 			...markDiagnostics(treeIssues, "parse"),
 			...markDiagnostics(
 				syntaxFacts.authoritative ? [] : [plainLiquidFactsSkipped(input.file)],

@@ -50,7 +50,11 @@ Tree-sitter owns declarations, shared Liquid mechanics, theme source facts,
 HTML root selection, compiler AST projection, and emission locations. Remaining
 performance work:
 
-1. cut plain-Liquid workspace facts over from `@nazare/scan` and Shopify schema parsing;
-2. avoid full secondary HTML reparsing after incremental edits;
-3. profile CST traversal on large files;
-4. establish stable Linux/macOS theme-corpus thresholds before default cutover.
+1. avoid full secondary HTML reparsing after incremental edits;
+2. profile CST traversal on large files;
+3. establish stable Linux/macOS theme-corpus thresholds before default cutover.
+
+When `sourceFrontend: "tree-sitter"` is selected, plain-Liquid compilation and
+workspace analysis now also avoid `@nazare/scan` and authored-source Shopify
+parsing. The legacy paths remain available only as differential oracles until
+default-cutover and deletion gates pass.

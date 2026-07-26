@@ -698,8 +698,13 @@ function schemaFromNode(
 	source: string,
 	node: Parser.SyntaxNode,
 ): LiquidSyntaxSchema {
-	const range = { start: node.startIndex, end: node.endIndex };
-	const openEnd = source.indexOf("%}", node.startIndex);
+	const openStart = source.indexOf("{%", node.startIndex);
+	const range = {
+		start:
+			openStart >= 0 && openStart < node.endIndex ? openStart : node.startIndex,
+		end: node.endIndex,
+	};
+	const openEnd = source.indexOf("%}", range.start);
 	const closeStart = source.lastIndexOf("{%", node.endIndex);
 	const bodyRange = {
 		start: openEnd < 0 ? node.startIndex : openEnd + 2,

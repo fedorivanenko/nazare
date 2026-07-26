@@ -349,6 +349,7 @@ function analyzeNormalizedThemeFiles(
 		if (file.path.endsWith(".liquid")) {
 			const result = collectPlainLiquidThemeFacts(file.path, file.contents, {
 				parseMode: options.plainLiquidParseMode ?? "liquid-only",
+				sourceFrontend: options.sourceFrontend,
 			});
 			facts.push(...result.facts);
 			issues.push(...result.issues);
