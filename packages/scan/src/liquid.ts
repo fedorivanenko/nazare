@@ -9,6 +9,7 @@
 // the scanner steps over, which is exactly what theme analysis needs — the
 // build path keeps a real HTML parser for the checks that require one.
 import {
+	BLOCK_TAGS,
 	DOC_TAG,
 	LIQUID_TAG,
 	RAW_TAGS,
@@ -50,7 +51,7 @@ export type LiquidToken =
 	  };
 
 export type LiquidScanIssue = {
-	code: "UNTERMINATED_TAG" | "UNCLOSED_RAW_TAG";
+	code: "UNTERMINATED_TAG" | "UNCLOSED_RAW_TAG" | "UNCLOSED_BLOCK";
 	name?: string;
 	range: Range;
 };
@@ -182,6 +183,29 @@ export function scanLiquid(source: string): LiquidScan {
 			inline: false,
 		});
 		index = end;
+	}
+
+	const openBlocks: { name: string; start: number }[] = [];
+	for (const token of tokens) {
+		if (token.kind !== "tag" || !token.name) continue;
+		if (BLOCK_TAGS.has(token.name)) {
+			openBlocks.push({ name: token.name, start: token.range.start });
+			continue;
+		}
+		if (!token.name.startsWith("end")) continue;
+		const closing = token.name.slice(3);
+		for (let depth = openBlocks.length - 1; depth >= 0; depth -= 1) {
+			if (openBlocks[depth]?.name !== closing) continue;
+			openBlocks.length = depth;
+			break;
+		}
+	}
+	for (const block of openBlocks) {
+		issues.push({
+			code: "UNCLOSED_BLOCK",
+			name: block.name,
+			range: { start: block.start, end: length },
+		});
 	}
 
 	return { tokens, issues };

@@ -1,10 +1,26 @@
 import type { Diagnostic } from "@nazare/core";
+import {
+	LineIndex,
+	type LiquidScanIssue,
+	liquidDependencies,
+	liquidSchema,
+	liquidSettingsReads,
+	scanLiquid,
+} from "@nazare/scan";
+import type { SettingsRead } from "./ast.js";
 import { checkVanillaSchema } from "./check-vanilla.js";
+import { parseLiquidCrash } from "./diagnostics.js";
 import { markDiagnostics } from "./pipeline.js";
-import { type PlainLiquidAst, parsePlainLiquid } from "./plain-liquid.js";
+import {
+	invalidDependencyName,
+	type PlainLiquidAst,
+	parsePlainLiquid,
+	plainLiquidFactsSkipped,
+	validateDependencyName,
+} from "./plain-liquid.js";
 import { renderSiteKey, type ThemeFact } from "./theme-facts.js";
 import { themeNameFromPath } from "./theme-file-classifier.js";
-import { collectSourceThemeFacts } from "./theme-source-facts.js";
+import { collectScannedSourceFacts } from "./theme-scan-facts.js";
 
 export function collectPlainLiquidThemeFacts(
 	path: string,
@@ -13,14 +29,48 @@ export function collectPlainLiquidThemeFacts(
 		parseMode: "liquid-only",
 	},
 ): { facts: ThemeFact[]; issues: Diagnostic[] } {
-	const ast = parsePlainLiquid(contents, path, {
-		parseMode: options.parseMode,
-	});
+	const scan = scanLiquid(contents);
+	const index = new LineIndex(contents);
+	const schemaToken = liquidSchema(scan.tokens);
+	// Schema validation still uses Shopify's parser. Files without authored
+	// schema stay entirely on the scanner-backed analysis path.
+	const schemaAst = schemaToken
+		? parsePlainLiquid(contents, path, { parseMode: options.parseMode })
+		: undefined;
+	const factsCollected = schemaAst?.factsCollected ?? scan.issues.length === 0;
+	const settingsReads: SettingsRead[] = liquidSettingsReads(scan.tokens).map(
+		(read) => ({
+			object: read.object,
+			name: read.name,
+			span: index.spanAt(path, read.range),
+		}),
+	);
 	const facts: ThemeFact[] = [];
-	const issues: Diagnostic[] = [
-		...markDiagnostics(ast.diagnostics, "parse"),
-		...markDiagnostics(checkVanillaSchema(ast), "check"),
-	];
+	const issues: Diagnostic[] = schemaAst
+		? [
+				...markDiagnostics(schemaAst.diagnostics, "parse"),
+				...markDiagnostics(
+					checkVanillaSchema({
+						schema: schemaAst.schema,
+						settingsReads,
+					}),
+					"check",
+				),
+			]
+		: scan.issues.length > 0
+			? [
+					...markDiagnostics(
+						scan.issues.map((issue) =>
+							parseLiquidCrash(
+								scanIssueMessage(issue.code, issue.name),
+								index.spanAt(path, issue.range),
+							),
+						),
+						"parse",
+					),
+					...markDiagnostics([plainLiquidFactsSkipped(path)], "parse"),
+				]
+			: [];
 	const name = themeNameFromPath(path);
 	if (path.startsWith("sections/") && path.endsWith(".liquid")) {
 		facts.push({ kind: "declaresSection", path, name });
@@ -31,63 +81,87 @@ export function collectPlainLiquidThemeFacts(
 	if (path.startsWith("templates/") && path.endsWith(".liquid")) {
 		facts.push({ kind: "declaresTemplate", path, name });
 	}
-	for (const dependency of ast.dependencies) {
-		if (dependency.kind === "snippet") {
+	if (factsCollected) {
+		for (const dependency of liquidDependencies(scan.tokens)) {
+			const span = index.spanAt(path, dependency.range);
+			const validation = dependency.name
+				? validateDependencyName(dependency.kind, dependency.name)
+				: { valid: true as const };
+			if (dependency.name && !validation.valid) {
+				issues.push(
+					invalidDependencyName(
+						dependency.kind,
+						dependency.name,
+						span,
+						validation.reason,
+					),
+				);
+			}
+			const targetName = dependency.name;
+			const staticReference = targetName !== undefined;
+			if (dependency.kind === "snippet") {
+				facts.push({
+					kind: "rendersSnippet",
+					fromPath: path,
+					targetName,
+					siteId: renderSiteKey(path, span),
+					invocationKind: dependency.invocationKind ?? "render",
+					static: staticReference,
+					span,
+				});
+			}
+			if (dependency.kind === "section") {
+				facts.push({
+					kind: "containsSection",
+					fromPath: path,
+					targetName,
+					static: staticReference,
+					span,
+				});
+			}
+			if (dependency.kind === "section-group") {
+				facts.push({
+					kind: "containsSectionGroup",
+					fromPath: path,
+					targetName,
+					static: staticReference,
+					span,
+				});
+			}
+			if (dependency.kind === "layout" && targetName !== "none") {
+				facts.push({
+					kind: "usesLayout",
+					fromPath: path,
+					targetName,
+					static: staticReference,
+					span,
+				});
+			}
+		}
+		for (const read of settingsReads) {
 			facts.push({
-				kind: "rendersSnippet",
+				kind: "readsSetting",
 				fromPath: path,
-				targetName: dependency.name,
-				siteId: renderSiteKey(path, dependency.span),
-				invocationKind: dependency.invocationKind ?? "render",
-				static: dependency.static,
-				span: dependency.span,
+				settingObject: read.object,
+				settingId: read.name,
+				span: read.span,
 			});
 		}
-		if (dependency.kind === "section") {
-			facts.push({
-				kind: "containsSection",
-				fromPath: path,
-				targetName: dependency.name,
-				static: dependency.static,
-				span: dependency.span,
-			});
-		}
-		if (dependency.kind === "section-group") {
-			facts.push({
-				kind: "containsSectionGroup",
-				fromPath: path,
-				targetName: dependency.name,
-				static: dependency.static,
-				span: dependency.span,
-			});
-		}
-		if (dependency.kind === "layout" && dependency.name !== "none") {
-			facts.push({
-				kind: "usesLayout",
-				fromPath: path,
-				targetName: dependency.name,
-				static: dependency.static,
-				span: dependency.span,
-			});
-		}
-	}
-	// The parser already located every settings read; map, don't re-scan.
-	for (const read of ast.settingsReads) {
-		facts.push({
-			kind: "readsSetting",
-			fromPath: path,
-			settingObject: read.object,
-			settingId: read.name,
-			span: read.span,
-		});
-	}
-	if (ast.factsCollected) {
-		const sourceResult = collectSourceThemeFacts(path, contents, ast.liquidAst);
+		const sourceResult = collectScannedSourceFacts(path, contents, scan.tokens);
 		facts.push(...sourceResult.facts);
 		issues.push(...sourceResult.issues);
 	}
-	facts.push(...schemaFacts(path, ast, issues));
+	if (schemaAst) facts.push(...schemaFacts(path, schemaAst, issues));
 	return { facts, issues };
+}
+
+function scanIssueMessage(
+	code: LiquidScanIssue["code"],
+	name: string | undefined,
+): string {
+	if (code === "UNTERMINATED_TAG") return "Unterminated Liquid tag";
+	if (code === "UNCLOSED_RAW_TAG") return `Unclosed Liquid ${name} block`;
+	return `Unclosed Liquid ${name} block`;
 }
 
 function schemaFacts(

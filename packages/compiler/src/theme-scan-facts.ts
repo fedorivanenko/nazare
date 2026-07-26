@@ -12,13 +12,11 @@ import type { Diagnostic, SourceSpan } from "@nazare/core";
 import {
 	LineIndex,
 	type LiquidConditional,
-	type LiquidRead,
 	type LiquidToken,
 	liquidAssetReferences,
 	liquidBlocks,
 	liquidConditionals,
 	liquidDocParams,
-	liquidGuards,
 	liquidLocalBindings,
 	liquidLocaleReferences,
 	liquidReads,
@@ -33,14 +31,6 @@ import {
 	SHOPIFY_DATA_OBJECTS,
 	textCapabilityRules,
 } from "./theme-liquid-policy.js";
-
-/** Block tags whose bodies the reference extractor treats as branches. */
-const BRANCH_BLOCKS: ReadonlySet<string> = new Set([
-	"if",
-	"unless",
-	"for",
-	"case",
-]);
 
 /** A name the file binds, and where that binding is visible. */
 type LocalBinding = {
@@ -136,7 +126,15 @@ function withDefiniteAssignments(
 	for (const conditional of [...conditionals].sort(
 		(a, b) => a.range.end - b.range.end,
 	)) {
-		if (!conditional.exhaustive || conditional.branches.length === 0) continue;
+		// Reference behavior: `case` assignments never become visible after the
+		// block, even when an `else` makes every path assign. Keep that quirk for
+		// a behavior-neutral frontend swap; fixing it belongs in a later change.
+		if (
+			conditional.name === "case" ||
+			!conditional.exhaustive ||
+			conditional.branches.length === 0
+		)
+			continue;
 		const [first, ...rest] = conditional.branches;
 		if (!first) continue;
 		const everywhere = new Map<string, LocalBinding>();
@@ -287,12 +285,16 @@ export function collectScannedSourceFacts(
 	const last = tokens.at(-1);
 	const fileEnd = last ? last.range.end : source.length;
 	const blocks = liquidBlocks(tokens);
-	const branchBodies = blocks
-		.filter((block) => BRANCH_BLOCKS.has(block.name))
-		.map((block) => block.body);
+	const conditionals = liquidConditionals(tokens);
+	const branchBodies = [
+		...blocks
+			.filter((block) => block.name === "for")
+			.map((block) => block.body),
+		...conditionals.flatMap((conditional) => conditional.branches),
+	];
 	const bindings = withDefiniteAssignments(
 		localBindingsOf(tokens, branchBodies, fileEnd),
-		liquidConditionals(tokens),
+		conditionals,
 		branchBodies,
 		fileEnd,
 	);
@@ -383,6 +385,36 @@ export function collectScannedSourceFacts(
 	// A default is different: supplying a value is proof the caller may omit it,
 	// so it survives an unguarded read.
 	const guardRanges = new Map<string, { start: number; end: number }[]>();
+	const guardProxyTargets = new Map<string, Set<string>>();
+	for (const conditional of conditionals) {
+		if (conditional.name !== "if") continue;
+		const primary = conditional.branches[0];
+		if (!primary) continue;
+		const conditionNames = new Set(
+			reads
+				.filter(
+					(read) =>
+						read.inCondition &&
+						read.range.start >= conditional.range.start &&
+						read.range.end <= primary.start,
+				)
+				.map((read) => read.root),
+		);
+		if (conditionNames.size === 0) continue;
+		const primaryAssignments = booleanAssignmentsIn(primary, tokens);
+		const alternate = conditional.exhaustive
+			? conditional.branches.at(-1)
+			: undefined;
+		const alternateAssignments = alternate
+			? booleanAssignmentsIn(alternate, tokens)
+			: new Map<string, boolean>();
+		for (const [name, value] of primaryAssignments) {
+			if (value !== true || alternateAssignments.get(name) === true) continue;
+			const targets = guardProxyTargets.get(name) ?? new Set<string>();
+			for (const conditionName of conditionNames) targets.add(conditionName);
+			guardProxyTargets.set(name, targets);
+		}
+	}
 	const defaultedNames = new Set<string>();
 	// A `| default:` names the root of whatever it falls back for, path or not:
 	// `{{ section.settings.heading | default: 'Hi' }}` states that `section` may
@@ -390,36 +422,72 @@ export function collectScannedSourceFacts(
 	// name, or none.
 	for (const token of tokens) {
 		if (token.kind === "raw") continue;
-		const expression = scanLiquidExpression(token.markup, token.markupStart);
+		const equals =
+			token.kind === "tag" && token.name === "assign"
+				? token.markup.indexOf("=")
+				: -1;
+		// On an assign scan only the right-hand side. Filtering by name is wrong:
+		// `{% assign x = x | default: y %}` binds on the left and reads/defaults
+		// the same name on the right.
+		const expression =
+			equals >= 0
+				? scanLiquidExpression(
+						token.markup.slice(equals + 1),
+						token.markupStart + equals + 1,
+					)
+				: scanLiquidExpression(token.markup, token.markupStart);
 		if (!expression.filters.some((filter) => filter.name === "default")) {
 			continue;
 		}
-		const bound =
-			token.kind === "tag" && token.name === "assign"
-				? /^\s*([a-zA-Z_][\w-]*)\s*=/.exec(token.markup)?.[1]
-				: undefined;
-		// On an assign the subject is the value, not the name being bound.
-		const subject = expression.lookups.find(
-			(lookup) => !bound || lookup.root !== bound,
-		);
+		const subject = expression.lookups[0];
 		if (!subject) continue;
+		defaultedNames.add(subject.root);
 		defaultedNames.add(
 			resolveRead(subject.root, subject.path, subject.range.start, bindings)
 				.object,
 		);
 	}
-	for (const guard of liquidGuards(tokens)) {
-		if (guard.via === "default") continue;
-		const block = blocks.find(
-			(candidate) =>
-				guard.range.start >= candidate.range.start &&
-				guard.range.start < candidate.body.start,
+	for (const conditional of conditionals) {
+		if (conditional.name !== "if" && conditional.name !== "unless") continue;
+		const primary = conditional.branches[0];
+		const opening = tokens.find(
+			(token) =>
+				token.kind === "tag" && token.range.start === conditional.range.start,
 		);
-		if (!block) continue;
-		guardRanges.set(guard.name, [
-			...(guardRanges.get(guard.name) ?? []),
-			block.body,
-		]);
+		if (!primary || !opening || opening.kind !== "tag") continue;
+		const assigned = assignedNamesIn(primary, tokens);
+		const operator = conditional.name === "unless" ? "!=" : "==";
+		for (const name of assigned) {
+			const checksAbsence = new RegExp(
+				`\\b${escapeRegExp(name)}\\s*${operator}\\s*(?:blank|null|empty)\\b`,
+			).test(opening.markup);
+			if (!checksAbsence) continue;
+			defaultedNames.add(
+				resolveRead(name, [], conditional.range.start, bindings).object,
+			);
+		}
+	}
+	for (const read of reads) {
+		if (!read.inCondition) continue;
+		const containing = conditionals
+			.filter(
+				(conditional) =>
+					read.range.start >= conditional.range.start &&
+					read.range.end <= conditional.range.end,
+			)
+			.sort(
+				(a, b) => a.range.end - a.range.start - (b.range.end - b.range.start),
+			)[0];
+		const branch = containing?.branches.find(
+			(candidate) => candidate.start >= read.range.end,
+		);
+		if (!branch) continue;
+		for (const name of [
+			read.root,
+			...(guardProxyTargets.get(read.root) ?? []),
+		]) {
+			guardRanges.set(name, [...(guardRanges.get(name) ?? []), branch]);
+		}
 	}
 	// The value an `assign` initializes from does not count as an unguarded use:
 	// `{% assign n = n | plus: 1 %}` is the file maintaining its own counter, not
@@ -439,21 +507,31 @@ export function collectScannedSourceFacts(
 	const unguardedNames = new Set<string>();
 	for (const read of reads) {
 		if (safeInitializations.has(read.range.start)) continue;
-		// A name the file binds itself is not an input, so a guard on it cannot
-		// make one optional. Including them over-produced guards, and a guard is
-		// what turns a required input optional -- the direction that misleads a
-		// caller, so the conservative side is the right one to err on.
-		if (isLocal(read.root, read.range.start)) continue;
+		// Reference render-markup traversal does not use local argument values as
+		// unguarded evidence for their aliases; render facts track those values
+		// separately. Preserve that distinction during the frontend swap.
+		if (
+			read.inRenderArgument &&
+			isLocal(read.root, read.range.start) &&
+			!read.inCondition
+		)
+			continue;
 		const guarded =
 			read.inCondition ||
 			(guardRanges.get(read.root) ?? []).some(
 				(range) =>
 					read.range.start >= range.start && read.range.end <= range.end,
 			);
-		// A guard on a property says the file handles that property being absent,
-		// not the root; an unguarded read of either shows it depends on the root.
-		if (!guarded) unguardedNames.add(read.root);
-		else if (read.path.length === 0) guardedNames.add(read.root);
+		const resolved = resolveRead(
+			read.root,
+			read.path,
+			read.range.start,
+			bindings,
+		);
+		// Guard evidence follows aliases just like free/data reads do. A guard on
+		// an alias to `input` protects `input`, not the temporary local name.
+		if (!guarded) unguardedNames.add(resolved.object);
+		else if (resolved.path.length === 0) guardedNames.add(resolved.object);
 	}
 	for (const name of new Set([...guardedNames, ...defaultedNames])) {
 		if (unguardedNames.has(name) && !defaultedNames.has(name)) continue;
@@ -529,6 +607,47 @@ export function collectScannedSourceFacts(
 	}
 
 	return { facts, issues };
+}
+
+function assignedNamesIn(range: ScanRange, tokens: LiquidToken[]): Set<string> {
+	const names = new Set<string>();
+	for (const token of tokens) {
+		if (
+			token.kind !== "tag" ||
+			token.name !== "assign" ||
+			token.range.start < range.start ||
+			token.range.end > range.end
+		)
+			continue;
+		const name = /^\s*([a-zA-Z_][\w-]*)\s*=/.exec(token.markup)?.[1];
+		if (name) names.add(name);
+	}
+	return names;
+}
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function booleanAssignmentsIn(
+	range: ScanRange,
+	tokens: LiquidToken[],
+): Map<string, boolean> {
+	const assignments = new Map<string, boolean>();
+	for (const token of tokens) {
+		if (
+			token.kind !== "tag" ||
+			token.name !== "assign" ||
+			token.range.start < range.start ||
+			token.range.end > range.end
+		)
+			continue;
+		const match = /^\s*([a-zA-Z_][\w-]*)\s*=\s*(true|false)\s*$/.exec(
+			token.markup,
+		);
+		if (match?.[1]) assignments.set(match[1], match[2] === "true");
+	}
+	return assignments;
 }
 
 /** Blanks raw bodies so text rules cannot fire on commented-out markup. */

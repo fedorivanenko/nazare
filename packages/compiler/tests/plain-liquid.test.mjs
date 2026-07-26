@@ -296,9 +296,9 @@ test("plain Liquid settings scanner handles range endpoints", () => {
 	);
 });
 
-test("plain Liquid liquid-only mode skips parsing sources with no Liquid syntax", () => {
-	// Generated page-builder chunks are megabytes of markup with no Liquid at
-	// all. Skipping the parse must produce exactly what parsing would have.
+test("plain Liquid liquid-only mode accepts sources with no Liquid syntax", () => {
+	// Generated page-builder chunks can contain no Liquid at all; masking still
+	// produces the same empty analysis result.
 	const generated = `<style>${".r-1dj3cc3{color:#000}".repeat(20_000)}</style><div class="r-1dj3cc3">text</div>`;
 	const result = compilePlainLiquid(generated, "snippets/generated.0.liquid", {
 		parseMode: "liquid-only",
@@ -314,9 +314,8 @@ test("plain Liquid liquid-only mode skips parsing sources with no Liquid syntax"
 	);
 });
 
-test("plain Liquid liquid-only mode still parses when Liquid survives masking", () => {
-	// Liquid inside a <style> body is masked away, but Liquid outside one is
-	// not: the skip must key off the masked source, not the raw source.
+test("plain Liquid liquid-only mode preserves Liquid outside masked bodies", () => {
+	// Liquid inside a <style> body is masked away, but Liquid outside one remains.
 	const source = `<style>{{ hidden.by.masking }}</style>{% render 'card' %}{{ section.settings.title }}`;
 	const result = compilePlainLiquid(source, "snippets/mixed.liquid", {
 		parseMode: "liquid-only",

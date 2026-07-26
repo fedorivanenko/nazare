@@ -133,4 +133,26 @@ test("scan adapter: definite assignment decides whether a name is an input", () 
 		),
 		["alt", "image"],
 	);
+	// Preserve reference quirk for behavior-neutral scanner adoption: `case`
+	// assignments remain branch-local even when `else` makes it exhaustive.
+	assert.deepEqual(
+		free(
+			"{% case c %}{% when 1 %}{% assign x = 1 %}{% else %}{% assign x = 2 %}{% endcase %}{{ x }}",
+		),
+		["c", "x"],
+	);
+});
+
+test("scan adapter: assigned defaults guard their source name", () => {
+	const contents = "{% assign local = local | default: fallback %}{{ local }}";
+	const guards = collectScannedSourceFacts(
+		"snippets/t.liquid",
+		contents,
+		scanLiquid(contents).tokens,
+	).facts.filter((fact) => fact.kind === "guardsObject");
+
+	assert.deepEqual(
+		guards.map((fact) => `${fact.name}:${fact.via}`),
+		["local:default"],
+	);
 });
