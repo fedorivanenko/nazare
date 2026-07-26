@@ -67,6 +67,16 @@ function renderStory(rendered: RenderedStory, storyBase?: string): string {
 							}${open}</span>
               ${rendered.story.note ? `<span class="story-note">${escapeHtml(rendered.story.note)}</span>` : ""}
               <code>${escapeHtml(formatProps(rendered.story.props))}</code>
+              ${
+								rendered.issues.length > 0
+									? `<ul class="story-issues">${rendered.issues
+											.map(
+												(issue) =>
+													`<li class="story-issue story-issue--${issue.severity}">${escapeHtml(issue.message)}</li>`,
+											)
+											.join("")}</ul>`
+									: ""
+							}
             </figcaption>
           </figure>`;
 }
@@ -246,6 +256,9 @@ const PAGE_STYLES = `
   .story-note, .story-caption code { color: var(--muted-foreground); word-break: break-word; }
   .story-empty { color: var(--muted-foreground); font-style: italic; font-size: .78rem; }
   .story-error { color: #b91c1c; font-size: .78rem; }
+  .story-issues { list-style: none; margin: .2rem 0 0; padding: 0; display: grid; gap: .15rem; font-size: .68rem; }
+  .story-issue--warning { color: var(--muted-foreground); }
+  .story-issue--error { color: #b91c1c; }
   .code { position: relative; border: 1px solid var(--border); border-radius: var(--radius); background: var(--code-bg); }
   .code .copy { position: absolute; top: .6rem; right: .6rem; }
   .code pre { margin: 0; padding: 1rem 1.1rem; overflow-x: auto; font-size: .78rem; line-height: 1.55; }

@@ -130,6 +130,21 @@ Stories drawing on fixtures are badged in the gallery, because a fixture is tidy
 in ways a real catalogue is not: no missing compare-at price, no 60-character
 title, no sold-out variant.
 
+## Stories are checked against the declaration
+
+Liquid does not complain about a call that passes a prop the template never
+reads, or omits one it needs: the value is nil, the markup is missing, and the
+story looks plausible. So every story is checked against what the component
+declares — an undeclared prop (usually a typo), a value outside an enum, a
+number outside its range, a required prop nobody passed, a `$fixture` name that
+does not exist.
+
+These are warnings shown beside the render, not failures: a story that trips one
+still renders, and the render is how you judge whether it matters. A component
+that declares nothing — plain Liquid with no `{% doc %}` block — is not
+second-guessed, because inferring an interface from the template's body would be
+the preview inventing a contract nobody wrote.
+
 ## What it is not
 
 liquidjs implements the Liquid *language*; Shopify's runtime adds tags, filters,

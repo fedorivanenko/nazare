@@ -9,6 +9,7 @@ import {
 	type PreviewStory,
 } from "./stories.js";
 import { storyId } from "./story-id.js";
+import { type StoryIssue, validateStory } from "./story-validation.js";
 
 export type RenderedStory = {
 	/** `component--story`; addresses this story's document and deep link. */
@@ -17,6 +18,12 @@ export type RenderedStory = {
 	html: string;
 	/** Prop names this story changed from the component's defaults. */
 	changed: string[];
+	/**
+	 * What the story does not match about the declared interface. Rendering does
+	 * not stop for these: a story that passes an undeclared prop still produces
+	 * markup, and the markup is how you judge whether it matters.
+	 */
+	issues: StoryIssue[];
 	/** Set when rendering threw — a broken story is reported, not swallowed. */
 	error?: string;
 };
@@ -42,11 +49,13 @@ export async function renderComponentStories(
 	for (const story of stories) {
 		const id = storyId(component.name, story.name);
 		const changed = changedProps(story, component.controls);
+		const issues = validateStory(component, story);
 		try {
 			rendered.push({
 				id,
 				story,
 				changed,
+				issues,
 				html: await renderPreview(
 					engine,
 					component.template,
@@ -58,6 +67,7 @@ export async function renderComponentStories(
 				id,
 				story,
 				changed,
+				issues,
 				html: "",
 				error: error instanceof Error ? error.message : String(error),
 			});

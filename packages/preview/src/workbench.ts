@@ -250,6 +250,11 @@ const WORKBENCH_STYLES = `
   }
   .canvas[data-viewport] { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
   .story-props { padding: .5rem 1.25rem; font-size: .72rem; color: var(--muted-foreground); border-top: 1px solid var(--border); word-break: break-word; }
+  .story-issues { list-style: none; margin: 0; padding: .5rem 1.25rem; display: grid; gap: .25rem; border-top: 1px solid var(--border); font-size: .76rem; }
+  .story-issue--warning { color: var(--muted-foreground); }
+  .story-issue--warning::before { content: "warning "; text-transform: uppercase; font-size: .62rem; letter-spacing: .06em; }
+  .story-issue--error { color: #b91c1c; }
+  .story-issue--error::before { content: "error "; text-transform: uppercase; font-size: .62rem; letter-spacing: .06em; }
   .panels { border-top: 1px solid var(--border); padding: 1.25rem 1.25rem 4rem; }
   .component-sub { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; margin: 0 0 1rem; font-size: .78rem; }
   .badge {
@@ -317,6 +322,7 @@ const WORKBENCH_SCRIPT = `
   const title = document.getElementById('canvas-title');
   const openLink = document.getElementById('canvas-open');
   const propsLine = document.getElementById('canvas-props');
+  const issueList = document.getElementById('canvas-issues');
   const viewport = document.getElementById('viewport');
   // Every story by id: the dropdown offers stories the sidebar does not link,
   // so selection reads from this index rather than from the DOM.
@@ -352,6 +358,15 @@ const WORKBENCH_SCRIPT = `
     title.innerHTML = story.component + ' <span class="muted">/ ' + story.name + '</span>';
     openLink.setAttribute('href', story.href);
     propsLine.textContent = story.props;
+    // What this story does not match about the declared interface. Rendering
+    // did not stop for these, so they belong beside the render, not instead.
+    issueList.replaceChildren(...story.issues.map((issue) => {
+      const item = document.createElement('li');
+      item.className = 'story-issue story-issue--' + issue.severity;
+      item.textContent = issue.message;
+      return item;
+    }));
+    issueList.hidden = story.issues.length === 0;
     for (const panel of document.querySelectorAll('[data-panel]')) {
       panel.hidden = panel.dataset.panel !== story.component;
     }
@@ -465,6 +480,7 @@ export function workbenchPage(
 					name: rendered.story.name,
 					href: `${storyBase}${storyFileName(rendered.id)}`,
 					props: formatProps(rendered.story.props),
+					issues: rendered.issues,
 				},
 			]),
 		),
@@ -507,6 +523,7 @@ ${links}
         </div>
       </div>
       <div class="canvas-stage"><iframe class="canvas" id="canvas" title="Story canvas"></iframe></div>
+      <ul class="story-issues" id="canvas-issues" hidden></ul>
       <p class="story-props" id="canvas-props"></p>
       <p class="caveat">
         The <strong>emitted</strong> Liquid, rendered by liquidjs — not Shopify's runtime. A design-system

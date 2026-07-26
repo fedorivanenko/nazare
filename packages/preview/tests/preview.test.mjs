@@ -323,6 +323,60 @@ test("authored stories add to the derived set rather than deleting it", async ()
 	);
 });
 
+test("a story is checked against the interface the component declares", async () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const rendered = await renderComponentStories(component, [
+		{
+			name: "typo",
+			props: {
+				lable: "Shop",
+				scheme: "outlined",
+				size: 4,
+				extra: { $fixture: "nope" },
+			},
+		},
+	]);
+	const messages = rendered.stories[0].issues.map((issue) => issue.message);
+
+	// A prop the template never reads is nil on render and looks like nothing.
+	assert.ok(
+		messages.some((message) =>
+			message.startsWith("lable is not a declared prop"),
+		),
+	);
+	// A value outside the enum renders, and renders wrong.
+	assert.ok(
+		messages.some((message) => message.includes('scheme is "outlined"')),
+	);
+	// A required prop nobody passed.
+	assert.ok(
+		messages.some((message) => message.startsWith("label is required")),
+	);
+	// A fixture name the preview does not have, left visible by resolveFixtures.
+	assert.equal(
+		rendered.stories[0].issues.find((issue) => issue.prop === "extra")
+			?.severity,
+		"error",
+	);
+	// The story still rendered: seeing the output is how you judge the warning.
+	assert.equal(rendered.stories[0].error, undefined);
+	assert.ok(rendered.stories[0].html.includes("btn--solid"));
+});
+
+test("a component that declares nothing is not second-guessed", async () => {
+	// Plain Liquid with no {% doc %} block states no interface, so a story for
+	// it cannot be wrong — inventing one from the template's body would be.
+	const component = previewComponentFromSource(
+		"<a>{{ label }}</a>",
+		"snippets/bare.liquid",
+	);
+	const rendered = await renderComponentStories(component, [
+		{ name: "default", props: { label: "Shop", anything: true } },
+	]);
+
+	assert.deepEqual(rendered.stories[0].issues, []);
+});
+
 test("a sidecar declaration outranks the manifest", () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
 	const manifest = {
