@@ -1,4 +1,5 @@
 import Liquid from "@nazare/tree-sitter-liquid";
+import NazareLiquid from "@nazare/tree-sitter-nazare-liquid";
 import Parser from "tree-sitter";
 import type { SourceLanguage } from "./types.js";
 
@@ -40,8 +41,6 @@ export class SourceParserRegistry {
 export function createDefaultSourceParserRegistry(): SourceParserRegistry {
 	const registry = new SourceParserRegistry();
 	registry.register("liquid", Liquid);
-	// Spike uses Liquid superset CST for Nazare while dedicated grammar nodes are
-	// evaluated. Language remains distinct; adapters must reject unknown syntax.
-	registry.register("nazare-liquid", Liquid);
+	registry.register("nazare-liquid", NazareLiquid);
 	return registry;
 }

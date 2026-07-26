@@ -63,7 +63,9 @@ function isCstTag(
 	);
 	while (node) {
 		if (
+			node.type === "ERROR" ||
 			node.type === "custom_unpaired_statement" ||
+			(kind === "script" && node.type === "nazare_script_statement") ||
 			(kind === "stylesheet" && node.type === "stylesheet_statement")
 		) {
 			return true;

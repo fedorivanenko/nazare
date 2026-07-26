@@ -1,13 +1,14 @@
 # ADR: Tree-sitter source runtime and Liquid grammar
 
-Status: accepted for isolated Phase 0/1 spike; not accepted for production cutover
+Status: accepted for isolated Phase 0/1 source layer; not accepted for production cutover
 
 ## Decision
 
 Use native `tree-sitter@0.21.1` for Node and a pinned, vendored copy of
 `hankthetank27/tree-sitter-liquid` at
 `e45dbac8c5fa95b1f0e00e7e0c04bc8855823391` (2025-05-23) in
-`packages/tree-sitter-liquid`.
+`packages/tree-sitter-liquid`. `packages/tree-sitter-nazare-liquid` explicitly
+extends that grammar and generates a separate `nazare_liquid` language.
 
 The grammar is MIT licensed. Its `LICENSE` is retained. Nazare adds
 `src/scanner.c` to `binding.gyp`; upstream's Node binding omitted its external
@@ -17,12 +18,11 @@ scanner and otherwise failed at load time with:
 symbol not found in flat namespace '_tree_sitter_liquid_external_scanner_create'
 ```
 
-`@nazare/source` is isolated from compiler frontend selection. Both explicit
-language IDs currently load the Liquid grammar, but remain separate registry
-entries. This is enough to measure CST lifecycle and prove source boundaries;
-it is not the Nazare grammar required for production cutover. Nazare-only tags
-remain `custom_unpaired_statement` and malformed payloads produce explicit
-error nodes rather than invented facts.
+`@nazare/source` is isolated from compiler frontend selection. Its explicit
+language IDs load separate Liquid and Nazare Liquid grammars. Nazare CST nodes
+cover component, import, props, blocks, render, script, and bound stylesheet
+syntax. Unknown tags remain `custom_unpaired_statement`; malformed payloads
+produce explicit error nodes rather than invented facts.
 
 ## Why this runtime
 
@@ -72,11 +72,11 @@ JavaScript. Closing tags inside strings, comments, regex literals, and template
 literals are ignored by the boundary scanner. JavaScript/TypeScript/CSS semantic
 parsing remains outside this source layer.
 
-A dedicated Nazare grammar must replace the interim shared grammar registration
-before Phase 3. It must provide explicit nodes for component/import/props/render,
-script/style declarations, and unknown Nazare syntax. It must also make raw
-script/style bodies lexical grammar regions so parent CST errors cannot arise
-from embedded source.
+The dedicated Nazare grammar uses external scanner tokens for raw script and
+stylesheet bodies. Closing tags inside strings, comments, regex literals, and
+template literals remain embedded content instead of terminating parent nodes.
+Phase 3 must still add/query explicit nodes for remaining HTML markers and prove
+adapter parity before compiler selection.
 
 ## Rejected alternatives
 

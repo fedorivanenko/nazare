@@ -45,6 +45,44 @@ test("plain Liquid produces a persistent CST with UTF-16 issue ranges", () => {
 	);
 });
 
+test("Nazare grammar creates explicit declaration nodes", () => {
+	const source = `{% component section %}
+{% import Card from "./card.nz.liquid" %}
+{% props { title: string.setting(label: "Title"), count: number } %}
+{% render Card { title: props.title, count: 1 } %}
+{% blocks Card, Banner %}`;
+	const document = parseSourceDocument(
+		registry,
+		"components/x.nz.liquid",
+		"nazare-liquid",
+		source,
+	);
+	assert.deepEqual(document.issues, []);
+	assert.deepEqual(
+		document.tree.rootNode.namedChildren.map((node) => node.type),
+		[
+			"nazare_component_statement",
+			"nazare_import_statement",
+			"nazare_props_statement",
+			"nazare_render_statement",
+			"nazare_blocks_statement",
+		],
+	);
+});
+
+test("unknown Nazare tags remain explicit custom CST nodes", () => {
+	const document = parseSourceDocument(
+		registry,
+		"x.nz.liquid",
+		"nazare-liquid",
+		"{% future_tag value %}",
+	);
+	assert.equal(
+		document.tree.rootNode.namedChildren[0].type,
+		"custom_unpaired_statement",
+	);
+});
+
 test("embedded region scan ignores closing tags in JS and CSS lexical trivia", () => {
 	const source = `{% script lang="ts" %}
 const a = "{% endscript %}";
@@ -63,6 +101,13 @@ const b = /{% endscript %}/;
 		source,
 	);
 	assert.equal(document.embeddedRegions.length, 2);
+	assert.deepEqual(document.issues, []);
+	assert.deepEqual(
+		document.tree.rootNode.namedChildren.map((node) => node.type),
+		["nazare_script_statement", "stylesheet_statement"],
+	);
+	const scriptNode = document.tree.rootNode.namedChildren[0];
+	assert.match(scriptNode.childForFieldName("body").text, /const b/);
 	const [script, style] = document.embeddedRegions;
 	assert.equal(script.language, "typescript");
 	assert.match(
@@ -73,6 +118,25 @@ const b = /{% endscript %}/;
 	assert.match(
 		source.slice(style.bodyRange.start, style.bodyRange.end),
 		/content/,
+	);
+});
+
+test("unclosed embedded blocks produce CST issues and open regions", () => {
+	const source = '{% script lang="ts" %}const x = 1;';
+	const document = parseSourceDocument(
+		registry,
+		"x.nz.liquid",
+		"nazare-liquid",
+		source,
+	);
+	assert.ok(document.issues.length > 0);
+	assert.equal(document.embeddedRegions[0].closeRange, undefined);
+	assert.equal(
+		source.slice(
+			document.embeddedRegions[0].bodyRange.start,
+			document.embeddedRegions[0].bodyRange.end,
+		),
+		"const x = 1;",
 	);
 });
 
