@@ -17,23 +17,33 @@
  *   - script  — JS/TS module syntax, replacing a ts.createSourceFile walk
  *   - style   — CSS class tokens, replacing a postcss parse
  */
-export {
-	BLOCK_TAGS,
-	RAW_TAGS,
-	TAGS_WITHOUT_MARKUP,
-} from "./liquid-spec.js";
-export {
-	type LiquidDependency,
-	type LiquidDependencyKind,
-	liquidDependencies,
-	liquidSchema,
-	type LiquidSettingsRead,
-	liquidSettingsReads,
-} from "./liquid-facts.js";
+
 export {
 	type LiquidScan,
 	type LiquidScanIssue,
 	type LiquidToken,
 	scanLiquid,
 } from "./liquid.js";
+export {
+	type LiquidExpression,
+	type LiquidFilterUse,
+	type LiquidLookup,
+	type LiquidNamedArgument,
+	type LiquidStringLiteral,
+	lookupExpression,
+	scanLiquidExpression,
+} from "./liquid-expression.js";
+export {
+	type LiquidDependency,
+	type LiquidDependencyKind,
+	type LiquidSettingsRead,
+	liquidDependencies,
+	liquidSchema,
+	liquidSettingsReads,
+} from "./liquid-facts.js";
+export {
+	BLOCK_TAGS,
+	RAW_TAGS,
+	TAGS_WITHOUT_MARKUP,
+} from "./liquid-spec.js";
 export { LineIndex, type Position, type Range, type Span } from "./source.js";
