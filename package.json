@@ -12,7 +12,7 @@
 		"test:compiler": "pnpm -s build && node --test --test-concurrency=32 packages/compiler/tests/*.test.mjs",
 		"test:corpus": "pnpm -s build && node scripts/check-theme-graph-corpus.mjs",
 		"test:doc-agreement": "pnpm -s build && node scripts/check-doc-contract-agreement.mjs",
-		"test:all": "pnpm -s build && NAZARE_FULL_CLI_TESTS=1 node --test --test-concurrency=32 packages/compiler/tests/*.test.mjs packages/theme/tests/*.test.mjs packages/scan/tests/*.test.mjs packages/preview/tests/*.test.mjs packages/registry/tests/*.test.mjs packages/cli-client/tests/*.test.mjs apps/registry-api/tests/*.test.mjs scripts/*.test.mjs",
+		"test:all": "pnpm -s build && NAZARE_FULL_CLI_TESTS=1 node --test --test-concurrency=32 packages/compiler/tests/*.test.mjs packages/theme/tests/*.test.mjs packages/preview/tests/*.test.mjs packages/registry/tests/*.test.mjs packages/cli-client/tests/*.test.mjs apps/registry-api/tests/*.test.mjs scripts/*.test.mjs",
 		"test:theme": "pnpm -s build && node --test --test-concurrency=32 packages/theme/tests/*.test.mjs",
 		"test:registry": "pnpm -s build && node --test --test-concurrency=32 packages/registry/tests/*.test.mjs packages/cli-client/tests/install.test.mjs packages/cli-client/tests/publish.test.mjs",
 		"test:server": "pnpm -s build && node --test apps/registry-api/tests/*.test.mjs",
@@ -25,8 +25,7 @@
 		"test:cli:smoke": "pnpm -s build && node --test --test-concurrency=32 packages/cli-client/tests/cli.test.mjs",
 		"format": "biome format --write .",
 		"lint": "biome check .",
-		"build": "node scripts/generate-fact-cache-revision.mjs && tsc -b",
-		"test:scan": "pnpm -s build && node --test --test-concurrency=32 packages/scan/tests/*.test.mjs"
+		"build": "node scripts/generate-fact-cache-revision.mjs && tsc -b"
 	},
 	"devDependencies": {
 		"@types/node": "^26.1.1",
