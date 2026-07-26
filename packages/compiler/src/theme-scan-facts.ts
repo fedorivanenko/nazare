@@ -11,10 +11,12 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
 import {
 	LineIndex,
+	type LiquidConditional,
 	type LiquidRead,
 	type LiquidToken,
 	liquidAssetReferences,
 	liquidBlocks,
+	liquidConditionals,
 	liquidDocParams,
 	liquidGuards,
 	liquidLocalBindings,
@@ -105,6 +107,73 @@ function localBindingsOf(
 			alias: lookup ? { root: lookup.root, path: [...lookup.path] } : undefined,
 		};
 	});
+}
+
+/**
+ * Extends bindings past a conditional the name survives.
+ *
+ * A name assigned in every branch of an exhaustive conditional is defined
+ * afterwards — the file cannot reach the code below without having assigned it.
+ * Assigned in only some branches, or inside a loop that may not run, it may be
+ * absent, and a read below is a read of something the caller might have to
+ * supply.
+ *
+ * Conditionals are processed by closing position so that an inner block is
+ * resolved before the outer one containing it: a name promoted out of a nested
+ * `if` then counts toward the enclosing branch.
+ */
+function withDefiniteAssignments(
+	bindings: LocalBinding[],
+	conditionals: LiquidConditional[],
+	branchBodies: ScanRange[],
+	fileEnd: number,
+): LocalBinding[] {
+	const resolved = [...bindings];
+	const covers = (binding: LocalBinding, branch: ScanRange): boolean =>
+		binding.scope.start >= branch.start &&
+		binding.scope.start <= branch.end &&
+		binding.scope.end >= branch.end;
+	for (const conditional of [...conditionals].sort(
+		(a, b) => a.range.end - b.range.end,
+	)) {
+		if (!conditional.exhaustive || conditional.branches.length === 0) continue;
+		const [first, ...rest] = conditional.branches;
+		if (!first) continue;
+		const everywhere = new Map<string, LocalBinding>();
+		for (const binding of resolved) {
+			if (covers(binding, first)) everywhere.set(binding.name, binding);
+		}
+		for (const branch of rest) {
+			for (const name of [...everywhere.keys()]) {
+				const inBranch = resolved.some(
+					(binding) => binding.name === name && covers(binding, branch),
+				);
+				if (!inBranch) everywhere.delete(name);
+			}
+		}
+		for (const [name, binding] of everywhere) {
+			// The alias only carries forward when every branch agrees on it: two
+			// branches assigning different sources leave the name defined but its
+			// origin unknowable.
+			const sameAlias = [first, ...rest].every((branch) =>
+				resolved.some(
+					(candidate) =>
+						candidate.name === name &&
+						covers(candidate, branch) &&
+						candidate.alias?.root === binding.alias?.root,
+				),
+			);
+			resolved.push({
+				name,
+				alias: sameAlias ? binding.alias : undefined,
+				scope: narrowToBranch(
+					{ start: conditional.range.end, end: fileEnd },
+					branchBodies,
+				),
+			});
+		}
+	}
+	return resolved;
 }
 
 function narrowToBranch(
@@ -221,7 +290,12 @@ export function collectScannedSourceFacts(
 	const branchBodies = blocks
 		.filter((block) => BRANCH_BLOCKS.has(block.name))
 		.map((block) => block.body);
-	const bindings = localBindingsOf(tokens, branchBodies, fileEnd);
+	const bindings = withDefiniteAssignments(
+		localBindingsOf(tokens, branchBodies, fileEnd),
+		liquidConditionals(tokens),
+		branchBodies,
+		fileEnd,
+	);
 	const isLocal = (name: string, at: number): boolean =>
 		visibleBinding(name, at, bindings) !== undefined;
 
@@ -287,7 +361,10 @@ export function collectScannedSourceFacts(
 		// has to pass in. A name that only resolves to itself and is bound
 		// locally is the file's own, and says nothing about its inputs.
 		if (LIQUID_GLOBAL_NAMES.has(object)) continue;
-		if (object === read.root && isLocal(read.root, read.range.start)) continue;
+		// Locality is checked on the resolved name. `assign icon = feature.icon`
+		// inside a loop resolves to `feature`, which the loop binds — following
+		// the alias without re-checking reported a loop variable as an input.
+		if (isLocal(object, read.range.start)) continue;
 		facts.push({
 			kind: "readsFreeVariable",
 			fromPath: path,
@@ -344,10 +421,28 @@ export function collectScannedSourceFacts(
 			block.body,
 		]);
 	}
+	// The value an `assign` initializes from does not count as an unguarded use:
+	// `{% assign n = n | plus: 1 %}` is the file maintaining its own counter, not
+	// a use that proves it needs `n` from outside.
+	const safeInitializations = new Set<number>();
+	for (const token of tokens) {
+		if (token.kind !== "tag" || token.name !== "assign") continue;
+		const equals = token.markup.indexOf("=");
+		if (equals === -1) continue;
+		const [first] = scanLiquidExpression(
+			token.markup.slice(equals + 1),
+			token.markupStart + equals + 1,
+		).lookups;
+		if (first) safeInitializations.add(first.range.start);
+	}
 	const guardedNames = new Set<string>();
 	const unguardedNames = new Set<string>();
 	for (const read of reads) {
-		if (read.path.length > 0) continue;
+		if (safeInitializations.has(read.range.start)) continue;
+		// A name the file binds itself is not an input, so a guard on it cannot
+		// make one optional. Including them over-produced guards, and a guard is
+		// what turns a required input optional -- the direction that misleads a
+		// caller, so the conservative side is the right one to err on.
 		if (isLocal(read.root, read.range.start)) continue;
 		const guarded =
 			read.inCondition ||
@@ -355,8 +450,10 @@ export function collectScannedSourceFacts(
 				(range) =>
 					read.range.start >= range.start && read.range.end <= range.end,
 			);
-		if (guarded) guardedNames.add(read.root);
-		else unguardedNames.add(read.root);
+		// A guard on a property says the file handles that property being absent,
+		// not the root; an unguarded read of either shows it depends on the root.
+		if (!guarded) unguardedNames.add(read.root);
+		else if (read.path.length === 0) guardedNames.add(read.root);
 	}
 	for (const name of new Set([...guardedNames, ...defaultedNames])) {
 		if (unguardedNames.has(name) && !defaultedNames.has(name)) continue;

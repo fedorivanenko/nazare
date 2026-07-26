@@ -43,6 +43,7 @@ export {
 } from "./liquid-facts.js";
 export {
 	type LiquidBlock,
+	type LiquidConditional,
 	type LiquidDocParam,
 	type LiquidGuard,
 	type LiquidLocalBinding,
@@ -51,6 +52,7 @@ export {
 	type LiquidStringReference,
 	liquidAssetReferences,
 	liquidBlocks,
+	liquidConditionals,
 	liquidDocParams,
 	liquidGuards,
 	liquidLocalBindings,

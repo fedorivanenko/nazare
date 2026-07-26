@@ -3,6 +3,7 @@ import test from "node:test";
 import {
 	liquidAssetReferences,
 	liquidBlocks,
+	liquidConditionals,
 	liquidDocParams,
 	liquidGuards,
 	liquidLocalBindings,
@@ -189,4 +190,45 @@ test("readings: a self-referential assign still reads its own right side", () =>
 		liquidReads(tokens("{% assign n = 1 %}")).map((r) => r.expression),
 		[],
 	);
+});
+
+test("readings: conditionals report their branches and exhaustiveness", () => {
+	const found = liquidConditionals(
+		tokens("{% if a %}1{% elsif b %}2{% else %}3{% endif %}"),
+	);
+	assert.equal(found.length, 1);
+	assert.equal(found[0].branches.length, 3);
+	assert.equal(found[0].exhaustive, true);
+
+	assert.equal(
+		liquidConditionals(tokens("{% if a %}1{% elsif b %}2{% endif %}"))[0]
+			.exhaustive,
+		false,
+	);
+});
+
+test("readings: a loop's else is not an exhaustive alternative", () => {
+	// `{% for %}{% else %}` means the collection was empty, so neither path is
+	// guaranteed to have run.
+	assert.deepEqual(
+		liquidConditionals(tokens("{% for i in a %}1{% else %}2{% endfor %}")),
+		[],
+	);
+});
+
+test("readings: a case's preamble is not a branch", () => {
+	const [found] = liquidConditionals(
+		tokens("{% case a %}\n{% when 1 %}x{% else %}y{% endcase %}"),
+	);
+	assert.equal(found.branches.length, 2);
+	assert.equal(found.exhaustive, true);
+});
+
+test("readings: dividers attach to the innermost block", () => {
+	// The `else` belongs to the for, not to the enclosing if.
+	const [found] = liquidConditionals(
+		tokens("{% if a %}{% for i in b %}1{% else %}2{% endfor %}{% endif %}"),
+	);
+	assert.equal(found.name, "if");
+	assert.equal(found.exhaustive, false);
 });

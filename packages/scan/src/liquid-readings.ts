@@ -80,6 +80,88 @@ export function liquidBlocks(tokens: LiquidToken[]): LiquidBlock[] {
 	return blocks;
 }
 
+export type LiquidConditional = {
+	/** `if`, `unless`, or `case`. */
+	name: string;
+	/** The whole block, opening tag to closing tag. */
+	range: Range;
+	/** One body per branch, in source order. */
+	branches: Range[];
+	/** A final `else` covers the paths the other branches do not. */
+	exhaustive: boolean;
+};
+
+/**
+ * Conditional blocks with their branch divisions.
+ *
+ * A caller doing definite-assignment analysis needs to know not just where a
+ * block is but how it splits: a name assigned in every branch of an exhaustive
+ * conditional is defined afterwards, and one assigned in only some is not.
+ *
+ * Frames are pushed for every block tag, not only conditionals, because
+ * `{% for %}` takes an `{% else %}` too — attaching that divider to an
+ * enclosing `{% if %}` would split the wrong block.
+ */
+export function liquidConditionals(tokens: LiquidToken[]): LiquidConditional[] {
+	type Frame = {
+		name: string;
+		conditional: boolean;
+		start: number;
+		/** Undefined before a `case` reaches its first `when`. */
+		branchStart?: number;
+		branches: Range[];
+		exhaustive: boolean;
+	};
+	const conditionals: LiquidConditional[] = [];
+	const stack: Frame[] = [];
+	for (const token of tokens) {
+		if (token.kind !== "tag" || !token.name) continue;
+		const name = token.name;
+		if (BLOCK_TAGS.has(name)) {
+			stack.push({
+				name,
+				conditional: name === "if" || name === "unless" || name === "case",
+				start: token.range.start,
+				// The text between `{% case x %}` and its first `{% when %}` is not
+				// a branch, so `case` starts without one.
+				branchStart: name === "case" ? undefined : token.range.end,
+				branches: [],
+				exhaustive: false,
+			});
+			continue;
+		}
+		const frame = stack.at(-1);
+		if (!frame) continue;
+		if (name === "elsif" || name === "else" || name === "when") {
+			if (frame.branchStart !== undefined) {
+				frame.branches.push({
+					start: frame.branchStart,
+					end: token.range.start,
+				});
+			}
+			frame.branchStart = token.range.end;
+			// `{% else %}` on a loop means "the collection was empty", not an
+			// exhaustive alternative.
+			if (name === "else" && frame.conditional) frame.exhaustive = true;
+			continue;
+		}
+		if (name !== `end${frame.name}`) continue;
+		if (frame.branchStart !== undefined) {
+			frame.branches.push({ start: frame.branchStart, end: token.range.start });
+		}
+		if (frame.conditional) {
+			conditionals.push({
+				name: frame.name,
+				range: { start: frame.start, end: token.range.end },
+				branches: frame.branches,
+				exhaustive: frame.exhaustive,
+			});
+		}
+		stack.pop();
+	}
+	return conditionals;
+}
+
 export type LiquidRead = {
 	root: string;
 	path: string[];

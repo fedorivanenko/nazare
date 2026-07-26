@@ -93,3 +93,44 @@ test("scan adapter: facts match the reference extractor on the corpus", () => {
 		assert.deepEqual(actual, expected, `facts diverged in ${file.path}`);
 	}
 });
+
+test("scan adapter: definite assignment decides whether a name is an input", () => {
+	// A name assigned on every path is the file's own; assigned on some, a read
+	// below may find nothing, which is what a caller would have to supply.
+	const free = (contents) =>
+		[
+			...new Set(
+				collectScannedSourceFacts(
+					"snippets/t.liquid",
+					contents,
+					scanLiquid(contents).tokens,
+				)
+					.facts.filter((fact) => fact.kind === "readsFreeVariable")
+					.map((fact) => fact.name),
+			),
+		].sort();
+
+	assert.deepEqual(free("{% if c %}{% assign x = 1 %}{% endif %}{{ x }}"), [
+		"c",
+		"x",
+	]);
+	assert.deepEqual(
+		free(
+			"{% if c %}{% assign x = 1 %}{% else %}{% assign x = 2 %}{% endif %}{{ x }}",
+		),
+		["c"],
+	);
+	// A loop may run zero times, so its body assigns nothing definitely.
+	assert.deepEqual(
+		free("{% for i in a %}{% assign x = 1 %}{% endfor %}{{ x }}"),
+		["a", "x"],
+	);
+	// The defaulting idiom depends on this: `alt` stays free, so it remains a
+	// parameter, and the guard makes it optional rather than required.
+	assert.deepEqual(
+		free(
+			"{% unless alt %}{% assign alt = image.alt %}{% endunless %}{{ alt }}",
+		),
+		["alt", "image"],
+	);
+});
