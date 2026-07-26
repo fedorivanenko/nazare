@@ -16,6 +16,23 @@ export {
 	liquidSyntaxFacts,
 } from "./adapters/liquid.js";
 export {
+	type NazareBlocksFact,
+	type NazareComponentFact,
+	type NazareDataBindingFact,
+	type NazareElementRefFact,
+	type NazareImportFact,
+	type NazareIslandFact,
+	type NazarePropsFact,
+	type NazareReferenceFact,
+	type NazareRenderFact,
+	type NazareRootMarkerFact,
+	type NazareScriptFact,
+	type NazareStylesheetFact,
+	type NazareSyntaxFact,
+	type NazareSyntaxFacts,
+	nazareSyntaxFacts,
+} from "./adapters/nazare-liquid.js";
+export {
 	parseSourceDocument,
 	SourceFile,
 	sourceRangeFromTreeRange,

@@ -14,6 +14,7 @@
 	"dependencies": {
 		"@nazare/tree-sitter-liquid": "workspace:^",
 		"@nazare/tree-sitter-nazare-liquid": "workspace:^",
-		"tree-sitter": "0.21.1"
+		"tree-sitter": "0.21.1",
+		"tree-sitter-html": "0.23.2"
 	}
 }

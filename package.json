@@ -38,7 +38,8 @@
 			"@nazare/tree-sitter-liquid",
 			"@nazare/tree-sitter-nazare-liquid",
 			"tree-sitter",
-			"tree-sitter-cli"
+			"tree-sitter-cli",
+			"tree-sitter-html"
 		]
 	}
 }
