@@ -11,6 +11,7 @@ import {
 } from "./theme-facts.js";
 import { themeNameFromPath } from "./theme-file-classifier.js";
 import { collectSourceThemeFacts } from "./theme-source-facts.js";
+import { collectTreeSitterSourceThemeFacts } from "./theme-tree-sitter-facts.js";
 
 export function collectNazareThemeFacts(
 	path: string,
@@ -34,10 +35,6 @@ export function collectNazareThemeFacts(
 		readFile: options.readFile,
 		dependencyResolver: options.dependencyResolver,
 		strictness: options.strictness,
-		frontendOptions:
-			options.sourceFrontend === "tree-sitter"
-				? { shopifyCompatibility: true }
-				: undefined,
 	});
 	if (frontendResult.kind !== "nazare-ast") {
 		return {
@@ -179,11 +176,13 @@ export function collectNazareThemeFacts(
 				: [],
 		),
 	]);
-	const sourceResult = collectSourceThemeFacts(
-		path,
-		contents,
-		frontendResult.ast.liquidAst,
-	);
+	const sourceResult = frontendResult.ast.liquidFacts
+		? collectTreeSitterSourceThemeFacts(
+				path,
+				contents,
+				frontendResult.ast.liquidFacts,
+			)
+		: collectSourceThemeFacts(path, contents, frontendResult.ast.liquidAst);
 	facts.push(
 		...sourceResult.facts.filter(
 			(fact) =>

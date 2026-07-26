@@ -45,13 +45,12 @@ test parses and incrementally edits a source above the old ceiling.
 
 ## Cutover interpretation
 
-The normal Nazare compiler frontend now skips source-level Shopify parsing;
-Tree-sitter owns Nazare declarations, shared Liquid schema/settings mechanics,
-HTML root selection, compiler AST projection, and emission locations. Theme
-source inference still requests a temporary opaque Shopify tree. Remaining
+The Nazare compiler and theme workspace now skip source-level Shopify parsing;
+Tree-sitter owns declarations, shared Liquid mechanics, theme source facts,
+HTML root selection, compiler AST projection, and emission locations. Remaining
 performance work:
 
-1. move theme source inference to Tree-sitter facts and delete that final parse;
+1. cut plain-Liquid workspace facts over from `@nazare/scan` and Shopify schema parsing;
 2. avoid full secondary HTML reparsing after incremental edits;
 3. profile CST traversal on large files;
 4. establish stable Linux/macOS theme-corpus thresholds before default cutover.

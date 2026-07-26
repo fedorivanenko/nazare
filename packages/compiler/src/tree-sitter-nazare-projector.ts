@@ -28,7 +28,6 @@ import {
 	parseProps,
 } from "./parser.js";
 import { scanScript } from "./script-scan.js";
-import { parseShopifyCompatibility } from "./shopify-compatibility.js";
 import { spanFromOffsets } from "./source.js";
 
 export type TreeSitterNazareProjection = {
@@ -41,7 +40,6 @@ export type TreeSitterNazareProjection = {
 export function projectTreeSitterNazareAst(
 	source: string,
 	file: string,
-	options: { compatibilityAst?: boolean } = {},
 ): TreeSitterNazareProjection {
 	const document = parseSourceDocument(
 		createDefaultSourceParserRegistry(),
@@ -50,18 +48,12 @@ export function projectTreeSitterNazareAst(
 		source,
 	);
 	const syntax = nazareSyntaxFacts(document);
-	// Theme inference still consumes the opaque Shopify tree. Ordinary compiler
-	// projection and emission use Tree-sitter facts only and skip this parse.
-	const compatibility = options.compatibilityAst
-		? parseShopifyCompatibility(source, file, document.embeddedRegions)
-		: {
-				ast: toLiquidHtmlAST("", {
-					mode: "tolerant",
-					allowUnclosedDocumentNode: true,
-				}),
-				diagnostics: [],
-				notes: syntaxNotes(syntax, source, file),
-			};
+	// Keep the transitional AST field structurally valid without parsing authored
+	// source. Tree-sitter facts own all compiler and workspace behavior.
+	const emptyLiquidAst = toLiquidHtmlAST("", {
+		mode: "tolerant",
+		allowUnclosedDocumentNode: true,
+	});
 	const problemDiagnostics = syntax.problems.map((problem) => {
 		const span = spanFromOffsets(source, file, problem.range);
 		switch (problem.kind) {
@@ -149,17 +141,17 @@ export function projectTreeSitterNazareAst(
 			file,
 			source,
 			htmlRoots,
-			liquidAst: compatibility.ast,
+			liquidFacts: syntax.liquid,
+			liquidAst: emptyLiquidAst,
 			nodes: projected.nodes,
 			settingsReads,
 			schema,
 			diagnostics: [
-				...compatibility.diagnostics,
 				...projected.diagnostics,
 				...problemDiagnostics,
 				...treeIssues,
 			],
-			notes: compatibility.notes,
+			notes: syntaxNotes(syntax, source, file),
 		},
 		authoritative: syntax.authoritative,
 		factCount: syntax.facts.length,

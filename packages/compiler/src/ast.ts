@@ -9,6 +9,7 @@ import type {
 	PropTypeInfo,
 	SourceSpan,
 } from "@nazare/core";
+import type { LiquidSyntaxFacts } from "@nazare/source";
 import type { DocumentNode } from "@shopify/liquid-html-parser";
 
 /** @deprecated Use {@link Diagnostic} from @nazare/core. */
@@ -194,6 +195,8 @@ export type NazareAst = {
 	source: string;
 	/** Tree-sitter-owned top-level HTML candidates; legacy ASTs derive them lazily. */
 	htmlRoots?: NazareHtmlRoot[];
+	/** Canonical Liquid mechanics when projected by Tree-sitter. */
+	liquidFacts?: LiquidSyntaxFacts;
 	liquidAst: DocumentNode;
 	nodes: NazareNode[];
 	settingsReads: SettingsRead[];

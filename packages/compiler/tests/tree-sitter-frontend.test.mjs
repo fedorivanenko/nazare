@@ -4,6 +4,7 @@ import { join, relative } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
+	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
 	compileArtifact,
 	emitTheme,
@@ -17,6 +18,24 @@ function filesUnder(directory) {
 		else if (path.endsWith(".nz.liquid")) files.push(path);
 	}
 	return files;
+}
+
+function themeFilesUnder(directory, root = directory) {
+	const files = [];
+	for (const entry of readdirSync(directory, { withFileTypes: true })) {
+		const path = join(directory, entry.name);
+		if (entry.isDirectory()) {
+			files.push(...themeFilesUnder(path, root));
+		} else if (path.endsWith(".liquid") || path.endsWith(".json")) {
+			files.push({
+				path: relative(root, path),
+				contents: readFileSync(path, "utf8"),
+			});
+		} else if (relative(root, path).startsWith("assets/")) {
+			files.push({ path: relative(root, path), contents: "" });
+		}
+	}
+	return files.sort((left, right) => left.path.localeCompare(right.path));
 }
 
 function compilePair(source, file) {
@@ -90,6 +109,25 @@ test("Tree-sitter selection propagates through workspace dependency closure", ()
 		treeSitter.artifacts.map((artifact) => artifact.ir),
 		legacy.artifacts.map((artifact) => artifact.ir),
 	);
+});
+
+test("Tree-sitter theme source facts match the committed corpus", () => {
+	const root = fileURLToPath(
+		new URL("../../../fixtures/theme-corpus/", import.meta.url),
+	);
+	const files = themeFilesUnder(root);
+	const metafields = {
+		path: ".shopify/metafields.json",
+		contents: readFileSync(join(root, ".shopify/metafields.json"), "utf8"),
+	};
+	const legacy = analyzeNazareTheme(files, { metafields });
+	const treeSitter = analyzeNazareTheme(files, {
+		metafields,
+		sourceFrontend: "tree-sitter",
+	});
+	assert.deepEqual(treeSitter.ir, legacy.ir);
+	assert.deepEqual(treeSitter.facts, legacy.facts);
+	assert.deepEqual(treeSitter.issues, legacy.issues);
 });
 
 test("Tree-sitter Nazare malformed syntax diagnostics match legacy", () => {

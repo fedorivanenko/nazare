@@ -20,9 +20,7 @@ export const treeSitterNazareLiquidFrontend: CompilerFrontend = {
 		return file.endsWith(".nz.liquid");
 	},
 	compile(input: CompileInput): FrontendResult {
-		const projection = projectTreeSitterNazareAst(input.source, input.file, {
-			compatibilityAst: input.frontendOptions?.shopifyCompatibility === true,
-		});
+		const projection = projectTreeSitterNazareAst(input.source, input.file);
 		const dependencyResolver =
 			input.dependencyResolver?.sourceFrontend === "tree-sitter"
 				? input.dependencyResolver

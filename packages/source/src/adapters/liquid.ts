@@ -309,6 +309,8 @@ function collectReadsAndGuards(
 			if (
 				field === "variable_name" ||
 				field === "variable" ||
+				field === "local_name" ||
+				(field === "target" && parent?.type === "nazare_render_statement") ||
 				(field === "item" &&
 					(parent?.type === "for_loop_statement" ||
 						parent?.type === "tablerow_statement")) ||

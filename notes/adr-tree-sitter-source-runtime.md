@@ -109,10 +109,12 @@ compilation no longer source-parses with Shopify: Tree-sitter owns declarations,
 shared schema/settings facts, HTML root locations, AST projection, and emission
 locations. On the current local baseline the compiler frontend is about
 2.2–2.3x faster than legacy on committed files and 1.31x faster on an exploratory
-112-KB synthetic source. Theme source inference still explicitly requests an
-opaque Shopify compatibility tree. Removing that final workspace parse,
-plain-Liquid workspace fact cutover, malformed-source parity, and stable
-cross-platform performance thresholds remain default-cutover gates.
+112-KB synthetic source. Theme source inference now consumes the same Tree-sitter Liquid facts; the
+Tree-sitter Nazare path never parses authored source with Shopify. Focused
+malformed component/import/render/blocks/stylesheet/attribute and unclosed-raw
+parity is gated in tests. Plain-Liquid workspace fact cutover, broader malformed
+corpus coverage, and stable cross-platform performance thresholds remain
+default-cutover gates.
 
 ## Rejected alternatives
 
