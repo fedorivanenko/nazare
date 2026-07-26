@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { lookupExpression, scanLiquidExpression } from "../dist/index.js";
 
-const expr = (markup) => scanLiquidExpression(markup);
+const expr = (markup) => scanLiquidExpression(markup, 0);
 const paths = (markup) => expr(markup).lookups.map(lookupExpression);
 
 test("expression: property paths", () => {
@@ -33,7 +33,9 @@ test("expression: keywords are syntax, not variables", () => {
 test("expression: filters and their subjects", () => {
 	const found = expr("'shop.title' | t: name: shop.name | upcase");
 	assert.deepEqual(
-		found.filters.map((f) => f.name),
+		found.filterChains.flatMap((chain) =>
+			chain.filters.map((filter) => filter.name),
+		),
 		["t", "upcase"],
 	);
 	assert.deepEqual(
@@ -64,7 +66,9 @@ test("expression: a filter inside a render argument keeps both readable", () => 
 		["c-social", "https://x/?u="],
 	);
 	assert.deepEqual(
-		found.filters.map((f) => f.name),
+		found.filterChains.flatMap((chain) =>
+			chain.filters.map((filter) => filter.name),
+		),
 		["append"],
 	);
 	assert.equal(found.namedArguments[0]?.name, "facebook");
@@ -75,10 +79,38 @@ test("expression: ranges are file offsets", () => {
 	assert.deepEqual(found.lookups[0].range, { start: 100, end: 113 });
 });
 
-test("expression: an unterminated string does not hang or overrun", () => {
+test("expression: escaped quotes stay inside their string", () => {
+	const found = expr(String.raw`'it\'s' | append: value`);
+	assert.deepEqual(found.issues, []);
+	assert.equal(found.filterChains[0].subject.value, String.raw`it\'s`);
+});
+
+test("expression: an unterminated string is bounded and explicit", () => {
 	const found = expr("'unterminated");
+	assert.deepEqual(found.strings, [
+		{ value: "unterminated", range: { start: 0, end: 13 } },
+	]);
+	assert.deepEqual(found.issues, [
+		{ code: "UNTERMINATED_STRING", range: { start: 0, end: 13 } },
+	]);
+});
+
+test("expression: filter chains retain their subjects", () => {
+	const found = expr("product, title | default: 'x'");
+	assert.equal(found.filterChains.length, 1);
+	assert.equal(lookupExpression(found.filterChains[0].subject), "title");
 	assert.deepEqual(
-		found.strings.map((s) => s.value),
-		["unterminated"],
+		found.filterChains[0].filters.map((filter) => filter.name),
+		["default"],
+	);
+});
+
+test("expression: commas in filter arguments stay in their chain", () => {
+	const found = expr("'hello' | replace: 'h', 'j' | upcase");
+	assert.equal(found.filterChains.length, 1);
+	assert.equal(found.filterChains[0].subject.value, "hello");
+	assert.deepEqual(
+		found.filterChains[0].filters.map((filter) => filter.name),
+		["replace", "upcase"],
 	);
 });

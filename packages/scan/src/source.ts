@@ -1,7 +1,7 @@
 // Source positions, shared by every scanner in this package.
 //
-// Scanners work in byte offsets because that is what a single pass produces
-// cheaply; line and column are derived on demand from one table per source.
+// Scanners use JavaScript string offsets (UTF-16 code units); line and column
+// are derived on demand from one table per source.
 
 export type Position = { line: number; column: number };
 
@@ -11,7 +11,7 @@ export type Span = {
 	end: Position;
 };
 
-/** Byte offsets, before they are resolved to line and column. */
+/** UTF-16 code-unit offsets, before resolution to line and column. */
 export type Range = { start: number; end: number };
 
 /**
@@ -21,6 +21,7 @@ export type Range = { start: number; end: number };
  */
 export class LineIndex {
 	private readonly starts: number[];
+	private readonly sourceLength: number;
 
 	constructor(source: string) {
 		const starts = [0];
@@ -28,9 +29,15 @@ export class LineIndex {
 			if (source.charCodeAt(index) === 10) starts.push(index + 1);
 		}
 		this.starts = starts;
+		this.sourceLength = source.length;
 	}
 
 	positionAt(offset: number): Position {
+		if (!Number.isInteger(offset) || offset < 0 || offset > this.sourceLength) {
+			throw new RangeError(
+				`Source offset ${offset} is outside 0..${this.sourceLength}`,
+			);
+		}
 		const starts = this.starts;
 		let low = 0;
 		let high = starts.length - 1;
@@ -43,6 +50,11 @@ export class LineIndex {
 	}
 
 	spanAt(file: string, range: Range): Span {
+		if (range.start > range.end) {
+			throw new RangeError(
+				`Source range start ${range.start} exceeds end ${range.end}`,
+			);
+		}
 		return {
 			file,
 			start: this.positionAt(range.start),

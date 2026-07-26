@@ -60,8 +60,9 @@ test("differential: scanner and reference parser agree on the corpus", () => {
 		if (!reference.factsCollected) continue;
 
 		const index = new LineIndex(file.contents);
-		const tokens = scanLiquid(file.contents).tokens;
-		const scanned = liquidDependencies(tokens).map((dependency) =>
+		const scan = scanLiquid(file.contents);
+		assert.equal(scan.status, "valid", `scanner rejected ${file.path}`);
+		const scanned = liquidDependencies(scan.document).map((dependency) =>
 			depKey(
 				dependency.kind,
 				dependency.name,
@@ -77,7 +78,7 @@ test("differential: scanner and reference parser agree on the corpus", () => {
 			`dependencies diverged in ${file.path}`,
 		);
 
-		const scannedReads = liquidSettingsReads(tokens)
+		const scannedReads = liquidSettingsReads(scan.document)
 			.map((read) => readKey(read.object, read.name))
 			.sort();
 		const expectedReads = reference.settingsReads

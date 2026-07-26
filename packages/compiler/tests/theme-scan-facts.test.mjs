@@ -19,6 +19,12 @@ const corpusRoot = resolve(
 	"../../../fixtures/theme-corpus",
 );
 
+function validDocument(source) {
+	const scan = scanLiquid(source);
+	assert.equal(scan.status, "valid");
+	return scan.document;
+}
+
 function corpusFiles() {
 	const files = [];
 	for (const dir of ["sections", "snippets", "blocks", "templates", "layout"]) {
@@ -84,7 +90,7 @@ test("scan adapter: facts match the reference extractor on the corpus", () => {
 		const actual = collectScannedSourceFacts(
 			file.path,
 			file.contents,
-			scanLiquid(file.contents).tokens,
+			validDocument(file.contents),
 		)
 			.facts.map(factKey)
 			.filter(Boolean)
@@ -103,7 +109,7 @@ test("scan adapter: definite assignment decides whether a name is an input", () 
 				collectScannedSourceFacts(
 					"snippets/t.liquid",
 					contents,
-					scanLiquid(contents).tokens,
+					validDocument(contents),
 				)
 					.facts.filter((fact) => fact.kind === "readsFreeVariable")
 					.map((fact) => fact.name),
@@ -148,7 +154,7 @@ test("scan adapter: assigned defaults guard their source name", () => {
 	const guards = collectScannedSourceFacts(
 		"snippets/t.liquid",
 		contents,
-		scanLiquid(contents).tokens,
+		validDocument(contents),
 	).facts.filter((fact) => fact.kind === "guardsObject");
 
 	assert.deepEqual(

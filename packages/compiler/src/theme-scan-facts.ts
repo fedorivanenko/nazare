@@ -12,6 +12,7 @@ import type { Diagnostic, SourceSpan } from "@nazare/core";
 import {
 	LineIndex,
 	type LiquidConditional,
+	type LiquidDocument,
 	type LiquidToken,
 	liquidAssetReferences,
 	liquidBlocks,
@@ -75,11 +76,11 @@ function branchScopeAt(
  * and dismissible, a missing one is not.
  */
 function localBindingsOf(
-	tokens: LiquidToken[],
+	document: LiquidDocument,
 	branchBodies: ScanRange[],
 	fileEnd: number,
 ): LocalBinding[] {
-	return liquidLocalBindings(tokens, fileEnd).map((binding) => {
+	return liquidLocalBindings(document, fileEnd).map((binding) => {
 		const scope =
 			binding.via === "assign" || binding.via === "capture"
 				? narrowToBranch(binding.scope, branchBodies)
@@ -90,7 +91,7 @@ function localBindingsOf(
 		// and reporting reads of the result as reads of the input would claim
 		// data the file never touched.
 		if (binding.value.includes("|")) return { name: binding.name, scope };
-		const [lookup] = scanLiquidExpression(binding.value).lookups;
+		const [lookup] = scanLiquidExpression(binding.value, 0).lookups;
 		return {
 			name: binding.name,
 			scope,
@@ -275,8 +276,9 @@ function collectionElementObject(
 export function collectScannedSourceFacts(
 	path: string,
 	source: string,
-	tokens: LiquidToken[],
+	document: LiquidDocument,
 ): { facts: ThemeFact[]; issues: Diagnostic[] } {
+	const tokens = document.tokens;
 	const facts: ThemeFact[] = [];
 	const issues: Diagnostic[] = [];
 	const index = new LineIndex(source);
@@ -284,8 +286,8 @@ export function collectScannedSourceFacts(
 		index.spanAt(path, range);
 	const last = tokens.at(-1);
 	const fileEnd = last ? last.range.end : source.length;
-	const blocks = liquidBlocks(tokens);
-	const conditionals = liquidConditionals(tokens);
+	const blocks = liquidBlocks(document);
+	const conditionals = liquidConditionals(document);
 	const branchBodies = [
 		...blocks
 			.filter((block) => block.name === "for")
@@ -293,7 +295,7 @@ export function collectScannedSourceFacts(
 		...conditionals.flatMap((conditional) => conditional.branches),
 	];
 	const bindings = withDefiniteAssignments(
-		localBindingsOf(tokens, branchBodies, fileEnd),
+		localBindingsOf(document, branchBodies, fileEnd),
 		conditionals,
 		branchBodies,
 		fileEnd,
@@ -327,7 +329,7 @@ export function collectScannedSourceFacts(
 	const insideBlock = (at: number): boolean =>
 		branchBodies.some((body) => at >= body.start && at <= body.end);
 
-	const reads = liquidReads(tokens);
+	const reads = liquidReads(document);
 	for (const read of reads) {
 		const at = span(read.range);
 		const { object, path: resolvedPath } = resolveRead(
@@ -436,16 +438,16 @@ export function collectScannedSourceFacts(
 						token.markupStart + equals + 1,
 					)
 				: scanLiquidExpression(token.markup, token.markupStart);
-		if (!expression.filters.some((filter) => filter.name === "default")) {
-			continue;
+		for (const chain of expression.filterChains) {
+			if (!chain.filters.some((filter) => filter.name === "default")) continue;
+			const subject = chain.subject;
+			if (!("root" in subject)) continue;
+			defaultedNames.add(subject.root);
+			defaultedNames.add(
+				resolveRead(subject.root, subject.path, subject.range.start, bindings)
+					.object,
+			);
 		}
-		const subject = expression.lookups[0];
-		if (!subject) continue;
-		defaultedNames.add(subject.root);
-		defaultedNames.add(
-			resolveRead(subject.root, subject.path, subject.range.start, bindings)
-				.object,
-		);
 	}
 	for (const conditional of conditionals) {
 		if (conditional.name !== "if" && conditional.name !== "unless") continue;
@@ -543,7 +545,7 @@ export function collectScannedSourceFacts(
 		});
 	}
 
-	for (const reference of liquidAssetReferences(tokens)) {
+	for (const reference of liquidAssetReferences(document)) {
 		facts.push({
 			kind: "referencesAsset",
 			fromPath: path,
@@ -553,7 +555,7 @@ export function collectScannedSourceFacts(
 		});
 	}
 
-	for (const reference of liquidLocaleReferences(tokens)) {
+	for (const reference of liquidLocaleReferences(document)) {
 		facts.push({
 			kind: "referencesLocaleKey",
 			fromPath: path,
@@ -563,7 +565,7 @@ export function collectScannedSourceFacts(
 		});
 	}
 
-	for (const param of liquidDocParams(tokens)) {
+	for (const param of liquidDocParams(document)) {
 		facts.push({
 			kind: "declaresDocParam",
 			path,
@@ -575,7 +577,7 @@ export function collectScannedSourceFacts(
 		});
 	}
 
-	for (const argument of liquidRenderArguments(tokens)) {
+	for (const argument of liquidRenderArguments(document)) {
 		if (!argument.targetName) continue;
 		facts.push({
 			kind: "passesRenderArgument",
@@ -609,7 +611,10 @@ export function collectScannedSourceFacts(
 	return { facts, issues };
 }
 
-function assignedNamesIn(range: ScanRange, tokens: LiquidToken[]): Set<string> {
+function assignedNamesIn(
+	range: ScanRange,
+	tokens: readonly LiquidToken[],
+): Set<string> {
 	const names = new Set<string>();
 	for (const token of tokens) {
 		if (
@@ -631,7 +636,7 @@ function escapeRegExp(value: string): string {
 
 function booleanAssignmentsIn(
 	range: ScanRange,
-	tokens: LiquidToken[],
+	tokens: readonly LiquidToken[],
 ): Map<string, boolean> {
 	const assignments = new Map<string, boolean>();
 	for (const token of tokens) {
@@ -651,7 +656,10 @@ function booleanAssignmentsIn(
 }
 
 /** Blanks raw bodies so text rules cannot fire on commented-out markup. */
-function redactRawBodies(source: string, tokens: LiquidToken[]): string {
+function redactRawBodies(
+	source: string,
+	tokens: readonly LiquidToken[],
+): string {
 	let redacted = source;
 	for (const token of tokens) {
 		if (token.kind !== "raw") continue;

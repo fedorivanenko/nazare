@@ -11,13 +11,18 @@ import {
 	liquidReads,
 	liquidRenderArguments,
 	scanLiquid,
+	scanLiquidExpression,
 } from "../dist/index.js";
 
-const tokens = (source) => scanLiquid(source).tokens;
+const document = (source) => {
+	const scan = scanLiquid(source);
+	assert.equal(scan.status, "valid");
+	return scan.document;
+};
 
 test("readings: blocks pair with their end tags, nested", () => {
 	const found = liquidBlocks(
-		tokens("{% if a %}{% for b in c %}{{ b }}{% endfor %}{% endif %}"),
+		document("{% if a %}{% for b in c %}{{ b }}{% endfor %}{% endif %}"),
 	);
 	assert.deepEqual(
 		found.map((block) => block.name),
@@ -32,7 +37,9 @@ test("readings: blocks pair with their end tags, nested", () => {
 
 test("readings: reads carry their syntactic position", () => {
 	const found = liquidReads(
-		tokens("{% if product %}{{ product.title }}{% render 'c', p: order %}"),
+		document(
+			"{% if product %}{{ product.title }}{% render 'c', p: order %}{% endif %}",
+		),
 	);
 	assert.deepEqual(
 		found.map((read) => [
@@ -50,7 +57,7 @@ test("readings: reads carry their syntactic position", () => {
 
 test("readings: a condition guards the name it tests", () => {
 	assert.deepEqual(
-		liquidGuards(tokens("{% if heading %}{{ heading }}{% endif %}")).map(
+		liquidGuards(document("{% if heading %}{{ heading }}{% endif %}")).map(
 			(g) => [g.name, g.via],
 		),
 		[["heading", "guard"]],
@@ -62,24 +69,27 @@ test("readings: guarding a property does not guard its root", () => {
 	// missing, not that it handles `product` being absent. Attributing it to the
 	// root would make a required input look optional.
 	assert.deepEqual(
-		liquidGuards(tokens("{% if product.metafields.custom.badge %}{% endif %}")),
+		liquidGuards(
+			document("{% if product.metafields.custom.badge %}{% endif %}"),
+		),
 		[],
 	);
 });
 
-test("readings: a default filter guards the name too", () => {
+test("readings: a default filter guards its own subject", () => {
 	assert.deepEqual(
-		liquidGuards(tokens("{{ heading | default: 'Hi' }}")).map((g) => [
-			g.name,
-			g.via,
-		]),
+		liquidGuards(
+			document(
+				"{% render 'card', product: product, heading: heading | default: 'Hi' %}",
+			),
+		).map((guard) => [guard.name, guard.via]),
 		[["heading", "default"]],
 	);
 });
 
 test("readings: named render arguments with their source lookup", () => {
 	const [first, second] = liquidRenderArguments(
-		tokens("{% render 'card', product: item, size: 'lg' %}"),
+		document("{% render 'card', product: item, size: 'lg' %}"),
 	);
 	assert.deepEqual(
 		[first.targetName, first.argumentName, first.valueExpression],
@@ -92,17 +102,33 @@ test("readings: named render arguments with their source lookup", () => {
 	);
 });
 
+test("readings: a filtered render argument does not hide later arguments", () => {
+	const source = "{% render 'card', title: title | upcase, size: size %}";
+	assert.deepEqual(
+		liquidRenderArguments(document(source)).map(
+			(argument) => argument.argumentName,
+		),
+		["title", "size"],
+	);
+	const [token] = document(source).tokens;
+	const [chain] = scanLiquidExpression(
+		token.markup,
+		token.markupStart,
+	).filterChains;
+	assert.equal(chain.filters[0].args, "");
+});
+
 test("readings: `with` binds to the target name, `as` renames it", () => {
 	assert.deepEqual(
-		liquidRenderArguments(tokens("{% render 'card' with product %}")).map(
+		liquidRenderArguments(document("{% render 'card' with product %}")).map(
 			(a) => [a.argumentName, a.valueExpression],
 		),
 		[["card", "product"]],
 	);
 	assert.deepEqual(
-		liquidRenderArguments(tokens("{% render 'card' for items as item %}")).map(
-			(a) => [a.argumentName, a.valueExpression],
-		),
+		liquidRenderArguments(
+			document("{% render 'card' for items as item %}"),
+		).map((a) => [a.argumentName, a.valueExpression]),
 		[["item", "items"]],
 	);
 });
@@ -110,11 +136,11 @@ test("readings: `with` binds to the target name, `as` renames it", () => {
 test("readings: asset and locale references come from the filter chain", () => {
 	const source = `{{ 'theme.css' | asset_url }}{{ 'shop.title' | t }}{{ 'x' | append: 'y' }}`;
 	assert.deepEqual(
-		liquidAssetReferences(tokens(source)).map((r) => r.value),
+		liquidAssetReferences(document(source)).map((r) => r.value),
 		["theme.css"],
 	);
 	assert.deepEqual(
-		liquidLocaleReferences(tokens(source)).map((r) => r.value),
+		liquidLocaleReferences(document(source)).map((r) => r.value),
 		["shop.title"],
 	);
 });
@@ -122,10 +148,21 @@ test("readings: asset and locale references come from the filter chain", () => {
 test("readings: a literal used as a filter argument is not a reference", () => {
 	// `| t: name: 'x'` translates the subject, not the argument.
 	assert.deepEqual(
-		liquidLocaleReferences(tokens("{{ 'greeting' | t: name: 'Ada' }}")).map(
+		liquidLocaleReferences(document("{{ 'greeting' | t: name: 'Ada' }}")).map(
 			(r) => r.value,
 		),
 		["greeting"],
+	);
+});
+
+test("readings: string references belong to their filter chain", () => {
+	assert.deepEqual(
+		liquidAssetReferences(
+			document(
+				"{% render 'card', class: 'x' | upcase, src: 'theme.css' | asset_url %}",
+			),
+		).map((reference) => reference.value),
+		["theme.css"],
 	);
 });
 
@@ -136,7 +173,7 @@ test("readings: doc params, required and optional", () => {
   @param bare
 {% enddoc %}`;
 	assert.deepEqual(
-		liquidDocParams(tokens(source)).map((p) => [
+		liquidDocParams(document(source)).map((p) => [
 			p.name,
 			p.required,
 			p.paramType,
@@ -153,7 +190,9 @@ test("readings: doc params, required and optional", () => {
 test("readings: a doc block is not scanned as Liquid", () => {
 	// `@param {product} product` must not become a read of `product`.
 	assert.deepEqual(
-		liquidReads(tokens("{% doc %}\n  @param {product} product\n{% enddoc %}")),
+		liquidReads(
+			document("{% doc %}\n  @param {product} product\n{% enddoc %}"),
+		),
 		[],
 	);
 });
@@ -162,7 +201,7 @@ test("readings: bindings carry what they were bound to", () => {
 	// Resolving `menu.links` back to `linklists.…` is data flow the caller owns.
 	// The scanner's job is to say what the name was bound to.
 	const found = liquidLocalBindings(
-		tokens(
+		document(
 			"{% assign menu = linklists[section.settings.menu] %}{% for link in menu.links %}{% endfor %}",
 		),
 		1000,
@@ -182,26 +221,26 @@ test("readings: a self-referential assign still reads its own right side", () =>
 	// `{% assign n = n | to_i %}` binds `n` on the left and reads it on the
 	// right. Skipping every occurrence by name lost the read.
 	assert.deepEqual(
-		liquidReads(tokens("{% assign n = n | to_i %}")).map((r) => r.expression),
+		liquidReads(document("{% assign n = n | to_i %}")).map((r) => r.expression),
 		["n"],
 	);
 	// The binding site itself is still not a read.
 	assert.deepEqual(
-		liquidReads(tokens("{% assign n = 1 %}")).map((r) => r.expression),
+		liquidReads(document("{% assign n = 1 %}")).map((r) => r.expression),
 		[],
 	);
 });
 
 test("readings: conditionals report their branches and exhaustiveness", () => {
 	const found = liquidConditionals(
-		tokens("{% if a %}1{% elsif b %}2{% else %}3{% endif %}"),
+		document("{% if a %}1{% elsif b %}2{% else %}3{% endif %}"),
 	);
 	assert.equal(found.length, 1);
 	assert.equal(found[0].branches.length, 3);
 	assert.equal(found[0].exhaustive, true);
 
 	assert.equal(
-		liquidConditionals(tokens("{% if a %}1{% elsif b %}2{% endif %}"))[0]
+		liquidConditionals(document("{% if a %}1{% elsif b %}2{% endif %}"))[0]
 			.exhaustive,
 		false,
 	);
@@ -211,14 +250,14 @@ test("readings: a loop's else is not an exhaustive alternative", () => {
 	// `{% for %}{% else %}` means the collection was empty, so neither path is
 	// guaranteed to have run.
 	assert.deepEqual(
-		liquidConditionals(tokens("{% for i in a %}1{% else %}2{% endfor %}")),
+		liquidConditionals(document("{% for i in a %}1{% else %}2{% endfor %}")),
 		[],
 	);
 });
 
 test("readings: a case's preamble is not a branch", () => {
 	const [found] = liquidConditionals(
-		tokens("{% case a %}\n{% when 1 %}x{% else %}y{% endcase %}"),
+		document("{% case a %}\n{% when 1 %}x{% else %}y{% endcase %}"),
 	);
 	assert.equal(found.branches.length, 2);
 	assert.equal(found.exhaustive, true);
@@ -227,7 +266,7 @@ test("readings: a case's preamble is not a branch", () => {
 test("readings: dividers attach to the innermost block", () => {
 	// The `else` belongs to the for, not to the enclosing if.
 	const [found] = liquidConditionals(
-		tokens("{% if a %}{% for i in b %}1{% else %}2{% endfor %}{% endif %}"),
+		document("{% if a %}{% for i in b %}1{% else %}2{% endfor %}{% endif %}"),
 	);
 	assert.equal(found.name, "if");
 	assert.equal(found.exhaustive, false);

@@ -24,6 +24,20 @@ export type LiquidFilterUse = {
 	range: Range;
 };
 
+export type LiquidFilterSubject = LiquidLookup | LiquidStringLiteral;
+
+/** One value and filters applied to that value, preserving their ownership. */
+export type LiquidFilterChain = {
+	subject: LiquidFilterSubject;
+	filters: LiquidFilterUse[];
+	range: Range;
+};
+
+export type LiquidExpressionIssue = {
+	code: "UNTERMINATED_STRING" | "UNCLOSED_BRACKET";
+	range: Range;
+};
+
 export type LiquidStringLiteral = { value: string; range: Range };
 
 export type LiquidNamedArgument = {
@@ -36,9 +50,10 @@ export type LiquidNamedArgument = {
 
 export type LiquidExpression = {
 	lookups: LiquidLookup[];
-	filters: LiquidFilterUse[];
+	filterChains: LiquidFilterChain[];
 	strings: LiquidStringLiteral[];
 	namedArguments: LiquidNamedArgument[];
+	issues: LiquidExpressionIssue[];
 };
 
 /**
@@ -65,6 +80,18 @@ const KEYWORDS: ReadonlySet<string> = new Set([
 const IDENTIFIER_START = /[a-zA-Z_]/;
 const IDENTIFIER_PART = /[\w-]/;
 
+function isEscaped(value: string, index: number): boolean {
+	let backslashes = 0;
+	for (
+		let cursor = index - 1;
+		cursor >= 0 && value[cursor] === "\\";
+		cursor -= 1
+	) {
+		backslashes += 1;
+	}
+	return backslashes % 2 === 1;
+}
+
 function isSpace(character: string): boolean {
 	return (
 		character === " " ||
@@ -82,25 +109,40 @@ function isSpace(character: string): boolean {
  */
 export function scanLiquidExpression(
 	markup: string,
-	offset = 0,
+	offset: number,
 ): LiquidExpression {
 	const lookups: LiquidLookup[] = [];
-	const filters: LiquidFilterUse[] = [];
 	const strings: LiquidStringLiteral[] = [];
 	const namedArguments: LiquidNamedArgument[] = [];
+	const filterChains: LiquidFilterChain[] = [];
+	const issues: LiquidExpressionIssue[] = [];
 	const length = markup.length;
 	let index = 0;
-	// After a `|`, `name: value` pairs belong to the filter, not to the tag.
 	let inFilter = false;
+	let filterHasArguments = false;
+	let filterSubject: LiquidFilterSubject | undefined;
+	let activeChain: LiquidFilterChain | undefined;
 
 	const readString = (): LiquidStringLiteral | undefined => {
 		const quote = markup[index];
 		if (quote !== "'" && quote !== '"') return undefined;
 		const start = index;
 		index += 1;
-		while (index < length && markup[index] !== quote) index += 1;
+		while (
+			index < length &&
+			(markup[index] !== quote || isEscaped(markup, index))
+		) {
+			index += 1;
+		}
 		const value = markup.slice(start + 1, index);
-		index += 1; // closing quote, or end of markup when unterminated
+		if (index < length) {
+			index += 1;
+		} else {
+			issues.push({
+				code: "UNTERMINATED_STRING",
+				range: { start: offset + start, end: offset + length },
+			});
+		}
 		return {
 			value,
 			range: { start: offset + start, end: offset + index },
@@ -110,19 +152,26 @@ export function scanLiquidExpression(
 	while (index < length) {
 		const character = markup[index] as string;
 
-		if (
-			isSpace(character) ||
-			character === "," ||
-			character === "(" ||
-			character === ")"
-		) {
+		if (character === ",") {
+			index += 1;
+			if (inFilter && filterHasArguments) continue;
+			inFilter = false;
+			filterHasArguments = false;
+			filterSubject = undefined;
+			activeChain = undefined;
+			continue;
+		}
+		if (isSpace(character) || character === "(" || character === ")") {
 			index += 1;
 			continue;
 		}
 
 		if (character === "'" || character === '"') {
 			const literal = readString();
-			if (literal) strings.push(literal);
+			if (literal) {
+				strings.push(literal);
+				if (!inFilter) filterSubject = literal;
+			}
 			continue;
 		}
 
@@ -136,31 +185,49 @@ export function scanLiquidExpression(
 			}
 			const name = markup.slice(nameStart, index);
 			if (!name) continue;
-			// Arguments run to the next `|` that is not inside a string.
+			let argumentMarker = index;
+			while (
+				argumentMarker < length &&
+				isSpace(markup[argumentMarker] as string)
+			) {
+				argumentMarker += 1;
+			}
+			filterHasArguments = markup[argumentMarker] === ":";
 			let cursor = index;
 			let quote: string | undefined;
 			while (cursor < length) {
 				const at = markup[cursor] as string;
 				if (quote) {
-					if (at === quote) quote = undefined;
+					if (at === quote && !isEscaped(markup, cursor)) quote = undefined;
 				} else if (at === "'" || at === '"') {
 					quote = at;
-				} else if (at === "|") {
+				} else if (at === "|" || (at === "," && !filterHasArguments)) {
 					break;
 				}
 				cursor += 1;
 			}
-			const args = markup
-				.slice(index, cursor)
-				.replace(/^\s*:\s*/, "")
-				.trim();
-			filters.push({
+			const rawArgs = markup.slice(index, cursor);
+			const args = rawArgs.replace(/^\s*:\s*/, "").trim();
+			const filter = {
 				name,
 				args,
 				range: { start: offset + nameStart, end: offset + cursor },
-			});
-			// Re-scan the argument text for lookups and strings by continuing the
-			// main loop through it; only the `name:` handling differs.
+			};
+			if (filterSubject) {
+				if (!activeChain) {
+					activeChain = {
+						subject: filterSubject,
+						filters: [],
+						range: {
+							start: filterSubject.range.start,
+							end: filter.range.end,
+						},
+					};
+					filterChains.push(activeChain);
+				}
+				activeChain.filters.push(filter);
+				activeChain.range.end = filter.range.end;
+			}
 			continue;
 		}
 
@@ -182,7 +249,7 @@ export function scanLiquidExpression(
 				while (cursor < length) {
 					const at = markup[cursor] as string;
 					if (quote) {
-						if (at === quote) quote = undefined;
+						if (at === quote && !isEscaped(markup, cursor)) quote = undefined;
 					} else if (at === "'" || at === '"') {
 						quote = at;
 					} else if (at === "," || at === "|") {
@@ -220,9 +287,11 @@ export function scanLiquidExpression(
 			const nested: {
 				lookups: LiquidLookup[];
 				strings: LiquidStringLiteral[];
+				issues: LiquidExpressionIssue[];
 			} = {
 				lookups: [],
 				strings: [],
+				issues: [],
 			};
 			let truncated = false;
 			while (index < length) {
@@ -259,26 +328,42 @@ export function scanLiquidExpression(
 					);
 					nested.lookups.push(...inside.lookups);
 					nested.strings.push(...inside.strings);
-					index = innerEnd + 1;
+					nested.issues.push(...inside.issues);
+					if (inner === -1) {
+						nested.issues.push({
+							code: "UNCLOSED_BRACKET",
+							range: { start: offset + start, end: offset + length },
+						});
+					}
+					index = inner === -1 ? length : inner + 1;
 					truncated = true;
 					continue;
 				}
 				break;
 			}
-			lookups.push({
+			const lookup = {
 				root: word,
 				path,
 				range: { start: offset + start, end: offset + index },
-			});
+			};
+			lookups.push(lookup);
+			if (!inFilter) filterSubject = lookup;
 			lookups.push(...nested.lookups);
 			strings.push(...nested.strings);
+			issues.push(...nested.issues);
 			continue;
 		}
 
 		index += 1;
 	}
 
-	return { lookups, filters, strings, namedArguments };
+	return {
+		lookups,
+		filterChains,
+		strings,
+		namedArguments,
+		issues,
+	};
 }
 
 /** `a.b.c` for a lookup, the form fact records use as an expression key. */

@@ -1,4 +1,4 @@
-// Single-pass Liquid scanner.
+// Liquid tokenization and structural validation.
 //
 // Emits a token stream rather than facts: dependencies, settings reads, locale
 // references and the Nazare tag layer are all different readings of the same
@@ -8,6 +8,7 @@
 // This is not an HTML parser. Everything outside `{{ }}` and `{% %}` is text
 // the scanner steps over, which is exactly what theme analysis needs — the
 // build path keeps a real HTML parser for the checks that require one.
+import { scanLiquidExpression } from "./liquid-expression.js";
 import {
 	BLOCK_TAGS,
 	DOC_TAG,
@@ -20,7 +21,9 @@ import type { Range } from "./source.js";
 export type LiquidToken =
 	| {
 			kind: "tag";
-			/** Tag name, lowercased. `undefined` when the tag opens with no name. */
+			/** Authored tag name. `undefined` when the tag opens with no name. */
+			authoredName?: string;
+			/** Canonical lowercase tag name used for grammar matching. */
 			name?: string;
 			/** Everything after the name, whitespace control stripped. */
 			markup: string;
@@ -40,7 +43,9 @@ export type LiquidToken =
 	  }
 	| {
 			kind: "raw";
-			/** The tag that opened this body: `schema`, `comment`, `doc`, … */
+			/** Authored spelling of the opening tag name. */
+			authoredName: string;
+			/** Canonical lowercase tag name used for grammar matching. */
 			name: string;
 			/** Body text between the open and close tags, unparsed. */
 			body: string;
@@ -51,15 +56,38 @@ export type LiquidToken =
 	  };
 
 export type LiquidScanIssue = {
-	code: "UNTERMINATED_TAG" | "UNCLOSED_RAW_TAG" | "UNCLOSED_BLOCK";
+	code:
+		| "UNTERMINATED_TAG"
+		| "UNCLOSED_RAW_TAG"
+		| "UNCLOSED_BLOCK"
+		| "MISMATCHED_BLOCK"
+		| "UNTERMINATED_STRING"
+		| "UNCLOSED_BRACKET";
 	name?: string;
 	range: Range;
 };
 
-export type LiquidScan = {
-	tokens: LiquidToken[];
-	issues: LiquidScanIssue[];
+const validLiquidDocument: unique symbol = Symbol("validLiquidDocument");
+
+/** Token stream proven free of scanner and expression errors. */
+export type LiquidDocument = {
+	readonly tokens: readonly LiquidToken[];
+	readonly [validLiquidDocument]: true;
 };
+
+export type LiquidValidScan = {
+	status: "valid";
+	document: LiquidDocument;
+	issues: readonly [];
+};
+
+export type LiquidInvalidScan = {
+	status: "invalid";
+	partialTokens: readonly LiquidToken[];
+	issues: readonly [LiquidScanIssue, ...LiquidScanIssue[]];
+};
+
+export type LiquidScan = LiquidValidScan | LiquidInvalidScan;
 
 const TAG_NAME = /^\s*([a-zA-Z_][\w-]*)/;
 
@@ -76,16 +104,64 @@ function markupOf(
 	return { markup: source.slice(start, end), markupStart: start };
 }
 
-/**
- * Finds the closing delimiter. Deliberately naive: the first `%}` wins.
- *
- * Quote-aware scanning was tried and is wrong for this input. `{% liquid %}`
- * bodies carry `comment` statements holding prose, and a single apostrophe put
- * the scan into a string it never left — swallowing the rest of the file. A
- * `%}` inside a string literal is vanishingly rare; prose apostrophes are not.
- */
-function closerAt(source: string, from: number, closer: string): number {
-	return source.indexOf(closer, from);
+type CloserMode = "first-delimiter" | "outside-string";
+
+function isEscaped(value: string, index: number): boolean {
+	let backslashes = 0;
+	for (
+		let cursor = index - 1;
+		cursor >= 0 && value[cursor] === "\\";
+		cursor -= 1
+	) {
+		backslashes += 1;
+	}
+	return backslashes % 2 === 1;
+}
+
+function closerAt(
+	source: string,
+	from: number,
+	closer: string,
+	mode: CloserMode,
+): number {
+	if (mode === "first-delimiter") return source.indexOf(closer, from);
+	let quote: string | undefined;
+	for (let cursor = from; cursor < source.length; cursor += 1) {
+		const character = source[cursor] as string;
+		if (quote) {
+			if (character === quote && !isEscaped(source, cursor)) quote = undefined;
+			continue;
+		}
+		if (character === "'" || character === '"') {
+			quote = character;
+			continue;
+		}
+		if (source.startsWith(closer, cursor)) return cursor;
+	}
+	return -1;
+}
+
+/** Finds an opener before a closer, excluding same-line string contents. */
+function nestedOpenerAt(
+	source: string,
+	from: number,
+	close: number,
+	opener: string,
+): number {
+	let quote: string | undefined;
+	for (let cursor = from; cursor < close; cursor += 1) {
+		const character = source[cursor] as string;
+		if (quote) {
+			if (character === quote && !isEscaped(source, cursor)) quote = undefined;
+			continue;
+		}
+		if (character === "'" || character === '"') {
+			quote = character;
+			continue;
+		}
+		if (source.startsWith(opener, cursor)) return cursor;
+	}
+	return -1;
 }
 
 export function scanLiquid(source: string): LiquidScan {
@@ -106,16 +182,28 @@ export function scanLiquid(source: string): LiquidScan {
 		}
 
 		const closer = isTag ? "%}" : "}}";
-		const close = closerAt(source, brace + 2, closer);
-		if (close === -1) {
-			// Unterminated at EOF. Step over the brace rather than abandoning the
-			// file: dropping every later fact silently is worse than misreading one
-			// tag, and the issue says which it was.
+		const provisionalTagName = isTag
+			? TAG_NAME.exec(source.slice(brace + 2))?.[1]?.toLowerCase()
+			: undefined;
+		const closerMode: CloserMode =
+			provisionalTagName === LIQUID_TAG ? "first-delimiter" : "outside-string";
+		let close = closerAt(source, brace + 2, closer, closerMode);
+		if (close === -1 && closerMode === "outside-string") {
+			close = source.indexOf(closer, brace + 2);
+		}
+		const nestedOpen =
+			close === -1
+				? source.indexOf(isTag ? "{%" : "{{", brace + 2)
+				: closerMode === "first-delimiter"
+					? -1
+					: nestedOpenerAt(source, brace + 2, close, isTag ? "{%" : "{{");
+		if (close === -1 || nestedOpen !== -1) {
+			const issueEnd = nestedOpen === -1 ? length : nestedOpen;
 			issues.push({
 				code: "UNTERMINATED_TAG",
-				range: { start: brace, end: length },
+				range: { start: brace, end: issueEnd },
 			});
-			index = brace + 1;
+			index = nestedOpen === -1 ? brace + 1 : nestedOpen;
 			continue;
 		}
 		const end = close + closer.length;
@@ -133,10 +221,12 @@ export function scanLiquid(source: string): LiquidScan {
 			continue;
 		}
 
-		const name = TAG_NAME.exec(markup)?.[1]?.toLowerCase();
+		const authoredName = TAG_NAME.exec(markup)?.[1];
+		const name = authoredName?.toLowerCase();
+		const nameStart = authoredName ? markup.indexOf(authoredName) : -1;
 
 		// A raw body is not Liquid. Hand it out whole and resume after its close.
-		if (name && (RAW_TAGS.has(name) || name === DOC_TAG)) {
+		if (name && authoredName && (RAW_TAGS.has(name) || name === DOC_TAG)) {
 			const closeTag = `end${name}`;
 			const bodyStart = end;
 			const closeIndex = findClosingTag(source, closeTag, bodyStart);
@@ -148,6 +238,7 @@ export function scanLiquid(source: string): LiquidScan {
 				});
 				tokens.push({
 					kind: "raw",
+					authoredName,
 					name,
 					body: source.slice(bodyStart),
 					bodyStart,
@@ -157,6 +248,7 @@ export function scanLiquid(source: string): LiquidScan {
 			}
 			tokens.push({
 				kind: "raw",
+				authoredName,
 				name,
 				body: source.slice(bodyStart, closeIndex.open),
 				bodyStart,
@@ -167,18 +259,17 @@ export function scanLiquid(source: string): LiquidScan {
 		}
 
 		if (name === LIQUID_TAG) {
-			pushInlineStatements(tokens, markup, markupStart);
+			pushInlineStatements(tokens, issues, markup, markupStart, end);
 			index = end;
 			continue;
 		}
 
 		tokens.push({
 			kind: "tag",
+			authoredName,
 			name,
-			markup: name ? markup.slice(markup.indexOf(name) + name.length) : markup,
-			markupStart: name
-				? markupStart + markup.indexOf(name) + name.length
-				: markupStart,
+			markup: name ? markup.slice(nameStart + name.length) : markup,
+			markupStart: name ? markupStart + nameStart + name.length : markupStart,
 			range: { start: brace, end },
 			inline: false,
 		});
@@ -194,11 +285,16 @@ export function scanLiquid(source: string): LiquidScan {
 		}
 		if (!token.name.startsWith("end")) continue;
 		const closing = token.name.slice(3);
-		for (let depth = openBlocks.length - 1; depth >= 0; depth -= 1) {
-			if (openBlocks[depth]?.name !== closing) continue;
-			openBlocks.length = depth;
-			break;
+		const current = openBlocks.at(-1);
+		if (!current || current.name !== closing) {
+			issues.push({
+				code: "MISMATCHED_BLOCK",
+				name: closing,
+				range: token.range,
+			});
+			continue;
 		}
+		openBlocks.pop();
 	}
 	for (const block of openBlocks) {
 		issues.push({
@@ -208,7 +304,24 @@ export function scanLiquid(source: string): LiquidScan {
 		});
 	}
 
-	return { tokens, issues };
+	for (const token of tokens) {
+		if (token.kind === "raw") continue;
+		const expression = scanLiquidExpression(token.markup, token.markupStart);
+		issues.push(...expression.issues);
+	}
+
+	if (issues.length > 0) {
+		return {
+			status: "invalid",
+			partialTokens: tokens,
+			issues: issues as [LiquidScanIssue, ...LiquidScanIssue[]],
+		};
+	}
+	return {
+		status: "valid",
+		document: { tokens, [validLiquidDocument]: true },
+		issues: [],
+	};
 }
 
 /** Locates `{% end<name> %}`, returning the offsets of the tag itself. */
@@ -242,36 +355,53 @@ function findClosingTag(
  */
 function pushInlineStatements(
 	tokens: LiquidToken[],
+	issues: LiquidScanIssue[],
 	markup: string,
 	markupStart: number,
+	outerEnd: number,
 ): void {
 	const bodyStart = markup.indexOf(LIQUID_TAG) + LIQUID_TAG.length;
 	let cursor = bodyStart;
-	let skipUntil: string | undefined;
+	let skippedRaw:
+		| { name: string; closeName: string; start: number }
+		| undefined;
 	for (const line of markup.slice(bodyStart).split("\n")) {
 		const lineStart = cursor;
 		cursor += line.length + 1;
 		const trimmed = line.trim();
 		if (!trimmed) continue;
-		const name = TAG_NAME.exec(trimmed)?.[1]?.toLowerCase();
-		if (skipUntil) {
-			if (name === skipUntil) skipUntil = undefined;
+		const authoredName = TAG_NAME.exec(trimmed)?.[1];
+		const name = authoredName?.toLowerCase();
+		if (skippedRaw) {
+			if (name === skippedRaw.closeName) skippedRaw = undefined;
 			continue;
 		}
-		if (!name) continue;
+		if (!name || !authoredName) continue;
 		if (RAW_TAGS.has(name) || name === DOC_TAG) {
-			skipUntil = `end${name}`;
+			skippedRaw = {
+				name,
+				closeName: `end${name}`,
+				start: markupStart + lineStart + line.indexOf(trimmed),
+			};
 			continue;
 		}
 		const start = markupStart + lineStart + line.indexOf(trimmed);
-		const nameEnd = trimmed.indexOf(name) + name.length;
+		const nameEnd = trimmed.indexOf(authoredName) + name.length;
 		tokens.push({
 			kind: "tag",
+			authoredName,
 			name,
 			markup: TAGS_WITHOUT_MARKUP.has(name) ? "" : trimmed.slice(nameEnd),
 			markupStart: start + nameEnd,
 			range: { start, end: start + trimmed.length },
 			inline: true,
+		});
+	}
+	if (skippedRaw) {
+		issues.push({
+			code: "UNCLOSED_RAW_TAG",
+			name: skippedRaw.name,
+			range: { start: skippedRaw.start, end: outerEnd },
 		});
 	}
 }

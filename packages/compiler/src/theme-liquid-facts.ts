@@ -31,20 +31,21 @@ export function collectPlainLiquidThemeFacts(
 ): { facts: ThemeFact[]; issues: Diagnostic[] } {
 	const scan = scanLiquid(contents);
 	const index = new LineIndex(contents);
-	const schemaToken = liquidSchema(scan.tokens);
+	const document = scan.status === "valid" ? scan.document : undefined;
+	const schemaToken = document ? liquidSchema(document) : undefined;
 	// Schema validation still uses Shopify's parser. Files without authored
 	// schema stay entirely on the scanner-backed analysis path.
 	const schemaAst = schemaToken
 		? parsePlainLiquid(contents, path, { parseMode: options.parseMode })
 		: undefined;
-	const factsCollected = schemaAst?.factsCollected ?? scan.issues.length === 0;
-	const settingsReads: SettingsRead[] = liquidSettingsReads(scan.tokens).map(
-		(read) => ({
-			object: read.object,
-			name: read.name,
-			span: index.spanAt(path, read.range),
-		}),
-	);
+	const factsCollected = schemaAst?.factsCollected ?? document !== undefined;
+	const settingsReads: SettingsRead[] = document
+		? liquidSettingsReads(document).map((read) => ({
+				object: read.object,
+				name: read.name,
+				span: index.spanAt(path, read.range),
+			}))
+		: [];
 	const facts: ThemeFact[] = [];
 	const issues: Diagnostic[] = schemaAst
 		? [
@@ -57,7 +58,7 @@ export function collectPlainLiquidThemeFacts(
 					"check",
 				),
 			]
-		: scan.issues.length > 0
+		: scan.status === "invalid"
 			? [
 					...markDiagnostics(
 						scan.issues.map((issue) =>
@@ -81,8 +82,8 @@ export function collectPlainLiquidThemeFacts(
 	if (path.startsWith("templates/") && path.endsWith(".liquid")) {
 		facts.push({ kind: "declaresTemplate", path, name });
 	}
-	if (factsCollected) {
-		for (const dependency of liquidDependencies(scan.tokens)) {
+	if (factsCollected && document) {
+		for (const dependency of liquidDependencies(document)) {
 			const span = index.spanAt(path, dependency.range);
 			const validation = dependency.name
 				? validateDependencyName(dependency.kind, dependency.name)
@@ -147,7 +148,7 @@ export function collectPlainLiquidThemeFacts(
 				span: read.span,
 			});
 		}
-		const sourceResult = collectScannedSourceFacts(path, contents, scan.tokens);
+		const sourceResult = collectScannedSourceFacts(path, contents, document);
 		facts.push(...sourceResult.facts);
 		issues.push(...sourceResult.issues);
 	}
@@ -159,9 +160,19 @@ function scanIssueMessage(
 	code: LiquidScanIssue["code"],
 	name: string | undefined,
 ): string {
-	if (code === "UNTERMINATED_TAG") return "Unterminated Liquid tag";
-	if (code === "UNCLOSED_RAW_TAG") return `Unclosed Liquid ${name} block`;
-	return `Unclosed Liquid ${name} block`;
+	switch (code) {
+		case "UNTERMINATED_TAG":
+			return "Unterminated Liquid tag";
+		case "UNCLOSED_RAW_TAG":
+		case "UNCLOSED_BLOCK":
+			return `Unclosed Liquid ${name} block`;
+		case "MISMATCHED_BLOCK":
+			return `Mismatched Liquid end${name} tag`;
+		case "UNTERMINATED_STRING":
+			return "Unterminated Liquid string";
+		case "UNCLOSED_BRACKET":
+			return "Unclosed Liquid bracket lookup";
+	}
 }
 
 function schemaFacts(

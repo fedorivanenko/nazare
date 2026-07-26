@@ -3,7 +3,9 @@
 // Each reader is a plain function over tokens, so a caller that needs only
 // dependencies does not pay for settings reads, and adding a new fact family
 // costs a function rather than a pass.
-import type { LiquidToken } from "./liquid.js";
+
+import type { LiquidDocument } from "./liquid.js";
+import { scanLiquidExpression } from "./liquid-expression.js";
 import type { Range } from "./source.js";
 
 export type LiquidDependencyKind =
@@ -38,9 +40,11 @@ const DEPENDENCY_TAGS = new Map<string, LiquidDependencyKind>([
 	["layout", "layout"],
 ]);
 
-export function liquidDependencies(tokens: LiquidToken[]): LiquidDependency[] {
+export function liquidDependencies(
+	document: LiquidDocument,
+): LiquidDependency[] {
 	const dependencies: LiquidDependency[] = [];
-	for (const token of tokens) {
+	for (const token of document.tokens) {
 		if (token.kind !== "tag" || !token.name) continue;
 		const kind = DEPENDENCY_TAGS.get(token.name);
 		if (!kind) continue;
@@ -70,37 +74,28 @@ export function liquidDependencies(tokens: LiquidToken[]): LiquidDependency[] {
 	return dependencies;
 }
 
-// A settings read is `settings.x`, `section.settings.x` or `block.settings.x`.
-// The leading boundary keeps `foo.settings.x` from matching: only the three
-// documented roots carry theme settings.
-const SETTINGS =
-	/(?:^|[^\w.])(section\.settings|block\.settings|settings)\.([a-zA-Z_][\w-]*)/g;
-
 export function liquidSettingsReads(
-	tokens: LiquidToken[],
+	document: LiquidDocument,
 ): LiquidSettingsRead[] {
 	const reads: LiquidSettingsRead[] = [];
-	for (const token of tokens) {
+	for (const token of document.tokens) {
 		if (token.kind === "raw") continue;
-		SETTINGS.lastIndex = 0;
-		let match = SETTINGS.exec(token.markup);
-		while (match) {
-			const root = match[1] as string;
-			const at = token.markupStart + match.index + match[0].indexOf(root);
-			reads.push({
-				object:
-					root === "settings"
-						? "settings"
-						: root === "section.settings"
-							? "section"
-							: "block",
-				name: match[2] as string,
-				range: {
-					start: at,
-					end: at + root.length + 1 + (match[2] as string).length,
-				},
-			});
-			match = SETTINGS.exec(token.markup);
+		const expression = scanLiquidExpression(token.markup, token.markupStart);
+		for (const lookup of expression.lookups) {
+			let object: LiquidSettingsRead["object"] | undefined;
+			let name: string | undefined;
+			if (lookup.root === "settings") {
+				object = "settings";
+				name = lookup.path[0];
+			} else if (
+				(lookup.root === "section" || lookup.root === "block") &&
+				lookup.path[0] === "settings"
+			) {
+				object = lookup.root;
+				name = lookup.path[1];
+			}
+			if (!object || !name) continue;
+			reads.push({ object, name, range: lookup.range });
 		}
 	}
 	return reads;
@@ -108,9 +103,9 @@ export function liquidSettingsReads(
 
 /** The authored `{% schema %}` body, when the file has one. */
 export function liquidSchema(
-	tokens: LiquidToken[],
+	document: LiquidDocument,
 ): { body: string; bodyStart: number; range: Range } | undefined {
-	for (const token of tokens) {
+	for (const token of document.tokens) {
 		if (token.kind === "raw" && token.name === "schema") {
 			return {
 				body: token.body,

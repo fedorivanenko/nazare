@@ -2,8 +2,8 @@
 
 Fast syntactic scanning for tooling that must answer within a keystroke.
 
-A single pass per file, no dependencies, and no AST allocation beyond the
-tokens a caller asks for. Measured against `@shopify/liquid-html-parser` on
+Bounded linear scans, no dependencies, and no full HTML AST allocation.
+Measured against `@shopify/liquid-html-parser` on
 five production themes: **100–400x faster, with equal or better fidelity.**
 
 ## What it is not
@@ -18,16 +18,19 @@ which is a different job.
 ```ts
 import { scanLiquid, liquidDependencies, LineIndex } from "@nazare/scan";
 
-const { tokens, issues } = scanLiquid(source);
-const dependencies = liquidDependencies(tokens);
+const scan = scanLiquid(source);
+if (scan.status === "invalid") {
+  throw new Error(`Invalid Liquid: ${scan.issues[0].code}`);
+}
+const dependencies = liquidDependencies(scan.document);
 const span = new LineIndex(source).spanAt(file, dependencies[0].range);
 ```
 
-`scanLiquid` emits a token stream rather than facts, because dependencies,
-settings reads, locale references and the Nazare tag layer are all different
-readings of the same tags. Readers (`liquidDependencies`, `liquidSettingsReads`,
-`liquidSchema`) are plain functions over those tokens, so a caller that needs
-one does not pay for the rest.
+`scanLiquid` returns either a valid `LiquidDocument` or an invalid result with
+issues and partial tokens. Fact readers accept only `LiquidDocument`, preventing
+recovered syntax from becoming authoritative facts. Dependencies, settings
+reads, locale references and the Nazare tag layer remain separate readings, so
+a caller that needs one does not pay for the rest.
 
 The tag vocabulary in `liquid-spec.ts` is copied from the reference parser's own
 grammar exports, and a test fails if a parser upgrade makes them drift.

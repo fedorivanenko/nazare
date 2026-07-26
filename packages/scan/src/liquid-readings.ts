@@ -8,7 +8,7 @@
 // encoding them here would put theme semantics in a scanner. What this reports
 // is mechanical: what was written, where, and in what syntactic position.
 
-import type { LiquidToken } from "./liquid.js";
+import type { LiquidDocument } from "./liquid.js";
 import {
 	type LiquidLookup,
 	lookupExpression,
@@ -48,10 +48,10 @@ export type LiquidBlock = {
  * Callers need this to answer "was this read reached only through a branch?",
  * which changes whether the read proves the file needs a value on every render.
  */
-export function liquidBlocks(tokens: LiquidToken[]): LiquidBlock[] {
+export function liquidBlocks(document: LiquidDocument): LiquidBlock[] {
 	const blocks: LiquidBlock[] = [];
 	const open: { name: string; start: number; bodyStart: number }[] = [];
-	for (const token of tokens) {
+	for (const token of document.tokens) {
 		if (token.kind !== "tag" || !token.name) continue;
 		if (BLOCK_TAGS.has(token.name)) {
 			open.push({
@@ -63,19 +63,14 @@ export function liquidBlocks(tokens: LiquidToken[]): LiquidBlock[] {
 		}
 		if (!token.name.startsWith("end")) continue;
 		const closing = token.name.slice(3);
-		// Unwind to the matching open tag; anything left unclosed inside it is
-		// reported by the tag scanner, not silently repaired here.
-		for (let depth = open.length - 1; depth >= 0; depth -= 1) {
-			if (open[depth]?.name !== closing) continue;
-			const entry = open[depth] as (typeof open)[number];
-			blocks.push({
-				name: entry.name,
-				range: { start: entry.start, end: token.range.end },
-				body: { start: entry.bodyStart, end: token.range.start },
-			});
-			open.length = depth;
-			break;
-		}
+		const entry = open.at(-1);
+		if (!entry || entry.name !== closing) continue;
+		blocks.push({
+			name: entry.name,
+			range: { start: entry.start, end: token.range.end },
+			body: { start: entry.bodyStart, end: token.range.start },
+		});
+		open.pop();
 	}
 	return blocks;
 }
@@ -102,7 +97,9 @@ export type LiquidConditional = {
  * `{% for %}` takes an `{% else %}` too — attaching that divider to an
  * enclosing `{% if %}` would split the wrong block.
  */
-export function liquidConditionals(tokens: LiquidToken[]): LiquidConditional[] {
+export function liquidConditionals(
+	document: LiquidDocument,
+): LiquidConditional[] {
 	type Frame = {
 		name: string;
 		conditional: boolean;
@@ -114,7 +111,7 @@ export function liquidConditionals(tokens: LiquidToken[]): LiquidConditional[] {
 	};
 	const conditionals: LiquidConditional[] = [];
 	const stack: Frame[] = [];
-	for (const token of tokens) {
+	for (const token of document.tokens) {
 		if (token.kind !== "tag" || !token.name) continue;
 		const name = token.name;
 		if (BLOCK_TAGS.has(name)) {
@@ -213,12 +210,12 @@ const CAPTURE_NAME = /^\s*([a-zA-Z_][\w-]*)/;
  * pairing has to happen first.
  */
 export function liquidLocalBindings(
-	tokens: LiquidToken[],
+	document: LiquidDocument,
 	end: number,
 ): LiquidLocalBinding[] {
 	const bindings: LiquidLocalBinding[] = [];
-	const blocks = liquidBlocks(tokens);
-	for (const token of tokens) {
+	const blocks = liquidBlocks(document);
+	for (const token of document.tokens) {
 		if (token.kind !== "tag" || !token.name) continue;
 		if (token.name === "assign") {
 			const name = ASSIGN_NAME.exec(token.markup)?.[1];
@@ -294,10 +291,10 @@ function bindingSiteOf(
 }
 
 /** Every variable lookup in the file, with the syntactic position it appeared in. */
-export function liquidReads(tokens: LiquidToken[]): LiquidRead[] {
+export function liquidReads(document: LiquidDocument): LiquidRead[] {
 	const reads: LiquidRead[] = [];
-	const last = tokens.at(-1);
-	const bindings = liquidLocalBindings(tokens, last ? last.range.end : 0);
+	const last = document.tokens.at(-1);
+	const bindings = liquidLocalBindings(document, last ? last.range.end : 0);
 	const isLocal = (root: string, at: number): boolean =>
 		bindings.some(
 			(binding) =>
@@ -305,7 +302,7 @@ export function liquidReads(tokens: LiquidToken[]): LiquidRead[] {
 				at >= binding.scope.start &&
 				at <= binding.scope.end,
 		);
-	for (const token of tokens) {
+	for (const token of document.tokens) {
 		if (token.kind === "raw") continue;
 		const expression = scanLiquidExpression(token.markup, token.markupStart);
 		const tag = token.kind === "tag" ? token.name : undefined;
@@ -348,9 +345,9 @@ export type LiquidGuard = {
  * being absent — attributing it to the root would make required inputs look
  * optional.
  */
-export function liquidGuards(tokens: LiquidToken[]): LiquidGuard[] {
+export function liquidGuards(document: LiquidDocument): LiquidGuard[] {
 	const guards: LiquidGuard[] = [];
-	for (const token of tokens) {
+	for (const token of document.tokens) {
 		if (token.kind === "raw") continue;
 		const expression = scanLiquidExpression(token.markup, token.markupStart);
 		if (token.kind === "tag" && token.name && CONDITION_TAGS.has(token.name)) {
@@ -359,11 +356,10 @@ export function liquidGuards(tokens: LiquidToken[]): LiquidGuard[] {
 				guards.push({ name: lookup.root, via: "guard", range: lookup.range });
 			}
 		}
-		if (!expression.filters.some((filter) => filter.name === "default")) {
-			continue;
-		}
-		const [subject] = expression.lookups;
-		if (subject && subject.path.length === 0) {
+		for (const chain of expression.filterChains) {
+			if (!chain.filters.some((filter) => filter.name === "default")) continue;
+			const subject = chain.subject;
+			if (!("root" in subject) || subject.path.length > 0) continue;
 			guards.push({
 				name: subject.root,
 				via: "default",
@@ -400,10 +396,10 @@ const IMPLICIT =
  * what makes the argument comparable to the target's declared inputs.
  */
 export function liquidRenderArguments(
-	tokens: LiquidToken[],
+	document: LiquidDocument,
 ): LiquidRenderArgument[] {
 	const args: LiquidRenderArgument[] = [];
-	for (const token of tokens) {
+	for (const token of document.tokens) {
 		if (token.kind !== "tag" || !token.name || !RENDER_TAGS.has(token.name)) {
 			continue;
 		}
@@ -453,36 +449,33 @@ export type LiquidStringReference = { value: string; range: Range };
 
 /** `'file.css' | asset_url` and `| asset_img_url`. */
 export function liquidAssetReferences(
-	tokens: LiquidToken[],
+	document: LiquidDocument,
 ): LiquidStringReference[] {
-	return stringReferences(tokens, ASSET_FILTERS);
+	return stringReferences(document, ASSET_FILTERS);
 }
 
 /** `'key.path' | t`. A dynamic key produces no reference, only a read. */
 export function liquidLocaleReferences(
-	tokens: LiquidToken[],
+	document: LiquidDocument,
 ): LiquidStringReference[] {
-	return stringReferences(tokens, TRANSLATE_FILTERS);
+	return stringReferences(document, TRANSLATE_FILTERS);
 }
 
 function stringReferences(
-	tokens: LiquidToken[],
+	document: LiquidDocument,
 	filterNames: ReadonlySet<string>,
 ): LiquidStringReference[] {
 	const references: LiquidStringReference[] = [];
-	for (const token of tokens) {
+	for (const token of document.tokens) {
 		if (token.kind === "raw") continue;
 		const expression = scanLiquidExpression(token.markup, token.markupStart);
-		if (!expression.filters.some((filter) => filterNames.has(filter.name))) {
-			continue;
+		for (const chain of expression.filterChains) {
+			if (!chain.filters.some((filter) => filterNames.has(filter.name)))
+				continue;
+			const subject = chain.subject;
+			if (!("value" in subject)) continue;
+			references.push({ value: subject.value, range: subject.range });
 		}
-		// The subject is the literal the filter chain starts from, not any
-		// literal used as a filter argument.
-		const [subject] = expression.strings;
-		if (!subject) continue;
-		const firstFilter = expression.filters[0];
-		if (firstFilter && subject.range.start > firstFilter.range.start) continue;
-		references.push({ value: subject.value, range: subject.range });
 	}
 	return references;
 }
@@ -504,9 +497,9 @@ const DOC_PARAM =
  * The body is LiquidDoc rather than Liquid, so it is read here line by line
  * rather than through the expression layer.
  */
-export function liquidDocParams(tokens: LiquidToken[]): LiquidDocParam[] {
+export function liquidDocParams(document: LiquidDocument): LiquidDocParam[] {
 	const params: LiquidDocParam[] = [];
-	for (const token of tokens) {
+	for (const token of document.tokens) {
 		if (token.kind !== "raw" || token.name !== "doc") continue;
 		let cursor = token.bodyStart;
 		for (const line of token.body.split("\n")) {
