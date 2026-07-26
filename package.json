@@ -27,7 +27,8 @@
 		"lint": "biome check .",
 		"build": "node scripts/generate-fact-cache-revision.mjs && tsc -b",
 		"test:scan": "pnpm -s build && node --test --test-concurrency=32 packages/scan/tests/*.test.mjs",
-		"test:source": "pnpm -s build && pnpm --dir packages/tree-sitter-nazare-liquid test && node --test packages/source/tests/*.test.mjs"
+		"test:source": "pnpm -s build && pnpm --dir packages/tree-sitter-nazare-liquid test && node --test packages/source/tests/*.test.mjs",
+		"test:package": "./scripts/package-cli.sh smoke && ./scripts/smoke-packaged-cli.sh .release/nazare-cli-smoke.tar.gz"
 	},
 	"devDependencies": {
 		"@types/node": "^26.1.1",

@@ -10,7 +10,10 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -24,7 +27,8 @@ jobs:
       - run: pnpm -s typecheck
       - run: pnpm dlx @biomejs/biome@2.4.14 check .
       - run: pnpm -s test:all
-      - run: ./scripts/package-cli.sh "${GITHUB_REF_NAME}"
+      - run: ./scripts/package-cli.sh "${GITHUB_REF_NAME}-${RUNNER_OS}-${RUNNER_ARCH}"
+      - run: ./scripts/smoke-packaged-cli.sh ".release/nazare-cli-${GITHUB_REF_NAME}-${RUNNER_OS}-${RUNNER_ARCH}.tar.gz"
       - uses: softprops/action-gh-release@v2
         with:
-          files: .release/nazare-cli-${{ github.ref_name }}.tar.gz
+          files: .release/nazare-cli-${{ github.ref_name }}-${{ runner.os }}-${{ runner.arch }}.tar.gz

@@ -99,8 +99,13 @@ facts. The selected source frontend now propagates through recursive component
 contract resolution, dependency checking, workspace analysis/build scopes,
 cache fingerprints, and incremental build recomputation; Tree-sitter roots can
 no longer silently parse imported components with the legacy frontend.
+CLI packaging now includes `@nazare/source`, `@nazare/scan`, both grammar
+packages, generated parser/scanner sources, queries, Node bindings, and the
+release runner's native binaries. Package smoke tests install the isolated
+tarball, load both grammars, parse both languages, and start the CLI. CI checks
+Linux plus macOS; tagged releases publish OS/architecture-qualified artifacts.
 Removal of the compatibility parse, plain-Liquid workspace fact cutover,
-malformed-source parity, packaging, and performance remain cutover gates.
+malformed-source parity, and performance remain cutover gates.
 
 ## Rejected alternatives
 
