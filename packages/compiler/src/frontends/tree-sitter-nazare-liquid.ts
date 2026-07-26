@@ -7,7 +7,11 @@ import {
 	NAZARE_LIQUID_SUPPORT,
 } from "../frontend.js";
 import { markDiagnostics } from "../pipeline.js";
-import { resolveAssetImports, resolveComponentContracts } from "../resolver.js";
+import {
+	createDependencyResolver,
+	resolveAssetImports,
+	resolveComponentContracts,
+} from "../resolver.js";
 import { projectTreeSitterNazareAst } from "../tree-sitter-nazare-projector.js";
 
 export const treeSitterNazareLiquidFrontend: CompilerFrontend = {
@@ -17,10 +21,16 @@ export const treeSitterNazareLiquidFrontend: CompilerFrontend = {
 	},
 	compile(input: CompileInput): FrontendResult {
 		const projection = projectTreeSitterNazareAst(input.source, input.file);
+		const dependencyResolver =
+			input.dependencyResolver?.sourceFrontend === "tree-sitter"
+				? input.dependencyResolver
+				: createDependencyResolver(input.readFile, {
+						sourceFrontend: "tree-sitter",
+					});
 		const contractResolution = resolveComponentContracts(
 			projection.ast,
 			input.readFile,
-			input.dependencyResolver,
+			dependencyResolver,
 		);
 		const assetResolution = resolveAssetImports(projection.ast, input.readFile);
 

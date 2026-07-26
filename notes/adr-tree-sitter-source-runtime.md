@@ -95,8 +95,12 @@ the Shopify parser temporarily supplies only its opaque LiquidHTML tree,
 authored schema/settings, compatibility diagnostics, and unsupported-syntax
 notes. Corpus gates compare complete Nazare nodes, syntax, IR, graph,
 diagnostics, notes, and emission. Invalid CSTs fail closed without partial
-facts. Workspace selection, removal of the compatibility parse, malformed-source
-parity, packaging, and performance remain cutover gates.
+facts. The selected source frontend now propagates through recursive component
+contract resolution, dependency checking, workspace analysis/build scopes,
+cache fingerprints, and incremental build recomputation; Tree-sitter roots can
+no longer silently parse imported components with the legacy frontend.
+Removal of the compatibility parse, plain-Liquid workspace fact cutover,
+malformed-source parity, packaging, and performance remain cutover gates.
 
 ## Rejected alternatives
 

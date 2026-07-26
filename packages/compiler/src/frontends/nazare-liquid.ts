@@ -8,7 +8,11 @@ import {
 } from "../frontend.js";
 import { parseNazareLiquid } from "../parser.js";
 import { markDiagnostics } from "../pipeline.js";
-import { resolveAssetImports, resolveComponentContracts } from "../resolver.js";
+import {
+	createDependencyResolver,
+	resolveAssetImports,
+	resolveComponentContracts,
+} from "../resolver.js";
 
 export const nazareLiquidFrontend: CompilerFrontend = {
 	name: "nazare-liquid",
@@ -17,10 +21,14 @@ export const nazareLiquidFrontend: CompilerFrontend = {
 	},
 	compile(input: CompileInput): FrontendResult {
 		const parsedAst = parseNazareLiquid(input.source, input.file);
+		const dependencyResolver =
+			input.dependencyResolver?.sourceFrontend === "legacy"
+				? input.dependencyResolver
+				: createDependencyResolver(input.readFile);
 		const contractResolution = resolveComponentContracts(
 			parsedAst,
 			input.readFile,
-			input.dependencyResolver,
+			dependencyResolver,
 		);
 		const assetResolution = resolveAssetImports(parsedAst, input.readFile);
 

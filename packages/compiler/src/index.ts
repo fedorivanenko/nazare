@@ -19,6 +19,7 @@ import type {
 	ContractProvenance,
 	FrontendResult,
 	FrontendSupport,
+	SourceFrontend,
 } from "./frontend.js";
 import { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
 import {
@@ -100,6 +101,7 @@ export type {
 	ContractProvenance,
 	FrontendResult,
 	FrontendSupport,
+	SourceFrontend,
 } from "./frontend.js";
 export { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
 export {
@@ -387,8 +389,6 @@ export {
 	type TreeSitterNazareProjection,
 } from "./tree-sitter-nazare-projector.js";
 export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
-
-export type SourceFrontend = "legacy" | "tree-sitter";
 
 export type CompileNazareArtifactOptions = Pick<
 	CompileInput,

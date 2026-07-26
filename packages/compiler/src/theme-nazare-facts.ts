@@ -1,5 +1,7 @@
 import type { Diagnostic } from "@nazare/core";
+import type { SourceFrontend } from "./frontend.js";
 import { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
+import { treeSitterNazareLiquidFrontend } from "./frontends/tree-sitter-nazare-liquid.js";
 import { projectArtifact } from "./pipeline.js";
 import type { DependencyResolver, ReadFile } from "./resolver.js";
 import {
@@ -18,10 +20,15 @@ export function collectNazareThemeFacts(
 		/** Workspace-shared dependency caches; see resolver.ts. */
 		dependencyResolver?: DependencyResolver;
 		strictness?: "strict" | "loose";
+		sourceFrontend?: SourceFrontend;
 	} = {},
 ): { facts: ThemeFact[]; issues: Diagnostic[]; artifact?: ThemeBuiltArtifact } {
 	const facts: ThemeFact[] = [];
-	const frontendResult = nazareLiquidFrontend.compile({
+	const frontend =
+		options.sourceFrontend === "tree-sitter"
+			? treeSitterNazareLiquidFrontend
+			: nazareLiquidFrontend;
+	const frontendResult = frontend.compile({
 		source: contents,
 		file: path,
 		readFile: options.readFile,

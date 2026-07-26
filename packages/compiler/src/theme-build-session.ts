@@ -14,6 +14,7 @@ import {
 	type ThemeUpdateTelemetry,
 } from "./theme-session.js";
 import { buildNazareThemeWorkspace } from "./theme-workspace.js";
+import { projectTreeSitterNazareAst } from "./tree-sitter-nazare-projector.js";
 
 export type ThemeBuildUpdate = {
 	revision: number;
@@ -115,6 +116,7 @@ class ThemeBuildState {
 		const recomputedPaths = buildRecomputationClosure(
 			this.files(),
 			changedPaths,
+			this.options.sourceFrontend,
 		);
 		const selectedPaths = recomputedPaths.filter(
 			(path) => path.endsWith(".nz.liquid") && this.filesByPath.has(path),
@@ -417,6 +419,7 @@ function shareUnchangedOutputSnapshots(
 function buildRecomputationClosure(
 	files: ThemeInputFile[],
 	changedPaths: string[],
+	sourceFrontend: BuildNazareThemeWorkspaceOptions["sourceFrontend"],
 ): string[] {
 	const components = new Map(
 		files
@@ -425,7 +428,10 @@ function buildRecomputationClosure(
 	);
 	const dependents = new Map<string, Set<string>>();
 	for (const file of components.values()) {
-		const ast = parseNazareLiquid(file.contents, file.path);
+		const ast =
+			sourceFrontend === "tree-sitter"
+				? projectTreeSitterNazareAst(file.contents, file.path).ast
+				: parseNazareLiquid(file.contents, file.path);
 		for (const node of ast.nodes) {
 			if (node.type !== "NazareImport" && node.type !== "NazareAssetImport")
 				continue;

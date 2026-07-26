@@ -3,7 +3,11 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { compileArtifact, emitTheme } from "../dist/index.js";
+import {
+	buildNazareThemeWorkspace,
+	compileArtifact,
+	emitTheme,
+} from "../dist/index.js";
 
 function filesUnder(directory) {
 	const files = [];
@@ -60,6 +64,25 @@ test("Tree-sitter Nazare frontend matches committed fixture corpus", () => {
 		const file = relative(repository, path).replaceAll("\\", "/");
 		assertParity(readFileSync(path, "utf8"), file);
 	}
+});
+
+test("Tree-sitter selection propagates through workspace dependency closure", () => {
+	const files = [
+		{
+			path: "components/button.nz.liquid",
+			contents: `{% component snippet %}{% props { label: string.required() } %}<button>{{ props.label }}</button>`,
+		},
+		{
+			path: "components/card.nz.liquid",
+			contents: `{% component section %}{% import Button from "./button.nz.liquid" %}{% props { title: string.required() } %}<article>{% render Button { label: props.title } %}</article>`,
+		},
+	];
+	const legacy = buildNazareThemeWorkspace(files);
+	const treeSitter = buildNazareThemeWorkspace(files, {
+		sourceFrontend: "tree-sitter",
+	});
+
+	assert.deepEqual(treeSitter, legacy);
 });
 
 test("invalid Nazare CST cannot leak partial projected facts", () => {
