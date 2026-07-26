@@ -359,9 +359,13 @@ test("the workbench lists every story and shows one at a time", async () => {
 	});
 	const page = workbenchPage([await renderComponentStories(component)]);
 
-	// One canvas, not one frame per story: the sidebar chooses what it shows.
+	// One canvas, not one frame per story: the selection chooses what it shows.
 	assert.equal(page.match(/<iframe/g).length, 1);
-	assert.equal(page.match(/data-story="/g).length, 4);
+	// The sidebar carries one entry per component, opening on its first story;
+	// the strip beside the canvas carries that component's stories.
+	assert.equal(page.match(/class="nav-component"/g).length, 1);
+	assert.equal(page.match(/class="substory"/g).length, 4);
+	assert.ok(page.includes('data-substories="button"'));
 	// The sidebar entries are real links to the story documents, so the shell
 	// degrades to "open the story on its own" with no JavaScript.
 	assert.ok(page.includes('href="./stories/button--scheme-outline.html"'));

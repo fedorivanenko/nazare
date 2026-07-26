@@ -37,34 +37,73 @@ export type WorkbenchPageOptions = {
 	stylesheets?: string[];
 };
 
-function navStory(
+/** Shared by both selectors: a link that selects a story. */
+function storyLink(
+	className: string,
+	label: string,
 	component: PreviewComponent,
 	rendered: RenderedStory,
 	storyBase: string,
+	failed = false,
 ): string {
 	const href = `${storyBase}${storyFileName(rendered.id)}`;
-	return `<li><a class="nav-story" href="${escapeHtml(href)}" data-story="${escapeHtml(
+	return `<a class="${className}" href="${escapeHtml(href)}" data-story="${escapeHtml(
 		rendered.id,
 	)}" data-component="${escapeHtml(componentId(component.name))}" data-name="${escapeHtml(
 		rendered.story.name,
-	)}">${escapeHtml(rendered.story.name)}${
-		rendered.error
-			? ' <span class="nav-flag" title="This story failed to render">!</span>'
+	)}">${escapeHtml(label)}${
+		failed
+			? ' <span class="nav-flag" title="A story here failed to render">!</span>'
 			: ""
-	}</a></li>`;
+	}</a>`;
 }
 
+/**
+ * The sidebar lists components, not stories. A component's entry selects its
+ * first story — the one at the declared defaults — and the variants of it live
+ * next to the canvas, where they are a property of what you are looking at
+ * rather than forty siblings competing in one list.
+ */
 function navComponent(
 	{ component, stories }: RenderedComponent,
 	storyBase: string,
 ): string {
+	const first = stories[0];
+	if (!first) {
+		return `<li><span class="nav-component nav-component--empty">${escapeHtml(
+			component.name,
+		)}</span></li>`;
+	}
+	return `<li>${storyLink(
+		"nav-component",
+		component.name,
+		component,
+		first,
+		storyBase,
+		stories.some((rendered) => rendered.error !== undefined),
+	)}</li>`;
+}
+
+/** A component's stories, as a strip above its canvas. */
+function substories(
+	{ component, stories }: RenderedComponent,
+	storyBase: string,
+): string {
 	return `
-      <div class="nav-group">
-        <p class="nav-component">${escapeHtml(component.name)}</p>
-        <ul>${stories
-					.map((rendered) => navStory(component, rendered, storyBase))
-					.join("")}</ul>
-      </div>`;
+        <div class="substories" data-substories="${escapeHtml(componentId(component.name))}" hidden>
+          ${stories
+						.map((rendered) =>
+							storyLink(
+								"substory",
+								rendered.story.name,
+								component,
+								rendered,
+								storyBase,
+								rendered.error !== undefined,
+							),
+						)
+						.join("")}
+        </div>`;
 }
 
 /** One component's documentation, shown when a story of it is selected. */
@@ -121,9 +160,8 @@ const WORKBENCH_STYLES = `
   .theme-toggle:hover, .canvas-open:hover { background: var(--accent); }
   .workbench { display: grid; grid-template-columns: 240px minmax(0, 1fr); height: calc(100% - 52px); }
   .sidebar { border-right: 1px solid var(--border); overflow-y: auto; padding: 1rem .75rem 3rem; }
-  .nav-group { margin-bottom: .9rem; }
-  .nav-component {
-    margin: 0 0 .25rem;
+  .sidebar-heading {
+    margin: 0 0 .5rem;
     padding: 0 .5rem;
     font-size: .72rem;
     text-transform: uppercase;
@@ -131,19 +169,40 @@ const WORKBENCH_STYLES = `
     color: var(--muted-foreground);
   }
   .sidebar ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .05rem; }
-  .nav-story {
+  .nav-component {
     display: block;
-    padding: .25rem .5rem;
+    padding: .3rem .5rem;
     border-radius: calc(var(--radius) - 3px);
     color: var(--muted-foreground);
     text-decoration: none;
-    font-size: .82rem;
+    font-size: .85rem;
   }
-  .nav-story:hover { background: var(--accent); color: var(--foreground); }
-  .nav-story[aria-current="true"] { background: var(--muted); color: var(--foreground); font-weight: 500; }
+  .nav-component:hover { background: var(--accent); color: var(--foreground); }
+  .nav-component[aria-current="true"] { background: var(--muted); color: var(--foreground); font-weight: 500; }
+  .nav-component--empty { color: var(--muted-foreground); opacity: .6; }
   .nav-flag { color: #b91c1c; font-weight: 600; }
+  /* flex: none on both bars — .main is a flex column, so they would otherwise
+   * shrink to below the height of the chips they hold. */
+  .substory-bar { flex: none; border-bottom: 1px solid var(--border); padding: .4rem 1.25rem; }
+  .substories { display: flex; flex-wrap: wrap; gap: .25rem; }
+  /* An explicit display beats the hidden attribute, so say it again. */
+  .substories[hidden] { display: none; }
+  .substory {
+    display: inline-flex;
+    align-items: center;
+    height: 26px;
+    padding: 0 .6rem;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    color: var(--muted-foreground);
+    text-decoration: none;
+    font-size: .76rem;
+  }
+  .substory:hover { background: var(--accent); color: var(--foreground); }
+  .substory[aria-current="true"] { border-color: var(--border); background: var(--muted); color: var(--foreground); font-weight: 500; }
   .main { overflow-y: auto; display: flex; flex-direction: column; }
   .canvas-bar {
+    flex: none;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -233,8 +292,17 @@ const WORKBENCH_SCRIPT = `
   function select(id, push) {
     const link = links.find((candidate) => candidate.dataset.story === id) ?? links[0];
     if (!link) return;
-    for (const candidate of links) candidate.removeAttribute('aria-current');
-    link.setAttribute('aria-current', 'true');
+    // The sidebar marks the component, the strip marks the story within it.
+    for (const candidate of links) {
+      const current = candidate.classList.contains('nav-component')
+        ? candidate.dataset.component === link.dataset.component
+        : candidate.dataset.story === link.dataset.story;
+      if (current) candidate.setAttribute('aria-current', 'true');
+      else candidate.removeAttribute('aria-current');
+    }
+    for (const group of document.querySelectorAll('[data-substories]')) {
+      group.hidden = group.dataset.substories !== link.dataset.component;
+    }
     if (canvas.getAttribute('src') !== link.getAttribute('href')) {
       // Height is stale until the new story measures itself; start from the
       // floor so a short story after a tall one does not leave a gap.
@@ -329,15 +397,21 @@ ${links}
     <button class="theme-toggle" type="button" data-theme-toggle>Theme</button>
   </header>
   <div class="workbench">
-    <nav class="sidebar" aria-label="Stories">
-      ${components
+    <nav class="sidebar" aria-label="Components">
+      <p class="sidebar-heading">Components</p>
+      <ul>${components
 				.map((component) => navComponent(component, storyBase))
-				.join("")}
+				.join("")}</ul>
     </nav>
     <main class="main">
       <div class="canvas-bar">
         <span class="canvas-title" id="canvas-title"></span>
         <a class="canvas-open" id="canvas-open" href="${escapeHtml(storyBase)}" target="_blank" rel="noreferrer">Open ↗</a>
+      </div>
+      <div class="substory-bar">
+        ${components
+					.map((component) => substories(component, storyBase))
+					.join("")}
       </div>
       <iframe class="canvas" id="canvas" title="Story canvas"></iframe>
       <p class="story-props" id="canvas-props"></p>
