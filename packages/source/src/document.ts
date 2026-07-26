@@ -1,6 +1,7 @@
 import type Parser from "tree-sitter";
 import { collectEmbeddedRegions } from "./embedded-regions.js";
 import { SourceOffsetIndex } from "./offset-index.js";
+import { parseTreeText } from "./parser-input.js";
 import type { SourceParserRegistry } from "./registry.js";
 import type {
 	SourceDocument,
@@ -18,7 +19,7 @@ export function parseSourceDocument(
 	source: string,
 ): SourceDocument {
 	const parser = registry.createParser(language);
-	const tree = parser.parse(source);
+	const tree = parseTreeText(parser, source);
 	return buildDocument(file, language, source, tree);
 }
 
@@ -34,7 +35,7 @@ export class SourceFile {
 		source: string,
 	) {
 		this.parser = registry.createParser(language);
-		const tree = this.parser.parse(source);
+		const tree = parseTreeText(this.parser, source);
 		this.current = buildDocument(file, language, source, tree);
 	}
 
@@ -74,7 +75,7 @@ export class SourceFile {
 			index = newIndex;
 		}
 
-		const tree = this.parser.parse(source, oldTree);
+		const tree = parseTreeText(this.parser, source, oldTree);
 		const changedRanges = mergeRanges([
 			...editedRanges,
 			...oldTree

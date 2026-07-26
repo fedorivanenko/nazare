@@ -7,7 +7,8 @@
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"scripts": {
-		"typecheck": "tsc -p tsconfig.json"
+		"typecheck": "tsc -p tsconfig.json",
+		"benchmark:frontends": "node scripts/benchmark-frontends.mjs"
 	},
 	"dependencies": {
 		"@nazare/core": "workspace:^",

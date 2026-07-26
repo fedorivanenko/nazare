@@ -157,6 +157,29 @@ test("script language contract maps explicit ts only to TypeScript", () => {
 	}
 });
 
+test("large sources bypass node-tree-sitter's direct-string ceiling", () => {
+	const chunk = "<div>{{ product.title }}</div>\n";
+	const source = `{% component section %}\n${chunk.repeat(1_500)}`;
+	assert.ok(source.length > 32_768);
+	const file = new SourceFile(
+		registry,
+		"large.nz.liquid",
+		"nazare-liquid",
+		source,
+	);
+
+	assert.equal(file.document.tree.rootNode.endIndex, source.length);
+	assert.deepEqual(file.document.issues, []);
+	const update = file.update([
+		{ start: source.length, end: source.length, text: "<!-- end -->" },
+	]);
+	assert.equal(
+		update.document.tree.rootNode.endIndex,
+		source.length + "<!-- end -->".length,
+	);
+	assert.deepEqual(update.document.issues, []);
+});
+
 test("incremental edit reuses old tree and reports UTF-16 changed ranges", () => {
 	const file = new SourceFile(
 		registry,

@@ -1,5 +1,6 @@
 import Parser from "tree-sitter";
 import Html from "tree-sitter-html";
+import { parseTreeText } from "../parser-input.js";
 import type { SourceDocument, SourceRange } from "../types.js";
 
 export type NazareComponentFact = {
@@ -263,7 +264,7 @@ function htmlFacts(document: SourceDocument): NazareSyntaxFact[] {
 	const masked = maskedHtmlSource(document);
 	const parser = new Parser();
 	parser.setLanguage(Html);
-	const tree = parser.parse(masked);
+	const tree = parseTreeText(parser, masked);
 	const facts: NazareSyntaxFact[] = [];
 	walk(tree.rootNode, (node) => {
 		if (node.type !== "start_tag" && node.type !== "self_closing_tag") return;
