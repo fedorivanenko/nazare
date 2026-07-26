@@ -25,6 +25,7 @@ import {
 	type PlainLiquidFrontendMetadata,
 	plainLiquidFrontend,
 } from "./frontends/plain-liquid.js";
+import { treeSitterNazareLiquidFrontend } from "./frontends/tree-sitter-nazare-liquid.js";
 import { treeSitterPlainLiquidFrontend } from "./frontends/tree-sitter-plain-liquid.js";
 import { artifactGraphFromIR } from "./graph.js";
 import {
@@ -106,6 +107,7 @@ export {
 	type PlainLiquidFrontendMetadata,
 	plainLiquidFrontend,
 } from "./frontends/plain-liquid.js";
+export { treeSitterNazareLiquidFrontend } from "./frontends/tree-sitter-nazare-liquid.js";
 export { treeSitterPlainLiquidFrontend } from "./frontends/tree-sitter-plain-liquid.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
@@ -380,6 +382,10 @@ export {
 	THEME_ANALYSIS_DEFAULTS,
 	THEME_BUILD_DEFAULTS,
 } from "./theme-workspace.js";
+export {
+	projectTreeSitterNazareAst,
+	type TreeSitterNazareProjection,
+} from "./tree-sitter-nazare-projector.js";
 export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 
 export type SourceFrontend = "legacy" | "tree-sitter";
@@ -616,6 +622,9 @@ function selectFrontend(
 	}
 	const sourceFrontend = options.sourceFrontend ?? "legacy";
 	if (sourceFrontend === "tree-sitter") {
+		if (treeSitterNazareLiquidFrontend.accepts(options.file, options.source)) {
+			return treeSitterNazareLiquidFrontend;
+		}
 		if (treeSitterPlainLiquidFrontend.accepts(options.file, options.source)) {
 			return treeSitterPlainLiquidFrontend;
 		}
@@ -633,21 +642,14 @@ function selectFrontend(
 function unsupportedInput(
 	options: CompileArtifactOptions,
 ): CompileArtifactFailure {
-	const unavailableTreeSitterNazare =
-		options.sourceFrontend === "tree-sitter" &&
-		nazareLiquidFrontend.accepts(options.file, options.source);
 	return {
 		ok: false,
 		frontend: undefined,
 		issues: [
 			{
 				severity: "error",
-				code: unavailableTreeSitterNazare
-					? "TREE_SITTER_NAZARE_FRONTEND_NOT_READY"
-					: "UNSUPPORTED_COMPILER_INPUT",
-				message: unavailableTreeSitterNazare
-					? `Tree-sitter Nazare IR projection is not available for ${options.file}`
-					: `No compiler frontend accepts ${options.file}`,
+				code: "UNSUPPORTED_COMPILER_INPUT",
+				message: `No compiler frontend accepts ${options.file}`,
 				phase: "parse",
 			},
 		],

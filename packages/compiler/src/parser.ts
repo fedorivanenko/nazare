@@ -613,7 +613,7 @@ function parseNazareRenderTag(
 	};
 }
 
-function parseNazareImportTag(
+export function parseNazareImportTag(
 	markup: string,
 	file: string,
 	span: SourceSpan,
@@ -1025,7 +1025,7 @@ function liquidRegion(
 	return undefined;
 }
 
-function parseProps(
+export function parseProps(
 	markup: string,
 	source: string,
 	file: string,
@@ -1091,7 +1091,7 @@ function parseProps(
 	return props;
 }
 
-function parsePassedProps(
+export function parsePassedProps(
 	body: string,
 	source: string,
 	file: string,
