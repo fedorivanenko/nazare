@@ -244,7 +244,7 @@ module.exports = grammar({
     render_statement: ($) =>
       seq(
         'render',
-        field('file', $.string),
+        field('file', choice($.string, $.identifier, $.access)),
         optional(
           choice(
             field('arguments', seq(',', $.argument_list)),

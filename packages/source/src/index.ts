@@ -1,4 +1,12 @@
 export {
+	type LiquidDependencyKind,
+	type LiquidSyntaxDependency,
+	type LiquidSyntaxFacts,
+	type LiquidSyntaxSchema,
+	type LiquidSyntaxSettingsRead,
+	liquidSyntaxFacts,
+} from "./adapters/liquid.js";
+export {
 	parseSourceDocument,
 	SourceFile,
 	sourceRangeFromTreeRange,
