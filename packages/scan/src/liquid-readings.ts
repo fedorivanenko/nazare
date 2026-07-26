@@ -186,15 +186,29 @@ export function liquidLocalBindings(
 
 const RENDER_TAGS: ReadonlySet<string> = new Set(["render", "include"]);
 
-/** The name a tag brings into existence, if it is a binding tag. */
+/**
+ * Where a binding tag names its variable, as a file offset.
+ *
+ * The position matters, not just the name: `{% assign n = n | to_i %}` reads
+ * `n` on the right of the `=` while binding it on the left, and skipping every
+ * occurrence by name would lose the read.
+ */
 function bindingSiteOf(
 	tag: string | undefined,
 	markup: string,
-): string | undefined {
-	if (tag === "assign") return ASSIGN_NAME.exec(markup)?.[1];
-	if (tag === "capture") return CAPTURE_NAME.exec(markup)?.[1];
-	if (tag === "for" || tag === "tablerow") return LOOP_NAME.exec(markup)?.[1];
-	return undefined;
+	markupStart: number,
+): number | undefined {
+	const name =
+		tag === "assign"
+			? ASSIGN_NAME.exec(markup)?.[1]
+			: tag === "capture"
+				? CAPTURE_NAME.exec(markup)?.[1]
+				: tag === "for" || tag === "tablerow"
+					? LOOP_NAME.exec(markup)?.[1]
+					: undefined;
+	if (!name) return undefined;
+	const at = markup.indexOf(name);
+	return at === -1 ? undefined : markupStart + at;
 }
 
 /** Every variable lookup in the file, with the syntactic position it appeared in. */
@@ -217,11 +231,9 @@ export function liquidReads(tokens: LiquidToken[]): LiquidRead[] {
 		const inRenderArgument = tag !== undefined && RENDER_TAGS.has(tag);
 		// `{% for variant in … %}` and `{% assign x = … %}` name a binding site.
 		// It is where the name comes into existence, not a read of it.
-		const bound = bindingSiteOf(tag, token.markup);
+		const bound = bindingSiteOf(tag, token.markup, token.markupStart);
 		for (const lookup of expression.lookups) {
-			if (bound && lookup.root === bound && lookup.path.length === 0) {
-				continue;
-			}
+			if (bound !== undefined && lookup.range.start === bound) continue;
 			reads.push({
 				root: lookup.root,
 				path: lookup.path,

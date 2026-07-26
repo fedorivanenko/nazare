@@ -21,6 +21,7 @@ import {
 	liquidLocaleReferences,
 	liquidReads,
 	liquidRenderArguments,
+	type Range as ScanRange,
 	scanLiquidExpression,
 } from "@nazare/scan";
 import { renderSiteKey, type ThemeFact } from "./theme-facts.js";
@@ -39,72 +40,124 @@ const BRANCH_BLOCKS: ReadonlySet<string> = new Set([
 	"case",
 ]);
 
-/**
- * An `assign` seen at a point in the file, with what it aliases.
- *
- * Order matters: a name can be reassigned, and a read resolves through the
- * binding that precedes it.
- */
-type AliasBinding = {
+/** A name the file binds, and where that binding is visible. */
+type LocalBinding = {
 	name: string;
-	from: number;
-	root: string;
-	path: string[];
+	scope: ScanRange;
+	/** What a bare `assign` aliases, when it aliases anything. */
+	alias?: { root: string; path: string[] };
 };
 
-function aliasBindingsOf(tokens: LiquidToken[]): AliasBinding[] {
-	const bindings: AliasBinding[] = [];
-	for (const token of tokens) {
-		if (token.kind !== "tag" || token.name !== "assign") continue;
-		const equals = token.markup.indexOf("=");
-		if (equals === -1) continue;
-		const name = /^\s*([a-zA-Z_][\w-]*)\s*=/.exec(token.markup)?.[1];
-		if (!name) continue;
-		// Only a bare assignment aliases. A filtered value is a transformation,
-		// and reporting reads of the result as reads of the input would claim
-		// data the file never touched.
-		const value = token.markup.slice(equals + 1);
-		if (value.includes("|")) continue;
-		const [lookup] = scanLiquidExpression(value).lookups;
-		if (!lookup) continue;
-		bindings.push({
-			name,
-			from: token.range.end,
-			root: lookup.root,
-			path: [...lookup.path],
-		});
+/** The innermost branch body containing an offset, if any. */
+function branchScopeAt(
+	offset: number,
+	branchBodies: ScanRange[],
+): ScanRange | undefined {
+	let innermost: ScanRange | undefined;
+	for (const body of branchBodies) {
+		if (offset < body.start || offset > body.end) continue;
+		if (!innermost || body.start > innermost.start) innermost = body;
 	}
-	return bindings;
+	return innermost;
 }
 
 /**
- * Resolves a read through the aliases in scope at its position.
+ * Names the file binds, with a branch-scoped view of where each is visible.
+ *
+ * Liquid itself scopes `assign` to the whole file, but inference cannot: a
+ * conditional assign is how a Liquid author writes a default for an optional
+ * parameter.
+ *
+ *     {% unless alt != blank %}{% assign alt = image.alt %}{% endunless %}
+ *     <img alt="{{ alt }}">
+ *
+ * `alt` is a render input the caller may omit. If the assign were treated as an
+ * ordinary definition visible from that point on, the later read would be a
+ * read of a local, `alt` would not appear in expectedInputs at all, and the
+ * parameter would vanish rather than merely being misclassified. Confining a
+ * conditional definition to its own branch keeps the read free, which is what
+ * makes it an input.
+ *
+ * The cost is a false positive when a conditional assign really is just a
+ * local. That is the safer direction: a spurious optional parameter is visible
+ * and dismissible, a missing one is not.
+ */
+function localBindingsOf(
+	tokens: LiquidToken[],
+	branchBodies: ScanRange[],
+	fileEnd: number,
+): LocalBinding[] {
+	return liquidLocalBindings(tokens, fileEnd).map((binding) => {
+		const scope =
+			binding.via === "assign" || binding.via === "capture"
+				? narrowToBranch(binding.scope, branchBodies)
+				: binding.scope;
+		if (binding.via !== "assign" || !binding.value)
+			return { name: binding.name, scope };
+		// Only a bare assignment aliases. A filtered value is a transformation,
+		// and reporting reads of the result as reads of the input would claim
+		// data the file never touched.
+		if (binding.value.includes("|")) return { name: binding.name, scope };
+		const [lookup] = scanLiquidExpression(binding.value).lookups;
+		return {
+			name: binding.name,
+			scope,
+			alias: lookup ? { root: lookup.root, path: [...lookup.path] } : undefined,
+		};
+	});
+}
+
+function narrowToBranch(
+	scope: ScanRange,
+	branchBodies: ScanRange[],
+): ScanRange {
+	const branch = branchScopeAt(scope.start, branchBodies);
+	return branch
+		? { start: scope.start, end: Math.min(branch.end, scope.end) }
+		: scope;
+}
+
+/**
+ * Resolves a read through the aliases visible at its position.
  *
  * `assign image = article.image` makes every later use of `image` a read of
  * `article.image` — the file touches the article whether or not it says so at
- * the point of use. Without this the read is attributed to a local that stands
- * for nothing, and the data edge is lost.
+ * the point of use. Resolution stops at a binding whose scope does not reach
+ * the read: an alias to a loop variable means nothing once the loop has ended,
+ * and following it would report a name that no longer exists as a render input.
  */
 function resolveRead(
 	root: string,
 	path: string[],
 	at: number,
-	bindings: AliasBinding[],
+	bindings: LocalBinding[],
 ): { object: string; path: string[] } {
 	let object = root;
 	let resolved = [...path];
 	// A reassignment can name a previous alias; a cycle would otherwise hang.
 	for (let depth = 0; depth < 8; depth += 1) {
-		let binding: AliasBinding | undefined;
-		for (const candidate of bindings) {
-			if (candidate.name !== object || candidate.from > at) continue;
-			if (!binding || candidate.from > binding.from) binding = candidate;
-		}
-		if (!binding) break;
-		resolved = [...binding.path, ...resolved];
-		object = binding.root;
+		const binding = visibleBinding(object, at, bindings);
+		if (!binding?.alias) break;
+		resolved = [...binding.alias.path, ...resolved];
+		object = binding.alias.root;
 	}
 	return { object, path: resolved };
+}
+
+/** The nearest binding of a name whose scope covers an offset. */
+function visibleBinding(
+	name: string,
+	at: number,
+	bindings: LocalBinding[],
+): LocalBinding | undefined {
+	let visible: LocalBinding | undefined;
+	for (const binding of bindings) {
+		if (binding.name !== name) continue;
+		if (at < binding.scope.start || at > binding.scope.end) continue;
+		if (!visible || binding.scope.start > visible.scope.start)
+			visible = binding;
+	}
+	return visible;
 }
 
 /**
@@ -163,12 +216,14 @@ export function collectScannedSourceFacts(
 	const span = (range: { start: number; end: number }): SourceSpan =>
 		index.spanAt(path, range);
 	const last = tokens.at(-1);
-	const aliases = aliasBindingsOf(tokens);
-	const localNames = new Set(
-		liquidLocalBindings(tokens, last ? last.range.end : source.length).map(
-			(binding) => binding.name,
-		),
-	);
+	const fileEnd = last ? last.range.end : source.length;
+	const blocks = liquidBlocks(tokens);
+	const branchBodies = blocks
+		.filter((block) => BRANCH_BLOCKS.has(block.name))
+		.map((block) => block.body);
+	const bindings = localBindingsOf(tokens, branchBodies, fileEnd);
+	const isLocal = (name: string, at: number): boolean =>
+		visibleBinding(name, at, bindings) !== undefined;
 
 	// A lookup rule and a text rule can both fire on the same token, and the
 	// reference extractor emits both. They carry the same signal id, so the model
@@ -193,11 +248,8 @@ export function collectScannedSourceFacts(
 	// them conditional; `form`, `paginate`, `tablerow` and `capture` do not.
 	// A read outside every branch is what proves the file needs a value on
 	// every render, so the distinction decides whether an input is required.
-	const blockBodies = liquidBlocks(tokens)
-		.filter((block) => BRANCH_BLOCKS.has(block.name))
-		.map((block) => block.body);
 	const insideBlock = (at: number): boolean =>
-		blockBodies.some((body) => at >= body.start && at <= body.end);
+		branchBodies.some((body) => at >= body.start && at <= body.end);
 
 	const reads = liquidReads(tokens);
 	for (const read of reads) {
@@ -206,7 +258,7 @@ export function collectScannedSourceFacts(
 			read.root,
 			read.path,
 			read.range.start,
-			aliases,
+			bindings,
 		);
 		const propertyPath =
 			resolvedPath.length > 0 ? resolvedPath.join(".") : undefined;
@@ -235,7 +287,7 @@ export function collectScannedSourceFacts(
 		// has to pass in. A name that only resolves to itself and is bound
 		// locally is the file's own, and says nothing about its inputs.
 		if (LIQUID_GLOBAL_NAMES.has(object)) continue;
-		if (object === read.root && read.local) continue;
+		if (object === read.root && isLocal(read.root, read.range.start)) continue;
 		facts.push({
 			kind: "readsFreeVariable",
 			fromPath: path,
@@ -253,7 +305,6 @@ export function collectScannedSourceFacts(
 	// depends on it regardless, and calling it optional would mislead a caller.
 	// A default is different: supplying a value is proof the caller may omit it,
 	// so it survives an unguarded read.
-	const blocks = liquidBlocks(tokens);
 	const guardRanges = new Map<string, { start: number; end: number }[]>();
 	const defaultedNames = new Set<string>();
 	// A `| default:` names the root of whatever it falls back for, path or not:
@@ -276,7 +327,7 @@ export function collectScannedSourceFacts(
 		);
 		if (!subject) continue;
 		defaultedNames.add(
-			resolveRead(subject.root, subject.path, subject.range.start, aliases)
+			resolveRead(subject.root, subject.path, subject.range.start, bindings)
 				.object,
 		);
 	}
@@ -296,7 +347,8 @@ export function collectScannedSourceFacts(
 	const guardedNames = new Set<string>();
 	const unguardedNames = new Set<string>();
 	for (const read of reads) {
-		if (read.local || read.path.length > 0) continue;
+		if (read.path.length > 0) continue;
+		if (isLocal(read.root, read.range.start)) continue;
 		const guarded =
 			read.inCondition ||
 			(guardRanges.get(read.root) ?? []).some(

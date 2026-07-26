@@ -176,3 +176,17 @@ test("readings: bindings carry what they were bound to", () => {
 		],
 	);
 });
+
+test("readings: a self-referential assign still reads its own right side", () => {
+	// `{% assign n = n | to_i %}` binds `n` on the left and reads it on the
+	// right. Skipping every occurrence by name lost the read.
+	assert.deepEqual(
+		liquidReads(tokens("{% assign n = n | to_i %}")).map((r) => r.expression),
+		["n"],
+	);
+	// The binding site itself is still not a read.
+	assert.deepEqual(
+		liquidReads(tokens("{% assign n = 1 %}")).map((r) => r.expression),
+		[],
+	);
+});
