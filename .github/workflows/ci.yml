@@ -33,6 +33,9 @@ jobs:
       # Runs the corpus theme committed to fixtures/. External themes named in
       # the manifest live on individual machines and are skipped here.
       - run: pnpm -s test:corpus
+      # Differential: the scanner and the reference parser must agree on the
+      # corpus theme, or replacing the parser stops being a bounded change.
+      - run: pnpm -s test:scan
       - name: package ephemeral PR artifact
         if: github.event_name == 'pull_request'
         run: ./scripts/package-cli.sh "pr-${{ github.event.pull_request.number }}-${{ github.sha }}"

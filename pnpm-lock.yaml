@@ -96,6 +96,8 @@ importers:
         specifier: workspace:^
         version: link:../core
 
+  packages/scan: {}
+
   packages/theme:
     dependencies:
       '@nazare/compiler':
