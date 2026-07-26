@@ -8,7 +8,8 @@ pnpm --dir packages/compiler benchmark:frontends
 ```
 
 The benchmark rotates execution order to reduce systematic JIT/GC bias. It
-reports parse plus mechanical fact extraction, not only native parse time.
+reports parsing plus mechanical fact extraction and compiler AST projection,
+not only native parse time.
 
 ## Committed corpus
 
@@ -16,37 +17,41 @@ reports parse plus mechanical fact extraction, not only native parse time.
 
 | Path | ms/file | Relative to legacy |
 | --- | ---: | ---: |
-| Legacy Shopify parser/frontend extraction | 8.259 | 1.00x |
-| Raw Tree-sitter CST + facts | 1.355 | **6.09x faster** |
-| Current hybrid Tree-sitter compiler projection | 10.419 | **1.26x slower** |
-| Incremental Tree-sitter edit + facts | 2.101 | **3.93x faster** |
+| Legacy Shopify parser/frontend extraction | 23.510 | 1.00x |
+| Raw Tree-sitter CST + facts | 3.806 | **6.18x faster** |
+| Tree-sitter compiler frontend | 10.171 | **2.31x faster** |
+| Incremental Tree-sitter edit + facts | 4.719 | **4.98x faster** |
 
-The hybrid is slower because it deliberately runs both Tree-sitter and the
-Shopify compatibility parse. It is a parity bridge, not the final runtime.
+Small-file absolute timings vary with JIT and GC; repeated runs have shown the
+Tree-sitter compiler frontend around 2.2–2.3x faster than legacy after removing
+the source-level Shopify compatibility parse.
 
 ## Large synthetic file
 
-One 112,524-byte Nazare file containing 1,500 repeated HTML/Liquid regions, 5
-measured rounds after 2 warmups:
+One 112,524-byte Nazare file containing 1,500 repeated HTML/Liquid regions, 2
+measured rounds after 1 warmup (exploratory, not a stable CI threshold):
 
 | Path | ms/file | Relative to legacy |
 | --- | ---: | ---: |
-| Legacy Shopify parser/frontend extraction | 9,683 | 1.00x |
-| Raw Tree-sitter CST + facts | 3,143 | **3.08x faster** |
-| Current hybrid Tree-sitter compiler projection | 11,207 | **1.16x slower** |
-| Incremental Tree-sitter edit + facts | 3,368 | **2.88x faster** |
+| Legacy Shopify parser/frontend extraction | 5,141 | 1.00x |
+| Raw Tree-sitter CST + facts | 3,171 | **1.62x faster** |
+| Tree-sitter compiler frontend | 3,915 | **1.31x faster** |
+| Incremental Tree-sitter edit + facts | 2,246 | **2.29x faster** |
 
-This run exposed a `node-tree-sitter@0.21.1` direct-string input ceiling at
-32,768 UTF-16 code units. `@nazare/source` now always uses the callback input
+An earlier run exposed a `node-tree-sitter@0.21.1` direct-string input ceiling
+at 32,768 UTF-16 code units. `@nazare/source` now always uses the callback input
 API in 16,384-code-unit chunks, including the injected HTML parser. A regression
 test parses and incrementally edits a source above the old ceiling.
 
 ## Cutover interpretation
 
-Raw Tree-sitter is materially faster. The production opt-in bridge is not yet
-faster and must not become the default. Remaining performance work:
+The normal Nazare compiler frontend now skips source-level Shopify parsing;
+Tree-sitter owns Nazare declarations, shared Liquid schema/settings mechanics,
+HTML root selection, compiler AST projection, and emission locations. Theme
+source inference still requests a temporary opaque Shopify tree. Remaining
+performance work:
 
-1. remove the Shopify compatibility parse;
+1. move theme source inference to Tree-sitter facts and delete that final parse;
 2. avoid full secondary HTML reparsing after incremental edits;
 3. profile CST traversal on large files;
-4. repeat on Linux/macOS release artifacts and a representative large theme.
+4. establish stable Linux/macOS theme-corpus thresholds before default cutover.

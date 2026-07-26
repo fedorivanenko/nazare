@@ -482,6 +482,19 @@ type RootElement = {
 
 /** Explicit nz-root if present, otherwise the first top-level element. */
 function rootElement(source: string, ast: NazareAst): RootElement | undefined {
+	if (ast.htmlRoots) {
+		const first = ast.htmlRoots[0];
+		const explicit = ast.htmlRoots.find((root) => root.marker);
+		const selected = explicit ?? first;
+		if (!selected) return undefined;
+		return {
+			tagEnd: selected.tagEnd,
+			tagName: selected.tagName,
+			topLevelCount: explicit ? 1 : ast.htmlRoots.length,
+			markerCount: ast.htmlRoots.filter((root) => root.marker).length,
+			marker: selected.marker,
+		};
+	}
 	let first: RootElement | undefined;
 	let explicit: RootElement | undefined;
 	let count = 0;

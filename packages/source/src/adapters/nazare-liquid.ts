@@ -2,6 +2,7 @@ import Parser from "tree-sitter";
 import Html from "tree-sitter-html";
 import { parseTreeText } from "../parser-input.js";
 import type { SourceDocument, SourceRange } from "../types.js";
+import { type LiquidSyntaxFacts, liquidSyntaxFacts } from "./liquid.js";
 
 export type NazareComponentFact = {
 	kind: "component";
@@ -69,6 +70,21 @@ export type NazareElementRefFact = {
 	range: SourceRange;
 };
 
+export type NazareHtmlElementFact = {
+	kind: "html-element";
+	tagName: string;
+	leaf: boolean;
+	range: SourceRange;
+};
+
+export type NazareHtmlRootFact = {
+	kind: "html-root";
+	tagName: string;
+	tagEnd: number;
+	markerRange?: SourceRange;
+	range: SourceRange;
+};
+
 export type NazareRootMarkerFact = {
 	kind: "root-marker";
 	tagName: string;
@@ -101,12 +117,16 @@ export type NazareSyntaxFact =
 	| NazareStylesheetFact
 	| NazareReferenceFact
 	| NazareElementRefFact
+	| NazareHtmlElementFact
+	| NazareHtmlRootFact
 	| NazareRootMarkerFact
 	| NazareIslandFact;
 
 export type NazareSyntaxFacts = {
 	authoritative: boolean;
 	facts: readonly NazareSyntaxFact[];
+	/** Shared Liquid mechanics from the same Nazare CST. */
+	liquid: LiquidSyntaxFacts;
 };
 
 const conditionalNodes = new Set([
@@ -122,7 +142,10 @@ export function nazareSyntaxFacts(document: SourceDocument): NazareSyntaxFacts {
 	if (document.language !== "nazare-liquid") {
 		throw new Error(`Nazare syntax adapter cannot read ${document.language}`);
 	}
-	if (document.issues.length > 0) return { authoritative: false, facts: [] };
+	const liquid = liquidSyntaxFacts(document);
+	if (document.issues.length > 0) {
+		return { authoritative: false, facts: [], liquid };
+	}
 
 	const facts: NazareSyntaxFact[] = [];
 	const styleBindings = collectStyleBindings(document.tree.rootNode);
@@ -257,6 +280,7 @@ export function nazareSyntaxFacts(document: SourceDocument): NazareSyntaxFacts {
 	return {
 		authoritative: true,
 		facts: facts.sort((left, right) => left.range.start - right.range.start),
+		liquid,
 	};
 }
 
@@ -275,6 +299,38 @@ function htmlFacts(document: SourceDocument): NazareSyntaxFact[] {
 		const attributes = node.namedChildren.filter(
 			(child) => child.type === "attribute",
 		);
+		const element = node.parent;
+		facts.push({
+			kind: "html-element",
+			tagName,
+			leaf:
+				element?.namedChildren.every(
+					(child) =>
+						child.type !== "element" &&
+						child.type !== "script_element" &&
+						child.type !== "style_element",
+				) ?? true,
+			range: nodeRange(element ?? node),
+		});
+		const rootMarker = attributes.find(
+			(attribute) =>
+				attribute.namedChildren.find((child) => child.type === "attribute_name")
+					?.text === "nz-root",
+		);
+		if (element?.parent?.type === "document") {
+			facts.push({
+				kind: "html-root",
+				tagName,
+				tagEnd:
+					document.source[node.endIndex - 2] === "/"
+						? node.endIndex - 2
+						: node.endIndex - 1,
+				markerRange: rootMarker
+					? htmlRootMarkerRange(document.source, rootMarker)
+					: undefined,
+				range: nodeRange(element),
+			});
+		}
 		const dataBindings = attributes.flatMap((attribute) =>
 			dataBindingFromAttribute(document.source, attribute),
 		);
@@ -319,6 +375,15 @@ function maskedHtmlSource(document: SourceDocument): string {
 		}
 	});
 	return masked.join("");
+}
+
+function htmlRootMarkerRange(
+	source: string,
+	attribute: Parser.SyntaxNode,
+): SourceRange {
+	let start = attribute.startIndex;
+	while (start > 0 && /[ \t]/.test(source[start - 1] as string)) start -= 1;
+	return { start, end: attribute.endIndex };
 }
 
 function staticAttributeValue(

@@ -34,6 +34,10 @@ export function collectNazareThemeFacts(
 		readFile: options.readFile,
 		dependencyResolver: options.dependencyResolver,
 		strictness: options.strictness,
+		frontendOptions:
+			options.sourceFrontend === "tree-sitter"
+				? { shopifyCompatibility: true }
+				: undefined,
 	});
 	if (frontendResult.kind !== "nazare-ast") {
 		return {

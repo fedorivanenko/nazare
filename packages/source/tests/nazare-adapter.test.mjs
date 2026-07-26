@@ -164,8 +164,8 @@ test("invalid Nazare CST never produces authoritative facts", () => {
 		"{% props { title: %}",
 	);
 	assert.ok(document.issues.length > 0);
-	assert.deepEqual(nazareSyntaxFacts(document), {
-		authoritative: false,
-		facts: [],
-	});
+	const facts = nazareSyntaxFacts(document);
+	assert.equal(facts.authoritative, false);
+	assert.deepEqual(facts.facts, []);
+	assert.equal(facts.liquid.authoritative, false);
 });

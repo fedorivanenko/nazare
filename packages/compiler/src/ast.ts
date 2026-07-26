@@ -182,8 +182,18 @@ export type AuthoredSchema = {
 	span: SourceSpan;
 };
 
+export type NazareHtmlRoot = {
+	tagEnd: number;
+	tagName: string;
+	marker?: { start: number; end: number };
+};
+
 export type NazareAst = {
 	file: string;
+	/** Canonical authored source; syntax projection never reads parser internals. */
+	source: string;
+	/** Tree-sitter-owned top-level HTML candidates; legacy ASTs derive them lazily. */
+	htmlRoots?: NazareHtmlRoot[];
 	liquidAst: DocumentNode;
 	nodes: NazareNode[];
 	settingsReads: SettingsRead[];

@@ -104,12 +104,15 @@ packages, generated parser/scanner sources, queries, Node bindings, and the
 release runner's native binaries. Package smoke tests install the isolated
 tarball, load both grammars, parse both languages, and start the CLI. CI checks
 Linux plus macOS; tagged releases publish OS/architecture-qualified artifacts.
-Performance baselines live in `notes/tree-sitter-performance.md`. Raw CST plus
-facts is 6.09x faster on the committed small corpus and 3.08x faster on a
-112-KB synthetic file, but the dual-parser compatibility bridge remains
-1.16–1.26x slower than legacy and cannot be the default. Removal of the
-compatibility parse, plain-Liquid workspace fact cutover, malformed-source
-parity, and accepted end-to-end performance remain cutover gates.
+Performance baselines live in `notes/tree-sitter-performance.md`. Normal Nazare
+compilation no longer source-parses with Shopify: Tree-sitter owns declarations,
+shared schema/settings facts, HTML root locations, AST projection, and emission
+locations. On the current local baseline the compiler frontend is about
+2.2–2.3x faster than legacy on committed files and 1.31x faster on an exploratory
+112-KB synthetic source. Theme source inference still explicitly requests an
+opaque Shopify compatibility tree. Removing that final workspace parse,
+plain-Liquid workspace fact cutover, malformed-source parity, and stable
+cross-platform performance thresholds remain default-cutover gates.
 
 ## Rejected alternatives
 

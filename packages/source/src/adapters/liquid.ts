@@ -136,7 +136,7 @@ const rawAncestors = new Set([
 
 /** Mechanical Liquid CST facts; no Shopify/theme policy belongs here. */
 export function liquidSyntaxFacts(document: SourceDocument): LiquidSyntaxFacts {
-	if (document.language !== "liquid") {
+	if (document.language !== "liquid" && document.language !== "nazare-liquid") {
 		throw new Error(`Liquid syntax adapter cannot read ${document.language}`);
 	}
 	if (document.issues.length > 0) {

@@ -5,15 +5,23 @@ import {
 	nazareSyntaxFacts,
 	parseSourceDocument,
 } from "@nazare/source";
+import { toLiquidHtmlAST } from "@shopify/liquid-html-parser";
 import type { NazareAst, NazareNode } from "./ast.js";
-import { parseLiquidCrash } from "./diagnostics.js";
+import {
+	controlFlowNotLowered,
+	htmlNotPromoted,
+	importBindingCase,
+	parseDuplicateComponent,
+	parseDuplicateImport,
+	parseLiquidCrash,
+} from "./diagnostics.js";
 import {
 	parseNazareImportTag,
-	parseNazareLiquid,
 	parsePassedProps,
 	parseProps,
 } from "./parser.js";
 import { scanScript } from "./script-scan.js";
+import { parseShopifyCompatibility } from "./shopify-compatibility.js";
 import { spanFromOffsets } from "./source.js";
 
 export type TreeSitterNazareProjection = {
@@ -26,11 +34,8 @@ export type TreeSitterNazareProjection = {
 export function projectTreeSitterNazareAst(
 	source: string,
 	file: string,
+	options: { compatibilityAst?: boolean } = {},
 ): TreeSitterNazareProjection {
-	// Temporary compatibility parse owns Shopify's opaque LiquidHTML tree,
-	// authored schema, settings reads, notes, and semantic parse diagnostics.
-	// It does not own the returned Nazare nodes.
-	const compatibility = parseNazareLiquid(source, file);
 	const document = parseSourceDocument(
 		createDefaultSourceParserRegistry(),
 		file,
@@ -38,48 +43,137 @@ export function projectTreeSitterNazareAst(
 		source,
 	);
 	const syntax = nazareSyntaxFacts(document);
+	// Theme inference still consumes the opaque Shopify tree. Ordinary compiler
+	// projection and emission use Tree-sitter facts only and skip this parse.
+	const compatibility = options.compatibilityAst
+		? parseShopifyCompatibility(source, file, document.embeddedRegions)
+		: {
+				ast: toLiquidHtmlAST("", {
+					mode: "tolerant",
+					allowUnclosedDocumentNode: true,
+				}),
+				diagnostics: [],
+				notes: syntaxNotes(syntax, source, file),
+			};
 	const treeIssues: Diagnostic[] = document.issues.map((issue) =>
 		parseLiquidCrash(
 			`${issue.code}: ${issue.message}`,
 			spanFromOffsets(source, file, issue.range),
 		),
 	);
-	const nodes = syntax.authoritative
+	const projected = syntax.authoritative
 		? projectFacts(syntax.facts, source, file)
+		: { nodes: [], diagnostics: [] };
+	const settingsReads = syntax.authoritative
+		? syntax.liquid.settingsReads.map((read) => {
+				const text = source.slice(read.range.start, read.range.end);
+				const nameOffset = text.lastIndexOf(read.name);
+				const range =
+					nameOffset < 0
+						? read.range
+						: {
+								start: read.range.start + nameOffset,
+								end: read.range.start + nameOffset + read.name.length,
+							};
+				return {
+					object: read.object,
+					name: read.name,
+					span: spanFromOffsets(source, file, range),
+				};
+			})
 		: [];
+	const htmlRoots = syntax.authoritative
+		? syntax.facts
+				.filter((fact) => fact.kind === "html-root")
+				.map((fact) => ({
+					tagEnd: fact.tagEnd,
+					tagName: fact.tagName,
+					marker: fact.markerRange,
+				}))
+		: [];
+	const schema = syntax.liquid.schema
+		? {
+				source: syntax.liquid.schema.body,
+				span: spanFromOffsets(source, file, syntax.liquid.schema.range),
+			}
+		: undefined;
 
 	return {
 		ast: {
-			...compatibility,
-			nodes,
-			diagnostics: [...compatibility.diagnostics, ...treeIssues],
+			file,
+			source,
+			htmlRoots,
+			liquidAst: compatibility.ast,
+			nodes: projected.nodes,
+			settingsReads,
+			schema,
+			diagnostics: [
+				...compatibility.diagnostics,
+				...projected.diagnostics,
+				...treeIssues,
+			],
+			notes: compatibility.notes,
 		},
 		authoritative: syntax.authoritative,
 		factCount: syntax.facts.length,
 	};
 }
 
+function syntaxNotes(
+	syntax: ReturnType<typeof nazareSyntaxFacts>,
+	source: string,
+	file: string,
+): Diagnostic[] {
+	if (!syntax.authoritative) return [];
+	const candidates: { start: number; diagnostic: Diagnostic }[] = [];
+	const conditional = syntax.liquid.conditionals[0];
+	if (conditional) {
+		candidates.push({
+			start: conditional.range.start,
+			diagnostic: controlFlowNotLowered(
+				spanFromOffsets(source, file, conditional.range),
+			),
+		});
+	}
+	const htmlElements = syntax.facts.filter(
+		(fact) => fact.kind === "html-element",
+	);
+	const html = htmlElements.find((fact) => fact.leaf) ?? htmlElements[0];
+	if (html) {
+		candidates.push({
+			start: html.range.start,
+			diagnostic: htmlNotPromoted(spanFromOffsets(source, file, html.range)),
+		});
+	}
+	return candidates
+		.sort((left, right) => left.start - right.start)
+		.map((candidate) => candidate.diagnostic);
+}
+
 function projectFacts(
 	facts: readonly NazareSyntaxFact[],
 	source: string,
 	file: string,
-): NazareNode[] {
+): { nodes: NazareNode[]; diagnostics: Diagnostic[] } {
 	const nodes: NazareNode[] = [];
 	const semanticDiagnostics: Diagnostic[] = [];
+	const importLocalNames = new Set<string>();
 	let componentDeclared = false;
 
 	for (const fact of facts) {
 		const span = spanFromOffsets(source, file, fact.range);
 		switch (fact.kind) {
 			case "component":
-				if (!componentDeclared) {
-					componentDeclared = true;
-					nodes.push({
-						type: "NazareComponent",
-						componentKind: fact.componentKind,
-						span,
-					});
+				if (componentDeclared) {
+					semanticDiagnostics.push(parseDuplicateComponent(span));
+					break;
 				}
+				componentDeclared = true;
+				nodes.push({
+					type: "NazareComponent",
+					componentKind: fact.componentKind,
+					span,
+				});
 				break;
 			case "import": {
 				const imported = parseNazareImportTag(
@@ -88,7 +182,16 @@ function projectFacts(
 					span,
 					semanticDiagnostics,
 				);
-				if (imported) nodes.push(imported);
+				if (imported) {
+					if (importLocalNames.has(imported.localName)) {
+						semanticDiagnostics.push(
+							parseDuplicateImport(imported.localName, span),
+						);
+					} else {
+						importLocalNames.add(imported.localName);
+					}
+					nodes.push(imported);
+				}
 				break;
 			}
 			case "props":
@@ -161,6 +264,9 @@ function projectFacts(
 				break;
 			}
 			case "stylesheet":
+				if (fact.bindingName && /^[A-Z]/.test(fact.bindingName)) {
+					semanticDiagnostics.push(importBindingCase(fact.bindingName, span));
+				}
 				nodes.push({
 					type: "NazareStyle",
 					source: fact.body,
@@ -193,6 +299,9 @@ function projectFacts(
 					span,
 				});
 				break;
+			case "html-element":
+			case "html-root":
+				break;
 			case "root-marker":
 				nodes.push({ type: "NazareRootMarker", tagName: fact.tagName, span });
 				break;
@@ -207,9 +316,12 @@ function projectFacts(
 		}
 	}
 
-	return nodes.sort(
-		(left, right) =>
-			left.span.start.line - right.span.start.line ||
-			left.span.start.column - right.span.start.column,
-	);
+	return {
+		nodes: nodes.sort(
+			(left, right) =>
+				left.span.start.line - right.span.start.line ||
+				left.span.start.column - right.span.start.column,
+		),
+		diagnostics: semanticDiagnostics,
+	};
 }

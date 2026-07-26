@@ -82,7 +82,14 @@ test("Tree-sitter selection propagates through workspace dependency closure", ()
 		sourceFrontend: "tree-sitter",
 	});
 
-	assert.deepEqual(treeSitter, legacy);
+	assert.deepEqual(treeSitter.analysis.ir, legacy.analysis.ir);
+	assert.deepEqual(treeSitter.analysis.facts, legacy.analysis.facts);
+	assert.deepEqual(treeSitter.issues, legacy.issues);
+	assert.deepEqual(treeSitter.emitted, legacy.emitted);
+	assert.deepEqual(
+		treeSitter.artifacts.map((artifact) => artifact.ir),
+		legacy.artifacts.map((artifact) => artifact.ir),
+	);
 });
 
 test("invalid Nazare CST cannot leak partial projected facts", () => {

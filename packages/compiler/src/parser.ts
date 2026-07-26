@@ -238,6 +238,7 @@ export function parseNazareLiquid(source: string, file: string): NazareAst {
 
 	return {
 		file,
+		source,
 		liquidAst: ast,
 		nodes,
 		settingsReads,

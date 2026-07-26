@@ -20,6 +20,8 @@ export {
 	type NazareComponentFact,
 	type NazareDataBindingFact,
 	type NazareElementRefFact,
+	type NazareHtmlElementFact,
+	type NazareHtmlRootFact,
 	type NazareImportFact,
 	type NazareIslandFact,
 	type NazarePropsFact,

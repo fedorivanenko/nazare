@@ -47,7 +47,7 @@ const cases = {
 			nazareSyntaxFacts(document);
 		}
 	},
-	treeSitterHybrid: () => {
+	treeSitterFrontend: () => {
 		for (const file of files) {
 			projectTreeSitterNazareAst(file.source, file.path);
 		}
@@ -114,13 +114,13 @@ console.log(
 			millisecondsPerFile: {
 				legacy: perFile.legacy,
 				treeSitterRaw: perFile.treeSitterRaw,
-				treeSitterHybrid: perFile.treeSitterHybrid,
+				treeSitterFrontend: perFile.treeSitterFrontend,
 				treeSitterIncremental: incrementalMsPerFile,
 			},
 			ratios: {
 				rawTreeSitterSpeedup: perFile.legacy / perFile.treeSitterRaw,
 				incrementalTreeSitterSpeedup: perFile.legacy / incrementalMsPerFile,
-				hybridOverhead: perFile.treeSitterHybrid / perFile.legacy,
+				frontendRelativeTime: perFile.treeSitterFrontend / perFile.legacy,
 			},
 		},
 		null,
