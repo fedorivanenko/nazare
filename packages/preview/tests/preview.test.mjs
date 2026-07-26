@@ -10,6 +10,9 @@ import {
 	resolveFixtures,
 	snippetLibrary,
 	storiesFor,
+	storyDocument,
+	storyDocuments,
+	storyId,
 } from "../dist/index.js";
 
 const PRICE = `{% props {
@@ -267,6 +270,94 @@ test("an unknown fixture name is left visible, not silently nil", () => {
 		a: { $fixture: "nope" },
 		b: 1,
 	});
+});
+
+test("a story id is derived from the names, so it survives reordering", async () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const rendered = await renderComponentStories(component);
+
+	assert.equal(storyId("button", "scheme: outline"), "button--scheme-outline");
+	assert.deepEqual(
+		rendered.stories.map((entry) => entry.id),
+		[
+			"button--default",
+			"button--scheme-outline",
+			"button--scheme-ghost",
+			"button--size-sm",
+		],
+	);
+});
+
+test("a story document stands alone: its own page, its own assets", async () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const rendered = await renderComponentStories(component);
+	const document = storyDocument(component, rendered.stories[1]);
+
+	assert.ok(document.startsWith("<!doctype html>"));
+	// The component's own emitted stylesheet, linked by the emitted template.
+	assert.ok(document.includes('href="./assets/button.css"'));
+	assert.ok(document.includes('class="btn btn--outline"'));
+	// Story documents live one level down, so the URLs the shell writes and the
+	// ones the emitted template asks for resolve from the base, not the folder.
+	assert.ok(document.includes('<base href="../">'));
+	// Its own stylesheet and no one else's, and not linked twice: a story that
+	// carried the registry's CSS would share a cascade again, framed or not.
+	assert.equal(document.match(/<link rel="stylesheet"/g).length, 1);
+	// It knows which story it is, so it can report its height to a host page.
+	assert.ok(document.includes('data-story-id="button--scheme-outline"'));
+	// Only this story is in the document — that is the whole point of isolating.
+	assert.ok(!document.includes("btn--ghost"));
+});
+
+test("a failing story documents the failure rather than rendering blank", async () => {
+	const component = previewComponentFromSource(
+		"{% render 'missing' %}",
+		"snippets/composed.liquid",
+	);
+	const rendered = await renderComponentStories(component, [
+		{ name: "default", props: {} },
+	]);
+
+	assert.match(
+		storyDocument(component, rendered.stories[0]),
+		/render failed: [^<]*missing/,
+	);
+});
+
+test("every story gets a document named by its id", async () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const files = storyDocuments([await renderComponentStories(component)]);
+
+	assert.deepEqual(
+		files.map((file) => file.path),
+		[
+			"button--default.html",
+			"button--scheme-outline.html",
+			"button--scheme-ghost.html",
+			"button--size-sm.html",
+		],
+	);
+});
+
+test("storyBase frames the stories instead of inlining them", async () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const rendered = await renderComponentStories(component);
+	const page = galleryPage([rendered], { storyBase: "./stories/" });
+
+	assert.ok(page.includes('src="./stories/button--scheme-outline.html"'));
+	assert.ok(page.includes('data-story-frame="button--scheme-outline"'));
+	// Framed, the component's markup is in its own documents, not in the shell.
+	assert.ok(!page.includes('class="btn btn--outline"'));
+	// A framed story is openable on its own, the way a Storybook story is.
+	assert.ok(page.includes('class="story-open"'));
+});
+
+test("without storyBase the page is still self-contained", async () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const page = galleryPage([await renderComponentStories(component)]);
+
+	assert.ok(page.includes('class="btn btn--outline"'));
+	assert.ok(!page.includes("<iframe"));
 });
 
 test("a composing component needs the snippet library in scope", async () => {

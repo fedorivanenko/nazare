@@ -13,6 +13,7 @@ import {
 	renderComponentStories,
 	snippetLibrary,
 	storiesFor,
+	storyDocuments,
 } from "../dist/index.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -82,11 +83,25 @@ for (const { component, manifest } of previewed) {
 // scripts read `window.Nazare`, so the runtime must execute first.
 
 mkdirSync(outDir, { recursive: true });
+
+// Each story as its own document, so a component's global CSS cannot reach the
+// story next to it and every story has a URL that opens on its own. The shell
+// then embeds them. Each document links only its own component's CSS — passing
+// the registry's whole stylesheet set here would put the cascade back. `base` is
+// `../` because the documents sit one level down and the emitted templates ask
+// for `./assets/*`.
+const storyDir = join(outDir, "stories");
+mkdirSync(storyDir, { recursive: true });
+for (const file of storyDocuments(rendered, { base: "../" })) {
+	writeFileSync(join(storyDir, file.path), file.contents);
+}
+
 writeFileSync(
 	join(outDir, "index.html"),
 	galleryPage(rendered, {
 		title: "Nazare registry — preview",
 		stylesheets: [...stylesheets],
+		storyBase: "./stories/",
 	}),
 );
 console.log(join(outDir, "index.html"));

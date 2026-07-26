@@ -3,9 +3,9 @@
  *
  * Explicit flow:
  * source → compile (real compiler) → emitted template + contract → controls
- * → stories → render (Liquid) → gallery. Every pass is pure over its input, so
- * a frontend (static site, local server, editor panel) picks the passes it
- * needs and owns its own I/O.
+ * → stories → render (Liquid) → story documents / gallery. Every pass is pure
+ * over its input, so a frontend (static site, local server, editor panel) picks
+ * the passes it needs and owns its own I/O.
  */
 export {
 	type PreviewAsset,
@@ -30,14 +30,13 @@ export {
 	shopifyFixtures,
 	usesFixtures,
 } from "./fixtures.js";
+export { type GalleryPageOptions, galleryPage } from "./gallery.js";
 export {
-	type GalleryPageOptions,
-	galleryPage,
 	type RenderedComponent,
 	type RenderedStory,
 	type RenderStoriesOptions,
 	renderComponentStories,
-} from "./gallery.js";
+} from "./render.js";
 export {
 	changedProps,
 	defaultStory,
@@ -47,3 +46,11 @@ export {
 	storiesFor,
 	variantStories,
 } from "./stories.js";
+export {
+	type StoryDocumentFile,
+	type StoryDocumentOptions,
+	storyBody,
+	storyDocument,
+	storyDocuments,
+} from "./story-document.js";
+export { componentId, slug, storyFileName, storyId } from "./story-id.js";
