@@ -33,6 +33,7 @@ import {
 	SHOPIFY_DATA_OBJECTS,
 	textCapabilityRules,
 } from "./theme-liquid-policy.js";
+
 export { SHOPIFY_DATA_OBJECTS } from "./theme-liquid-policy.js";
 
 export function collectSourceThemeFacts(

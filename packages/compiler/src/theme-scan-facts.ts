@@ -40,54 +40,71 @@ const BRANCH_BLOCKS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Follows `assign` chains so a read of an alias reports the data it stands for.
+ * An `assign` seen at a point in the file, with what it aliases.
  *
- * `assign menu = linklists[settings.menu]` followed by `menu.links` is a read
- * of `linklists.links`. Without this the graph loses the edge entirely: `menu`
- * is a local, so the read looks like it touches no Shopify data at all.
- *
- * Only the root is substituted, and only when the alias resolves to something
- * rooted in a Shopify object. Chains are followed to a fixed depth because an
- * `assign` can name a previous alias, and a cycle would otherwise hang.
+ * Order matters: a name can be reassigned, and a read resolves through the
+ * binding that precedes it.
  */
-function resolveAliases(
-	tokens: LiquidToken[],
-	end: number,
-): Map<string, { root: string; path: string[] }> {
-	const aliases = new Map<string, { root: string; path: string[] }>();
-	const MAX_DEPTH = 8;
-	for (const binding of liquidLocalBindings(tokens, end)) {
-		// `for` bindings are deliberately not aliased. A loop variable stands for
-		// one element, and the reference extractor reports it under its own name —
-		// `for product in collection.products` yields reads of `product`, not of
-		// `collection`.
-		if (binding.via !== "assign") continue;
-		if (!binding.value) continue;
-		const [lookup] = scanLiquidExpression(binding.value).lookups;
+type AliasBinding = {
+	name: string;
+	from: number;
+	root: string;
+	path: string[];
+};
+
+function aliasBindingsOf(tokens: LiquidToken[]): AliasBinding[] {
+	const bindings: AliasBinding[] = [];
+	for (const token of tokens) {
+		if (token.kind !== "tag" || token.name !== "assign") continue;
+		const equals = token.markup.indexOf("=");
+		if (equals === -1) continue;
+		const name = /^\s*([a-zA-Z_][\w-]*)\s*=/.exec(token.markup)?.[1];
+		if (!name) continue;
+		// Only a bare assignment aliases. A filtered value is a transformation,
+		// and reporting reads of the result as reads of the input would claim
+		// data the file never touched.
+		const value = token.markup.slice(equals + 1);
+		if (value.includes("|")) continue;
+		const [lookup] = scanLiquidExpression(value).lookups;
 		if (!lookup) continue;
-		let root = lookup.root;
-		let path = [...lookup.path];
-		for (let depth = 0; depth < MAX_DEPTH; depth += 1) {
-			const target = aliases.get(root);
-			if (!target) break;
-			path = [...target.path, ...path];
-			root = target.root;
-		}
-		if (!SHOPIFY_DATA_OBJECTS.has(root)) continue;
-		aliases.set(binding.name, { root, path });
+		bindings.push({
+			name,
+			from: token.range.end,
+			root: lookup.root,
+			path: [...lookup.path],
+		});
 	}
-	return aliases;
+	return bindings;
 }
 
-function resolvedExpression(
-	read: LiquidRead,
-	aliases: Map<string, { root: string; path: string[] }>,
-): { object: string; propertyPath?: string } | undefined {
-	const alias = aliases.get(read.root);
-	const object = alias ? alias.root : read.root;
-	if (!SHOPIFY_DATA_OBJECTS.has(object)) return undefined;
-	const path = alias ? [...alias.path, ...read.path] : read.path;
-	return { object, propertyPath: path.length > 0 ? path.join(".") : undefined };
+/**
+ * Resolves a read through the aliases in scope at its position.
+ *
+ * `assign image = article.image` makes every later use of `image` a read of
+ * `article.image` — the file touches the article whether or not it says so at
+ * the point of use. Without this the read is attributed to a local that stands
+ * for nothing, and the data edge is lost.
+ */
+function resolveRead(
+	root: string,
+	path: string[],
+	at: number,
+	bindings: AliasBinding[],
+): { object: string; path: string[] } {
+	let object = root;
+	let resolved = [...path];
+	// A reassignment can name a previous alias; a cycle would otherwise hang.
+	for (let depth = 0; depth < 8; depth += 1) {
+		let binding: AliasBinding | undefined;
+		for (const candidate of bindings) {
+			if (candidate.name !== object || candidate.from > at) continue;
+			if (!binding || candidate.from > binding.from) binding = candidate;
+		}
+		if (!binding) break;
+		resolved = [...binding.path, ...resolved];
+		object = binding.root;
+	}
+	return { object, path: resolved };
 }
 
 /**
@@ -146,7 +163,12 @@ export function collectScannedSourceFacts(
 	const span = (range: { start: number; end: number }): SourceSpan =>
 		index.spanAt(path, range);
 	const last = tokens.at(-1);
-	const aliases = resolveAliases(tokens, last ? last.range.end : source.length);
+	const aliases = aliasBindingsOf(tokens);
+	const localNames = new Set(
+		liquidLocalBindings(tokens, last ? last.range.end : source.length).map(
+			(binding) => binding.name,
+		),
+	);
 
 	// A lookup rule and a text rule can both fire on the same token, and the
 	// reference extractor emits both. They carry the same signal id, so the model
@@ -180,17 +202,24 @@ export function collectScannedSourceFacts(
 	const reads = liquidReads(tokens);
 	for (const read of reads) {
 		const at = span(read.range);
+		const { object, path: resolvedPath } = resolveRead(
+			read.root,
+			read.path,
+			read.range.start,
+			aliases,
+		);
+		const propertyPath =
+			resolvedPath.length > 0 ? resolvedPath.join(".") : undefined;
 		// Capability rules key on objects the data vocabulary does not contain --
 		// `routes.cart_add_url`, `predictive_search`, `filter.active_values` --
-		// so they are applied to every read, not only to Shopify data reads.
+		// so they are applied to every read, and to the resolved object, since an
+		// alias to `linklists` is still navigation.
 		for (const rule of lookupCapabilityRules) {
-			if (rule.matches(read.root, read.path.join("."))) {
+			if (rule.matches(object, propertyPath ?? "")) {
 				pushCapability(rule.capability, rule.evidenceStrength, at);
 			}
 		}
-		const resolved = resolvedExpression(read, aliases);
-		if (resolved) {
-			const { object, propertyPath } = resolved;
+		if (SHOPIFY_DATA_OBJECTS.has(object)) {
 			facts.push({
 				kind: "readsShopifyData",
 				fromPath: path,
@@ -202,15 +231,17 @@ export function collectScannedSourceFacts(
 			});
 			continue;
 		}
-		// A bare name that no scope provides and the file never bound is what the
-		// caller has to pass in.
-		if (read.local || LIQUID_GLOBAL_NAMES.has(read.root)) continue;
+		// A name no scope provides and the file never bound is what the caller
+		// has to pass in. A name that only resolves to itself and is bound
+		// locally is the file's own, and says nothing about its inputs.
+		if (LIQUID_GLOBAL_NAMES.has(object)) continue;
+		if (object === read.root && read.local) continue;
 		facts.push({
 			kind: "readsFreeVariable",
 			fromPath: path,
-			name: read.root,
-			propertyPath: read.path.length > 0 ? read.path.join(".") : undefined,
-			expression: read.expression,
+			name: object,
+			propertyPath,
+			expression: propertyPath ? `${object}.${propertyPath}` : object,
 			usage: read.inRenderArgument ? "renderArgument" : "expression",
 			span: at,
 		});
@@ -225,11 +256,32 @@ export function collectScannedSourceFacts(
 	const blocks = liquidBlocks(tokens);
 	const guardRanges = new Map<string, { start: number; end: number }[]>();
 	const defaultedNames = new Set<string>();
-	for (const guard of liquidGuards(tokens)) {
-		if (guard.via === "default") {
-			defaultedNames.add(guard.name);
+	// A `| default:` names the root of whatever it falls back for, path or not:
+	// `{{ section.settings.heading | default: 'Hi' }}` states that `section` may
+	// arrive without that setting. Taking only bare subjects recorded the wrong
+	// name, or none.
+	for (const token of tokens) {
+		if (token.kind === "raw") continue;
+		const expression = scanLiquidExpression(token.markup, token.markupStart);
+		if (!expression.filters.some((filter) => filter.name === "default")) {
 			continue;
 		}
+		const bound =
+			token.kind === "tag" && token.name === "assign"
+				? /^\s*([a-zA-Z_][\w-]*)\s*=/.exec(token.markup)?.[1]
+				: undefined;
+		// On an assign the subject is the value, not the name being bound.
+		const subject = expression.lookups.find(
+			(lookup) => !bound || lookup.root !== bound,
+		);
+		if (!subject) continue;
+		defaultedNames.add(
+			resolveRead(subject.root, subject.path, subject.range.start, aliases)
+				.object,
+		);
+	}
+	for (const guard of liquidGuards(tokens)) {
+		if (guard.via === "default") continue;
 		const block = blocks.find(
 			(candidate) =>
 				guard.range.start >= candidate.range.start &&
