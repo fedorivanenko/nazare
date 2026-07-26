@@ -348,6 +348,11 @@ export {
 	type ThemeResolutionPassResult,
 } from "./theme-resolution-pass.js";
 export { ThemeResolverIndex } from "./theme-resolver-index.js";
+// A single plain-Liquid file's facts, without standing up a theme session:
+// `{% doc %}` @param declarations are the author's own statement of a
+// component's interface, and tooling outside the graph (the preview's controls)
+// needs them for one file at a time.
+export { collectPlainLiquidThemeFacts } from "./theme-liquid-facts.js";
 export {
 	type ThemeRecordResolution,
 	ThemeSchemaIndex,

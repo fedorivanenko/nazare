@@ -138,20 +138,86 @@ test("a section's props render as section.settings, not as bare variables", asyn
 	assert.ok(rendered.stories[0].html.includes("<h2>Sale</h2>"));
 });
 
-test("plain Liquid previews with no controls to derive", async () => {
+test("plain Liquid takes its controls from {% doc %} @param lines", async () => {
 	const component = previewComponentFromSource(
-		"{% doc %}\n  @param {string} label\n{% enddoc %}\n<a>{{ label }}</a>\n",
+		`{% doc %}
+  @param {string} label - Button text
+  @param {string} [url] - Destination
+  @param {boolean} [wide] - Full width
+  @param {product} [product] - The product shown
+{% enddoc %}
+<a href="{{ url }}">{{ label }}</a>
+`,
 		"snippets/c-button.liquid",
+	);
+	const byName = Object.fromEntries(
+		component.controls.map((control) => [control.name, control]),
 	);
 
 	assert.equal(component.frontend, "plain");
-	assert.deepEqual(component.controls, []);
+	// The directory says what a theme file is, and the kind decides the scope.
+	assert.equal(component.componentKind, "snippet");
+	// The bracket convention is the author's own statement of what is optional.
+	assert.equal(byName.label.required, true);
+	assert.equal(byName.url.required, false);
+	assert.equal(byName.wide.kind, "boolean");
+	assert.equal(byName.wide.value, false);
+	// A storefront object names a fixture the preview already owns, rather than
+	// opening the story on the string "product".
+	assert.equal(byName.product.value.title, "Merino Crew Sweater");
 
-	const rendered = await renderComponentStories(component, [
-		{ name: "default", props: { label: "Shop" } },
-	]);
-	// The Shopify-only {% doc %} block is dropped rather than rendered.
-	assert.equal(rendered.stories[0].html, "<a>Shop</a>");
+	// Which means it previews from its declaration, with no authored story.
+	const rendered = await renderComponentStories(component);
+	// Each string control opens on its own name — the type says string, not url,
+	// so nothing here invents a plausible destination.
+	assert.equal(rendered.stories[0].html, '<a href="url">label</a>');
+});
+
+test("a plain section takes its controls from {% schema %} settings", async () => {
+	const component = previewComponentFromSource(
+		`<section data-columns="{{ section.settings.columns }}">
+  <h2>{{ section.settings.heading }}</h2>
+  {% if section.settings.featured %}<b>{{ section.settings.scheme }}</b>{% endif %}
+</section>
+{% schema %}
+{
+  "name": "Grid",
+  "settings": [
+    { "type": "header", "content": "Layout" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "Sale" },
+    { "type": "range", "id": "columns", "label": "Columns", "min": 1, "max": 4, "step": 1, "default": 2 },
+    { "type": "checkbox", "id": "featured", "label": "Featured", "default": true },
+    { "type": "select", "id": "scheme", "label": "Scheme", "default": "solid",
+      "options": [{ "value": "solid", "label": "Solid" }, { "value": "ghost", "label": "Ghost" }] }
+  ]
+}
+{% endschema %}
+`,
+		"sections/grid.liquid",
+	);
+	const byName = Object.fromEntries(
+		component.controls.map((control) => [control.name, control]),
+	);
+
+	assert.equal(component.componentKind, "section");
+	// header is chrome for the theme editor, not an input.
+	assert.ok(!("content" in byName));
+	assert.equal(byName.heading.label, "Heading");
+	assert.equal(byName.heading.value, "Sale");
+	assert.deepEqual(byName.columns.range, { min: 1, max: 4, step: 1 });
+	assert.equal(byName.featured.value, true);
+	assert.deepEqual(byName.scheme.options, ["solid", "ghost"]);
+
+	// A section's props arrive as section.settings, so the derived stories
+	// render for real — including one per member of the select.
+	const rendered = await renderComponentStories(component);
+	assert.deepEqual(
+		rendered.stories.map((entry) => entry.story.name),
+		["default", "scheme: ghost"],
+	);
+	assert.ok(rendered.stories[0].html.includes('data-columns="2"'));
+	assert.ok(rendered.stories[0].html.includes("<h2>Sale</h2>"));
+	assert.ok(rendered.stories[1].html.includes("<b>ghost</b>"));
 });
 
 test("a composing component renders against the emitted snippets", async () => {

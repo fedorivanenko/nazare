@@ -4,10 +4,12 @@
 import {
 	buildNazareThemeWorkspace,
 	buildPlainLiquid,
+	collectPlainLiquidThemeFacts,
 	parseNazareLiquid,
 } from "@nazare/compiler";
 import type { ArtifactContract, ComponentKind, Diagnostic } from "@nazare/core";
 import { controlsFromContract, type PreviewControl } from "./controls.js";
+import { plainLiquidControls } from "./plain-controls.js";
 
 export type PreviewAsset = { path: string; contents: string };
 
@@ -37,7 +39,25 @@ export type PreviewComponentOptions = {
 	strictness?: "strict" | "loose";
 	/** Registry id from the component's nazare.json, for the install command. */
 	packageId?: string;
+	/**
+	 * What a plain-Liquid file is, when the caller knows — from a manifest, say.
+	 * A Nazare component declares its own kind in source and ignores this. Left
+	 * off, a plain file is classified by the theme directory it sits in.
+	 */
+	kind?: ComponentKind;
 };
+
+/**
+ * Shopify addresses a theme file by the directory it lives in, and the kind
+ * decides the scope its props arrive in: a section reads `section.settings.*`,
+ * a snippet reads bare variables. Getting this wrong renders every value blank.
+ */
+function kindFromPath(file: string): ComponentKind | undefined {
+	if (/(^|\/)sections\//.test(file)) return "section";
+	if (/(^|\/)blocks\//.test(file)) return "block";
+	if (/(^|\/)snippets\//.test(file)) return "snippet";
+	return undefined;
+}
 
 const templateBaseName = (file: string): string =>
 	(file.split("/").pop() ?? file).replace(/\.nz\.liquid$|\.liquid$/, "");
@@ -91,16 +111,21 @@ export function previewComponentFromSource(
 	if (!file.endsWith(".nz.liquid")) {
 		const built = buildPlainLiquid(source, file, { emitOnError: true });
 		const { template, assets } = splitEmitted(built.emitted.files);
+		// Plain Liquid has no Nazare contract, but it does declare an interface:
+		// `{% schema %}` settings for a section, `{% doc %}` @param lines for a
+		// snippet. Both are the author's own statement, and both are already
+		// parsed — reading them is what makes a plain component previewable with
+		// props rather than blank.
+		const { facts } = collectPlainLiquidThemeFacts(file, source);
 		return {
 			name,
 			file,
 			packageId: options.packageId,
 			frontend: "plain",
+			componentKind: options.kind ?? kindFromPath(file),
 			template: template || source,
 			assets,
-			// Plain Liquid declares no typed props, so there is nothing to derive
-			// controls from — a plain component's stories supply their own props.
-			controls: [],
+			controls: plainLiquidControls(facts, built.ast.schema?.source),
 			issues: built.issues,
 		};
 	}

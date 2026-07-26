@@ -25,6 +25,11 @@ export {
 	renderPreview,
 } from "./engine.js";
 export {
+	controlsFromDocParams,
+	controlsFromSchemaSource,
+	plainLiquidControls,
+} from "./plain-controls.js";
+export {
 	formatMoney,
 	resolveFixtures,
 	shopifyFixtures,

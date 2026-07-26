@@ -52,7 +52,7 @@ for (const folder of readdirSync(componentsRoot).sort()) {
 	const component = previewComponentFromSource(
 		readFileSync(join(repoRoot, file), "utf8"),
 		file,
-		{ readFile: readProjectFile, packageId: manifest.id },
+		{ readFile: readProjectFile, packageId: manifest.id, kind: manifest.kind },
 	);
 	previewed.push({ component, manifest });
 
