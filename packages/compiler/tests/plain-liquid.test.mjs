@@ -167,6 +167,43 @@ test("plain Liquid liquid-only mode ignores malformed HTML while validating Liqu
 	);
 });
 
+test("Tree-sitter plain Liquid strict mode rejects malformed HTML", () => {
+	const source = `<div>{{ section.settings.title }}`;
+	const strict = compileArtifact({
+		source,
+		file: "sections/malformed-html.liquid",
+		sourceFrontend: "tree-sitter",
+		frontendOptions: { parseMode: "strict" },
+	});
+	assert.equal(strict.frontendMetadata.factsCollected, false);
+	assert.ok(
+		strict.issues.some(
+			(issue) =>
+				issue.code === "TREE_SITTER_MISSING" ||
+				issue.code === "TREE_SITTER_ERROR",
+		),
+	);
+	assert.ok(
+		strict.issues.some((issue) => issue.code === "PLAIN_LIQUID_FACTS_SKIPPED"),
+	);
+
+	const liquidOnly = compileArtifact({
+		source,
+		file: "sections/malformed-html.liquid",
+		sourceFrontend: "tree-sitter",
+		frontendOptions: { parseMode: "liquid-only" },
+	});
+	assert.equal(liquidOnly.frontendMetadata.factsCollected, true);
+	assert.equal(
+		liquidOnly.issues.some(
+			(issue) =>
+				issue.code === "TREE_SITTER_MISSING" ||
+				issue.code === "TREE_SITTER_ERROR",
+		),
+		false,
+	);
+});
+
 test("plain Liquid frontend covers all dependency tag kinds", () => {
 	const source = [
 		"{% render 'product-card' %}",

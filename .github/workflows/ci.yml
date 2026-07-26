@@ -36,6 +36,10 @@ jobs:
       # Differential: the scanner and the reference parser must agree on the
       # corpus theme, or replacing the parser stops being a bounded change.
       - run: pnpm -s test:scan
+      - name: Tree-sitter frontend performance gate
+        env:
+          NAZARE_BENCH_MAX_FRONTEND_RELATIVE_TIME: "0.9"
+        run: pnpm --dir packages/compiler benchmark:frontends
       - name: package ephemeral PR artifact
         if: github.event_name == 'pull_request'
         run: ./scripts/package-cli.sh "pr-${{ github.event.pull_request.number }}-${{ github.sha }}"
@@ -65,4 +69,9 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm -s build
+      - name: Tree-sitter frontend performance gate
+        env:
+          NAZARE_BENCH_MAX_FRONTEND_RELATIVE_TIME: "0.9"
+        run: pnpm --dir packages/compiler benchmark:frontends
       - run: pnpm -s test:package

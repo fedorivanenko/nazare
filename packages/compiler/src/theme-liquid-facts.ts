@@ -9,6 +9,7 @@ import {
 } from "@nazare/scan";
 import {
 	createDefaultSourceParserRegistry,
+	htmlSyntaxIssues,
 	liquidSyntaxFacts,
 	parseSourceDocument,
 } from "@nazare/source";
@@ -39,7 +40,11 @@ export function collectPlainLiquidThemeFacts(
 	},
 ): { facts: ThemeFact[]; issues: Diagnostic[] } {
 	if (options.sourceFrontend === "tree-sitter") {
-		return collectTreeSitterPlainLiquidThemeFacts(path, contents);
+		return collectTreeSitterPlainLiquidThemeFacts(
+			path,
+			contents,
+			options.parseMode,
+		);
 	}
 	const scan = scanLiquid(contents);
 	const index = new LineIndex(contents);
@@ -173,6 +178,7 @@ export function collectPlainLiquidThemeFacts(
 function collectTreeSitterPlainLiquidThemeFacts(
 	path: string,
 	contents: string,
+	parseMode: "strict" | "liquid-only",
 ): { facts: ThemeFact[]; issues: Diagnostic[] } {
 	const document = parseSourceDocument(
 		createDefaultSourceParserRegistry(),
@@ -181,8 +187,13 @@ function collectTreeSitterPlainLiquidThemeFacts(
 		contents,
 	);
 	const syntax = liquidSyntaxFacts(document);
+	const htmlIssues =
+		parseMode === "strict" && syntax.authoritative
+			? htmlSyntaxIssues(document)
+			: [];
+	const authoritative = syntax.authoritative && htmlIssues.length === 0;
 	const facts: ThemeFact[] = [];
-	const issues: Diagnostic[] = document.issues.map(
+	const issues: Diagnostic[] = [...document.issues, ...htmlIssues].map(
 		(issue) =>
 			markDiagnostics(
 				[
@@ -194,7 +205,7 @@ function collectTreeSitterPlainLiquidThemeFacts(
 				"parse",
 			)[0] as Diagnostic,
 	);
-	if (!syntax.authoritative) {
+	if (!authoritative) {
 		issues.push(...markDiagnostics([plainLiquidFactsSkipped(path)], "parse"));
 	}
 	const name = themeNameFromPath(path);
@@ -207,7 +218,7 @@ function collectTreeSitterPlainLiquidThemeFacts(
 	if (path.startsWith("templates/") && path.endsWith(".liquid")) {
 		facts.push({ kind: "declaresTemplate", path, name });
 	}
-	if (!syntax.authoritative) return { facts, issues };
+	if (!authoritative) return { facts, issues };
 
 	for (const dependency of syntax.dependencies) {
 		const at = spanFromOffsets(contents, path, dependency.range);

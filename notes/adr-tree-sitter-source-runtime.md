@@ -114,9 +114,11 @@ Tree-sitter Nazare path never parses authored source with Shopify. Focused
 malformed component/import/render/blocks/stylesheet/attribute and unclosed-raw
 parity is gated in tests. Plain-Liquid compiler and workspace facts now use the
 same Tree-sitter adapter when selected, including schema validation and complete
-theme-corpus fact parity. Strict-HTML diagnostic parity, broader malformed
-corpus coverage, and stable cross-platform performance thresholds remain
-default-cutover gates.
+theme-corpus fact parity. Strict mode now validates HTML through a masked
+`tree-sitter-html` pass while Liquid-only mode intentionally skips HTML errors.
+Linux and macOS CI enforce a maximum 0.9 Tree-sitter/legacy frontend-time ratio.
+Broader malformed-corpus coverage and successful CI performance runs remain the
+final default-cutover gates.
 
 ## Rejected alternatives
 

@@ -1,5 +1,6 @@
 import {
 	createDefaultSourceParserRegistry,
+	htmlSyntaxIssues,
 	liquidSyntaxFacts,
 	parseSourceDocument,
 } from "@nazare/source";
@@ -35,7 +36,13 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 			input.source,
 		);
 		const syntaxFacts = liquidSyntaxFacts(document);
-		const dependencies = syntaxFacts.authoritative
+		const htmlIssues =
+			(optionResolution.options.parseMode ?? "strict") === "strict" &&
+			syntaxFacts.authoritative
+				? htmlSyntaxIssues(document)
+				: [];
+		const authoritative = syntaxFacts.authoritative && htmlIssues.length === 0;
+		const dependencies = authoritative
 			? syntaxFacts.dependencies.map((dependency) => {
 					const name = dependency.name;
 					const valid = name
@@ -65,7 +72,7 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 					};
 				})
 			: [];
-		const settingsReads = syntaxFacts.authoritative
+		const settingsReads = authoritative
 			? syntaxFacts.settingsReads.map((read) => {
 					const text = input.source.slice(read.range.start, read.range.end);
 					const nameOffset = text.lastIndexOf(read.name);
@@ -83,7 +90,7 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 					};
 				})
 			: [];
-		const treeIssues = document.issues.map((issue) => ({
+		const treeIssues = [...document.issues, ...htmlIssues].map((issue) => ({
 			severity: "error" as const,
 			code: issue.code,
 			message: issue.message,
@@ -110,14 +117,14 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 			dependencies,
 			diagnostics: treeIssues,
 			notes: [] as [],
-			factsCollected: syntaxFacts.authoritative,
+			factsCollected: authoritative,
 			parseMode: optionResolution.options.parseMode ?? "strict",
 		};
 		const issues = [
 			...markDiagnostics(optionResolution.issues, "parse"),
 			...markDiagnostics(treeIssues, "parse"),
 			...markDiagnostics(
-				syntaxFacts.authoritative ? [] : [plainLiquidFactsSkipped(input.file)],
+				authoritative ? [] : [plainLiquidFactsSkipped(input.file)],
 				"parse",
 			),
 			...markDiagnostics(checkVanillaSchema(ast), "check"),

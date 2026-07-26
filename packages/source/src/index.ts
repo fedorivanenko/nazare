@@ -1,3 +1,4 @@
+export { htmlSyntaxIssues } from "./adapters/html.js";
 export {
 	type LiquidDependencyKind,
 	type LiquidSyntaxBlock,

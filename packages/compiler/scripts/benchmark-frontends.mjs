@@ -94,39 +94,46 @@ const perFile = Object.fromEntries(
 	]),
 );
 
-console.log(
-	JSON.stringify(
-		{
-			environment: {
-				node: process.version,
-				platform: process.platform,
-				architecture: process.arch,
-			},
-			corpus: {
-				files: files.length,
-				bytes: files.reduce(
-					(total, file) => total + Buffer.byteLength(file.source),
-					0,
-				),
-				rounds,
-				warmups,
-			},
-			millisecondsPerFile: {
-				legacy: perFile.legacy,
-				treeSitterRaw: perFile.treeSitterRaw,
-				treeSitterFrontend: perFile.treeSitterFrontend,
-				treeSitterIncremental: incrementalMsPerFile,
-			},
-			ratios: {
-				rawTreeSitterSpeedup: perFile.legacy / perFile.treeSitterRaw,
-				incrementalTreeSitterSpeedup: perFile.legacy / incrementalMsPerFile,
-				frontendRelativeTime: perFile.treeSitterFrontend / perFile.legacy,
-			},
-		},
-		null,
-		2,
-	),
+const result = {
+	environment: {
+		node: process.version,
+		platform: process.platform,
+		architecture: process.arch,
+	},
+	corpus: {
+		files: files.length,
+		bytes: files.reduce(
+			(total, file) => total + Buffer.byteLength(file.source),
+			0,
+		),
+		rounds,
+		warmups,
+	},
+	millisecondsPerFile: {
+		legacy: perFile.legacy,
+		treeSitterRaw: perFile.treeSitterRaw,
+		treeSitterFrontend: perFile.treeSitterFrontend,
+		treeSitterIncremental: incrementalMsPerFile,
+	},
+	ratios: {
+		rawTreeSitterSpeedup: perFile.legacy / perFile.treeSitterRaw,
+		incrementalTreeSitterSpeedup: perFile.legacy / incrementalMsPerFile,
+		frontendRelativeTime: perFile.treeSitterFrontend / perFile.legacy,
+	},
+};
+console.log(JSON.stringify(result, null, 2));
+
+const maximumRelativeTime = Number.parseFloat(
+	process.env.NAZARE_BENCH_MAX_FRONTEND_RELATIVE_TIME ?? "",
 );
+if (
+	Number.isFinite(maximumRelativeTime) &&
+	result.ratios.frontendRelativeTime > maximumRelativeTime
+) {
+	throw new Error(
+		`Tree-sitter frontend relative time ${result.ratios.frontendRelativeTime.toFixed(3)} exceeded ${maximumRelativeTime.toFixed(3)}`,
+	);
+}
 
 function filesUnder(directory) {
 	const paths = [];
