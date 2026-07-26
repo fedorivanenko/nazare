@@ -66,6 +66,9 @@ importers:
       '@nazare/scan':
         specifier: workspace:^
         version: link:../scan
+      '@nazare/source':
+        specifier: workspace:^
+        version: link:../source
       '@shopify/liquid-html-parser':
         specifier: ^2.9.2
         version: 2.9.2

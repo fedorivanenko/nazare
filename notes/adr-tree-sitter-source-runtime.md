@@ -85,7 +85,13 @@ script/stylesheet, prop/style reference, HTML ref/data/island/root facts. HTML
 facts use `tree-sitter-html` over masked Liquid template regions, preserving
 original UTF-16 offsets while preventing embedded syntax from becoming HTML.
 Committed Nazare corpus files and focused legacy-parser comparisons pass.
-Compiler frontend selection and full IR/output parity remain cutover gates.
+Phase 4 now has an explicit `sourceFrontend: "legacy" | "tree-sitter"`
+compiler boundary. It defaults to `"legacy"`. Plain Liquid can opt into the
+Tree-sitter bridge, which owns dependency/settings facts while the Shopify
+parser temporarily remains the schema/compatibility oracle. Nazare opt-in fails
+closed with `TREE_SITTER_NAZARE_FRONTEND_NOT_READY`; it never silently falls
+back. Workspace selection, Nazare IR projection, malformed-source parity, and
+full output parity remain cutover gates.
 
 ## Rejected alternatives
 

@@ -83,7 +83,7 @@ function plainLiquidSyntax(source: string, file: string): ArtifactSyntaxNode[] {
 	];
 }
 
-function plainLiquidOptions(
+export function plainLiquidOptions(
 	frontendOptions: Record<string, unknown> | undefined,
 ): { options: PlainLiquidOptions; issues: Diagnostic[] } {
 	const parseMode = frontendOptions?.parseMode;

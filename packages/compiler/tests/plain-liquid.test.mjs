@@ -262,6 +262,36 @@ test("compileArtifact selects the built-in plain Liquid frontend", () => {
 	assert.equal(compiled.frontendSupport.explicitSchemaSyntax, true);
 });
 
+test("Tree-sitter plain Liquid frontend is explicit and fact-compatible", () => {
+	const source = `{% render "card", title: section.settings.title %}
+{% section "featured" %}
+{% schema %}{"name":"Main","settings":[{"type":"text","id":"title"}]}{% endschema %}`;
+	const legacy = compileArtifact({ source, file: "sections/main.liquid" });
+	const treeSitter = compileArtifact({
+		source,
+		file: "sections/main.liquid",
+		sourceFrontend: "tree-sitter",
+	});
+
+	assert.equal(legacy.ok, true);
+	assert.equal(treeSitter.ok, true);
+	assert.equal(legacy.frontend, "plain-liquid");
+	assert.equal(treeSitter.frontend, "tree-sitter-plain-liquid");
+	assert.deepEqual(treeSitter.issues, legacy.issues);
+	assert.deepEqual(
+		treeSitter.frontendMetadata.ast.dependencies,
+		legacy.frontendMetadata.ast.dependencies,
+	);
+	assert.deepEqual(
+		treeSitter.frontendMetadata.ast.settingsReads,
+		legacy.frontendMetadata.ast.settingsReads,
+	);
+	assert.deepEqual(
+		treeSitter.frontendMetadata.ast.schema,
+		legacy.frontendMetadata.ast.schema,
+	);
+});
+
 test("plainLiquidFrontend does not accept Nazare Liquid files", () => {
 	assert.equal(
 		plainLiquidFrontend.accepts("components/card.nz.liquid", ""),

@@ -71,6 +71,20 @@ test("compileArtifact reports unsupported input when no frontend matches", () =>
 	assert.equal("contract" in compiled, false);
 });
 
+test("Tree-sitter Nazare selection fails closed before IR parity", () => {
+	const compiled = compileArtifact({
+		source: "{% component snippet %}",
+		file: "component.nz.liquid",
+		sourceFrontend: "tree-sitter",
+	});
+
+	assert.equal(compiled.ok, false);
+	assert.equal(
+		compiled.issues[0].code,
+		"TREE_SITTER_NAZARE_FRONTEND_NOT_READY",
+	);
+});
+
 test("compileArtifact honors an explicit frontend", () => {
 	const source = `<div></div>`;
 	const compiled = compileArtifact({

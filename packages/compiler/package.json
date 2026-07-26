@@ -12,6 +12,7 @@
 	"dependencies": {
 		"@nazare/core": "workspace:^",
 		"@nazare/scan": "workspace:^",
+		"@nazare/source": "workspace:^",
 		"@shopify/liquid-html-parser": "^2.9.2",
 		"postcss": "^8.5.17",
 		"postcss-selector-parser": "^7.1.4",

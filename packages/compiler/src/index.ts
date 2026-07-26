@@ -25,6 +25,7 @@ import {
 	type PlainLiquidFrontendMetadata,
 	plainLiquidFrontend,
 } from "./frontends/plain-liquid.js";
+import { treeSitterPlainLiquidFrontend } from "./frontends/tree-sitter-plain-liquid.js";
 import { artifactGraphFromIR } from "./graph.js";
 import {
 	type ProjectedArtifact,
@@ -105,6 +106,7 @@ export {
 	type PlainLiquidFrontendMetadata,
 	plainLiquidFrontend,
 } from "./frontends/plain-liquid.js";
+export { treeSitterPlainLiquidFrontend } from "./frontends/tree-sitter-plain-liquid.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
 export { mergeArtifactIR } from "./merge.js";
@@ -380,12 +382,16 @@ export {
 } from "./theme-workspace.js";
 export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 
+export type SourceFrontend = "legacy" | "tree-sitter";
+
 export type CompileNazareArtifactOptions = Pick<
 	CompileInput,
 	"readFile" | "strictness" | "dependencyResolver"
->;
+> & { sourceFrontend?: SourceFrontend };
 
 export type CompileArtifactOptions = CompileInput & {
+	/** Built-in source implementation. Defaults to legacy until parity gates pass. */
+	sourceFrontend?: SourceFrontend;
 	/** Explicit frontend wins over registry selection. */
 	frontend?: CompilerFrontend;
 	/** Extra frontends checked before built-ins. */
@@ -488,7 +494,10 @@ export function compileNazareArtifact(
 		source,
 		file,
 		...options,
-		frontend: nazareLiquidFrontend,
+		frontend:
+			options.sourceFrontend === "tree-sitter"
+				? undefined
+				: nazareLiquidFrontend,
 	});
 	if (!compiled.ok) {
 		throw new Error(
@@ -505,12 +514,18 @@ export function compileNazareArtifact(
 export function compilePlainLiquid(
 	source: string,
 	file: string,
-	options: Pick<BuildPlainLiquidOptions, "parseMode"> = {},
+	options: Pick<BuildPlainLiquidOptions, "parseMode"> & {
+		sourceFrontend?: SourceFrontend;
+	} = {},
 ): CompilePlainLiquidResult {
 	const compiled = compileArtifact({
 		source,
 		file,
-		frontend: plainLiquidFrontend,
+		sourceFrontend: options.sourceFrontend,
+		frontend:
+			options.sourceFrontend === "tree-sitter"
+				? undefined
+				: plainLiquidFrontend,
 		frontendOptions: options,
 	});
 	if (!compiled.ok) {
@@ -530,7 +545,7 @@ export function compilePlainLiquid(
 export function buildPlainLiquid(
 	source: string,
 	file: string,
-	options: BuildPlainLiquidOptions = {},
+	options: BuildPlainLiquidOptions & { sourceFrontend?: SourceFrontend } = {},
 ): BuildPlainLiquidResult {
 	const compiled = compilePlainLiquid(source, file, options);
 	const emittedOnError = !compiled.canEmit && (options.emitOnError ?? false);
@@ -599,6 +614,13 @@ function selectFrontend(
 	for (const frontend of options.frontends ?? []) {
 		if (frontend.accepts(options.file, options.source)) return frontend;
 	}
+	const sourceFrontend = options.sourceFrontend ?? "legacy";
+	if (sourceFrontend === "tree-sitter") {
+		if (treeSitterPlainLiquidFrontend.accepts(options.file, options.source)) {
+			return treeSitterPlainLiquidFrontend;
+		}
+		return undefined;
+	}
 	if (nazareLiquidFrontend.accepts(options.file, options.source)) {
 		return nazareLiquidFrontend;
 	}
@@ -611,14 +633,21 @@ function selectFrontend(
 function unsupportedInput(
 	options: CompileArtifactOptions,
 ): CompileArtifactFailure {
+	const unavailableTreeSitterNazare =
+		options.sourceFrontend === "tree-sitter" &&
+		nazareLiquidFrontend.accepts(options.file, options.source);
 	return {
 		ok: false,
 		frontend: undefined,
 		issues: [
 			{
 				severity: "error",
-				code: "UNSUPPORTED_COMPILER_INPUT",
-				message: `No compiler frontend accepts ${options.file}`,
+				code: unavailableTreeSitterNazare
+					? "TREE_SITTER_NAZARE_FRONTEND_NOT_READY"
+					: "UNSUPPORTED_COMPILER_INPUT",
+				message: unavailableTreeSitterNazare
+					? `Tree-sitter Nazare IR projection is not available for ${options.file}`
+					: `No compiler frontend accepts ${options.file}`,
 				phase: "parse",
 			},
 		],
