@@ -92,6 +92,29 @@ test("Tree-sitter selection propagates through workspace dependency closure", ()
 	);
 });
 
+test("Tree-sitter Nazare malformed syntax diagnostics match legacy", () => {
+	const sources = [
+		`{% component widget %}`,
+		`{% import Card "./card.nz.liquid" %}`,
+		`{% render Card, title: "Hello" %}`,
+		`{% blocks "Card" %}`,
+		`{% stylesheet bad-name %}.x {}{% endstylesheet %}`,
+		`{% script %}const broken = true;`,
+		`{% stylesheet %}.broken { color: red; }`,
+		`<div ref="{{ dynamic }}"></div>`,
+		`<div island="not-valid!"></div>`,
+	];
+	for (const source of sources) {
+		const legacy = compileArtifact({ source, file: "malformed.nz.liquid" });
+		const treeSitter = compileArtifact({
+			source,
+			file: "malformed.nz.liquid",
+			sourceFrontend: "tree-sitter",
+		});
+		assert.deepEqual(treeSitter.issues, legacy.issues, source);
+	}
+});
+
 test("invalid Nazare CST cannot leak partial projected facts", () => {
 	const source = `{% component snippet %}{% script lang="ts" %}const x = 1;`;
 	const compiled = compileArtifact({
@@ -105,7 +128,9 @@ test("invalid Nazare CST cannot leak partial projected facts", () => {
 	assert.deepEqual(compiled.ast.nodes, []);
 	assert.equal(compiled.frontendMetadata.authoritative, false);
 	assert.ok(
-		compiled.issues.some((issue) => issue.message.includes("TREE_SITTER_")),
+		compiled.issues.some(
+			(issue) => issue.code === "NAZARE_PARSE_UNCLOSED_RAW_BLOCK",
+		),
 	);
 });
 

@@ -13,7 +13,14 @@ import {
 	importBindingCase,
 	parseDuplicateComponent,
 	parseDuplicateImport,
+	parseInvalidBlocksSlot,
+	parseInvalidComponentKind,
+	parseInvalidImport,
+	parseInvalidRefAttribute,
+	parseInvalidRender,
+	parseInvalidStylesheetBinding,
 	parseLiquidCrash,
+	parseUnclosedRawBlock,
 } from "./diagnostics.js";
 import {
 	parseNazareImportTag,
@@ -55,12 +62,51 @@ export function projectTreeSitterNazareAst(
 				diagnostics: [],
 				notes: syntaxNotes(syntax, source, file),
 			};
-	const treeIssues: Diagnostic[] = document.issues.map((issue) =>
-		parseLiquidCrash(
-			`${issue.code}: ${issue.message}`,
-			spanFromOffsets(source, file, issue.range),
-		),
-	);
+	const problemDiagnostics = syntax.problems.map((problem) => {
+		const span = spanFromOffsets(source, file, problem.range);
+		switch (problem.kind) {
+			case "unclosed-raw-block":
+				return parseUnclosedRawBlock(
+					problem.block,
+					problem.block === "script" ? "endscript" : "endstylesheet",
+					span,
+				);
+			case "component":
+				return parseInvalidComponentKind(problem.markup, span);
+			case "import":
+				return parseInvalidImport(problem.markup, span);
+			case "render":
+				return parseInvalidRender(problem.markup, span);
+			case "blocks":
+				return parseInvalidBlocksSlot(problem.markup, span);
+			case "stylesheet":
+				return parseInvalidStylesheetBinding(problem.markup, span);
+			case "attribute":
+				return parseInvalidRefAttribute(
+					problem.reason === "dynamic"
+						? `${problem.attribute} value must be a static string, not Liquid output`
+						: `${problem.attribute} value "${problem.value}" is not a valid identifier`,
+					span,
+				);
+			default:
+				throw new Error("Unknown Nazare syntax problem");
+		}
+	});
+	const treeIssues: Diagnostic[] = document.issues
+		.filter(
+			(issue) =>
+				!syntax.problems.some(
+					(problem) =>
+						issue.range.start < problem.range.end &&
+						problem.range.start < issue.range.end,
+				),
+		)
+		.map((issue) =>
+			parseLiquidCrash(
+				`${issue.code}: ${issue.message}`,
+				spanFromOffsets(source, file, issue.range),
+			),
+		);
 	const projected = syntax.authoritative
 		? projectFacts(syntax.facts, source, file)
 		: { nodes: [], diagnostics: [] };
@@ -110,6 +156,7 @@ export function projectTreeSitterNazareAst(
 			diagnostics: [
 				...compatibility.diagnostics,
 				...projected.diagnostics,
+				...problemDiagnostics,
 				...treeIssues,
 			],
 			notes: compatibility.notes,

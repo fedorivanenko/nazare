@@ -32,6 +32,7 @@ export {
 	type NazareStylesheetFact,
 	type NazareSyntaxFact,
 	type NazareSyntaxFacts,
+	type NazareSyntaxProblem,
 	nazareSyntaxFacts,
 } from "./adapters/nazare-liquid.js";
 export {

@@ -122,9 +122,29 @@ export type NazareSyntaxFact =
 	| NazareRootMarkerFact
 	| NazareIslandFact;
 
+export type NazareSyntaxProblem =
+	| {
+			kind: "unclosed-raw-block";
+			block: "script" | "stylesheet";
+			range: SourceRange;
+	  }
+	| {
+			kind: "component" | "import" | "render" | "blocks" | "stylesheet";
+			markup: string;
+			range: SourceRange;
+	  }
+	| {
+			kind: "attribute";
+			attribute: "ref" | "island";
+			reason: "dynamic" | "invalid-identifier";
+			value?: string;
+			range: SourceRange;
+	  };
+
 export type NazareSyntaxFacts = {
 	authoritative: boolean;
 	facts: readonly NazareSyntaxFact[];
+	problems: readonly NazareSyntaxProblem[];
 	/** Shared Liquid mechanics from the same Nazare CST. */
 	liquid: LiquidSyntaxFacts;
 };
@@ -143,8 +163,9 @@ export function nazareSyntaxFacts(document: SourceDocument): NazareSyntaxFacts {
 		throw new Error(`Nazare syntax adapter cannot read ${document.language}`);
 	}
 	const liquid = liquidSyntaxFacts(document);
+	const problems = tagSyntaxProblems(document);
 	if (document.issues.length > 0) {
-		return { authoritative: false, facts: [], liquid };
+		return { authoritative: false, facts: [], problems, liquid };
 	}
 
 	const facts: NazareSyntaxFact[] = [];
@@ -238,9 +259,13 @@ export function nazareSyntaxFacts(document: SourceDocument): NazareSyntaxFacts {
 			const bodyRange = body
 				? nodeRange(body)
 				: emptyBodyRange(document.source, node);
+			const bindingName = node.childForFieldName("binding")?.text;
 			facts.push({
 				kind: "stylesheet",
-				bindingName: node.childForFieldName("binding")?.text,
+				bindingName:
+					bindingName && /^[A-Za-z_$][\w$]*$/.test(bindingName)
+						? bindingName
+						: undefined,
 				body: document.source.slice(bodyRange.start, bodyRange.end),
 				bodyRange,
 				range: pairedTagRange(document.source, node),
@@ -276,15 +301,86 @@ export function nazareSyntaxFacts(document: SourceDocument): NazareSyntaxFacts {
 			}
 		}
 	});
-	facts.push(...htmlFacts(document));
+	facts.push(...htmlFacts(document, problems));
 	return {
 		authoritative: true,
 		facts: facts.sort((left, right) => left.range.start - right.range.start),
+		problems: problems.sort(
+			(left, right) => left.range.start - right.range.start,
+		),
 		liquid,
 	};
 }
 
-function htmlFacts(document: SourceDocument): NazareSyntaxFact[] {
+function tagSyntaxProblems(document: SourceDocument): NazareSyntaxProblem[] {
+	const ignored: SourceRange[] = [
+		...document.embeddedRegions.map((region) => region.bodyRange),
+	];
+	walk(document.tree.rootNode, (node) => {
+		if (
+			node.type === "comment" ||
+			node.type === "doc" ||
+			node.type === "raw_statement" ||
+			node.type === "schema_statement"
+		) {
+			ignored.push(nodeRange(node));
+		}
+	});
+	const problems: NazareSyntaxProblem[] = document.embeddedRegions
+		.filter((region) => !region.closeRange)
+		.map((region) => ({
+			kind: "unclosed-raw-block" as const,
+			block: region.language === "css" ? "stylesheet" : "script",
+			range: region.openRange,
+		}));
+	const pattern =
+		/\{%-?\s*(component|import|render|blocks|stylesheet)\b([\s\S]*?)-?%\}/g;
+	for (const match of document.source.matchAll(pattern)) {
+		const start = match.index;
+		if (ignored.some((range) => start >= range.start && start < range.end))
+			continue;
+		const kind = match[1] as
+			| "component"
+			| "import"
+			| "render"
+			| "blocks"
+			| "stylesheet";
+		const markup = (match[2] ?? "").trim();
+		let invalid = false;
+		if (kind === "component") {
+			invalid = !isComponentKind(markup);
+		} else if (kind === "import") {
+			invalid = !/^[A-Za-z_$][\w$]*\s+from\s+(["'])[^"']+\1$/.test(markup);
+		} else if (kind === "render") {
+			invalid =
+				/^[A-Z][\w$]*\b/.test(markup) &&
+				!/^([A-Za-z_$][\w$]*)\s*\{[\s\S]*\}$/.test(markup);
+		} else if (kind === "blocks") {
+			invalid =
+				markup.length > 0 &&
+				!markup
+					.split(",")
+					.every((name) => /^[A-Za-z_$][\w$]*$/.test(name.trim()));
+		} else {
+			invalid = markup.length > 0 && !/^[A-Za-z_$][\w$]*$/.test(markup);
+		}
+		if (!invalid) continue;
+		let end = start + match[0].length;
+		if (kind === "stylesheet") {
+			const close = /\{%-?\s*endstylesheet\s*-?%\}/g;
+			close.lastIndex = end;
+			const closing = close.exec(document.source);
+			if (closing) end = closing.index + closing[0].length;
+		}
+		problems.push({ kind, markup, range: { start, end } });
+	}
+	return problems;
+}
+
+function htmlFacts(
+	document: SourceDocument,
+	problems: NazareSyntaxProblem[],
+): NazareSyntaxFact[] {
 	const masked = maskedHtmlSource(document);
 	const parser = new Parser();
 	parser.setLanguage(Html);
@@ -345,7 +441,25 @@ function htmlFacts(document: SourceDocument): NazareSyntaxFact[] {
 				continue;
 			}
 			const value = staticAttributeValue(document.source, attribute);
-			if (!value || !/^[A-Za-z_$][\w$]*$/.test(value)) continue;
+			if (value === undefined) {
+				problems.push({
+					kind: "attribute",
+					attribute: name,
+					reason: "dynamic",
+					range,
+				});
+				continue;
+			}
+			if (!/^[A-Za-z_$][\w$]*$/.test(value)) {
+				problems.push({
+					kind: "attribute",
+					attribute: name,
+					reason: "invalid-identifier",
+					value,
+					range,
+				});
+				continue;
+			}
 			if (name === "ref") {
 				facts.push({
 					kind: "element-ref",
