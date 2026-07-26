@@ -1,0 +1,31 @@
+<section class="hero hero--{{ section.settings.scheme }}">
+  <h1 class="hero__heading">{{ section.settings.heading }}</h1>
+  <p class="hero__body">{{ section.settings.body }}</p>
+  {%- if section.settings.show_button -%}
+    <a class="hero__button" href="{{ section.settings.button_url }}">{{ section.settings.button_label }}</a>
+  {%- endif -%}
+</section>
+{{ 'theme.css' | asset_url | stylesheet_tag }}
+{% schema %}
+{
+  "name": "Hero",
+  "settings": [
+    { "type": "header", "content": "Content" },
+    { "type": "text", "id": "heading", "label": "Heading", "default": "New season knitwear" },
+    { "type": "text", "id": "body", "label": "Body", "default": "Merino, spun and knitted in Portugal." },
+    {
+      "type": "select",
+      "id": "scheme",
+      "label": "Colour scheme",
+      "default": "light",
+      "options": [
+        { "value": "light", "label": "Light" },
+        { "value": "dark", "label": "Dark" }
+      ]
+    },
+    { "type": "checkbox", "id": "show_button", "label": "Show button", "default": true },
+    { "type": "text", "id": "button_label", "label": "Button label", "default": "Shop the collection" },
+    { "type": "url", "id": "button_url", "label": "Button link", "default": "/collections/all" }
+  ]
+}
+{% endschema %}

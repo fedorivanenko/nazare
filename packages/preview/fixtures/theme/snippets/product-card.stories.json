@@ -1,0 +1,12 @@
+{
+  "stories": [
+    {
+      "name": "on sale",
+      "props": {
+        "product": { "$fixture": "product" },
+        "badge": "Sale"
+      },
+      "note": "The fixture product carries a compare-at price, so the composed price snippet strikes it through."
+    }
+  ]
+}

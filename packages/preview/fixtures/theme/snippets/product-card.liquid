@@ -1,0 +1,12 @@
+{% doc %}
+  A product in a grid: image, title, price.
+
+  @param {product} product - The product to render.
+  @param {string} [badge] - Ribbon across the corner, when there is one.
+{% enddoc %}
+<article class="card">
+  {%- if badge != blank -%}<span class="card__badge">{{ badge }}</span>{%- endif -%}
+  {{ product.featured_image | image_url: width: 400 | image_tag }}
+  <h3 class="card__title">{{ product.title }}</h3>
+  {% render 'price', price: product.price, compare_at_price: product.compare_at_price %}
+</article>

@@ -80,7 +80,16 @@ table, emitted Liquid — from the same `panels.ts`.
 
 ```sh
 node packages/preview/examples/preview-theme.mjs path/to/theme
+node packages/preview/examples/preview-theme.mjs packages/preview/fixtures/theme
 ```
+
+`fixtures/theme` is a five-component theme kept here for exactly this: two
+snippets declaring `{% doc %}` params, a section and a block declaring
+`{% schema %}` settings, one authored story in a sidecar, and a stylesheet the
+sections link through `asset_url`. Every one of its ten stories renders markup
+with no error and nothing its declaration says is wrong, and `tests/theme.test.mjs`
+holds that true — the plain-Liquid path claims to work on files nobody wrote for
+Nazare, and this is the claim being checked.
 
 No manifests, no Nazare syntax. The walk over `snippets/`, `sections/`, and
 `blocks/` is the classification — Shopify addresses a theme file by its

@@ -251,6 +251,8 @@ const WORKBENCH_STYLES = `
   .canvas[data-viewport] { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
   .story-props { padding: .5rem 1.25rem; font-size: .72rem; color: var(--muted-foreground); border-top: 1px solid var(--border); word-break: break-word; }
   .story-issues { list-style: none; margin: 0; padding: .5rem 1.25rem; display: grid; gap: .25rem; border-top: 1px solid var(--border); font-size: .76rem; }
+  /* An explicit display beats the hidden attribute, so say it again. */
+  .story-issues[hidden] { display: none; }
   .story-issue--warning { color: var(--muted-foreground); }
   .story-issue--warning::before { content: "warning "; text-transform: uppercase; font-size: .62rem; letter-spacing: .06em; }
   .story-issue--error { color: #b91c1c; }
