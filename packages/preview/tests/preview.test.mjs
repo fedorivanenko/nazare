@@ -428,13 +428,22 @@ test("the workbench lists every story and shows one at a time", async () => {
 	// One canvas, not one frame per story: the selection chooses what it shows.
 	assert.equal(page.match(/<iframe/g).length, 1);
 	// The sidebar carries one entry per component, opening on its first story;
-	// the strip beside the canvas carries that component's stories.
+	// the component's stories are a dropdown beside the canvas.
 	assert.equal(page.match(/class="nav-component"/g).length, 1);
-	assert.equal(page.match(/class="substory"/g).length, 4);
 	assert.ok(page.includes('data-substories="button"'));
+	assert.equal(page.match(/<option value="button--/g).length, 4);
+	// Stories that vary one prop are grouped under it, so the menu reads as the
+	// prop's values rather than as a flat list of "prop: value" strings.
+	assert.ok(page.includes('<optgroup label="scheme">'));
+	// Viewport presets, and the story index the canvas selects from.
+	assert.ok(page.includes('id="viewport"'));
+	assert.ok(page.includes('<option value="375">'));
+	assert.ok(page.includes('id="story-index"'));
 	// The sidebar entries are real links to the story documents, so the shell
-	// degrades to "open the story on its own" with no JavaScript.
-	assert.ok(page.includes('href="./stories/button--scheme-outline.html"'));
+	// degrades to "open the component on its own" with no JavaScript.
+	assert.ok(page.includes('href="./stories/button--default.html"'));
+	// Every story's document is addressable from the index the canvas reads.
+	assert.ok(page.includes("./stories/button--scheme-outline.html"));
 	// The component's documentation travels with it, shown for the selected one.
 	assert.ok(page.includes('data-panel="button"'));
 	assert.ok(page.includes("nazare add @nazare/button"));

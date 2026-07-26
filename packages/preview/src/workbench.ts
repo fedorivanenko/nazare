@@ -84,27 +84,57 @@ function navComponent(
 	)}</li>`;
 }
 
-/** A component's stories, as a strip above its canvas. */
+/**
+ * A component's stories, as one dropdown. A row of buttons reads as a set of
+ * toggles, which these are not — a story is one choice among many, and eight of
+ * them wrapped onto two lines before the canvas even appeared.
+ *
+ * Options are grouped by the prop the story varies, which the render already
+ * computed (`changed`): a component with three enums reads as three menus of
+ * values rather than one flat list of `prop: value` strings.
+ */
 function substories(
 	{ component, stories }: RenderedComponent,
 	storyBase: string,
 ): string {
-	return `
-        <div class="substories" data-substories="${escapeHtml(componentId(component.name))}" hidden>
-          ${stories
-						.map((rendered) =>
-							storyLink(
-								"substory",
-								rendered.story.name,
-								component,
-								rendered,
-								storyBase,
-								rendered.error !== undefined,
-							),
-						)
-						.join("")}
-        </div>`;
+	const id = componentId(component.name);
+	const groups = new Map<string, RenderedStory[]>();
+	for (const rendered of stories) {
+		// A story that changed exactly one prop belongs to that prop; anything
+		// else (the defaults, a hand-written case, a combination) stands alone.
+		const group = rendered.changed.length === 1 ? rendered.changed[0] : "";
+		groups.set(group, [...(groups.get(group) ?? []), rendered]);
+	}
+	const option = (rendered: RenderedStory): string =>
+		`<option value="${escapeHtml(rendered.id)}">${escapeHtml(
+			rendered.story.name,
+		)}${rendered.error ? " (failed)" : ""}</option>`;
+	const options = [...groups]
+		.map(([group, entries]) =>
+			group === ""
+				? entries.map(option).join("")
+				: `<optgroup label="${escapeHtml(group)}">${entries.map(option).join("")}</optgroup>`,
+		)
+		.join("");
+	// Inert without JavaScript, like every dropdown: the sidebar stays the
+	// no-script path, since its entries are links to the story documents.
+	return `<select class="substory-select" data-substories="${escapeHtml(
+		id,
+	)}" aria-label="Story" hidden>${options}</select>`;
 }
+
+/**
+ * Viewport presets. A component is responsive or it is not, and the only way to
+ * see which is to give the canvas a width — the frame is a real document, so
+ * constraining the element it lives in is a real viewport, media queries and
+ * all.
+ */
+const VIEWPORTS: { label: string; width: number | "" }[] = [
+	{ label: "Full width", width: "" },
+	{ label: "Mobile · 375", width: 375 },
+	{ label: "Tablet · 768", width: 768 },
+	{ label: "Laptop · 1280", width: 1280 },
+];
 
 /** One component's documentation, shown when a story of it is selected. */
 function panel({ component }: RenderedComponent): string {
@@ -181,25 +211,18 @@ const WORKBENCH_STYLES = `
   .nav-component[aria-current="true"] { background: var(--muted); color: var(--foreground); font-weight: 500; }
   .nav-component--empty { color: var(--muted-foreground); opacity: .6; }
   .nav-flag { color: #b91c1c; font-weight: 600; }
-  /* flex: none on both bars — .main is a flex column, so they would otherwise
-   * shrink to below the height of the chips they hold. */
-  .substory-bar { flex: none; border-bottom: 1px solid var(--border); padding: .4rem 1.25rem; }
-  .substories { display: flex; flex-wrap: wrap; gap: .25rem; }
-  /* An explicit display beats the hidden attribute, so say it again. */
-  .substories[hidden] { display: none; }
-  .substory {
-    display: inline-flex;
-    align-items: center;
-    height: 26px;
-    padding: 0 .6rem;
-    border-radius: 999px;
-    border: 1px solid transparent;
-    color: var(--muted-foreground);
-    text-decoration: none;
-    font-size: .76rem;
+  .canvas-tools { display: flex; align-items: center; gap: .4rem; }
+  .substory-select, .viewport-select {
+    height: 30px;
+    max-width: 260px;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--background);
+    color: var(--foreground);
+    padding: 0 .5rem;
+    font: inherit;
+    font-size: .78rem;
   }
-  .substory:hover { background: var(--accent); color: var(--foreground); }
-  .substory[aria-current="true"] { border-color: var(--border); background: var(--muted); color: var(--foreground); font-weight: 500; }
   .main { overflow-y: auto; display: flex; flex-direction: column; }
   .canvas-bar {
     flex: none;
@@ -213,7 +236,19 @@ const WORKBENCH_STYLES = `
   }
   .canvas-title { font-weight: 500; }
   .canvas-title .muted { font-weight: 400; }
-  .canvas { flex: 0 0 auto; width: 100%; min-height: 320px; border: 0; display: block; background: var(--background); }
+  /* The stage holds the canvas at a viewport width, centred, with the edges
+   * visible — a narrow frame in a wide stage should read as a device, not as a
+   * layout bug. */
+  .canvas-stage { flex: none; display: flex; justify-content: center; background: var(--muted); }
+  .canvas {
+    flex: none;
+    width: 100%;
+    min-height: 320px;
+    border: 0;
+    display: block;
+    background: var(--background);
+  }
+  .canvas[data-viewport] { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
   .story-props { padding: .5rem 1.25rem; font-size: .72rem; color: var(--muted-foreground); border-top: 1px solid var(--border); word-break: break-word; }
   .panels { border-top: 1px solid var(--border); padding: 1.25rem 1.25rem 4rem; }
   .component-sub { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; margin: 0 0 1rem; font-size: .78rem; }
@@ -282,7 +317,11 @@ const WORKBENCH_SCRIPT = `
   const title = document.getElementById('canvas-title');
   const openLink = document.getElementById('canvas-open');
   const propsLine = document.getElementById('canvas-props');
-  const props = JSON.parse(document.getElementById('story-props').textContent);
+  const viewport = document.getElementById('viewport');
+  // Every story by id: the dropdown offers stories the sidebar does not link,
+  // so selection reads from this index rather than from the DOM.
+  const stories = JSON.parse(document.getElementById('story-index').textContent);
+  const firstId = Object.keys(stories)[0];
   const currentTheme = () => root.getAttribute('data-theme')
     || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   const tellCanvas = (theme) => {
@@ -290,33 +329,38 @@ const WORKBENCH_SCRIPT = `
   };
 
   function select(id, push) {
-    const link = links.find((candidate) => candidate.dataset.story === id) ?? links[0];
-    if (!link) return;
-    // The sidebar marks the component, the strip marks the story within it.
-    for (const candidate of links) {
-      const current = candidate.classList.contains('nav-component')
-        ? candidate.dataset.component === link.dataset.component
-        : candidate.dataset.story === link.dataset.story;
-      if (current) candidate.setAttribute('aria-current', 'true');
-      else candidate.removeAttribute('aria-current');
+    const story = stories[id] ?? stories[firstId];
+    if (!story) return;
+    const storyId = stories[id] ? id : firstId;
+    for (const link of links) {
+      if (link.dataset.component === story.component) {
+        link.setAttribute('aria-current', 'true');
+      } else link.removeAttribute('aria-current');
     }
-    for (const group of document.querySelectorAll('[data-substories]')) {
-      group.hidden = group.dataset.substories !== link.dataset.component;
+    // One dropdown per component; the selected component's is the visible one,
+    // and it opens on the story being shown.
+    for (const menu of document.querySelectorAll('[data-substories]')) {
+      menu.hidden = menu.dataset.substories !== story.component;
+      if (!menu.hidden) menu.value = storyId;
     }
-    if (canvas.getAttribute('src') !== link.getAttribute('href')) {
+    if (canvas.getAttribute('src') !== story.href) {
       // Height is stale until the new story measures itself; start from the
       // floor so a short story after a tall one does not leave a gap.
       canvas.style.height = '320px';
-      canvas.setAttribute('src', link.getAttribute('href'));
+      canvas.setAttribute('src', story.href);
     }
-    title.innerHTML = link.dataset.component + ' <span class="muted">/ ' + link.dataset.name + '</span>';
-    openLink.setAttribute('href', link.getAttribute('href'));
-    propsLine.textContent = props[link.dataset.story] ?? '';
+    title.innerHTML = story.component + ' <span class="muted">/ ' + story.name + '</span>';
+    openLink.setAttribute('href', story.href);
+    propsLine.textContent = story.props;
     for (const panel of document.querySelectorAll('[data-panel]')) {
-      panel.hidden = panel.dataset.panel !== link.dataset.component;
+      panel.hidden = panel.dataset.panel !== story.component;
     }
-    if (push && location.hash.slice(1) !== link.dataset.story) {
-      history.replaceState(null, '', '#' + link.dataset.story);
+    if (push && location.hash.slice(1) !== storyId) {
+      // Through URL, so the story replaces only the fragment and leaves the
+      // query (the viewport) where it was.
+      const url = new URL(location.href);
+      url.hash = storyId;
+      history.replaceState(null, '', url);
     }
   }
 
@@ -329,6 +373,32 @@ const WORKBENCH_SCRIPT = `
       select(link.dataset.story, true);
     });
   }
+  for (const menu of document.querySelectorAll('[data-substories]')) {
+    menu.addEventListener('change', () => select(menu.value, true));
+  }
+
+  // Viewport width. The frame is a real document, so narrowing the element it
+  // lives in is a real viewport — media queries included.
+  function setViewport(width, push) {
+    viewport.value = width;
+    if (width) {
+      canvas.style.maxWidth = width + 'px';
+      canvas.setAttribute('data-viewport', width);
+    } else {
+      canvas.style.maxWidth = '';
+      canvas.removeAttribute('data-viewport');
+    }
+    if (!push) return;
+    // In the query, not the fragment: the fragment names the story, and a width
+    // outlives which story you happen to be looking at.
+    const url = new URL(location.href);
+    if (width) url.searchParams.set('viewport', width);
+    else url.searchParams.delete('viewport');
+    history.replaceState(null, '', url);
+  }
+  viewport.addEventListener('change', () => setViewport(viewport.value, true));
+  setViewport(new URL(location.href).searchParams.get('viewport') ?? '', false);
+
   addEventListener('hashchange', () => select(location.hash.slice(1), false));
   canvas.addEventListener('load', () => tellCanvas(currentTheme()));
   select(location.hash.slice(1), true);
@@ -373,12 +443,18 @@ export function workbenchPage(
 	const links = (options.stylesheets ?? [])
 		.map((href) => `<link rel="stylesheet" href="${escapeHtml(href)}">`)
 		.join("\n");
-	// The props of every story, so the caption under the canvas needs no fetch.
-	const storyProps = Object.fromEntries(
-		components.flatMap(({ stories }) =>
+	// Every story by id — what the canvas needs to show one: which component it
+	// belongs to, its name, its document, and the props it rendered with.
+	const storyIndex = Object.fromEntries(
+		components.flatMap(({ component, stories }) =>
 			stories.map((rendered) => [
 				rendered.id,
-				formatProps(rendered.story.props),
+				{
+					component: componentId(component.name),
+					name: rendered.story.name,
+					href: `${storyBase}${storyFileName(rendered.id)}`,
+					props: formatProps(rendered.story.props),
+				},
 			]),
 		),
 	);
@@ -406,14 +482,20 @@ ${links}
     <main class="main">
       <div class="canvas-bar">
         <span class="canvas-title" id="canvas-title"></span>
-        <a class="canvas-open" id="canvas-open" href="${escapeHtml(storyBase)}" target="_blank" rel="noreferrer">Open ↗</a>
+        <div class="canvas-tools">
+          ${components
+						.map((component) => substories(component, storyBase))
+						.join("")}
+          <select class="viewport-select" id="viewport" aria-label="Viewport">
+            ${VIEWPORTS.map(
+							({ label, width }) =>
+								`<option value="${width}">${escapeHtml(label)}</option>`,
+						).join("")}
+          </select>
+          <a class="canvas-open" id="canvas-open" href="${escapeHtml(storyBase)}" target="_blank" rel="noreferrer">Open ↗</a>
+        </div>
       </div>
-      <div class="substory-bar">
-        ${components
-					.map((component) => substories(component, storyBase))
-					.join("")}
-      </div>
-      <iframe class="canvas" id="canvas" title="Story canvas"></iframe>
+      <div class="canvas-stage"><iframe class="canvas" id="canvas" title="Story canvas"></iframe></div>
       <p class="story-props" id="canvas-props"></p>
       <p class="caveat">
         The <strong>emitted</strong> Liquid, rendered by liquidjs — not Shopify's runtime. A design-system
@@ -424,7 +506,7 @@ ${links}
       </div>
     </main>
   </div>
-<script type="application/json" id="story-props">${JSON.stringify(storyProps).replace(/</g, "\\u003c")}</script>
+<script type="application/json" id="story-index">${JSON.stringify(storyIndex).replace(/</g, "\\u003c")}</script>
 <script>${WORKBENCH_SCRIPT}</script>
 </body>
 </html>

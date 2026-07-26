@@ -58,11 +58,17 @@ the shared cascade that implies. Both modes render the same story model.
 
 ## Two shells
 
-`workbenchPage()` is the one to work in: story list on the left, one story in the
-canvas, full width. Selection is a URL fragment (`#button--scheme-outline`), so a
-story survives a reload and can be linked; the sidebar entries are real links to
-the story documents, so with JavaScript off, clicking one opens that story on its
-own rather than doing nothing.
+`workbenchPage()` is the one to work in: components on the left, one story in the
+canvas. The component's stories are a dropdown beside the canvas, grouped by the
+prop each one varies, and a viewport dropdown constrains the canvas to 375, 768,
+or 1280 — the frame is a real document, so a narrower frame is a real viewport,
+media queries included.
+
+The story is a URL fragment (`#button--scheme-outline`) and the viewport a query
+parameter (`?viewport=375`), so both survive a reload and a link, and changing
+the story leaves the viewport alone. The sidebar entries are real links to story
+documents, so with JavaScript off, clicking one opens that component on its own
+rather than doing nothing.
 
 `galleryPage()` is the catalogue: every story of every component at once, for a
 sweep over the whole registry or for embedding in a docs site.
