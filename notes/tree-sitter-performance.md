@@ -54,8 +54,8 @@ performance work:
 2. profile CST traversal on large files;
 3. monitor the Linux/macOS CI threshold before default cutover.
 
-When `sourceFrontend: "tree-sitter"` is selected, plain-Liquid compilation and
-workspace analysis now also avoid `@nazare/scan` and authored-source Shopify
-parsing. The legacy paths remain available only as differential oracles until
-default-cutover and deletion gates pass. CI now rejects a Nazare Tree-sitter
+Tree-sitter is now the default for Nazare and plain-Liquid compilation and
+workspace analysis, avoiding `@nazare/scan` and authored-source Shopify parsing.
+Passing `sourceFrontend: "legacy"` keeps the old paths available only as
+explicit differential oracles until deletion gates pass. CI now rejects a Nazare Tree-sitter
 frontend/legacy relative time above `0.9` on both Ubuntu and macOS.

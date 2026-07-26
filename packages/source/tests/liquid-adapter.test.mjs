@@ -136,6 +136,7 @@ test("all mechanical fact families match on focused syntax", () => {
 {% assign title = title | default: settings.fallback_title %}
 {% if optional %}{% render 'card', title: title %}{% endif %}
 {% render 'product' with product as item %}
+{% render 'price' for collection.products as card_product %}
 {{ 'theme.css' | asset_url }}
 {{ 'cards.title' | t }}`;
 	const document = parseSourceDocument(
@@ -156,7 +157,9 @@ test("all mechanical fact families match on focused syntax", () => {
 		assetReferences: liquidAssetReferences(scan.document),
 		localeReferences: liquidLocaleReferences(scan.document),
 		docParams: liquidDocParams(scan.document),
-		reads: liquidReads(scan.document),
+		// The scanner oracle incorrectly treats render-for's `for` keyword as a
+		// variable read; the CST adapter intentionally fixes that during cutover.
+		reads: liquidReads(scan.document).filter((read) => read.root !== "for"),
 		guards: liquidGuards(scan.document),
 	};
 	for (const [family, facts] of Object.entries(expected)) {

@@ -620,7 +620,7 @@ function selectFrontend(
 	for (const frontend of options.frontends ?? []) {
 		if (frontend.accepts(options.file, options.source)) return frontend;
 	}
-	const sourceFrontend = options.sourceFrontend ?? "legacy";
+	const sourceFrontend = options.sourceFrontend ?? "tree-sitter";
 	if (sourceFrontend === "tree-sitter") {
 		if (treeSitterNazareLiquidFrontend.accepts(options.file, options.source)) {
 			return treeSitterNazareLiquidFrontend;

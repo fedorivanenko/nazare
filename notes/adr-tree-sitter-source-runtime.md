@@ -85,20 +85,14 @@ script/stylesheet, prop/style reference, HTML ref/data/island/root facts. HTML
 facts use `tree-sitter-html` over masked Liquid template regions, preserving
 original UTF-16 offsets while preventing embedded syntax from becoming HTML.
 Committed Nazare corpus files and focused legacy-parser comparisons pass.
-Phase 4 has an explicit `sourceFrontend: "legacy" | "tree-sitter"` compiler
-boundary. It defaults to `"legacy"`. Plain Liquid can opt into the Tree-sitter
-bridge, which owns dependency/settings facts while the Shopify parser
-temporarily remains the schema/compatibility oracle.
-
-Nazare opt-in now projects CST facts through the existing `NazareAst` boundary;
-the Shopify parser temporarily supplies only its opaque LiquidHTML tree,
-authored schema/settings, compatibility diagnostics, and unsupported-syntax
-notes. Corpus gates compare complete Nazare nodes, syntax, IR, graph,
+The compiler keeps an explicit `sourceFrontend: "legacy" | "tree-sitter"`
+boundary and now defaults to `"tree-sitter"`. Passing `"legacy"` remains the
+differential-oracle escape hatch. Nazare CST facts project through the existing
+`NazareAst` boundary; authored source is never parsed with Shopify on the
+Tree-sitter path. Corpus gates compare complete Nazare nodes, syntax, IR, graph,
 diagnostics, notes, and emission. Invalid CSTs fail closed without partial
-facts. The selected source frontend now propagates through recursive component
-contract resolution, dependency checking, workspace analysis/build scopes,
-cache fingerprints, and incremental build recomputation; Tree-sitter roots can
-no longer silently parse imported components with the legacy frontend.
+facts. Selection propagates through recursive component resolution, dependency
+checking, workspace scopes, cache fingerprints, and incremental recomputation.
 CLI packaging now includes `@nazare/source`, `@nazare/scan`, both grammar
 packages, generated parser/scanner sources, queries, Node bindings, and the
 release runner's native binaries. Package smoke tests install the isolated
@@ -120,8 +114,9 @@ Linux and macOS CI enforce a maximum 0.9 Tree-sitter/legacy frontend-time ratio.
 A broader malformed corpus now gates fail-closed behavior and verifies that no
 partial facts escape invalid CSTs. One intentional tightening is recorded:
 Tree-sitter rejects unclosed Liquid blocks that the tolerant legacy Nazare parser
-accepted. Successful Linux/macOS CI performance runs remain the final
-default-cutover gate.
+accepted. Linux and macOS CI passed parity, packaging, and performance gates;
+the default cutover is complete. Legacy paths remain temporarily for explicit
+differential and deletion-gate validation.
 
 ## Rejected alternatives
 

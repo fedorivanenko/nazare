@@ -32,15 +32,15 @@ function buildWorkspaceFile(source, file, options = {}) {
 	};
 }
 
-test("generic compileArtifact selects the Nazare Liquid frontend", () => {
-	const source = `{% props title: string %}<h1>{{ props.title }}</h1>`;
+test("generic compileArtifact defaults to the Tree-sitter Nazare frontend", () => {
+	const source = `{% props { title: string } %}<h1>{{ props.title }}</h1>`;
 	const compiled = compileArtifact({
 		source,
 		file: "component.nz.liquid",
 	});
 
 	assert.equal(compiled.ok, true);
-	assert.equal(compiled.frontend, "nazare-liquid");
+	assert.equal(compiled.frontend, "tree-sitter-nazare-liquid");
 	assert.equal(compiled.canEmit, true);
 	assert.equal(compiled.contract.path, "component.nz.liquid");
 	assert.equal(compiled.frontendSupport.explicitPropsSyntax, true);

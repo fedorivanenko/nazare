@@ -39,7 +39,11 @@ function themeFilesUnder(directory, root = directory) {
 }
 
 function compilePair(source, file) {
-	const legacy = compileArtifact({ source, file });
+	const legacy = compileArtifact({
+		source,
+		file,
+		sourceFrontend: "legacy",
+	});
 	const treeSitter = compileArtifact({
 		source,
 		file,
@@ -96,7 +100,9 @@ test("Tree-sitter selection propagates through workspace dependency closure", ()
 			contents: `{% component section %}{% import Button from "./button.nz.liquid" %}{% props { title: string.required() } %}<article>{% render Button { label: props.title } %}</article>`,
 		},
 	];
-	const legacy = buildNazareThemeWorkspace(files);
+	const legacy = buildNazareThemeWorkspace(files, {
+		sourceFrontend: "legacy",
+	});
 	const treeSitter = buildNazareThemeWorkspace(files, {
 		sourceFrontend: "tree-sitter",
 	});
@@ -120,7 +126,10 @@ test("Tree-sitter theme source facts match the committed corpus", () => {
 		path: ".shopify/metafields.json",
 		contents: readFileSync(join(root, ".shopify/metafields.json"), "utf8"),
 	};
-	const legacy = analyzeNazareTheme(files, { metafields });
+	const legacy = analyzeNazareTheme(files, {
+		metafields,
+		sourceFrontend: "legacy",
+	});
 	const treeSitter = analyzeNazareTheme(files, {
 		metafields,
 		sourceFrontend: "tree-sitter",
@@ -143,7 +152,11 @@ test("Tree-sitter Nazare malformed syntax diagnostics match legacy", () => {
 		`<div island="not-valid!"></div>`,
 	];
 	for (const source of sources) {
-		const legacy = compileArtifact({ source, file: "malformed.nz.liquid" });
+		const legacy = compileArtifact({
+			source,
+			file: "malformed.nz.liquid",
+			sourceFrontend: "legacy",
+		});
 		const treeSitter = compileArtifact({
 			source,
 			file: "malformed.nz.liquid",
@@ -183,7 +196,11 @@ test("Tree-sitter malformed corpus fails closed without partial facts", () => {
 
 test("Tree-sitter rejects unclosed Liquid that the tolerant legacy parser accepted", () => {
 	const source = `{% if product %}<div>`;
-	const legacy = compileArtifact({ source, file: "unclosed.nz.liquid" });
+	const legacy = compileArtifact({
+		source,
+		file: "unclosed.nz.liquid",
+		sourceFrontend: "legacy",
+	});
 	const treeSitter = compileArtifact({
 		source,
 		file: "unclosed.nz.liquid",

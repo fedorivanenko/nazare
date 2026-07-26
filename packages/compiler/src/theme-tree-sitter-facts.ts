@@ -122,19 +122,103 @@ export function collectTreeSitterSourceThemeFacts(
 		}
 	}
 
+	const safeInitializations = new Set<number>();
+	for (const binding of liquid.localBindings) {
+		const alias = bareLookup(binding.value);
+		if (!alias) continue;
+		const initialization = liquid.reads
+			.filter(
+				(read) =>
+					read.tag === "assign" &&
+					read.root === alias.root &&
+					read.range.end <= binding.scope.start,
+			)
+			.at(-1);
+		if (initialization) safeInitializations.add(initialization.range.start);
+	}
 	const defaulted = new Set(
 		liquid.guards
 			.filter((guard) => guard.via === "default")
 			.map((guard) => resolve(guard.name, [], guard.range.start).object),
 	);
-	const guarded = new Set(
-		liquid.guards
-			.filter((guard) => guard.via === "guard")
-			.map((guard) => resolve(guard.name, [], guard.range.start).object),
-	);
+	const guardProxyTargets = new Map<string, Set<string>>();
+	for (const conditional of liquid.conditionals) {
+		if (!conditional.exhaustive || conditional.branches.length < 2) continue;
+		const primary = conditional.branches[0];
+		const alternate = conditional.branches.at(-1);
+		if (!primary || !alternate) continue;
+		const primaryBooleans = booleanBindingsIn(primary, liquid.localBindings);
+		const alternateBooleans = booleanBindingsIn(
+			alternate,
+			liquid.localBindings,
+		);
+		const conditionTargets = liquid.guards
+			.filter(
+				(guard) =>
+					guard.via === "guard" &&
+					guard.range.start >= conditional.range.start &&
+					guard.range.end <= primary.start,
+			)
+			.map((guard) => resolve(guard.name, [], guard.range.start).object);
+		for (const [name, value] of primaryBooleans) {
+			if (value !== true || alternateBooleans.get(name) === true) continue;
+			guardProxyTargets.set(name, new Set(conditionTargets));
+		}
+	}
+	const guarded = new Set<string>();
+	const guardRanges = new Map<string, Range[]>();
+	for (const guard of liquid.guards.filter(
+		(candidate) => candidate.via === "guard",
+	)) {
+		const resolvedGuard = resolve(guard.name, [], guard.range.start);
+		const directName =
+			resolvedGuard.path.length === 0 ? resolvedGuard.object : guard.name;
+		const names = new Set([
+			directName,
+			...(guardProxyTargets.get(guard.name) ?? []),
+		]);
+		for (const name of names) guarded.add(name);
+		const conditional = liquid.conditionals
+			.filter(
+				(candidate) =>
+					guard.range.start >= candidate.range.start &&
+					guard.range.end <= candidate.range.end,
+			)
+			.sort(
+				(left, right) =>
+					left.range.end -
+					left.range.start -
+					(right.range.end - right.range.start),
+			)[0];
+		const primary = conditional?.branches.find(
+			(branch) => branch.start >= guard.range.end,
+		);
+		if (!primary) continue;
+		for (const name of names) {
+			guardRanges.set(name, [...(guardRanges.get(name) ?? []), primary]);
+		}
+		if (
+			liquid.localBindings.some(
+				(binding) =>
+					binding.name === guard.name &&
+					binding.scope.start >= primary.start &&
+					binding.scope.start <= primary.end,
+			)
+		) {
+			defaulted.add(directName);
+		}
+	}
 	const unguarded = new Set(
 		liquid.reads
-			.filter((read) => !read.inCondition && !insideBranch(read.range.start))
+			.filter((read) => {
+				if (safeInitializations.has(read.range.start)) return false;
+				if (read.inCondition) return false;
+				const name = resolve(read.root, read.path, read.range.start).object;
+				return !(guardRanges.get(name) ?? []).some(
+					(range) =>
+						read.range.start >= range.start && read.range.end <= range.end,
+				);
+			})
 			.map((read) => resolve(read.root, read.path, read.range.start).object),
 	);
 	for (const name of new Set([...guarded, ...defaulted])) {
@@ -185,12 +269,7 @@ export function collectTreeSitterSourceThemeFacts(
 			siteId: renderSiteKey(path, span(argument.siteRange)),
 			argumentName: argument.argumentName,
 			valueExpression: argument.valueExpression,
-			...(argument.source
-				? {
-						sourceObject: argument.source.root,
-						sourcePath: argument.source.path.join(".") || undefined,
-					}
-				: {}),
+			...argumentSource(argument.source, argument.implicit),
 			span: span(argument.range),
 		});
 	}
@@ -210,8 +289,59 @@ export function collectTreeSitterSourceThemeFacts(
 	return { facts, issues: [] };
 }
 
+function booleanBindingsIn(
+	range: Range,
+	bindings: LiquidSyntaxFacts["localBindings"],
+): Map<string, boolean> {
+	const values = new Map<string, boolean>();
+	for (const binding of bindings) {
+		if (
+			binding.via !== "assign" ||
+			binding.scope.start < range.start ||
+			binding.scope.start > range.end
+		)
+			continue;
+		if (binding.value?.trim() === "true") values.set(binding.name, true);
+		if (binding.value?.trim() === "false") values.set(binding.name, false);
+	}
+	return values;
+}
+
+function argumentSource(
+	source: { root: string; path: string[] } | undefined,
+	implicit: boolean,
+): { sourceObject?: string; sourcePath?: string } {
+	if (!source) return {};
+	const propertyPath = source.path.join(".");
+	if (
+		(source.root === "section" || source.root === "block") &&
+		propertyPath.startsWith("settings.")
+	) {
+		return {
+			sourceObject: `${source.root}.settings`,
+			sourcePath: propertyPath.slice("settings.".length),
+		};
+	}
+	if (!SHOPIFY_DATA_OBJECTS.has(source.root)) return {};
+	if (implicit) {
+		const element = collectionElementAlias(
+			[source.root, propertyPath].filter(Boolean).join("."),
+		);
+		if (element) return { sourceObject: element.root };
+	}
+	return {
+		sourceObject: source.root,
+		sourcePath: propertyPath || undefined,
+	};
+}
+
 function bareLookup(value: string | undefined): Binding["alias"] {
 	if (!value || value.includes("|")) return undefined;
+	if (
+		["true", "false", "nil", "null", "blank", "empty"].includes(value.trim())
+	) {
+		return undefined;
+	}
 	const match = value.trim().match(/^([A-Za-z_$][\w$]*)(?:\.([\w$.]+))?$/);
 	if (!match) return undefined;
 	return { root: match[1] as string, path: match[2]?.split(".") ?? [] };

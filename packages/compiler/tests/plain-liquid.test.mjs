@@ -287,23 +287,27 @@ test("plain Liquid settings scanner ignores string literals, non-expression text
 	);
 });
 
-test("compileArtifact selects the built-in plain Liquid frontend", () => {
+test("compileArtifact defaults to the Tree-sitter plain Liquid frontend", () => {
 	const compiled = compileArtifact({
 		source: "<div>{{ product.title }}</div>",
 		file: "snippets/product-title.liquid",
 	});
 
 	assert.equal(compiled.ok, true);
-	assert.equal(compiled.frontend, "plain-liquid");
+	assert.equal(compiled.frontend, "tree-sitter-plain-liquid");
 	assert.equal(compiled.contractProvenance, "none");
 	assert.equal(compiled.frontendSupport.explicitSchemaSyntax, true);
 });
 
-test("Tree-sitter plain Liquid frontend is explicit and fact-compatible", () => {
+test("legacy plain Liquid frontend remains an explicit parity oracle", () => {
 	const source = `{% render "card", title: section.settings.title %}
 {% section "featured" %}
 {% schema %}{"name":"Main","settings":[{"type":"text","id":"title"}]}{% endschema %}`;
-	const legacy = compileArtifact({ source, file: "sections/main.liquid" });
+	const legacy = compileArtifact({
+		source,
+		file: "sections/main.liquid",
+		sourceFrontend: "legacy",
+	});
 	const treeSitter = compileArtifact({
 		source,
 		file: "sections/main.liquid",

@@ -2229,6 +2229,10 @@
         "required": false,
         "types": [
           {
+            "type": "access",
+            "named": true
+          },
+          {
             "type": "as",
             "named": false
           },
@@ -2246,6 +2250,10 @@
         "multiple": true,
         "required": false,
         "types": [
+          {
+            "type": "access",
+            "named": true
+          },
           {
             "type": "as",
             "named": false

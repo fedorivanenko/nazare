@@ -56,7 +56,7 @@ export function createDependencyResolver(
 	readFile: ReadFile | undefined,
 	options: { sourceFrontend?: SourceFrontend } = {},
 ): DependencyResolver {
-	const sourceFrontend = options.sourceFrontend ?? "legacy";
+	const sourceFrontend = options.sourceFrontend ?? "tree-sitter";
 	const astCache = new Map<string, NazareAst | undefined>();
 	const contractCache = new Map<string, ArtifactContract | undefined>();
 

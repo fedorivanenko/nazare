@@ -255,7 +255,7 @@ module.exports = grammar({
       ),
 
     _render_param: ($) =>
-      seq($.identifier, optional(seq('as', field('item', $.identifier)))),
+      seq(choice($.identifier, $.access), optional(seq('as', field('item', $.identifier)))),
 
     filter: ($) =>
       seq(

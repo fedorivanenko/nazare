@@ -238,6 +238,7 @@ function analyzeNormalizedThemeFiles(
 		initialIssues?: Diagnostic[];
 	} = {},
 ): ThemeAnalysis {
+	const sourceFrontend = options.sourceFrontend ?? "tree-sitter";
 	const facts: ThemeFact[] = [];
 	const artifacts: ThemeBuildResult["artifacts"] = [];
 	const issues: Diagnostic[] = [...(options.initialIssues ?? [])];
@@ -247,12 +248,12 @@ function analyzeNormalizedThemeFiles(
 	// component re-parses its whole import closure from scratch.
 	const dependencyResolver: DependencyResolver = createDependencyResolver(
 		readFile,
-		{ sourceFrontend: options.sourceFrontend },
+		{ sourceFrontend },
 	);
 	const cache = options.cache?.version === 1 ? options.cache : undefined;
 	const componentDependencyFingerprints = fingerprintComponentSources(
 		files,
-		options.sourceFrontend,
+		sourceFrontend,
 	);
 	if (cache) {
 		const currentPaths = new Set(files.map((file) => file.path));
@@ -334,7 +335,7 @@ function analyzeNormalizedThemeFiles(
 				readFile,
 				dependencyResolver,
 				strictness: options.strictness,
-				sourceFrontend: options.sourceFrontend,
+				sourceFrontend,
 			});
 			facts.push(...result.facts);
 			issues.push(...result.issues);
@@ -349,7 +350,7 @@ function analyzeNormalizedThemeFiles(
 		if (file.path.endsWith(".liquid")) {
 			const result = collectPlainLiquidThemeFacts(file.path, file.contents, {
 				parseMode: options.plainLiquidParseMode ?? "liquid-only",
-				sourceFrontend: options.sourceFrontend,
+				sourceFrontend,
 			});
 			facts.push(...result.facts);
 			issues.push(...result.issues);
@@ -430,7 +431,7 @@ function themeFileFingerprint(
 	options: AnalyzeNazareThemeOptions,
 	dependencyFingerprint?: string,
 ): string {
-	const input = `${THEME_FACT_CACHE_REVISION}\0${fileKind}\0${options.strictness ?? "strict"}\0${options.plainLiquidParseMode ?? "liquid-only"}\0${options.sourceFrontend ?? "legacy"}\0${dependencyFingerprint ?? ""}\0${file.contents}`;
+	const input = `${THEME_FACT_CACHE_REVISION}\0${fileKind}\0${options.strictness ?? "strict"}\0${options.plainLiquidParseMode ?? "liquid-only"}\0${options.sourceFrontend ?? "tree-sitter"}\0${dependencyFingerprint ?? ""}\0${file.contents}`;
 	return createHash("sha256").update(input).digest("hex");
 }
 
