@@ -42,6 +42,23 @@ export {
 	liquidSettingsReads,
 } from "./liquid-facts.js";
 export {
+	type LiquidBlock,
+	type LiquidDocParam,
+	type LiquidGuard,
+	type LiquidLocalBinding,
+	type LiquidRead,
+	type LiquidRenderArgument,
+	type LiquidStringReference,
+	liquidAssetReferences,
+	liquidBlocks,
+	liquidDocParams,
+	liquidGuards,
+	liquidLocalBindings,
+	liquidLocaleReferences,
+	liquidReads,
+	liquidRenderArguments,
+} from "./liquid-readings.js";
+export {
 	BLOCK_TAGS,
 	RAW_TAGS,
 	TAGS_WITHOUT_MARKUP,
