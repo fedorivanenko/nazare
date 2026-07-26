@@ -1,0 +1,18 @@
+{
+	"name": "@nazare/source",
+	"version": "0.0.0",
+	"private": true,
+	"license": "MIT",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"scripts": {
+		"typecheck": "tsc -p tsconfig.json",
+		"test": "node --test tests/*.test.mjs",
+		"benchmark": "node scripts/benchmark.mjs"
+	},
+	"dependencies": {
+		"@nazare/tree-sitter-liquid": "workspace:^",
+		"tree-sitter": "0.21.1"
+	}
+}

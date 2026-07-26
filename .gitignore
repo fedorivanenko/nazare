@@ -15,6 +15,9 @@ dist/
 
 # personal
 notes/
+!notes/
+notes/*
+!notes/adr-tree-sitter-source-runtime.md
 
 # The example theme's built theme/ output IS committed (part of the showcase;
 # it carries its own .nazare/build-manifest.json so an in-place rebuild
