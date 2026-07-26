@@ -280,7 +280,87 @@ test("each component gets a props table and a code tab of the emitted Liquid", a
 	assert.ok(page.includes("badge--required"));
 });
 
-test("manifest stories replace the derived set and resolve fixtures", async () => {
+test("authored stories add to the derived set rather than deleting it", async () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const manifest = {
+		id: "@nazare/button",
+		version: "0.1.0",
+		entry: "button.nz.liquid",
+		files: ["button.nz.liquid"],
+		preview: {
+			stories: [
+				// A case no type can express, and an override of a derived story.
+				{ name: "empty label", props: { label: "" } },
+				{ name: "default", props: { label: "Shop all", scheme: "solid" } },
+			],
+		},
+	};
+
+	const names = storiesFor(component, manifest).map((story) => story.name);
+	// The enum coverage survives writing one edge case.
+	assert.deepEqual(names, [
+		"default",
+		"scheme: outline",
+		"scheme: ghost",
+		"size: sm",
+		"empty label",
+	]);
+	// A name that matches a derived story overrides it, so no two stories claim
+	// the same document — and the component gets to state a better default.
+	const rendered = await renderComponentStories(
+		component,
+		storiesFor(component, manifest),
+	);
+	assert.ok(rendered.stories[0].html.includes(">Shop all<"));
+
+	// Unless the author says the derived ones are not worth showing.
+	assert.deepEqual(
+		storiesFor(component, {
+			...manifest,
+			preview: { ...manifest.preview, replace: true },
+		}).map((story) => story.name),
+		["empty label", "default"],
+	);
+});
+
+test("a sidecar declaration outranks the manifest", () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const manifest = {
+		id: "@nazare/button",
+		version: "0.1.0",
+		entry: "button.nz.liquid",
+		files: ["button.nz.liquid"],
+		preview: { stories: [{ name: "from manifest", props: {} }] },
+	};
+	// A theme has no manifest at all, so the file beside the template is the
+	// only place its stories can live — and the more local statement wins.
+	const names = storiesFor(component, manifest, {
+		stories: [{ name: "from sidecar", props: { label: "Local" } }],
+	}).map((story) => story.name);
+
+	assert.ok(names.includes("from sidecar"));
+	assert.ok(!names.includes("from manifest"));
+});
+
+test("Shopify's form tag renders its body instead of failing the story", async () => {
+	const component = previewComponentFromSource(
+		`{% form 'localization' %}<button>{{ shop.name }}</button>{% endform %}`,
+		"snippets/localization-form.liquid",
+	);
+	const rendered = await renderComponentStories(component, [
+		{ name: "default", props: { shop: { name: "Nazare Supply" } } },
+	]);
+
+	assert.equal(rendered.stories[0].error, undefined);
+	assert.ok(
+		rendered.stories[0].html.includes('data-preview-form="localization"'),
+	);
+	assert.ok(
+		rendered.stories[0].html.includes("<button>Nazare Supply</button>"),
+	);
+});
+
+test("manifest stories resolve fixtures", async () => {
 	const component = previewComponentFromSource(PRICE, "price.nz.liquid");
 	const manifest = {
 		id: "@nazare/price",
@@ -301,16 +381,18 @@ test("manifest stories replace the derived set and resolve fixtures", async () =
 		},
 	};
 	const stories = storiesFor(component, manifest);
+	const onSale = stories.find((story) => story.name === "on sale");
 
+	// The derived default is still there; the authored case is added to it.
 	assert.deepEqual(
 		stories.map((story) => story.name),
-		["on sale"],
+		["default", "on sale"],
 	);
 	// The reference resolved to shared stand-in data, and the story says so.
-	assert.equal(stories[0].props.price, 2400);
-	assert.equal(stories[0].fixtures, true);
+	assert.equal(onSale.props.price, 2400);
+	assert.equal(onSale.fixtures, true);
 
-	const rendered = await renderComponentStories(component, stories);
+	const rendered = await renderComponentStories(component, [onSale]);
 	// Money is minor units, formatted by the preview's `money` filter.
 	assert.ok(rendered.stories[0].html.includes("$24.00"));
 	assert.ok(rendered.stories[0].html.includes("<s"));

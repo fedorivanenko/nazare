@@ -20,6 +20,13 @@ export type NazareManifestStory = {
 
 export type NazareManifestPreview = {
 	stories?: NazareManifestStory[];
+	/**
+	 * Show only these stories, dropping the ones derived from the contract. Off
+	 * by default: an authored case is one a type could not express, so it adds to
+	 * the derived set rather than standing in for it. A component whose derived
+	 * stories are genuinely not worth showing sets this.
+	 */
+	replace?: boolean;
 };
 
 export type NazareManifest = {

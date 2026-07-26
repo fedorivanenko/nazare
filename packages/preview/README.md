@@ -76,6 +76,20 @@ sweep over the whole registry or for embedding in a docs site.
 Both draw their per-component documentation — install command, diagnostics, props
 table, emitted Liquid — from the same `panels.ts`.
 
+## Previewing a plain theme
+
+```sh
+node packages/preview/examples/preview-theme.mjs path/to/theme
+```
+
+No manifests, no Nazare syntax. The walk over `snippets/`, `sections/`, and
+`blocks/` is the classification — Shopify addresses a theme file by its
+directory, and the kind decides whether props arrive as bare variables or as
+`section.settings.*`. Each file's controls come from its own `{% doc %}` params
+or `{% schema %}` settings, the whole `snippets/` directory is in scope so
+`{% render %}` resolves, and the theme's `assets/` are served where `asset_url`
+points.
+
 ## Fixtures and authored stories
 
 Storefront data lives in the preview, not in the components: one canonical mock
@@ -101,9 +115,17 @@ Cases a type cannot express belong with the component, in its `nazare.json`:
 }
 ```
 
-`{ "$fixture": "name" }` addresses the shared data. Authored stories replace the
-derived set — an author who writes them has said what is worth showing — and a
-component with no `preview` block is still previewable from its contract alone.
+A theme has no `nazare.json`, so its stories live in a sidecar beside the
+template — `product-card.stories.json` for `product-card.liquid` — in the same
+shape, minus the manifest wrapper. The sidecar wins where both exist: the file
+beside the template is the more local statement.
+
+`{ "$fixture": "name" }` addresses the shared data. Authored stories **add** to
+the derived set rather than replacing it, so writing one edge case does not
+silently delete the enum coverage the contract gave you; a story named after a
+derived one overrides it, which is how a component states a better default than
+the type-shaped one. `"replace": true` drops the derived set entirely. A
+component with no stories at all is still previewable from its contract.
 Stories drawing on fixtures are badged in the gallery, because a fixture is tidy
 in ways a real catalogue is not: no missing compare-at price, no 60-character
 title, no sold-out variant.

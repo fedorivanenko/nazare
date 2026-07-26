@@ -429,9 +429,20 @@ const WORKBENCH_SCRIPT = `
   });
 `;
 
+/**
+ * The caption under the canvas: what this story passed. A fixture serialises to
+ * several kilobytes of product JSON, which buries the props that matter, so a
+ * value that is not a scalar is named rather than printed.
+ */
 const formatProps = (props: Record<string, unknown>): string =>
 	Object.entries(props)
-		.map(([name, value]) => `${name}: ${JSON.stringify(value)}`)
+		.map(([name, value]) => {
+			if (value !== null && typeof value === "object") {
+				return `${name}: ${Array.isArray(value) ? "[…]" : "{…}"}`;
+			}
+			const printed = JSON.stringify(value) ?? "";
+			return `${name}: ${printed.length > 60 ? `${printed.slice(0, 57)}…` : printed}`;
+		})
 		.join(", ");
 
 export function workbenchPage(

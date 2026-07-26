@@ -16,10 +16,15 @@ export const money = {
 	free: 0,
 } as const;
 
-/** A 4:3 placeholder that needs no network — the CSP on a static page is ours. */
+/**
+ * A 4:3 placeholder that needs no network — the CSP on a static page is ours.
+ * Terse on purpose: a template that prints an image URL as text (a srcset, a
+ * data attribute, a story caption) prints this whole string, so every character
+ * of it is a character of noise in the workbench.
+ */
 const placeholderImage = (label: string): string =>
 	`data:image/svg+xml,${encodeURIComponent(
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"><rect width="400" height="300" fill="#e4e4e7"/><text x="200" y="155" font-family="sans-serif" font-size="18" fill="#71717a" text-anchor="middle">${label}</text></svg>`,
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 3"><title>${label}</title><rect width="4" height="3" fill="#e4e4e7"/></svg>`,
 	)}`;
 
 export const image = {

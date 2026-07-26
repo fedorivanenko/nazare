@@ -55,6 +55,8 @@ function controlKind(type: SemanticType): PreviewControl["kind"] {
 			return "boolean";
 		case "number":
 		case "number-literal":
+		// Money is minor units: a number to the viewer, currency on render.
+		case "money":
 			return "number";
 		case "color":
 			return "color";
@@ -83,6 +85,10 @@ function initialValue(
 	switch (type.kind) {
 		case "boolean":
 			return false;
+		case "money":
+			// Minor units, like a storefront: the money filter turns this into
+			// $24.00. The prop name would render as the word "price".
+			return 2400;
 		case "number":
 			return type.constraints?.min ?? 0;
 		case "number-literal":

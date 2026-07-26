@@ -10,8 +10,15 @@ export function copyButton(text: string, label = "Copy"): string {
 	return `<button class="copy" type="button" data-copy="${escapeHtml(text)}" aria-label="${escapeHtml(label)}">${escapeHtml(label)}</button>`;
 }
 
-const formatValue = (value: unknown): string =>
-	value === undefined ? "—" : JSON.stringify(value);
+/** A default, for the table. A fixture is kilobytes of JSON: name it instead. */
+const formatValue = (value: unknown): string => {
+	if (value === undefined) return "—";
+	if (value !== null && typeof value === "object") {
+		return Array.isArray(value) ? "[…]" : "{…}";
+	}
+	const printed = JSON.stringify(value) ?? "";
+	return printed.length > 60 ? `${printed.slice(0, 57)}…` : printed;
+};
 
 /** The props table, shadcn's docs shape: prop, type, default, required. */
 export function renderControlsTable(controls: PreviewControl[]): string {
