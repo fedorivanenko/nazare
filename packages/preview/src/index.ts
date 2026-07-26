@@ -44,11 +44,13 @@ export {
 } from "./render.js";
 export {
 	changedProps,
+	declaredStories,
 	defaultStory,
 	generatedStories,
 	manifestStories,
 	type PreviewStory,
 	storiesFor,
+	type StoryDeclaration,
 	variantStories,
 } from "./stories.js";
 export {
