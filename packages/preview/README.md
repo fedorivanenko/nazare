@@ -85,9 +85,8 @@ table, emitted Liquid — from the same `panels.ts`.
 ## Previewing a plain theme
 
 ```sh
-node packages/preview/examples/preview-theme.mjs path/to/theme
-node packages/preview/examples/preview-theme.mjs packages/preview/fixtures/theme
-node packages/preview/examples/preview-theme.mjs path/to/theme --all
+nazare preview check path/to/theme
+nazare preview build path/to/theme
 ```
 
 `fixtures/theme` is the theme kept here for exactly this: two snippets declaring
@@ -149,8 +148,8 @@ distinct from absent — "what does this look like without the optional thing."
 sidebar entry. That is the whole discovery rule, and it is what keeps a real
 theme's hundred helper snippets — `icon.liquid`, `meta-tags.liquid` — out of a
 sidebar where they would render blank. They stay in scope for `{% render %}`;
-they just aren't things to look at. `--all` shows them anyway, which is how you
-survey a theme to decide what to write next.
+they just aren't things to look at. `build` and `check` both count them, and
+`check --json` names them, so a template never disappears without saying why.
 
 A published component carries its stories in `nazare.json`, versioned with it
 and travelling with the install. A theme has no manifest, so its stories live in
@@ -173,7 +172,7 @@ per enum member — but it writes a *file*, for an author to read and edit and
 commit:
 
 ```sh
-node packages/preview/examples/scaffold-stories.mjs snippets/product-card.liquid
+nazare preview scaffold snippets/product-card.liquid
 ```
 
 The difference is not cosmetic. A guess in a file is something you can correct;
@@ -217,7 +216,7 @@ source ──▶ compile ──▶ template + declaration ──▶ controls ─
 
 Nothing in the package touches a filesystem, a server, or a clock. Every
 function takes what it needs and returns a value, so the I/O belongs to the
-caller — which is why the two runners live in `examples/` rather than in `src/`,
+caller — which is why `nazare preview` lives in `cli-client` rather than here,
 and why a dev server can reuse every pass unchanged.
 
 ### The passes
@@ -333,10 +332,10 @@ panels.ts            per-component documentation, shared by both shells
 theme.ts, html.ts    shared tokens, frame messages, escaping
 ```
 
-`examples/build-gallery.mjs` (the registry), `examples/preview-theme.mjs` (any
-theme directory), and `examples/scaffold-stories.mjs` (one file's first draft)
-are pure I/O around the above, and the shape a `nazare preview` command would
-take.
+`cli-client/src/preview-command.ts` is pure I/O around the above: it walks a
+directory, resolves each component's story file, and writes the pages. It is
+also where the theme-versus-package distinction lives — detected from what is in
+the directory, not asked for.
 
 ## What it is not
 
@@ -355,12 +354,17 @@ store — that still needs `shopify theme dev`.
 
 ```sh
 pnpm -s build
-node packages/preview/examples/build-gallery.mjs
+node packages/cli-client/dist/index.js preview build registry/components
 open .nazare-out/preview/index.html
 ```
 
 Renders every component in `registry/components/`, writing the workbench to
 `index.html`, the whole-registry catalogue to `all.html`, and one document per
-story under `stories/`. Compile diagnostics are listed per component
-rather than failing the page, and a story that throws reports its error in place
-— in its own document, so the rest of the page is unaffected.
+story under `stories/`. Compile diagnostics are listed per component rather than
+failing the page, and a story that throws reports its error in place — in its
+own document, so the rest of the page is unaffected.
+
+`nazare preview check` renders the same set with no pages written, and exits
+non-zero when a story throws or contradicts its declaration. That is the CI
+form: rename a prop and the stories still naming the old one fail here rather
+than rendering nil on a storefront.

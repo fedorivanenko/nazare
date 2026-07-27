@@ -238,6 +238,19 @@ nazare inspect graph nazare/components/hero.nz.liquid
 nazare inspect dump nazare/components/hero.nz.liquid
 ```
 
+Components are also previewable, on their own, in a workbench — including plain
+`.liquid` in an existing theme, which needs no Nazare syntax at all:
+
+```sh
+nazare preview scaffold snippets/product-card.liquid  # draft its stories
+nazare preview build                                  # write the workbench
+nazare preview check                                  # the CI form
+```
+
+A component appears once it has stories, written in `<name>.stories.json` beside
+the template. See [`packages/preview`](packages/preview) for what the story file
+declares — and, deliberately, what it does not.
+
 ## 2. Registry
 
 Build from reusable components instead of starting from scratch.

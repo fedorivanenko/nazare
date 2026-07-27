@@ -118,11 +118,25 @@ export function printHelp(output: Output = console): void {
   nazare init                        scaffold build config in nazare.theme.json (prompts for src/out dirs)
   nazare build [source-root|file]    source root from arg or nazare.theme.json build.sourceRoot
   nazare check <file>                diagnostics only; non-zero exit on errors
+  nazare preview <command>           the component workbench
   nazare registry <command>          install, author, and choose registries
   nazare inspect <view> <file>       compiler facts as JSON
   nazare inspect theme [dir]         semantic graph for a whole theme
                                      dir defaults to nazare.theme.json build.sourceRoot
   nazare graph-server [dir]          serve graph queries over newline-delimited JSON stdio
+
+Preview:
+  nazare preview build [dir]             write a static workbench
+                                         dir defaults to build.sourceRoot; output
+                                         directory is asked once and saved to
+                                         nazare.theme.json preview.outDir
+  nazare preview check [dir]             render every story; non-zero exit when one
+                                         fails or contradicts its declaration
+  nazare preview scaffold <file>         draft a <name>.stories.json beside a
+                                         template, from what it declares
+
+  A component appears once it has stories. Write them in <name>.stories.json
+  beside a theme template, or in a package's nazare.json under "preview".
 
 Registry:
   nazare registry add <@scope/name>      copy a component + deps into the source root
@@ -145,7 +159,8 @@ Options:
   --force                            registry update: overwrite local component edits
   --pack                             registry publish: write the payload to .nazare-out/pack instead
   --source-root <dir>                registry add/update, build (else nazare.theme.json build.sourceRoot)
-  --out-dir <dir>                    build output directory (else nazare.theme.json build.outDir)
+  --out-dir <dir>                    build output directory (else nazare.theme.json build.outDir);
+                                     preview build writes here too (preview.outDir)
   --pull-data                        build: reconcile against a live theme's merchant-owned data first
   --store <domain>                   build --pull-data: Shopify store to pull from
   --theme <id|name>                  build --pull-data: theme to pull from

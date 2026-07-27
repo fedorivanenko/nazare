@@ -51,6 +51,9 @@ importers:
       '@nazare/core':
         specifier: workspace:^
         version: link:../core
+      '@nazare/preview':
+        specifier: workspace:^
+        version: link:../preview
       '@nazare/registry':
         specifier: workspace:^
         version: link:../registry

@@ -43,6 +43,11 @@ import {
 import { diffComponent, installComponent, updateAll } from "./install.js";
 import { type CliOptions, parseCliOptions, printHelp } from "./options.js";
 import type { Output } from "./output.js";
+import {
+	runPreviewBuild,
+	runPreviewCheck,
+	runPreviewScaffold,
+} from "./preview-command.js";
 import { packComponent, publishComponent } from "./publish.js";
 
 const THEME_MANIFEST = "nazare.theme.json";
@@ -63,6 +68,9 @@ const INSPECT_VIEWS = new Set([
 
 /** Registry verbs common enough to also answer at the top level. */
 const REGISTRY_ALIASES = new Set(["add", "update", "publish"]);
+
+/** Workbench verbs. Serving one is a separate matter; these three do not. */
+const PREVIEW_VERBS = new Set(["build", "check", "scaffold"]);
 
 type MainOptions = { cwd?: string; env?: NodeJS.ProcessEnv; output?: Output };
 
@@ -135,6 +143,12 @@ export async function main(
 				cliOptions,
 				output,
 			);
+		}
+
+		// The workbench, as three verbs under one namespace. Serving it is a
+		// separate matter; these three need no server and no browser.
+		if (command === "preview") {
+			return await runPreview(projectRoot, cliOptions, output);
 		}
 
 		// `init` scaffolds the project's explicit build config so add/build work.
@@ -308,6 +322,12 @@ type ProjectManifest = {
 	 * page-builder chunks — that are skipped entirely and reported as excluded.
 	 */
 	inspect?: { exclude?: string[] };
+	/**
+	 * Where `preview build` writes. Asked for once and saved, rather than
+	 * defaulted: a command that writes a directory tree should never be guessing
+	 * which directory.
+	 */
+	preview?: { outDir?: string };
 };
 
 /**
@@ -391,6 +411,55 @@ async function runInit(
 		),
 	);
 	return 0;
+}
+
+/**
+ * `nazare preview <verb>`.
+ *
+ * The directory defaults to the project's own source root, because the thing
+ * you want to look at is the thing you are building. `scaffold` is the odd one
+ * out: it targets a single file, since a story file belongs to one component.
+ */
+async function runPreview(
+	projectRoot: string,
+	cliOptions: CliOptions,
+	output: Output,
+): Promise<number> {
+	const [verb, ...rest] = cliOptions.positionals;
+	if (!verb || !PREVIEW_VERBS.has(verb)) {
+		output.error(
+			`Usage: nazare preview <${[...PREVIEW_VERBS].join("|")}>. See nazare help.`,
+		);
+		return 1;
+	}
+
+	if (verb === "scaffold") {
+		const target = rest[0];
+		if (!target) {
+			output.error("Usage: nazare preview scaffold <file.liquid>");
+			return 1;
+		}
+		return await runPreviewScaffold(projectRoot, target, cliOptions, output);
+	}
+
+	const manifest = await readProjectManifest(projectRoot);
+	const root = rest[0] ?? manifest.build?.sourceRoot ?? ".";
+	const dir = resolve(projectRoot, root);
+
+	if (verb === "check") return await runPreviewCheck(dir, cliOptions, output);
+
+	// Asked once, then saved: the next `preview build` is a bare command.
+	const configured = cliOptions.outDir ?? manifest.preview?.outDir;
+	const outDir =
+		configured ??
+		(await ask("Preview output directory", ".nazare-out/preview", undefined));
+	if (!manifest.preview?.outDir && !cliOptions.outDir) {
+		await writeProjectManifest(projectRoot, {
+			...manifest,
+			preview: { ...manifest.preview, outDir },
+		});
+	}
+	return await runPreviewBuild(dir, resolve(projectRoot, outDir), output);
 }
 
 async function runInspect(
