@@ -263,6 +263,103 @@ test("the story file can be saved as text, and is checked as one", async () => {
 	);
 });
 
+test("a story can be created and deleted, but not the last one", async () => {
+	await withTheme(
+		{
+			"snippets/price.liquid": PRICE,
+			"snippets/price.stories.json": STORIES,
+		},
+		async (dir) => {
+			const { previewServerState, saveStoryFile } = await load();
+			const read = async () =>
+				JSON.parse(
+					await readFile(join(dir, "snippets/price.stories.json"), "utf8"),
+				);
+
+			let state = await previewServerState(dir, "theme");
+			assert.equal(
+				await saveStoryFile(dir, state, {
+					component: "price",
+					story: "free",
+					action: "create",
+				}),
+				undefined,
+			);
+			assert.deepEqual(
+				(await read()).stories.map((story) => story.name),
+				["on sale", "free"],
+			);
+
+			state = await previewServerState(dir, "theme");
+			assert.match(
+				await saveStoryFile(dir, state, {
+					component: "price",
+					story: "free",
+					action: "create",
+				}),
+				/already has free/,
+			);
+			assert.equal(
+				await saveStoryFile(dir, state, {
+					component: "price",
+					story: "on sale",
+					action: "delete",
+				}),
+				undefined,
+			);
+			assert.deepEqual(
+				(await read()).stories.map((story) => story.name),
+				["free"],
+			);
+
+			// A component with no stories does not appear at all, so deleting the
+			// last one deletes the component. That is a thing to do deliberately,
+			// in the file, not by clicking the last × in a list.
+			state = await previewServerState(dir, "theme");
+			assert.match(
+				await saveStoryFile(dir, state, {
+					component: "price",
+					story: "free",
+					action: "delete",
+				}),
+				/only story/,
+			);
+		},
+	);
+});
+
+test("a draft renders against props that are not on disk", async () => {
+	await withTheme(
+		{
+			"snippets/price.liquid": PRICE,
+			"snippets/price.stories.json": STORIES,
+		},
+		async (dir) => {
+			const { previewServerState, renderStoryDraft } = await load();
+			const state = await previewServerState(dir, "theme");
+			const before = await readFile(
+				join(dir, "snippets/price.stories.json"),
+				"utf8",
+			);
+
+			// What lets a control repaint the canvas while the file is untouched:
+			// the same render as the build, run against what the panel holds.
+			const html = await renderStoryDraft(state, {
+				component: "price",
+				story: "on sale",
+				props: { price: 999 },
+			});
+
+			assert.match(html, /\$9\.99/);
+			assert.equal(
+				await readFile(join(dir, "snippets/price.stories.json"), "utf8"),
+				before,
+				"a draft writes nothing",
+			);
+		},
+	);
+});
+
 test("a directory with nothing to preview reports rather than serving", async () => {
 	await withTheme({ "notes.md": "# nothing here" }, async (dir) => {
 		const { previewServerState } = await load();

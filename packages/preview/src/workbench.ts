@@ -76,6 +76,15 @@ export type WorkbenchPageOptions = {
 	 */
 	saveEndpoint?: string;
 	/**
+	 * An endpoint that renders one story against props that are not on disk.
+	 *
+	 * This is what lets a control repaint the canvas while the story file is
+	 * untouched: the same render as the build, run against what the panel holds,
+	 * so what you are looking at is real rather than an optimistic guess. Only a
+	 * server can offer it — the render is liquidjs in Node, not in the page.
+	 */
+	renderEndpoint?: string;
+	/**
 	 * Each component's story file as text, by component id, so the panel can
 	 * offer the file itself and not only the props a form can express — adding a
 	 * story, reordering, a note, an explicit null. Supplied by a server, since
@@ -204,9 +213,11 @@ function substories({ component, stories }: RenderedComponent): string {
 			: rendered.issues.length > 0
 				? `<span class="story-state">${rendered.issues.length}</span>`
 				: "";
-		return `<li><button class="story-pick" type="button" data-story-pick="${escapeHtml(
+		return `<li class="story-row"><button class="story-pick" type="button" data-story-pick="${escapeHtml(
 			rendered.id,
-		)}">${escapeHtml(rendered.story.name)}${state}</button></li>`;
+		)}">${escapeHtml(rendered.story.name)}${state}</button><button class="story-drop" type="button" data-story-drop="${escapeHtml(
+			rendered.story.name,
+		)}" data-story-component="${escapeHtml(id)}" title="Delete this story" hidden>×</button></li>`;
 	};
 	const items = [...groups]
 		.map(([group, entries]) =>
@@ -595,6 +606,40 @@ const WORKBENCH_STYLES = `
     tab-size: 2;
   }
   .controls-bar { display: flex; align-items: center; gap: .4rem; margin-top: .8rem; }
+  .story-row { display: flex; align-items: center; gap: .2rem; }
+  .story-row .story-pick { flex: 1; min-width: 0; }
+  /* Visible on hover or focus only: deleting a case is not something to put a
+   * standing button next to, but it should not be hidden in a menu either. */
+  .story-drop {
+    flex: none;
+    border: 0;
+    background: transparent;
+    color: var(--muted-foreground);
+    font: inherit;
+    line-height: 1;
+    padding: .2rem .35rem;
+    border-radius: calc(var(--radius) - 3px);
+    cursor: pointer;
+    opacity: 0;
+  }
+  .story-row:hover .story-drop, .story-drop:focus-visible, .story-drop--confirm { opacity: 1; }
+  .story-drop--confirm { background: #fee2e2; color: #991b1b; font-size: .68rem; }
+  .story-drop:hover { background: #fee2e2; color: #991b1b; }
+  .story-drop[hidden] { display: none; }
+  .story-new { display: flex; gap: .3rem; margin-top: .6rem; }
+  .story-new[hidden] { display: none; }
+  .story-name {
+    flex: 1;
+    min-width: 0;
+    height: 30px;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--background);
+    color: var(--foreground);
+    padding: 0 .5rem;
+    font: inherit;
+    font-size: .78rem;
+  }
   .controls-status { font-size: .72rem; color: var(--muted-foreground); }
   .controls-status--error { color: #b91c1c; }
   .panel-toggle[disabled] { opacity: .5; cursor: default; }
@@ -702,6 +747,12 @@ const WORKBENCH_SCRIPT = `
   const resetButton = document.getElementById('controls-reset');
   const status = document.getElementById('controls-status');
   const jsonEditor = document.getElementById('json-editor');
+  const jsonSave = document.getElementById('json-save');
+  const jsonStatus = document.getElementById('json-status');
+  const storyLists = document.getElementById('story-lists');
+  const storyNew = document.getElementById('story-new');
+  const storyName = document.getElementById('story-name');
+  const storyAdd = document.getElementById('story-add');
   const jsonText = document.getElementById('json-text');
   const jsonPath = document.getElementById('json-path');
   let mode = 'controls';
@@ -829,11 +880,17 @@ const WORKBENCH_SCRIPT = `
     for (const list of document.querySelectorAll('[data-substories]')) {
       list.hidden = list.dataset.substories !== story.component;
     }
+    for (const drop of document.querySelectorAll('[data-story-drop]')) {
+      drop.hidden = !saveEndpoint;
+    }
+    storyNew.hidden = !saveEndpoint;
     for (const pick of document.querySelectorAll('[data-story-pick]')) {
       if (pick.dataset.storyPick === storyId) {
         pick.setAttribute('aria-current', 'true');
       } else pick.removeAttribute('aria-current');
     }
+    // Leaving a story drops whatever draft was on the canvas.
+    canvas.removeAttribute('srcdoc');
     if (canvas.getAttribute('src') !== story.href) {
       // Height is stale until the new story measures itself; start from the
       // floor so a short story after a tall one does not leave a gap. A height
@@ -899,6 +956,7 @@ const WORKBENCH_SCRIPT = `
   // The endpoint rides on the button rather than in a global: the script is one
   // constant string, and the page is what knows whether a server is behind it.
   const saveEndpoint = saveButton?.dataset.endpoint ?? '';
+  const renderEndpoint = saveButton?.dataset.render ?? '';
   let editing = null;
 
   const isFixture = (value) =>
@@ -959,10 +1017,15 @@ const WORKBENCH_SCRIPT = `
     input.addEventListener('input', () => {
       dirty = true;
       paintControlsBar();
+      previewDraft();
     });
     row.append(input);
     return row;
   }
+
+  /** What the declaration itself supplies, or undefined where it says nothing. */
+  const declaredDefault = (control) =>
+    control.hasDefault ? control.value : undefined;
 
   function renderControls(story) {
     const controls = controlsIndex[story.component] ?? [];
@@ -982,9 +1045,19 @@ const WORKBENCH_SCRIPT = `
       jsonText.value = file.contents;
     } else if (mode === 'json') setMode('controls');
     dirty = false;
+    // Seeded with what the story actually renders on: its own value where it
+    // states one, the declaration's default where it does not. A field that
+    // showed blank for an unstated prop could not tell "unset" from "empty",
+    // and saving an untouched form then wrote defaults into a story that had
+    // deliberately said nothing.
     controlsForm.replaceChildren(
       ...controls.map((control) =>
-        controlRow(control, story.source[control.name]),
+        controlRow(
+          control,
+          control.name in story.source
+            ? story.source[control.name]
+            : declaredDefault(control),
+        ),
       ),
     );
     status.textContent = '';
@@ -992,32 +1065,163 @@ const WORKBENCH_SCRIPT = `
     paintControlsBar();
   }
 
+  /**
+   * Repaints the canvas from the values in the panel, without writing anything.
+   *
+   * The render is liquidjs in Node, so the page cannot do this alone — it asks
+   * the server, which renders the one story against these props and hands back
+   * the same document the build would have written. The file on disk is
+   * untouched until Save, which is the point: you can look before you commit.
+   */
+  let draftTimer;
+  function previewDraft() {
+    if (!renderEndpoint || !editing) return;
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(async () => {
+      try {
+        const response = await fetch(renderEndpoint, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            component: editing.component,
+            story: editing.storyName,
+            props: formProps(),
+          }),
+        });
+        if (!response.ok) return;
+        // srcdoc rather than a new URL: nothing is written, so there is no
+        // document to point at. The story's own <base> keeps its assets
+        // resolving from the root.
+        canvas.removeAttribute('src');
+        canvas.srcdoc = await response.text();
+      } catch {
+        // A draft that cannot be rendered leaves the last one on screen; the
+        // canvas is never blanked for a keystroke.
+      }
+    }, 120);
+  }
+
   function setMode(next) {
     mode = next;
     for (const button of document.querySelectorAll('[data-mode]')) {
       button.setAttribute('aria-pressed', String(button.dataset.mode === next));
     }
-    controlsForm.hidden = next !== 'controls';
+    storyLists.hidden = next !== 'controls';
     jsonEditor.hidden = next !== 'json';
   }
   for (const button of document.querySelectorAll('[data-mode]')) {
     button.addEventListener('click', () => setMode(button.dataset.mode));
   }
   jsonText.addEventListener('input', () => {
-    dirty = true;
-    paintControlsBar();
+    jsonSave.disabled = !saveEndpoint;
+  });
+  jsonSave?.addEventListener('click', async () => {
+    jsonSave.disabled = true;
+    jsonStatus.classList.remove('controls-status--error');
+    jsonStatus.textContent = 'saving…';
+    const failure = await post({
+      component: editing.component,
+      file: jsonText.value,
+    });
+    if (failure) {
+      jsonStatus.textContent = failure;
+      jsonStatus.classList.add('controls-status--error');
+      jsonSave.disabled = false;
+    } else jsonStatus.textContent = 'saved';
   });
 
-  /** What the form says, as a story's props: only what it changes. */
+  /** One request, one message back: the server answers with why, or nothing. */
+  async function post(body) {
+    try {
+      const response = await fetch(saveEndpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return response.ok ? undefined : await response.text();
+    } catch (error) {
+      return error.message || 'save failed';
+    }
+  }
+
+  // A story is created and deleted where they are listed, because that is
+  // where you can see the set you are changing.
+  storyName?.addEventListener('input', () => {
+    storyAdd.disabled = !saveEndpoint || storyName.value.trim() === '';
+  });
+  storyAdd?.addEventListener('click', async () => {
+    storyAdd.disabled = true;
+    const failure = await post({
+      component: editing.component,
+      story: storyName.value.trim(),
+      action: 'create',
+    });
+    if (failure) {
+      status.textContent = failure;
+      status.classList.add('controls-status--error');
+      storyAdd.disabled = false;
+    }
+  });
+  // Deleting asks once. A story is somebody's writing — the case they thought
+  // worth showing, and the note saying why — and a hover target that removes it
+  // on a single click is the wrong amount of ceremony for that.
+  for (const drop of document.querySelectorAll('[data-story-drop]')) {
+    const rest = () => {
+      drop.textContent = '×';
+      drop.classList.remove('story-drop--confirm');
+      drop.title = 'Delete this story';
+    };
+    drop.addEventListener('blur', rest);
+    drop.addEventListener('click', async () => {
+      if (!drop.classList.contains('story-drop--confirm')) {
+        drop.textContent = 'Delete?';
+        drop.title = 'Click again to delete this story';
+        drop.classList.add('story-drop--confirm');
+        return;
+      }
+      rest();
+      const failure = await post({
+        component: drop.dataset.storyComponent,
+        story: drop.dataset.storyDrop,
+        action: 'delete',
+      });
+      if (failure) {
+        status.textContent = failure;
+        status.classList.add('controls-status--error');
+      }
+    });
+  }
+
+  /**
+   * What the form says, as a story's props: only what it changes.
+   *
+   * A story states its delta, so a value equal to what the declaration already
+   * gives is not written — an untouched form saves nothing, which is the whole
+   * difference between editing a story and rewriting it.
+   */
   function formProps() {
+    const controls = controlsIndex[editing.component] ?? [];
+    const byName = new Map(controls.map((control) => [control.name, control]));
     const props = { ...editing.source };
     for (const input of controlsForm.querySelectorAll('[data-control]')) {
       const name = input.dataset.control;
-      if (input.type === 'checkbox') props[name] = input.checked;
+      const control = byName.get(name);
+      const stated = name in editing.source;
+      let value;
+      if (input.type === 'checkbox') value = input.checked;
       else if (input.dataset.kind === 'number') {
-        props[name] = input.value === '' ? null : Number(input.value);
-      } else if (input.value === '') delete props[name];
-      else props[name] = input.value;
+        value = input.value === '' ? undefined : Number(input.value);
+      } else value = input.value === '' ? undefined : input.value;
+
+      // An explicit null is the story saying "without this one", and an empty
+      // field does not undo that — only clearing a stated value does.
+      if (value === undefined) {
+        if (stated && editing.source[name] === null) props[name] = null;
+        else delete props[name];
+        continue;
+      }
+      if (!stated && value === declaredDefault(control)) delete props[name];
+      else props[name] = value;
     }
     return props;
   }
@@ -1025,8 +1229,12 @@ const WORKBENCH_SCRIPT = `
   function paintControlsBar() {
     saveButton.disabled = !dirty || !saveEndpoint;
     resetButton.disabled = !dirty;
-    if (!saveEndpoint && dirty) {
-      status.textContent = 'read-only — run nazare preview serve to save';
+    // The canvas is showing the form, not the file, and says so until saved.
+    if (dirty) {
+      status.textContent = saveEndpoint
+        ? 'unsaved — the canvas is showing these values'
+        : 'read-only — run nazare preview serve to save';
+      status.classList.remove('controls-status--error');
     }
   }
 
@@ -1034,29 +1242,20 @@ const WORKBENCH_SCRIPT = `
     saveButton.disabled = true;
     status.classList.remove('controls-status--error');
     status.textContent = 'saving…';
-    try {
-      const response = await fetch(saveEndpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(
-          mode === 'json'
-            ? { component: editing.component, file: jsonText.value }
-            : {
-                component: editing.component,
-                story: editing.storyName,
-                props: formProps(),
-              },
-        ),
-      });
-      if (!response.ok) throw new Error(await response.text());
-      // The write lands on the watcher, which rebuilds and reloads the page —
-      // so the canvas below is a real render, not an optimistic one.
-      status.textContent = 'saved';
-    } catch (error) {
-      status.textContent = error.message || 'save failed';
+    const failure = await post({
+      component: editing.component,
+      story: editing.storyName,
+      props: formProps(),
+    });
+    if (failure) {
+      status.textContent = failure;
       status.classList.add('controls-status--error');
       saveButton.disabled = false;
+      return;
     }
+    // The write lands on the watcher, which rebuilds and reloads the page — so
+    // the canvas ends up showing a render of the file, not of the form.
+    status.textContent = 'saved';
   });
 
   resetButton?.addEventListener('click', () => {
@@ -1401,26 +1600,38 @@ ${links}
     </main>
     <aside class="docs" aria-label="Story and component documentation">
       <section class="docs-section">
-        <p class="docs-heading">Stories</p>
-        ${components.map((component) => substories(component)).join("")}
-      </section>
-
-      <section class="docs-section" id="controls-section" hidden>
         <p class="docs-heading">
-          Controls
+          Stories
           <span class="edit-modes">
-            <button class="edit-mode" type="button" data-mode="controls" aria-pressed="true">Fields</button>
+            <button class="edit-mode" type="button" data-mode="controls" aria-pressed="true">List</button>
             <button class="edit-mode" type="button" data-mode="json" aria-pressed="false">JSON</button>
           </span>
         </p>
-        <form class="controls" id="controls"></form>
+        <div id="story-lists">
+          ${components.map((component) => substories(component)).join("")}
+          <div class="story-new" id="story-new">
+            <input class="story-name" id="story-name" type="text" placeholder="New story name" aria-label="New story name">
+            <button class="panel-toggle" type="button" id="story-add" disabled>Add</button>
+          </div>
+        </div>
         <div class="json-editor" id="json-editor" hidden>
           <p class="json-path" id="json-path"></p>
           <textarea class="json-text" id="json-text" spellcheck="false" aria-label="Story file"></textarea>
+          <div class="controls-bar">
+            <button class="panel-toggle" type="button" id="json-save" disabled>Save file</button>
+            <span class="controls-status" id="json-status"></span>
+          </div>
         </div>
+      </section>
+
+      <section class="docs-section" id="controls-section" hidden>
+        <p class="docs-heading">Controls</p>
+        <form class="controls" id="controls"></form>
         <div class="controls-bar">
           <button class="panel-toggle" type="button" id="controls-save" data-endpoint="${escapeHtml(
 						options.saveEndpoint ?? "",
+					)}" data-render="${escapeHtml(
+						options.renderEndpoint ?? "",
 					)}" disabled>Save story</button>
           <button class="panel-toggle" type="button" id="controls-reset" disabled>Reset</button>
           <span class="controls-status" id="controls-status"></span>

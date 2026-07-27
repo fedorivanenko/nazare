@@ -21,6 +21,10 @@ import {
 	galleryPage,
 	parseStoryFile,
 	type RenderedComponent,
+	renderComponentStories,
+	resolveFixtures,
+	snippetLibrary,
+	storyDocument,
 	storyDocuments,
 	workbenchPage,
 } from "@nazare/preview";
@@ -30,6 +34,7 @@ import {
 	collectPreview,
 	type PreviewCollection,
 	previewSource,
+	projectFixtures,
 	renderCollection,
 } from "./preview-command.js";
 
@@ -40,6 +45,7 @@ const DEBOUNCE_MS = 60;
 
 const EVENTS_PATH = "/__events";
 const SAVE_PATH = "/__save";
+const RENDER_PATH = "/__render";
 
 const CONTENT_TYPES: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
@@ -62,6 +68,9 @@ type ServerState = {
 	assets: Map<string, string>;
 	collection: PreviewCollection;
 	rendered: RenderedComponent[];
+	/** Kept so a draft render resolves the same way the build did. */
+	fixtures: Record<string, unknown>;
+	snippets: Record<string, string>;
 };
 
 /** Everything the server answers with, built the way the build command builds. */
@@ -119,6 +128,7 @@ async function buildState(
 			source: previewSource(dir, label),
 			liveReload: EVENTS_PATH,
 			saveEndpoint: SAVE_PATH,
+			renderEndpoint: RENDER_PATH,
 			storyFiles,
 		}),
 	);
@@ -142,7 +152,14 @@ async function buildState(
 		}
 	}
 
-	return { pages, assets, collection, rendered };
+	return {
+		pages,
+		assets,
+		collection,
+		rendered,
+		fixtures: await projectFixtures(dir),
+		snippets: snippetLibrary(collection.compiled.map((one) => one.component)),
+	};
 }
 
 type SaveRequest = {
@@ -151,6 +168,8 @@ type SaveRequest = {
 	props?: unknown;
 	/** The whole story file as text, when the panel is editing the file itself. */
 	file?: unknown;
+	/** `create` or `delete`; absent means update the named story's props. */
+	action?: unknown;
 };
 
 /**
@@ -169,9 +188,13 @@ export async function saveStoryFile(
 ): Promise<string | undefined> {
 	if (typeof body.component !== "string") return "component is required";
 	const editingFile = typeof body.file === "string";
+	const editingSet = body.action === "create" || body.action === "delete";
 	if (!editingFile) {
 		if (typeof body.story !== "string") return "story is required";
-		if (body.props === null || typeof body.props !== "object") {
+		if (
+			!editingSet &&
+			(body.props === null || typeof body.props !== "object")
+		) {
 			return "props must be an object";
 		}
 	}
@@ -233,29 +256,97 @@ export async function saveStoryFile(
 	const stories = holder.stories;
 	if (!Array.isArray(stories)) return `${entry.storyFile} declares no stories`;
 
-	const story = stories.find(
+	const index = stories.findIndex(
 		(candidate) =>
 			(candidate as { name?: unknown } | undefined)?.name === body.story,
-	) as Record<string, unknown> | undefined;
+	);
+
+	// Creating and deleting a case are edits to the set, not to a story, so they
+	// are the two that do not need one to exist first — or need it not to.
+	if (body.action === "create") {
+		if (index !== -1) return `${entry.storyFile} already has ${body.story}`;
+		stories.push({ name: body.story });
+		return await commit(path, document, holder, entry.storyFile, state);
+	}
+	if (body.action === "delete") {
+		if (index === -1)
+			return `${entry.storyFile} has no story named ${body.story}`;
+		if (stories.length === 1) {
+			// A component with no stories does not appear at all, so deleting the
+			// last one deletes the component from the workbench. That is a thing to
+			// do deliberately, in the file, not by clicking the last × in a list.
+			return `${body.story} is the only story; a component with none does not appear`;
+		}
+		stories.splice(index, 1);
+		return await commit(path, document, holder, entry.storyFile, state);
+	}
+
+	const story = stories[index] as Record<string, unknown> | undefined;
 	if (!story) return `${entry.storyFile} has no story named ${body.story}`;
 
 	const props = body.props as Record<string, unknown>;
 	if (Object.keys(props).length > 0) story.props = props;
 	else delete story.props;
 
-	// Checked before it is written, not after: a file this rejects is one the
-	// author would have to repair by hand.
+	return await commit(path, document, holder, entry.storyFile, state);
+}
+
+/**
+ * Checks before it writes, not after: a file this rejects is one the author
+ * would otherwise have to repair by hand.
+ */
+async function commit(
+	path: string,
+	document: Record<string, unknown>,
+	holder: Record<string, unknown>,
+	name: string,
+	state: ServerState,
+): Promise<string | undefined> {
 	try {
 		parseStoryFile(
 			state.collection.layout === "package" ? holder : document,
-			entry.storyFile,
+			name,
 		);
 	} catch (error) {
 		return error instanceof Error ? error.message : String(error);
 	}
-
 	await writeFile(path, `${JSON.stringify(document, null, 2)}\n`);
 	return undefined;
+}
+
+/**
+ * One story, rendered against props the panel is holding rather than the ones
+ * on disk. Nothing is written and no rebuild happens: the file is still the
+ * source of cases, and this is a look at what it would say if it changed.
+ */
+export async function renderStoryDraft(
+	state: ServerState,
+	body: { component?: unknown; story?: unknown; props?: unknown },
+): Promise<string | undefined> {
+	if (typeof body.component !== "string") return undefined;
+	if (body.props === null || typeof body.props !== "object") return undefined;
+	const entry = state.collection.compiled.find(
+		({ component }) => componentId(component.name) === body.component,
+	);
+	if (!entry) return undefined;
+
+	const name = typeof body.story === "string" ? body.story : "draft";
+	const [rendered] = (
+		await renderComponentStories(
+			entry.component,
+			[
+				{
+					name,
+					props: resolveFixtures(
+						body.props as Record<string, unknown>,
+						state.fixtures,
+					),
+				},
+			],
+			{ snippets: state.snippets },
+		)
+	).stories;
+	return storyDocument(entry.component, rendered, { base: "/" });
 }
 
 /** Reports what a rebuild found, in the same words the build command uses. */
@@ -314,6 +405,33 @@ export async function runPreviewServe(
 			response.write(": connected\n\n");
 			clients.add(response);
 			request.on("close", () => clients.delete(response));
+			return;
+		}
+
+		// A story rendered with values that are not on disk. This is what lets a
+		// control repaint the canvas while the file it came from is untouched:
+		// the same render as the build, run against the props the panel holds,
+		// so what you are looking at is real rather than an optimistic guess.
+		if (path === RENDER_PATH && request.method === "POST") {
+			const chunks: Buffer[] = [];
+			for await (const chunk of request) chunks.push(chunk as Buffer);
+			try {
+				const body = JSON.parse(Buffer.concat(chunks).toString());
+				const html = state ? await renderStoryDraft(state, body) : undefined;
+				if (html === undefined) {
+					response.writeHead(400, { "content-type": "text/plain" });
+					response.end("cannot render that");
+					return;
+				}
+				response.writeHead(200, {
+					"content-type": "text/html; charset=utf-8",
+					"cache-control": "no-store",
+				});
+				response.end(html);
+			} catch (error) {
+				response.writeHead(400, { "content-type": "text/plain" });
+				response.end(error instanceof Error ? error.message : String(error));
+			}
 			return;
 		}
 

@@ -504,11 +504,26 @@ delta, with `{ "$fixture": "product" }` left as the
 reference it is rather than the three kilobytes it resolves to, which is why
 `PreviewStory` keeps `source` alongside its resolved props.
 
-A **JSON** tab edits the story file as text, for everything a form has no row
-for: a note, an explicit null, a story that does not exist yet, the order they
-appear in. Saved verbatim — the author's formatting is theirs to keep — where
-the field editor round-trips through `JSON.stringify` and expands compact
-objects. It goes back
+**A field shows what renders, not what the story states.** A prop the story says
+nothing about shows the declaration's default, because that is what the canvas
+is drawing — and saving writes only what differs from it, so an untouched form
+writes nothing. Seeded from the delta alone, a field could not tell "unset" from
+"empty", and saving an untouched form wrote defaults into a story that had
+deliberately said nothing.
+
+**Editing repaints the canvas without writing anything.** The render is liquidjs
+in Node, so the page asks the server for it: the same render as the build, run
+against the props the panel holds, handed back as the document a build would
+have written. The file is untouched until Save, which is the point — you can
+look before you commit, and what you are looking at is real rather than an
+optimistic guess.
+
+Stories are **created and deleted where they are listed**, and the **JSON** tab
+sits with them, because the file is the story set rather than a property of one
+story. It saves verbatim — the author's formatting is theirs to keep — where the
+field editor round-trips through `JSON.stringify`. Deleting the last story is
+refused: a component with none does not appear at all, and that is a thing to do
+deliberately in the file, not by clicking the last × in a list. It goes back
 through `parseStoryFile` before it is written, so the editor cannot produce a
 file `preview check` would reject.
 

@@ -55,6 +55,7 @@ async function mountShell({
 	);
 	const html = workbenchPage([rendered], {
 		saveEndpoint: "/__save",
+		renderEndpoint: "/__render",
 		...(storyFiles ? { storyFiles } : {}),
 	});
 	const { window, document } = parseHTML(html);
@@ -318,6 +319,113 @@ test("storefront data stays a reference, because it is not a value", async () =>
 	assert.equal(row.querySelector("input"), null);
 });
 
+test("a field shows what renders, and saving it back changes nothing", async () => {
+	// The bug this pins: fields were seeded from the story's delta alone, so a
+	// prop the story did not state showed blank — and saving an untouched form
+	// then wrote the declaration's defaults into a story that had deliberately
+	// said nothing. `hero`'s "default" grew a scheme and a show_button that way.
+	let sent;
+	const shell = await mountShell({
+		stories: [
+			{ name: "solid", props: { label: "Add" }, source: { label: "Add" } },
+		],
+		fetch: async (url, init) => {
+			sent = JSON.parse(init.body);
+			return { ok: true, text: async () => "saved" };
+		},
+	});
+	const field = (name) =>
+		shell.document.querySelector(`[data-control="${name}"]`);
+
+	// `scheme` is not in the story; the schema gives it "solid", and that is
+	// what the canvas is rendering, so that is what the field says.
+	assert.equal(field("scheme").value, "solid");
+	assert.equal(field("label").getAttribute("value"), "Add");
+
+	// Touch one field, save, and only the touched one is written.
+	field("label").setAttribute("value", "Buy");
+	field("label").dispatchEvent(new shell.window.Event("input"));
+	shell.click("controls-save");
+	await new Promise((settle) => setTimeout(settle, 0));
+
+	assert.deepEqual(sent.props, { label: "Buy" }, "the delta, and only that");
+});
+
+test("editing a control repaints the canvas without writing the story", async () => {
+	let rendered;
+	const shell = await mountShell({
+		fetch: async (url, init) => {
+			if (url === "/__render") {
+				rendered = JSON.parse(init.body);
+				return { ok: true, text: async () => "<p>draft</p>" };
+			}
+			throw new Error(`unexpected ${url}`);
+		},
+	});
+	const canvas = shell.document.getElementById("canvas");
+	const label = shell.document.querySelector('[data-control="label"]');
+
+	label.setAttribute("value", "Buy now");
+	label.dispatchEvent(new shell.window.Event("input"));
+	await new Promise((settle) => setTimeout(settle, 200));
+
+	// The render is liquidjs in Node, so the page asks the server for it — and
+	// what comes back is the same document the build would have written.
+	assert.equal(rendered.component, "button");
+	assert.deepEqual(rendered.props, { label: "Buy now" });
+	assert.equal(canvas.getAttribute("srcdoc"), "<p>draft</p>");
+	// Nothing was saved: the panel says so, and the button is still armed.
+	assert.equal(shell.document.getElementById("controls-save").disabled, false);
+	assert.match(
+		shell.document.getElementById("controls-status").textContent,
+		/unsaved/,
+	);
+});
+
+test("stories can be created and deleted where they are listed", async () => {
+	const sent = [];
+	const shell = await mountShell({
+		fetch: async (url, init) => {
+			sent.push(JSON.parse(init.body));
+			return { ok: true, text: async () => "saved" };
+		},
+	});
+
+	const name = shell.document.getElementById("story-name");
+	name.setAttribute("value", "on sale");
+	name.dispatchEvent(new shell.window.Event("input"));
+	assert.equal(shell.document.getElementById("story-add").disabled, false);
+	shell.click("story-add");
+	await new Promise((settle) => setTimeout(settle, 0));
+	assert.deepEqual(sent.at(-1), {
+		component: "button",
+		story: "on sale",
+		action: "create",
+	});
+
+	// Deleting asks once. A story is somebody's writing — the case they thought
+	// worth showing, and the note saying why — so the first click is a question.
+	const drop = shell.document.querySelector('[data-story-drop="outline"]');
+	drop.dispatchEvent(new shell.window.Event("click"));
+	await new Promise((settle) => setTimeout(settle, 0));
+	assert.equal(drop.textContent, "Delete?");
+	assert.equal(sent.length, 1, "the first click sent nothing");
+
+	drop.dispatchEvent(new shell.window.Event("click"));
+	await new Promise((settle) => setTimeout(settle, 0));
+	assert.deepEqual(sent.at(-1), {
+		component: "button",
+		story: "outline",
+		action: "delete",
+	});
+
+	// Looking away is how you say no.
+	const other = shell.document.querySelector('[data-story-drop="solid"]');
+	other.dispatchEvent(new shell.window.Event("click"));
+	other.dispatchEvent(new shell.window.Event("blur"));
+	assert.equal(other.textContent, "×");
+});
+
 test("the file itself can be edited when a server offers it", async () => {
 	const shell = await mountShell({
 		storyFiles: {
@@ -335,7 +443,9 @@ test("the file itself can be edited when a server offers it", async () => {
 		"snippets/button.stories.json",
 	);
 	assert.equal(shell.document.getElementById("json-text").value, '{ "x": 1 }');
-	assert.equal(shell.document.getElementById("controls").hidden, true);
+	// The file is the story set, so it sits with the stories rather than under
+	// the fields that edit one of them.
+	assert.equal(shell.document.getElementById("story-lists").hidden, true);
 });
 
 test("editing a control arms Save, and Save sends the story's delta", async () => {
