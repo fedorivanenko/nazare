@@ -16,6 +16,8 @@ export type CliOptions = {
 	format?: string;
 	/** preview serve: the port to listen on. */
 	port?: string;
+	/** preview fixtures pull: the name to write it under. */
+	as?: string;
 	positionals: string[];
 };
 
@@ -83,6 +85,12 @@ export function parseCliOptions(args: string[]): CliOptions {
 			index += port.consumed - 1;
 			continue;
 		}
+		const as = readValueOption(args, index, "--as");
+		if (as) {
+			options.as = as.value;
+			index += as.consumed - 1;
+			continue;
+		}
 		const format = readValueOption(args, index, "--format");
 		if (format) {
 			options.format = format.value;
@@ -144,6 +152,10 @@ Preview:
                                          fails or contradicts its declaration
   nazare preview scaffold <file>         draft a <name>.stories.json beside a
                                          template, from what it declares
+  nazare preview fixtures init [dir]     copy the built-in stand-in data into
+                                         the project as fixtures/*.json
+  nazare preview fixtures pull <handle>  fetch a product from a live storefront
+                                         --store <shop>.myshopify.com [--as name]
 
   A component appears once it has stories. Write them in <name>.stories.json
   beside a theme template, or in a package's nazare.json under "preview".
@@ -176,6 +188,7 @@ Options:
   --theme <id|name>                  build --pull-data: theme to pull from
   --json                             build: print the raw result as JSON
   --port <number>                    preview serve: port to listen on (default 4173)
+  --as <name>                        preview fixtures pull: fixture name (default product)
   --format json|text|dot             inspect theme: JSON, human report, or Graphviz DOT
 
 Env:

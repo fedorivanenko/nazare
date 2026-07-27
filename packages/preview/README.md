@@ -269,8 +269,27 @@ that: `{ "$fixture": "price" }` was `2400` wearing a costume, longer to write
 than the number and a layer of indirection for a reader to unpick for nothing.
 Scalars are literals, and you type them.
 
-**And they are your files.** `fixtures/product.json` beside your theme wins over
-the built-in one, by basename. Sharing a product between the nine components
+**And they are your files.**
+
+```sh
+nazare preview fixtures init                    # copy the built-ins in
+nazare preview fixtures pull merino-crew \
+  --store shop.myshopify.com                    # or take a real one
+```
+
+`fixtures/product.json` beside your theme wins over the built-in one, by
+basename. `init` copies the shipped set into the project the way a registry
+component is copied in — after that they are ordinary JSON you read, diff and
+edit, and the package's copies stop mattering.
+
+`pull` fetches a real product from a live storefront, which is the answer to
+the thing a fixture is worst at: it is tidy in ways a catalogue is not — no
+60-character title, no sold-out variant, no missing compare-at price. It reads
+`/products/<handle>.js`, the storefront endpoint that answers with the Liquid
+product drop itself, in cents. The Admin API is the obvious place to ask and
+the wrong one: it answers `"24.00"` where Liquid has `2400` and
+`featuredImage.url` where Liquid has an image drop, so a fixture built from it
+needs a hand-written translation that can quietly disagree with the runtime. Sharing a product between the nine components
 that take one is a reason to share a *file*; it was never a reason for that file
 to live inside this package, where nobody could read it, diff it, or change it.
 The shipped set is a starting point, not a fact — and inlining a product into

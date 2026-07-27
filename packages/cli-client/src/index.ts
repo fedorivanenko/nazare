@@ -48,6 +48,7 @@ import {
 	runPreviewCheck,
 	runPreviewScaffold,
 } from "./preview-command.js";
+import { runFixturesInit, runFixturesPull } from "./preview-fixtures.js";
 import { runPreviewServe } from "./preview-server.js";
 import { packComponent, publishComponent } from "./publish.js";
 
@@ -71,7 +72,13 @@ const INSPECT_VIEWS = new Set([
 const REGISTRY_ALIASES = new Set(["add", "update", "publish"]);
 
 /** Workbench verbs. Serving one is a separate matter; these three do not. */
-const PREVIEW_VERBS = new Set(["serve", "build", "check", "scaffold"]);
+const PREVIEW_VERBS = new Set([
+	"serve",
+	"build",
+	"check",
+	"scaffold",
+	"fixtures",
+]);
 
 type MainOptions = { cwd?: string; env?: NodeJS.ProcessEnv; output?: Output };
 
@@ -431,6 +438,37 @@ async function runPreview(
 		output.error(
 			`Usage: nazare preview <${[...PREVIEW_VERBS].join("|")}>. See nazare help.`,
 		);
+		return 1;
+	}
+
+	// Stand-in data the project owns: copied in, or pulled from a live store.
+	if (verb === "fixtures") {
+		const [action, ...names] = rest;
+		const manifest = await readProjectManifest(projectRoot);
+		const root = names[1] ?? manifest.build?.sourceRoot ?? ".";
+		const dir = resolve(
+			projectRoot,
+			action === "pull" ? root : (names[0] ?? root),
+		);
+		if (action === "init") {
+			return await runFixturesInit(projectRoot, dir, cliOptions, output);
+		}
+		if (action === "pull") {
+			if (!names[0]) {
+				output.error(
+					"Usage: nazare preview fixtures pull <handle> --store <shop>",
+				);
+				return 1;
+			}
+			return await runFixturesPull(
+				projectRoot,
+				dir,
+				names[0],
+				cliOptions,
+				output,
+			);
+		}
+		output.error("Usage: nazare preview fixtures <init|pull>");
 		return 1;
 	}
 
