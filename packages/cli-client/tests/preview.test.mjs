@@ -285,9 +285,11 @@ test("a story names a file, not a fixture the preview knows about", async () => 
 					{ name: "shop", props: { product: { $file: "data/hero.json" } } },
 					{ name: "gone", props: { product: { $file: "data/nope.json" } } },
 					{ name: "escape", props: { product: { $file: "../secret.json" } } },
+					{ name: "broken", props: { product: { $file: "data/bad.json" } } },
 				],
 			}),
 			"data/hero.json": JSON.stringify({ title: "Hand-picked product" }),
+			"data/bad.json": '{ "title": ',
 		},
 		async (cwd) => {
 			await writeFile(
@@ -305,15 +307,16 @@ test("a story names a file, not a fixture the preview knows about", async () => 
 			// The one that reads renders; the one that does not is named, not
 			// silently nil — a story that resolved to nothing would look plausible.
 			assert.equal(status, 1, stdout);
-			assert.match(
-				stderr,
-				/points at a file that does not read: data\/nope\.json/,
-			);
+			// And named by what is actually wrong with it. "does not read" for both
+			// a missing file and a malformed one leaves the author looking for a
+			// file they are staring at.
+			assert.match(stderr, /data\/nope\.json: no such file/);
 			// A story is data. It does not get to read outside what is previewed.
 			assert.match(
 				stderr,
-				/points at a file that does not read: \.\.\/secret\.json/,
+				/\.\.\/secret\.json: resolves outside the previewed directory/,
 			);
+			assert.match(stderr, /data\/bad\.json: invalid JSON/);
 
 			await runCli(cwd, "preview", "build", ".");
 			assert.match(

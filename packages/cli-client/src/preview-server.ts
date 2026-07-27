@@ -157,7 +157,7 @@ async function buildState(
 		assets,
 		collection,
 		rendered,
-		readFixture: fixtureReader(dir),
+		readFixture: fixtureReader(dir).read,
 		snippets: snippetLibrary(collection.compiled.map((one) => one.component)),
 	};
 }
@@ -322,13 +322,17 @@ async function commit(
 export async function renderStoryDraft(
 	state: ServerState,
 	body: { component?: unknown; story?: unknown; props?: unknown },
-): Promise<string | undefined> {
-	if (typeof body.component !== "string") return undefined;
-	if (body.props === null || typeof body.props !== "object") return undefined;
+): Promise<{ html: string } | { refused: string }> {
+	if (typeof body.component !== "string") {
+		return { refused: "component is required" };
+	}
+	if (body.props === null || typeof body.props !== "object") {
+		return { refused: "props must be an object" };
+	}
 	const entry = state.collection.compiled.find(
 		({ component }) => componentId(component.name) === body.component,
 	);
-	if (!entry) return undefined;
+	if (!entry) return { refused: `unknown component ${body.component}` };
 
 	const name = typeof body.story === "string" ? body.story : "draft";
 	const [rendered] = (
@@ -346,7 +350,7 @@ export async function renderStoryDraft(
 			{ snippets: state.snippets },
 		)
 	).stories;
-	return storyDocument(entry.component, rendered, { base: "/" });
+	return { html: storyDocument(entry.component, rendered, { base: "/" }) };
 }
 
 /** Reports what a rebuild found, in the same words the build command uses. */
@@ -417,17 +421,22 @@ export async function runPreviewServe(
 			for await (const chunk of request) chunks.push(chunk as Buffer);
 			try {
 				const body = JSON.parse(Buffer.concat(chunks).toString());
-				const html = state ? await renderStoryDraft(state, body) : undefined;
-				if (html === undefined) {
+				const result = state
+					? await renderStoryDraft(state, body)
+					: { refused: "nothing is being served" };
+				if ("refused" in result) {
+					// Said, not swallowed: a draft that silently does nothing looks
+					// exactly like one that rendered the same thing twice.
 					response.writeHead(400, { "content-type": "text/plain" });
-					response.end("cannot render that");
+					response.end(result.refused);
+					output.error(`draft refused: ${result.refused}`);
 					return;
 				}
 				response.writeHead(200, {
 					"content-type": "text/html; charset=utf-8",
 					"cache-control": "no-store",
 				});
-				response.end(html);
+				response.end(result.html);
 			} catch (error) {
 				response.writeHead(400, { "content-type": "text/plain" });
 				response.end(error instanceof Error ? error.message : String(error));

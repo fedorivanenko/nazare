@@ -9,11 +9,7 @@
 // something to fix.
 import type { NazareManifest, NazareManifestStory } from "@nazare/core";
 import type { PreviewComponent } from "./component.js";
-import {
-	declaredDefaults,
-	defaultProps,
-	type PreviewControl,
-} from "./controls.js";
+import { declaredDefaults, type PreviewControl } from "./controls.js";
 import { resolveFixtures, usesFixtures } from "./fixtures.js";
 import type { StoryDeclaration } from "./story-file.js";
 
@@ -70,12 +66,12 @@ export function storyProps(
 }
 
 export function defaultStory(component: PreviewComponent): PreviewStory {
-	return { name: "default", props: defaultProps(component.controls) };
+	return { name: "default", props: declaredDefaults(component.controls) };
 }
 
 /** One story per member of every select control, holding the rest at default. */
 export function variantStories(component: PreviewComponent): PreviewStory[] {
-	const base = defaultProps(component.controls);
+	const base = declaredDefaults(component.controls);
 	const stories: PreviewStory[] = [];
 	for (const control of component.controls) {
 		if (!control.options || control.options.length < 2) continue;
@@ -154,7 +150,7 @@ export function changedProps(
 	story: PreviewStory,
 	controls: PreviewControl[],
 ): string[] {
-	const base = defaultProps(controls);
+	const base = declaredDefaults(controls);
 	return Object.keys(story.props).filter(
 		(name) => story.props[name] !== base[name],
 	);

@@ -21,7 +21,6 @@ export {
 export {
 	controlsFromContract,
 	declaredDefaults,
-	defaultProps,
 	type PreviewControl,
 } from "./controls.js";
 export {
@@ -32,7 +31,7 @@ export {
 export {
 	formatMoney,
 	resolveFixtures,
-	shopifyFixtures,
+	starterFixtures,
 	usesFixtures,
 } from "./fixtures.js";
 export { type GalleryPageOptions, galleryPage } from "./gallery.js";

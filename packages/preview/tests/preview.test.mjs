@@ -10,8 +10,8 @@ import {
 	renderPreview,
 	resolveFixtures,
 	scaffoldStories,
-	shopifyFixtures,
 	snippetLibrary,
+	starterFixtures,
 	storiesFor,
 	storyDocument,
 	storyDocuments,
@@ -74,14 +74,14 @@ test("controls come from the contract, not from hand-written argTypes", () => {
 
 	assert.equal(byName.heading.kind, "text");
 	assert.equal(byName.heading.label, "Heading");
-	assert.equal(byName.heading.value, "Sale");
+	assert.equal(byName.heading.defaultValue, "Sale");
 
 	assert.equal(byName.columns.kind, "number");
 	assert.deepEqual(byName.columns.range, { min: 1, max: 4, step: 1 });
-	assert.equal(byName.columns.value, 2);
+	assert.equal(byName.columns.defaultValue, 2);
 
 	assert.equal(byName.featured.kind, "boolean");
-	assert.equal(byName.featured.value, false);
+	assert.equal(byName.featured.defaultValue, false);
 });
 
 test("an enum prop becomes a select carrying its members", () => {
@@ -92,13 +92,15 @@ test("an enum prop becomes a select carrying its members", () => {
 
 	assert.equal(scheme.kind, "select");
 	assert.deepEqual(scheme.options, ["solid", "outline", "ghost"]);
-	assert.equal(scheme.value, "solid");
-	// `.default()` fills the value, so the prop is not required of the viewer.
+	assert.equal(scheme.defaultValue, "solid");
+	// `.default()` states the value, so the prop is not required of the viewer.
 	assert.equal(scheme.required, false);
-	assert.equal(
-		component.controls.find((control) => control.name === "label").required,
-		true,
-	);
+
+	// A required prop is one the declaration gives no default for, and it says
+	// so by having none — rather than carrying a placeholder that reads like one.
+	const label = component.controls.find((control) => control.name === "label");
+	assert.equal(label.required, true);
+	assert.equal(label.defaultValue, undefined);
 });
 
 test("the previewed template is the emitted one, not the source", () => {
@@ -169,17 +171,17 @@ test("plain Liquid takes its controls from {% doc %} @param lines", async () => 
 	assert.equal(byName.label.required, true);
 	assert.equal(byName.url.required, false);
 	assert.equal(byName.wide.kind, "boolean");
-	assert.equal(byName.wide.value, false);
-	// A storefront object names a fixture the preview already owns, rather than
-	// opening the story on the string "product".
-	assert.equal(byName.product.value.title, "Merino Crew Sweater");
 
-	// The value a control opens on is a placeholder this pass invented — the
-	// prop's own name — because `{% doc %}` has no syntax for a default.
-	assert.equal(byName.label.value, "label");
-	assert.equal(byName.label.hasDefault, false);
+	// `{% doc %}` has no syntax for a default, so none of these have one — and
+	// the pass says that by leaving it absent rather than by inventing a value
+	// and flagging it. A `{product}` param used to answer with the preview's own
+	// built-in product here, which was this package quietly owning storefront
+	// data.
+	for (const control of component.controls) {
+		assert.equal(control.defaultValue, undefined, control.name);
+	}
 
-	// So it is never merged into a render. A story that states nothing has
+	// So nothing is merged into a render. A story that states nothing has
 	// nothing to render, exactly as the snippet would on a storefront; a story
 	// renders what it states, and no placeholder rides along.
 	const rendered = await renderComponentStories(component, [
@@ -223,9 +225,9 @@ test("a plain section takes its controls from {% schema %} settings", async () =
 	// header is chrome for the theme editor, not an input.
 	assert.ok(!("content" in byName));
 	assert.equal(byName.heading.label, "Heading");
-	assert.equal(byName.heading.value, "Sale");
+	assert.equal(byName.heading.defaultValue, "Sale");
 	assert.deepEqual(byName.columns.range, { min: 1, max: 4, step: 1 });
-	assert.equal(byName.featured.value, true);
+	assert.equal(byName.featured.defaultValue, true);
 	assert.deepEqual(byName.scheme.options, ["solid", "ghost"]);
 
 	// A section's props arrive as section.settings, so a story states its delta
@@ -563,7 +565,7 @@ test("a scalar is a literal, and only storefront data is a fixture", async () =>
 	// data JSON cannot hold, and this story names no file at all.
 	assert.equal(onSale.props.price, 2400);
 	assert.equal(onSale.fixtures, false);
-	assert.deepEqual(Object.keys(shopifyFixtures), [
+	assert.deepEqual(Object.keys(starterFixtures), [
 		"product",
 		"collection",
 		"image",

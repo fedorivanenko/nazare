@@ -392,11 +392,17 @@ type PreviewComponent = {
 | Plain section | `{% schema %}` settings | `controlsFromSchemaSource` |
 
 All three produce `PreviewControl { name, label, kind, required, options?,
-range?, value, hasDefault, typeExpression }` — the argTypes equivalent, derived
-rather than written. `hasDefault` separates a declared default from a
-placeholder this pass invented, which is what `storyProps` merges on and what
-`required` already meant: a required prop is exactly one the declaration gives
-no default for.
+range?, defaultValue?, typeExpression }` — the argTypes equivalent, derived
+rather than written.
+
+`defaultValue` is the default the declaration states, and **absent means it
+states none**. That is a fact worth being able to tell: it is what `required`
+means, what the props table prints as "—", and what decides whether a story
+saying nothing about a prop renders with a value or with nil. The field used to
+hold "the default, or something shaped like the type if there is none", with a
+boolean beside it saying which — and one field meaning two things is how
+`class="… class"` reached the markup of every button in the registry. Inventing
+a value is `scaffold`'s job, because `scaffold` writes a file a person reads.
 
 **Story file → stories.** `parseStoryFile(json)` checks the file strictly and
 `storiesFor({ manifest, sidecar })` resolves which of the two sources applies,

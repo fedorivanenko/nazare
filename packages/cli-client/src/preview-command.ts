@@ -20,13 +20,13 @@ import type { NazareManifest } from "@nazare/core";
 import {
 	galleryPage,
 	type PreviewComponent,
+	type PreviewControl,
 	type PreviewStory,
 	parseStoryFile,
 	previewComponentFromSource,
 	type RenderedComponent,
 	renderComponentStories,
 	scaffoldStories,
-	shopifyFixtures,
 	snippetLibrary,
 	storiesFor,
 	storyDocuments,
@@ -67,7 +67,11 @@ export type PreviewCollection = {
 	previewed: PreviewSource[];
 	/** Templates nobody wrote stories for, named so they do not just vanish. */
 	undeclared: string[];
-	/** Story files that did not parse; each one stops its own component. */
+	/**
+	 * Story files that did not parse, and fixture paths a story named but could
+	 * not use. Both stop something from rendering as written, and both are
+	 * reported by path so the author is not left guessing which file.
+	 */
 	malformed: string[];
 	/**
 	 * The components those files belonged to. A story file is edited by hand, so
@@ -137,23 +141,40 @@ export function previewSource(
  * — the story then renders visibly wrong rather than quietly empty, and the
  * validator names the path.
  */
-export function fixtureReader(dir: string): (path: string) => unknown {
+export function fixtureReader(dir: string): {
+	read: (path: string) => unknown;
+	/** Paths that were named but could not be used, and why. */
+	problems: Map<string, string>;
+} {
 	const cache = new Map<string, unknown>();
-	return (path: string) => {
-		if (cache.has(path)) return cache.get(path);
-		const resolved = resolve(dir, path);
-		// A story is data; it does not get to read outside what is being
-		// previewed.
-		if (relative(dir, resolved).startsWith("..")) return undefined;
-		const raw = readSync(resolved);
-		let value: unknown;
-		try {
-			value = raw === undefined ? undefined : JSON.parse(raw);
-		} catch {
-			value = undefined;
-		}
-		cache.set(path, value);
-		return value;
+	const problems = new Map<string, string>();
+	const fail = (path: string, why: string): undefined => {
+		problems.set(path, why);
+		cache.set(path, undefined);
+		return undefined;
+	};
+	return {
+		problems,
+		read: (path: string) => {
+			if (cache.has(path)) return cache.get(path);
+			const resolved = resolve(dir, path);
+			// A story is data; it does not get to read outside what is previewed.
+			if (relative(dir, resolved).startsWith("..")) {
+				return fail(path, "resolves outside the previewed directory");
+			}
+			const raw = readSync(resolved);
+			if (raw === undefined) return fail(path, "no such file");
+			try {
+				const value: unknown = JSON.parse(raw);
+				cache.set(path, value);
+				return value;
+			} catch (error) {
+				// A file that exists and does not parse is a different problem from
+				// one that is not there, and saying "does not read" for both leaves
+				// the author looking for a missing file they are staring at.
+				return fail(path, `invalid JSON: ${errorText(error)}`);
+			}
+		},
 	};
 }
 
@@ -320,10 +341,17 @@ export async function collectPreview(
 ): Promise<PreviewCollection | undefined> {
 	const layout = await detectLayout(dir);
 	if (layout === undefined) return undefined;
-	const readFixture = fixtureReader(dir);
-	return layout === "theme"
-		? collectTheme(dir, readFixture)
-		: collectPackages(dir, readFixture);
+	const fixtures = fixtureReader(dir);
+	const collection =
+		layout === "theme"
+			? await collectTheme(dir, fixtures.read)
+			: await collectPackages(dir, fixtures.read);
+	// Reported after the walk, because that is when every story has been read and
+	// every path it named has been tried.
+	for (const [path, why] of fixtures.problems) {
+		collection.malformed.push(`${path}: ${why}`);
+	}
+	return collection;
 }
 
 /**
@@ -497,6 +525,36 @@ export async function runPreviewCheck(
 }
 
 /**
+ * Something to put in a drafted story for a prop the declaration leaves open.
+ *
+ * Shaped by the control's kind so the draft renders as something rather than
+ * nothing, and obviously provisional, so it reads as a prompt rather than an
+ * answer. A storefront object gets a path that does not exist yet, because the
+ * only honest answer for one is "point this at a file".
+ */
+function placeholderFor(control: PreviewControl): unknown {
+	if (control.options) return control.options[0];
+	switch (control.kind) {
+		case "boolean":
+			return false;
+		case "number":
+			return control.range?.min ?? 0;
+		case "color":
+			return "#111111";
+		case "url":
+			return "#";
+		default: {
+			// `{product}`, `{collection}` — data no field can hold.
+			const type = control.typeExpression.toLowerCase();
+			if (["product", "collection", "image", "shop"].includes(type)) {
+				return { $file: `fixtures/${type}.json` };
+			}
+			return control.label;
+		}
+	}
+}
+
+/**
  * Drafts a story file from what a component declares: the defaults, then one
  * case per enum member, written where an author reads and edits it.
  *
@@ -535,12 +593,15 @@ export async function runPreviewScaffold(
 	}
 
 	// A required prop is exactly the one the declaration gives no default for, so
-	// every story has to state it or render on a placeholder — a button whose
-	// label reads "label". The draft states them, with values meant to be
-	// replaced by something a merchant would actually type.
+	// a story has to state it or the template reads nil. The draft states them.
+	//
+	// This is the only place a value is invented, and it is the one place that
+	// can be: the result is a file an author opens, reads, and replaces with
+	// something a merchant would actually type. Everywhere else, a value nobody
+	// wrote is a value the tool is asserting on their behalf.
 	const required = component.controls.filter((control) => control.required);
 	const requiredProps = Object.fromEntries(
-		required.map((control) => [control.name, control.value]),
+		required.map((control) => [control.name, placeholderFor(control)]),
 	);
 	const stories = scaffoldStories(component).map((story, index) => ({
 		name: story.name,

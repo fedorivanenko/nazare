@@ -35,7 +35,13 @@ export function renderControlsTable(controls: PreviewControl[]): string {
 									? control.options.map((option) => `"${option}"`).join(" | ")
 									: control.typeExpression,
 							)}</span></td>
-              <td><code class="muted">${escapeHtml(formatValue(control.value))}</code></td>
+              <td>${
+								control.defaultValue === undefined
+									? '<span class="muted">—</span>'
+									: `<code class="muted">${escapeHtml(
+											formatValue(control.defaultValue),
+										)}</code>`
+							}</td>
               <td>${control.required ? '<span class="badge badge--required">required</span>' : '<span class="muted">—</span>'}</td>
             </tr>`,
 		)

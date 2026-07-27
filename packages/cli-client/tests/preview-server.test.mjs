@@ -344,13 +344,25 @@ test("a draft renders against props that are not on disk", async () => {
 
 			// What lets a control repaint the canvas while the file is untouched:
 			// the same render as the build, run against what the panel holds.
-			const html = await renderStoryDraft(state, {
+			const drafted = await renderStoryDraft(state, {
 				component: "price",
 				story: "on sale",
 				props: { price: 999 },
 			});
 
-			assert.match(html, /\$9\.99/);
+			assert.match(drafted.html, /\$9\.99/);
+
+			// A draft it will not render says why, rather than answering with
+			// nothing — which looks exactly like a render that changed nothing.
+			assert.match(
+				(await renderStoryDraft(state, { component: "nope", props: {} }))
+					.refused,
+				/unknown component nope/,
+			);
+			assert.match(
+				(await renderStoryDraft(state, { component: "price" })).refused,
+				/props must be an object/,
+			);
 			assert.equal(
 				await readFile(join(dir, "snippets/price.stories.json"), "utf8"),
 				before,

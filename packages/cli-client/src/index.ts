@@ -443,27 +443,35 @@ async function runPreview(
 
 	// Stand-in data the project owns: copied in, or pulled from a live store.
 	if (verb === "fixtures") {
-		const [action, ...names] = rest;
+		// The two actions take different arguments, so they are read separately
+		// rather than through one expression that has to know which is which.
+		const [action, ...args] = rest;
 		const manifest = await readProjectManifest(projectRoot);
-		const root = names[1] ?? manifest.build?.sourceRoot ?? ".";
-		const dir = resolve(
-			projectRoot,
-			action === "pull" ? root : (names[0] ?? root),
-		);
+		const into = (dir: string | undefined) =>
+			resolve(projectRoot, dir ?? manifest.build?.sourceRoot ?? ".");
+
 		if (action === "init") {
-			return await runFixturesInit(projectRoot, dir, cliOptions, output);
+			// nazare preview fixtures init [dir]
+			return await runFixturesInit(
+				projectRoot,
+				into(args[0]),
+				cliOptions,
+				output,
+			);
 		}
 		if (action === "pull") {
-			if (!names[0]) {
+			// nazare preview fixtures pull <handle> [dir]
+			const [handle, dir] = args;
+			if (!handle) {
 				output.error(
-					"Usage: nazare preview fixtures pull <handle> --store <shop>",
+					"Usage: nazare preview fixtures pull <handle> [dir] --store <shop>",
 				);
 				return 1;
 			}
 			return await runFixturesPull(
 				projectRoot,
-				dir,
-				names[0],
+				into(dir),
+				handle,
 				cliOptions,
 				output,
 			);

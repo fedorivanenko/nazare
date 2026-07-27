@@ -10,7 +10,7 @@
 // registry component is copied in and becomes yours.
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { shopifyFixtures } from "@nazare/preview";
+import { starterFixtures } from "@nazare/preview";
 import type { CliOptions } from "./options.js";
 import type { Output } from "./output.js";
 
@@ -75,7 +75,7 @@ export async function runFixturesInit(
 	output: Output,
 ): Promise<number> {
 	let written = 0;
-	for (const [name, value] of Object.entries(shopifyFixtures)) {
+	for (const [name, value] of Object.entries(starterFixtures)) {
 		if (
 			await writeFixture(dir, name, value, {
 				force: Boolean(cliOptions.force),

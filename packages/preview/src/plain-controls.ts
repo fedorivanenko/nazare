@@ -12,20 +12,8 @@
 // undeclared prop stays undeclared, and the story that needs it says so.
 import type { ThemeFact } from "@nazare/compiler";
 import type { PreviewControl } from "./controls.js";
-import { shopifyFixtures } from "./fixtures.js";
 
 type DocParam = Extract<ThemeFact, { kind: "declaresDocParam" }>;
-
-/**
- * A `@param {product} product` names a storefront object, and the preview
- * already owns one. Without this a story would open on the string "product".
- */
-const FIXTURE_TYPES: Record<string, string> = {
-	product: "product",
-	collection: "collection",
-	image: "image",
-	shop: "shop",
-};
 
 /** `{string}`, `{number}`, `{boolean}` — Shopify's doc types, loosely written. */
 function kindFromDocType(type: string | undefined): PreviewControl["kind"] {
@@ -43,26 +31,6 @@ function kindFromDocType(type: string | undefined): PreviewControl["kind"] {
 	}
 }
 
-function docParamValue(param: DocParam): unknown {
-	const type = param.paramType?.toLowerCase();
-	if (type && type in FIXTURE_TYPES)
-		return shopifyFixtures[FIXTURE_TYPES[type]];
-	switch (kindFromDocType(param.paramType)) {
-		case "boolean":
-			return false;
-		case "number":
-			return 0;
-		case "color":
-			return "#111111";
-		case "url":
-			return "#";
-		default:
-			// The prop's own name, as a contract-derived string control does: a
-			// story that renders nothing by default teaches nothing.
-			return param.name;
-	}
-}
-
 /** `{% doc %}` `@param` lines — the author's statement of a snippet's props. */
 export function controlsFromDocParams(facts: ThemeFact[]): PreviewControl[] {
 	const controls: PreviewControl[] = [];
@@ -75,10 +43,12 @@ export function controlsFromDocParams(facts: ThemeFact[]): PreviewControl[] {
 			label: fact.name,
 			kind: kindFromDocType(fact.paramType),
 			required: fact.required,
-			value: docParamValue(fact),
-			// `{% doc %}` has no syntax for a default: `[name]` says optional and
-			// nothing more, so every value here is this pass's own placeholder.
-			hasDefault: false,
+			// `{% doc %}` has no syntax for a default. `[name]` says optional and
+			// nothing more, so there is no default to state — and a prop the
+			// declaration says nothing about renders nil, as it would on a
+			// storefront. The preview used to answer a `{product}` param with its
+			// own built-in product here, which was the package quietly owning
+			// storefront data again.
 			typeExpression: fact.paramType ?? "unknown",
 		});
 	}
@@ -194,9 +164,11 @@ export function controlsFromSchemaSource(source: string): PreviewControl[] {
 			required: false,
 			...(options ? { options } : {}),
 			...(range ? { range } : {}),
-			value: settingValue(entry, kind, options),
-			// A schema states its defaults outright, so most settings have one.
-			hasDefault: entry.default !== undefined,
+			// A schema states its defaults outright, and a setting without one is
+			// a setting the merchant has not filled in yet.
+			...(entry.default !== undefined
+				? { defaultValue: settingValue(entry, kind, options) }
+				: {}),
 			typeExpression: type,
 		});
 	}

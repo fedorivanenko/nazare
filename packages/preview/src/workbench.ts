@@ -1023,9 +1023,6 @@ const WORKBENCH_SCRIPT = `
     return row;
   }
 
-  /** What the declaration itself supplies, or undefined where it says nothing. */
-  const declaredDefault = (control) =>
-    control.hasDefault ? control.value : undefined;
 
   function renderControls(story) {
     const controls = controlsIndex[story.component] ?? [];
@@ -1056,7 +1053,7 @@ const WORKBENCH_SCRIPT = `
           control,
           control.name in story.source
             ? story.source[control.name]
-            : declaredDefault(control),
+            : control.defaultValue,
         ),
       ),
     );
@@ -1088,15 +1085,24 @@ const WORKBENCH_SCRIPT = `
             props: formProps(),
           }),
         });
-        if (!response.ok) return;
+        if (!response.ok) {
+          // A draft the server would not render is a thing to say, not a
+          // canvas that quietly stops following the panel.
+          status.textContent = await response.text();
+          status.classList.add('controls-status--error');
+          return;
+        }
         // srcdoc rather than a new URL: nothing is written, so there is no
         // document to point at. The story's own <base> keeps its assets
         // resolving from the root.
         canvas.removeAttribute('src');
         canvas.srcdoc = await response.text();
-      } catch {
-        // A draft that cannot be rendered leaves the last one on screen; the
-        // canvas is never blanked for a keystroke.
+      } catch (error) {
+        // The server is gone or the request failed: the last render stays on
+        // screen, because blanking the canvas for a keystroke is worse — but
+        // the panel says the canvas has stopped following it.
+        status.textContent = 'not rendering: ' + (error.message || 'no server');
+        status.classList.add('controls-status--error');
       }
     }, 120);
   }
@@ -1220,7 +1226,7 @@ const WORKBENCH_SCRIPT = `
         else delete props[name];
         continue;
       }
-      if (!stated && value === declaredDefault(control)) delete props[name];
+      if (!stated && value === control?.defaultValue) delete props[name];
       else props[name] = value;
     }
     return props;

@@ -89,16 +89,17 @@ export const shop = {
  * The stand-in data a project starts from, copied in by `preview fixtures init`
  * and thereafter the project's own files.
  *
- * Nothing resolves against this map. A story names a file — `{ "$file":
- * "fixtures/product.json" }` — so there is no registry of names to know, and
- * the answer to "what is this?" is a path you can open. This is only the seed.
+ * Named for what it is: a seed, not a set of fixtures. Nothing resolves against
+ * this map — a story names a file, `{ "$file": "fixtures/product.json" }`, so
+ * there is no registry of names to know and the answer to "what is this?" is a
+ * path you can open. Once `init` has run, these values are not consulted again.
  *
  * Objects only, and that is the whole rule: a fixture exists because JSON
  * cannot hold the thing — a product with its images, variants and compare-at
  * price — and because the components that take one should agree about the shop
  * they belong to. A number is not that. Scalars are literals; you type them.
  */
-export const shopifyFixtures: Record<string, unknown> = {
+export const starterFixtures: Record<string, unknown> = {
 	product,
 	collection,
 	image,
