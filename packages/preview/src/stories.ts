@@ -26,6 +26,12 @@ export type PreviewStory = {
 	 * prop mean something. `null` is an explicit unset, distinct from absent.
 	 */
 	props: Record<string, unknown>;
+	/**
+	 * The props as authored, before `{ "$fixture": "product" }` became a product.
+	 * Kept so an editor can write the story file back without inlining three
+	 * kilobytes of stand-in data where a one-word reference used to be.
+	 */
+	source?: Record<string, unknown>;
 	/** Shown under the story; why this case is worth looking at. */
 	note?: string;
 	/** True when the story's props drew on shared storefront stand-in data. */
@@ -105,6 +111,7 @@ export function declaredStories(
 		name: story.name,
 		note: story.note,
 		props: resolveFixtures(story.props ?? {}),
+		source: story.props ?? {},
 		fixtures: usesFixtures(story.props ?? {}),
 	}));
 }

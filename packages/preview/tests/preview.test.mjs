@@ -697,10 +697,12 @@ test("the workbench lists every story and shows one at a time", async () => {
 	// the component's stories are a dropdown beside the canvas.
 	assert.equal(page.match(/class="nav-component"/g).length, 1);
 	assert.ok(page.includes('data-substories="button"'));
-	assert.equal(page.match(/<option value="button--/g).length, 4);
-	// Stories that vary one prop are grouped under it, so the menu reads as the
-	// prop's values rather than as a flat list of "prop: value" strings.
-	assert.ok(page.includes('<optgroup label="scheme">'));
+	// A list rather than a menu: a set of stories you can see is one you can
+	// compare, and the column has the height for it.
+	assert.equal(page.match(/data-story-pick="button--/g).length, 4);
+	// Stories that vary one prop are gathered under it, so the list reads as
+	// that prop's values rather than as flat "prop: value" strings.
+	assert.ok(page.includes('<li class="story-group">scheme</li>'));
 	// Viewport presets, and the story index the canvas selects from.
 	assert.ok(page.includes('id="viewport"'));
 	assert.ok(page.includes('<option value="375">'));
@@ -787,9 +789,9 @@ test("the workbench carries the toolbar, the call, and per-story status", async 
 	// shows and what the filter reads.
 	assert.ok(page.includes('data-problems="1"'));
 	assert.ok(page.includes('id="problems-only"'));
-	// A story's own state belongs on the story, in the menu where you pick it.
-	// Two, because a misspelled prop also leaves the real one unpassed.
-	assert.ok(page.includes("typo — 2 issues"));
+	// A story's own state belongs on the story, where you pick it. Two, because
+	// a misspelled prop also leaves the real one unpassed.
+	assert.ok(page.includes('<span class="story-state">2</span>'));
 });
 
 test("the header says what the page was built from", async () => {
@@ -855,7 +857,6 @@ test("both side panels collapse, and the docs sit beside the render", async () =
 	const main = page.slice(page.indexOf("<main"), page.indexOf("<aside"));
 	assert.ok(main.includes('id="canvas"'));
 	assert.ok(main.includes('id="canvas-issues"'));
-	assert.ok(main.includes("data-substories="), "the story picker stays");
 
 	// What changes how the story is drawn sits with the story.
 	for (const knob of [
@@ -871,7 +872,10 @@ test("both side panels collapse, and the docs sit beside the render", async () =
 		assert.ok(!docs.includes(`id="${knob}"`), `${knob} escaped into the panel`);
 	}
 
-	// What is known *about* the story stays in the panel beside it.
+	// Choosing a story, and everything known about the one chosen, is read
+	// rather than operated on the canvas — so it lives in the column you read.
+	assert.ok(docs.includes("data-substories="));
+	assert.ok(!main.includes("data-substories="));
 	for (const note of ["canvas-call", "canvas-props"]) {
 		assert.ok(docs.includes(`id="${note}"`), `${note} belongs in the panel`);
 		assert.ok(

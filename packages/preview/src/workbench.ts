@@ -68,6 +68,13 @@ export type WorkbenchPageOptions = {
 	 * were, with everything on the page consistent with the new build.
 	 */
 	liveReload?: string;
+	/**
+	 * An endpoint that writes a story back to its file — a dev server, since a
+	 * written page has no filesystem. Off by default, and the Save button only
+	 * exists when it is on: an editor that cannot save is a worse thing than no
+	 * editor at all.
+	 */
+	saveEndpoint?: string;
 };
 
 /** The header's provenance line: the directory, then the commit it was at. */
@@ -183,29 +190,30 @@ function substories({ component, stories }: RenderedComponent): string {
 		groups.set(group, [...(groups.get(group) ?? []), rendered]);
 	}
 	// A story's state belongs on the story, not only on the component that holds
-	// it: the dropdown is where you choose which one to look at.
-	const option = (rendered: RenderedStory): string => {
+	// it: this is where you choose which one to look at.
+	const item = (rendered: RenderedStory): string => {
 		const state = rendered.error
-			? " — failed"
+			? '<span class="story-state story-state--failed">failed</span>'
 			: rendered.issues.length > 0
-				? ` — ${rendered.issues.length} issue${rendered.issues.length === 1 ? "" : "s"}`
+				? `<span class="story-state">${rendered.issues.length}</span>`
 				: "";
-		return `<option value="${escapeHtml(rendered.id)}">${escapeHtml(
-			rendered.story.name,
-		)}${state}</option>`;
+		return `<li><button class="story-pick" type="button" data-story-pick="${escapeHtml(
+			rendered.id,
+		)}">${escapeHtml(rendered.story.name)}${state}</button></li>`;
 	};
-	const options = [...groups]
+	const items = [...groups]
 		.map(([group, entries]) =>
 			group === ""
-				? entries.map(option).join("")
-				: `<optgroup label="${escapeHtml(group)}">${entries.map(option).join("")}</optgroup>`,
+				? entries.map(item).join("")
+				: `<li class="story-group">${escapeHtml(group)}</li>${entries.map(item).join("")}`,
 		)
 		.join("");
-	// Inert without JavaScript, like every dropdown: the sidebar stays the
-	// no-script path, since its entries are links to the story documents.
-	return `<select class="substory-select" data-substories="${escapeHtml(
+	// A list rather than a menu: the column has the height for it, and a set of
+	// stories you can see is a set you can compare. Hidden until its component
+	// is the one selected.
+	return `<ul class="story-list" data-substories="${escapeHtml(
 		id,
-	)}" aria-label="Story" hidden>${options}</select>`;
+	)}" hidden>${items}</ul>`;
 }
 
 /**
@@ -384,7 +392,44 @@ const WORKBENCH_STYLES = `
   .sidebar-empty[hidden] { display: none; }
   .sidebar li[hidden] { display: none; }
   .canvas-tools { display: flex; align-items: center; gap: .4rem; }
-  .substory-select, .viewport-select, .viewport-width {
+  .story-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .1rem; }
+  .story-list[hidden] { display: none; }
+  .story-group {
+    margin-top: .5rem;
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted-foreground);
+  }
+  .story-group:first-child { margin-top: 0; }
+  .story-pick {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    color: var(--muted-foreground);
+    border-radius: calc(var(--radius) - 3px);
+    padding: .3rem .5rem;
+    font: inherit;
+    font-size: .82rem;
+    cursor: pointer;
+  }
+  .story-pick:hover { background: var(--accent); color: var(--foreground); }
+  .story-pick[aria-current="true"] { background: var(--muted); color: var(--foreground); font-weight: 500; }
+  .story-state {
+    flex: none;
+    border-radius: 999px;
+    background: #fee2e2;
+    color: #991b1b;
+    font-size: .66rem;
+    padding: 0 .4rem;
+  }
+  :root[data-theme="dark"] .story-state { background: #450a0a; color: #fca5a5; }
+  .viewport-select, .viewport-width {
     height: 30px;
     max-width: 260px;
     border: 1px solid var(--border);
@@ -482,6 +527,39 @@ const WORKBENCH_STYLES = `
    * it, the component it belongs to — each its own block with a rule between,
    * so the eye can find one without reading the others. */
   .docs-section + .docs-section { border-top: 1px solid var(--border); margin-top: 1.25rem; padding-top: 1.25rem; }
+  .docs-section[hidden] { display: none; }
+  /* Label above control, not beside it: a select and a text field in a 320px
+   * column have no width to spare for a label column as well. */
+  .controls { display: grid; gap: .6rem; }
+  .control { display: grid; gap: .2rem; }
+  .control-label { font-size: .72rem; color: var(--muted-foreground); }
+  .control-label code { color: var(--foreground); }
+  .control-required { color: #b91c1c; }
+  .control input[type="text"], .control input[type="number"], .control select, .control input[type="url"] {
+    height: 30px;
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--background);
+    color: var(--foreground);
+    padding: 0 .5rem;
+    font: inherit;
+    font-size: .78rem;
+  }
+  .control input[type="color"] { height: 30px; width: 3rem; padding: 2px; }
+  .control-check { display: flex; align-items: center; gap: .4rem; font-size: .78rem; }
+  /* A prop holding storefront data is a reference, not a value anyone types. */
+  .control-fixture {
+    font-size: .74rem;
+    color: var(--muted-foreground);
+    border: 1px dashed var(--border);
+    border-radius: calc(var(--radius) - 3px);
+    padding: .35rem .5rem;
+  }
+  .controls-bar { display: flex; align-items: center; gap: .4rem; margin-top: .8rem; }
+  .controls-status { font-size: .72rem; color: var(--muted-foreground); }
+  .controls-status--error { color: #b91c1c; }
+  .panel-toggle[disabled] { opacity: .5; cursor: default; }
   .docs .caveat { padding: 1rem 0 0; border-top: 1px solid var(--border); margin-top: 1.25rem; }
   /* The knobs that change how the story is drawn sit with the story. They read
    * as a toolbar rather than a list because each is a single control with an
@@ -580,6 +658,12 @@ const WORKBENCH_SCRIPT = `
   const callLabel = document.getElementById('canvas-call-label');
   const callCode = document.getElementById('canvas-call-code');
   const callCopy = document.getElementById('canvas-call-copy');
+  const controlsSection = document.getElementById('controls-section');
+  const controlsForm = document.getElementById('controls');
+  const saveButton = document.getElementById('controls-save');
+  const resetButton = document.getElementById('controls-reset');
+  const status = document.getElementById('controls-status');
+  let dirty = false;
   const problemsOnly = document.getElementById('problems-only');
   const sidebarEmpty = document.getElementById('sidebar-empty');
   const workbench = document.getElementById('workbench');
@@ -698,11 +782,15 @@ const WORKBENCH_SCRIPT = `
         link.setAttribute('aria-current', 'true');
       } else link.removeAttribute('aria-current');
     }
-    // One dropdown per component; the selected component's is the visible one,
-    // and it opens on the story being shown.
-    for (const menu of document.querySelectorAll('[data-substories]')) {
-      menu.hidden = menu.dataset.substories !== story.component;
-      if (!menu.hidden) menu.value = storyId;
+    // One list per component; the selected component's is the visible one, and
+    // the story being shown is the one marked in it.
+    for (const list of document.querySelectorAll('[data-substories]')) {
+      list.hidden = list.dataset.substories !== story.component;
+    }
+    for (const pick of document.querySelectorAll('[data-story-pick]')) {
+      if (pick.dataset.storyPick === storyId) {
+        pick.setAttribute('aria-current', 'true');
+      } else pick.removeAttribute('aria-current');
     }
     if (canvas.getAttribute('src') !== story.href) {
       // Height is stale until the new story measures itself; start from the
@@ -739,6 +827,7 @@ const WORKBENCH_SCRIPT = `
     for (const panel of document.querySelectorAll('[data-panel]')) {
       panel.hidden = panel.dataset.panel !== story.component;
     }
+    renderControls(story);
     if (push && location.hash.slice(1) !== storyId) {
       // Through URL, so the story replaces only the fragment and leaves the
       // query (the viewport) where it was.
@@ -747,6 +836,154 @@ const WORKBENCH_SCRIPT = `
       history.replaceState(null, '', url);
     }
   }
+
+  /**
+   * The controls: one input per declared prop, seeded from the story as it was
+   * written, saved back to the file it came from.
+   *
+   * Not live. The render happens in Node — liquidjs, the snippet library, the
+   * emitted template — so a value changed here cannot repaint the canvas by
+   * itself. Save writes the story file; the server rebuilds and the page
+   * reloads with the real render. That is why the button says Save rather than
+   * the panel updating as you type: pretending otherwise would show you a
+   * canvas that no longer matches the controls above it.
+   */
+  const controlsIndex = JSON.parse(
+    document.getElementById('controls-index').textContent,
+  );
+  // The endpoint rides on the button rather than in a global: the script is one
+  // constant string, and the page is what knows whether a server is behind it.
+  const saveEndpoint = saveButton?.dataset.endpoint ?? '';
+  let editing = null;
+
+  const isFixture = (value) =>
+    value !== null && typeof value === 'object' && '$fixture' in value;
+
+  function controlRow(control, value) {
+    const row = document.createElement('label');
+    row.className = 'control';
+    const label = document.createElement('span');
+    label.className = 'control-label';
+    label.innerHTML = '<code>' + control.name + '</code>' +
+      (control.required ? ' <span class="control-required">required</span>' : '');
+    row.append(label);
+
+    // A prop holding storefront data is a reference to fixture data, not a
+    // value anyone types into a field. Shown, and left exactly as written.
+    if (isFixture(value)) {
+      const chip = document.createElement('span');
+      chip.className = 'control-fixture';
+      chip.textContent = 'fixture: ' + value.$fixture;
+      row.append(chip);
+      return row;
+    }
+
+    let input;
+    if (control.options) {
+      input = document.createElement('select');
+      for (const option of control.options) {
+        const element = document.createElement('option');
+        element.value = option;
+        element.textContent = option;
+        if (String(value) === option) element.selected = true;
+        input.append(element);
+      }
+    } else if (control.kind === 'boolean') {
+      input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = value === true;
+      row.classList.add('control-check');
+    } else if (control.kind === 'number') {
+      input = document.createElement('input');
+      input.type = 'number';
+      if (control.range) {
+        if (control.range.min !== undefined) input.min = control.range.min;
+        if (control.range.max !== undefined) input.max = control.range.max;
+        if (control.range.step !== undefined) input.step = control.range.step;
+      }
+      input.value = value ?? '';
+    } else {
+      input = document.createElement('input');
+      input.type = control.kind === 'color' ? 'color' : 'text';
+      input.value = value ?? '';
+    }
+    input.dataset.control = control.name;
+    input.dataset.kind = control.kind;
+    input.addEventListener('input', () => {
+      dirty = true;
+      paintControlsBar();
+    });
+    row.append(input);
+    return row;
+  }
+
+  function renderControls(story) {
+    const controls = controlsIndex[story.component] ?? [];
+    // Nothing declared, nothing to edit — and no invented interface either.
+    controlsSection.hidden = controls.length === 0;
+    if (controls.length === 0) return;
+    editing = story;
+    dirty = false;
+    controlsForm.replaceChildren(
+      ...controls.map((control) =>
+        controlRow(control, story.source[control.name]),
+      ),
+    );
+    status.textContent = '';
+    status.classList.remove('controls-status--error');
+    paintControlsBar();
+  }
+
+  /** What the form says, as a story's props: only what it changes. */
+  function formProps() {
+    const props = { ...editing.source };
+    for (const input of controlsForm.querySelectorAll('[data-control]')) {
+      const name = input.dataset.control;
+      if (input.type === 'checkbox') props[name] = input.checked;
+      else if (input.dataset.kind === 'number') {
+        props[name] = input.value === '' ? null : Number(input.value);
+      } else if (input.value === '') delete props[name];
+      else props[name] = input.value;
+    }
+    return props;
+  }
+
+  function paintControlsBar() {
+    saveButton.disabled = !dirty || !saveEndpoint;
+    resetButton.disabled = !dirty;
+    if (!saveEndpoint && dirty) {
+      status.textContent = 'read-only — run nazare preview serve to save';
+    }
+  }
+
+  saveButton?.addEventListener('click', async () => {
+    saveButton.disabled = true;
+    status.classList.remove('controls-status--error');
+    status.textContent = 'saving…';
+    try {
+      const response = await fetch(saveEndpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          component: editing.component,
+          story: editing.storyName,
+          props: formProps(),
+        }),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      // The write lands on the watcher, which rebuilds and reloads the page —
+      // so the canvas below is a real render, not an optimistic one.
+      status.textContent = 'saved';
+    } catch (error) {
+      status.textContent = error.message || 'save failed';
+      status.classList.add('controls-status--error');
+      saveButton.disabled = false;
+    }
+  });
+
+  resetButton?.addEventListener('click', () => {
+    if (editing) renderControls(editing);
+  });
 
   // The sidebar is a list of real links, so it works without this script. With
   // it, a click swaps the canvas instead of leaving the shell.
@@ -757,8 +994,8 @@ const WORKBENCH_SCRIPT = `
       select(link.dataset.story, true);
     });
   }
-  for (const menu of document.querySelectorAll('[data-substories]')) {
-    menu.addEventListener('change', () => select(menu.value, true));
+  for (const pick of document.querySelectorAll('[data-story-pick]')) {
+    pick.addEventListener('click', () => select(pick.dataset.storyPick, true));
   }
 
   // Viewport width. The frame is a real document, so narrowing the element it
@@ -988,6 +1225,10 @@ export function workbenchPage(
 						href: `${storyBase}${storyFileName(rendered.id)}`,
 						props: formatProps(rendered.story.props),
 						issues: rendered.issues,
+						// The props as authored — the delta, with fixture references
+						// intact — which is what an editor round-trips.
+						source: rendered.story.source ?? {},
+						storyName: rendered.story.name,
 						// What reproduces this story in a theme. A property of the story,
 						// not of the component, so it rides in the index rather than in the
 						// component's panel.
@@ -1038,7 +1279,6 @@ ${links}
       <div class="canvas-bar">
         <span class="canvas-title" id="canvas-title"></span>
         <div class="canvas-tools">
-          ${components.map((component) => substories(component)).join("")}
           <a class="canvas-open" id="canvas-open" href="${escapeHtml(storyBase)}" target="_blank" rel="noreferrer">Open ↗</a>
         </div>
       </div>
@@ -1083,6 +1323,23 @@ ${links}
     </main>
     <aside class="docs" aria-label="Story and component documentation">
       <section class="docs-section">
+        <p class="docs-heading">Stories</p>
+        ${components.map((component) => substories(component)).join("")}
+      </section>
+
+      <section class="docs-section" id="controls-section" hidden>
+        <p class="docs-heading">Controls</p>
+        <form class="controls" id="controls"></form>
+        <div class="controls-bar">
+          <button class="panel-toggle" type="button" id="controls-save" data-endpoint="${escapeHtml(
+						options.saveEndpoint ?? "",
+					)}" disabled>Save story</button>
+          <button class="panel-toggle" type="button" id="controls-reset" disabled>Reset</button>
+          <span class="controls-status" id="controls-status"></span>
+        </div>
+      </section>
+
+      <section class="docs-section">
         <p class="docs-heading">Story</p>
         <div class="call" id="canvas-call" hidden>
           <p class="call-label"><span id="canvas-call-label"></span></p>
@@ -1105,6 +1362,14 @@ ${links}
       </p>
     </aside>
   </div>
+<script type="application/json" id="controls-index">${JSON.stringify(
+		Object.fromEntries(
+			components.map(({ component }) => [
+				componentId(component.name),
+				component.controls,
+			]),
+		),
+	).replace(/</g, "\\u003c")}</script>
 <script type="application/json" id="story-index">${JSON.stringify(storyIndex).replace(/</g, "\\u003c")}</script>
 <script>${WORKBENCH_SCRIPT}</script>${
 		options.liveReload

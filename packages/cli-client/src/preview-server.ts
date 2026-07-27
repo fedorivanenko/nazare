@@ -13,11 +13,13 @@
 // theme actually reaches the whole rebuild costs tens of milliseconds. Precision
 // here should arrive with a measurement behind it, not before one.
 import { watch } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
-import { extname, join, resolve } from "node:path";
+import { extname, join } from "node:path";
 import {
+	componentId,
 	galleryPage,
+	parseStoryFile,
 	type RenderedComponent,
 	storyDocuments,
 	workbenchPage,
@@ -37,6 +39,7 @@ const DEFAULT_PORT = 4173;
 const DEBOUNCE_MS = 60;
 
 const EVENTS_PATH = "/__events";
+const SAVE_PATH = "/__save";
 
 const CONTENT_TYPES: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
@@ -101,6 +104,7 @@ async function buildState(
 			storyBase: "/stories/",
 			source: previewSource(dir, label),
 			liveReload: EVENTS_PATH,
+			saveEndpoint: SAVE_PATH,
 		}),
 	);
 	pages.set(
@@ -124,6 +128,87 @@ async function buildState(
 	}
 
 	return { pages, assets, collection, rendered };
+}
+
+type SaveRequest = {
+	component?: unknown;
+	story?: unknown;
+	props?: unknown;
+};
+
+/**
+ * Writes one story's props back to the file it came from.
+ *
+ * The workbench can only offer this because the file is the single source of
+ * cases: there is one place the story lives, and editing it there is the same
+ * act as editing it in a text editor. What is written goes back through
+ * `parseStoryFile`, so the GUI cannot produce a file `preview check` would
+ * reject — the editor is held to the format it is editing.
+ */
+export async function saveStoryFile(
+	dir: string,
+	state: ServerState,
+	body: SaveRequest,
+): Promise<string | undefined> {
+	if (typeof body.component !== "string" || typeof body.story !== "string") {
+		return "component and story are required";
+	}
+	if (body.props === null || typeof body.props !== "object") {
+		return "props must be an object";
+	}
+	const entry = state.collection.compiled.find(
+		({ component }) => componentId(component.name) === body.component,
+	);
+	if (!entry) return `unknown component ${body.component}`;
+
+	const path = join(dir, entry.storyFile);
+	const raw = await readFile(path, "utf8").catch(() => undefined);
+	if (raw === undefined) return `cannot read ${entry.storyFile}`;
+
+	let document: Record<string, unknown>;
+	try {
+		document = JSON.parse(raw) as Record<string, unknown>;
+	} catch (error) {
+		return `${entry.storyFile}: invalid JSON: ${
+			error instanceof Error ? error.message : String(error)
+		}`;
+	}
+
+	if (state.collection.layout === "package" && !document.preview) {
+		document.preview = {};
+	}
+	// A theme keeps its cases at the top level; a package keeps them under
+	// `preview`, next to everything else that describes the package.
+	const holder =
+		state.collection.layout === "package"
+			? (document.preview as Record<string, unknown>)
+			: document;
+	const stories = holder.stories;
+	if (!Array.isArray(stories)) return `${entry.storyFile} declares no stories`;
+
+	const story = stories.find(
+		(candidate) =>
+			(candidate as { name?: unknown } | undefined)?.name === body.story,
+	) as Record<string, unknown> | undefined;
+	if (!story) return `${entry.storyFile} has no story named ${body.story}`;
+
+	const props = body.props as Record<string, unknown>;
+	if (Object.keys(props).length > 0) story.props = props;
+	else delete story.props;
+
+	// Checked before it is written, not after: a file this rejects is one the
+	// author would have to repair by hand.
+	try {
+		parseStoryFile(
+			state.collection.layout === "package" ? holder : document,
+			entry.storyFile,
+		);
+	} catch (error) {
+		return error instanceof Error ? error.message : String(error);
+	}
+
+	await writeFile(path, `${JSON.stringify(document, null, 2)}\n`);
+	return undefined;
 }
 
 /** Reports what a rebuild found, in the same words the build command uses. */
@@ -182,6 +267,31 @@ export async function runPreviewServe(
 			response.write(": connected\n\n");
 			clients.add(response);
 			request.on("close", () => clients.delete(response));
+			return;
+		}
+
+		// Editing a story writes the file it came from; the watcher does the rest,
+		// so a save and a hand edit reach the page by exactly the same route.
+		if (path === SAVE_PATH && request.method === "POST") {
+			const chunks: Buffer[] = [];
+			for await (const chunk of request) chunks.push(chunk as Buffer);
+			let failure: string | undefined;
+			try {
+				failure = state
+					? await saveStoryFile(
+							dir,
+							state,
+							JSON.parse(Buffer.concat(chunks).toString()),
+						)
+					: "nothing is being served";
+			} catch (error) {
+				failure = error instanceof Error ? error.message : String(error);
+			}
+			response.writeHead(failure ? 400 : 200, {
+				"content-type": "text/plain; charset=utf-8",
+			});
+			response.end(failure ?? "saved");
+			if (failure) output.error(`save refused: ${failure}`);
 			return;
 		}
 

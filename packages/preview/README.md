@@ -455,6 +455,20 @@ whole rebuild costs a few hundred milliseconds at the size a theme reaches.
 A story file that is mid-edit keeps the last good render of its component, since
 a half-typed key should not take away the page you are editing against.
 
+Served, the workbench also **edits stories**: one input per declared prop,
+seeded from the story as it was written, with an explicit Save that writes the
+story file. Not live — the render happens in Node, so a value changed in the
+panel cannot repaint the canvas by itself. Save writes the file, the watcher
+rebuilds, and the page reloads with the real render. That is why the button
+says Save rather than the canvas following your keystrokes: the alternative is
+a canvas that quietly stops matching the controls above it.
+
+What is written is the story's delta, with `{ "$fixture": "product" }` left as
+the reference it is rather than the three kilobytes it resolves to — which is
+why `PreviewStory` keeps `source` alongside its resolved props. It goes back
+through `parseStoryFile` before it is written, so the editor cannot produce a
+file `preview check` would reject.
+
 `cli-client/src/preview-command.ts` is pure I/O around the above: it walks a
 directory, resolves each component's story file, and writes the pages. It is
 also where the theme-versus-package distinction lives — detected from what is in

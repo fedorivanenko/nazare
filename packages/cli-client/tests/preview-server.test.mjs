@@ -7,7 +7,7 @@
 // therefore broken.
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync } from "node:fs";
-import { rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -111,6 +111,100 @@ test("a story file mid-edit keeps the component it belongs to", async () => {
 			// is simply absent rather than invented.
 			const cold = await previewServerState(dir, "theme");
 			assert.deepEqual(cold.rendered, []);
+		},
+	);
+});
+
+test("saving a story rewrites its file and leaves the rest of it alone", async () => {
+	await withTheme(
+		{
+			"snippets/price.liquid": PRICE,
+			"snippets/price.stories.json": JSON.stringify(
+				{
+					stories: [
+						{
+							name: "on sale",
+							props: { price: { $fixture: "price" } },
+							note: "why this case matters",
+						},
+						{ name: "free", props: { price: 0 } },
+					],
+				},
+				null,
+				2,
+			),
+		},
+		async (dir) => {
+			const { previewServerState, saveStoryFile } = await load();
+			const state = await previewServerState(dir, "theme");
+
+			assert.equal(
+				await saveStoryFile(dir, state, {
+					component: "price",
+					story: "on sale",
+					props: { price: { $fixture: "price" }, compare_at_price: 4000 },
+				}),
+				undefined,
+			);
+
+			const written = JSON.parse(
+				await readFile(join(dir, "snippets/price.stories.json"), "utf8"),
+			);
+			// The edited story takes the new props, fixture reference intact.
+			assert.deepEqual(written.stories[0].props, {
+				price: { $fixture: "price" },
+				compare_at_price: 4000,
+			});
+			// And nothing else in the file moved: the note it was given, and the
+			// story nobody was editing.
+			assert.equal(written.stories[0].note, "why this case matters");
+			assert.deepEqual(written.stories[1], {
+				name: "free",
+				props: { price: 0 },
+			});
+		},
+	);
+});
+
+test("a save that would break the story file is refused", async () => {
+	await withTheme(
+		{
+			"snippets/price.liquid": PRICE,
+			"snippets/price.stories.json": STORIES,
+		},
+		async (dir) => {
+			const { previewServerState, saveStoryFile } = await load();
+			const state = await previewServerState(dir, "theme");
+			const before = await readFile(
+				join(dir, "snippets/price.stories.json"),
+				"utf8",
+			);
+
+			// The editor is held to the format it edits: what it writes goes back
+			// through the same parse `preview check` uses, so the GUI cannot
+			// produce a file the CLI would reject.
+			assert.match(
+				await saveStoryFile(dir, state, {
+					component: "price",
+					story: "nowhere",
+					props: {},
+				}),
+				/has no story named nowhere/,
+			);
+			assert.match(
+				await saveStoryFile(dir, state, {
+					component: "missing",
+					story: "on sale",
+					props: {},
+				}),
+				/unknown component/,
+			);
+
+			assert.equal(
+				await readFile(join(dir, "snippets/price.stories.json"), "utf8"),
+				before,
+				"a refused save writes nothing",
+			);
 		},
 	);
 });

@@ -50,6 +50,12 @@ export type PreviewSource = {
 	stories: PreviewStory[];
 	/** Root-relative path, for naming a file in a message. */
 	file: string;
+	/**
+	 * Where this component's stories are written, root-relative. A theme keeps
+	 * them beside the template; a package keeps them in its manifest. An editor
+	 * that saves needs to know which, and it is this walk that already knows.
+	 */
+	storyFile: string;
 };
 
 export type PreviewCollection = {
@@ -206,7 +212,7 @@ async function collectTheme(dir: string): Promise<PreviewCollection> {
 					collection.malformedComponents.push(component.name);
 				}
 			}
-			const entryRecord = { component, stories, file };
+			const entryRecord = { component, stories, file, storyFile: storyPath };
 			collection.compiled.push(entryRecord);
 			if (stories.length > 0) collection.previewed.push(entryRecord);
 			else if (raw === undefined) collection.undeclared.push(file);
@@ -257,7 +263,12 @@ async function collectPackages(dir: string): Promise<PreviewCollection> {
 			kind: manifest.kind as Exclude<NazareManifest["kind"], "function">,
 		});
 		const stories = storiesFor({ manifest });
-		const entryRecord = { component, stories, file };
+		const entryRecord = {
+			component,
+			stories,
+			file,
+			storyFile: `${folder}/nazare.json`,
+		};
 		collection.compiled.push(entryRecord);
 		if (stories.length > 0) collection.previewed.push(entryRecord);
 		else collection.undeclared.push(entryRecord.file);

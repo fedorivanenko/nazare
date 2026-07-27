@@ -31,13 +31,28 @@ async function mountShell({
 	width = 1400,
 	storage = new Map(),
 	stageWidth = 0,
+	fetch = async () => ({ ok: true, text: async () => "saved" }),
+	stories,
 } = {}) {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
-	const rendered = await renderComponentStories(component, [
-		{ name: "solid", props: { label: "Add to cart" } },
-		{ name: "outline", props: { label: "Add to cart", scheme: "outline" } },
-	]);
-	const html = workbenchPage([rendered]);
+	const rendered = await renderComponentStories(
+		component,
+		stories ?? [
+			// `source` is what an authored story states; the resolved props are
+			// the same here because neither case names a fixture.
+			{
+				name: "solid",
+				props: { label: "Add to cart" },
+				source: { label: "Add to cart" },
+			},
+			{
+				name: "outline",
+				props: { label: "Add to cart", scheme: "outline" },
+				source: { label: "Add to cart", scheme: "outline" },
+			},
+		],
+	);
+	const html = workbenchPage([rendered], { saveEndpoint: "/__save" });
 	const { window, document } = parseHTML(html);
 
 	// linkedom does no layout, so the stage reports whatever room the test says
@@ -72,6 +87,7 @@ async function mountShell({
 		"setTimeout",
 		"navigator",
 		"innerWidth",
+		"fetch",
 		source,
 	);
 	run(
@@ -94,6 +110,7 @@ async function mountShell({
 		setTimeout,
 		{ clipboard: { writeText: async () => {} } },
 		width,
+		fetch,
 	);
 
 	const workbench = document.getElementById("workbench");
@@ -245,19 +262,84 @@ test("full width follows the zoom; a preset does not", async () => {
 	assert.equal(scaler.style.width, "750px");
 });
 
+test("the controls are the declaration, seeded from the story as written", async () => {
+	const shell = await mountShell();
+	const rows = [...shell.document.querySelectorAll("#controls .control")];
+
+	// One row per declared prop, and nothing else — the form is the interface
+	// the Liquid states, not a shape the editor invented.
+	assert.deepEqual(
+		rows.map((row) => row.querySelector("code").textContent),
+		["label", "scheme"],
+	);
+	// An enum is a select over its members; the rest follow their kind.
+	assert.equal(rows[1].querySelector("select").dataset.control, "scheme");
+	assert.equal(rows[0].querySelector("input").type, "text");
+
+	// Seeded from the story's own delta: "solid" states only `label`.
+	assert.equal(
+		rows[0].querySelector("input").getAttribute("value"),
+		"Add to cart",
+	);
+
+	// Nothing to save until something changed, and Reset is likewise inert.
+	assert.equal(shell.document.getElementById("controls-save").disabled, true);
+	assert.equal(shell.document.getElementById("controls-reset").disabled, true);
+});
+
+test("a fixture prop is shown as the reference it is, not as a value", async () => {
+	// Resolving `{ "$fixture": "product" }` gives a product object; putting that
+	// in a text field and saving it would inline three kilobytes of stand-in
+	// data where a one-word reference used to be.
+	const shell = await mountShell({
+		stories: [
+			{
+				name: "on sale",
+				props: { label: "Add", scheme: "outline" },
+				source: { label: "Add", scheme: { $fixture: "scheme" } },
+			},
+		],
+	});
+	const chip = shell.document.querySelector(".control-fixture");
+
+	assert.equal(chip.textContent, "fixture: scheme");
+	// No input for it: there is nothing to type, so nothing pretends otherwise.
+	assert.equal(shell.document.querySelector('[data-control="scheme"]'), null);
+});
+
+test("editing a control arms Save, and Save sends the story's delta", async () => {
+	let sent;
+	const shell = await mountShell({
+		fetch: async (url, init) => {
+			sent = { url, body: JSON.parse(init.body) };
+			return { ok: true, text: async () => "saved" };
+		},
+	});
+	const save = shell.document.getElementById("controls-save");
+	const label = shell.document.querySelector('[data-control="label"]');
+
+	label.setAttribute("value", "Buy now");
+	label.dispatchEvent(new shell.window.Event("input"));
+	assert.equal(save.disabled, false, "an edit arms the button");
+
+	save.dispatchEvent(new shell.window.Event("click"));
+	await new Promise((settle) => setTimeout(settle, 0));
+
+	assert.equal(sent.url, "/__save");
+	assert.equal(sent.body.component, "button");
+	assert.equal(sent.body.story, "solid");
+	// The delta, not the merged props: `scheme` and `size` have declared
+	// defaults and this story never stated them.
+	assert.deepEqual(sent.body.props, { label: "Buy now" });
+});
+
 test("selecting a story swaps the canvas and its documentation", async () => {
 	const shell = await mountShell();
 	const canvas = shell.document.getElementById("canvas");
-	const menu = shell.document.querySelector("[data-substories]");
-
-	// linkedom's select.value is getter-only, so the selection is made the way a
-	// browser would represent it — on the option itself.
-	for (const option of menu.querySelectorAll("option")) {
-		if (option.getAttribute("value") === "button--outline") {
-			option.setAttribute("selected", "");
-		} else option.removeAttribute("selected");
-	}
-	menu.dispatchEvent(new shell.window.Event("change"));
+	const pick = shell.document.querySelector(
+		'[data-story-pick="button--outline"]',
+	);
+	pick.dispatchEvent(new shell.window.Event("click"));
 
 	assert.equal(canvas.getAttribute("src"), "./stories/button--outline.html");
 	// The call that reproduces the story follows the selection.
