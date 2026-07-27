@@ -83,13 +83,18 @@ more specific rule shows up here and nowhere else. Background, outline and measu
 owns that document's rendering — one `postMessage`, resent whenever a story
 loads.
 
-Zoom is the exception, and deliberately so: it is a transform on the frame from
-the outside, not a zoom within it. Scaling inside the document would re-lay-out
-the story, so 50% would show a double-width layout rather than the same layout
-drawn smaller — and "what does this look like, larger" is the question zoom
-exists to answer. The frame keeps the width the viewport gave it, whatever the
-scale, so media queries stay honest; a wrapper reserves the scaled size, since a
-transform takes up no space of its own.
+Zoom is the exception, and deliberately so: it scales the whole frame from the
+outside, as one picture, rather than the elements inside it. Scaling within the
+document would re-lay-out the story, so 50% would show a double-width layout
+instead of the same layout drawn smaller — and "what does this look like,
+larger" is the question zoom exists to answer. A wrapper reserves the scaled
+size, since a transform takes up no space of its own.
+
+A preset means what it says: `Mobile · 375` lays out at 375 at every scale, so
+media queries stay honest and only the picture changes size. **Full width** has
+no number of its own — it is however much room the stage has — so it follows the
+zoom instead: at 50% the frame lays out twice as wide and still fills the stage,
+which is how you look at a wide layout without a wide window.
 
 Theme is three states rather than a toggle: Light, Dark, and System. A toggle
 cannot say "follow the OS", which is the one a designer checking both wants to

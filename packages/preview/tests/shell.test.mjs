@@ -27,7 +27,11 @@ const BUTTON = `{% component snippet %}
 `;
 
 /** The shell, loaded and running, with the globals its script reaches for. */
-async function mountShell({ width = 1400, storage = new Map() } = {}) {
+async function mountShell({
+	width = 1400,
+	storage = new Map(),
+	stageWidth = 0,
+} = {}) {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
 	const rendered = await renderComponentStories(component, [
 		{ name: "solid", props: { label: "Add to cart" } },
@@ -35,6 +39,17 @@ async function mountShell({ width = 1400, storage = new Map() } = {}) {
 	]);
 	const html = workbenchPage([rendered]);
 	const { window, document } = parseHTML(html);
+
+	// linkedom does no layout, so the stage reports whatever room the test says
+	// it has — the one measurement the shell reads back from the page.
+	Object.defineProperty(
+		document.getElementById("canvas-stage"),
+		"clientWidth",
+		{
+			value: stageWidth,
+			configurable: true,
+		},
+	);
 
 	const source = html.slice(
 		html.lastIndexOf("<script>") + "<script>".length,
@@ -200,6 +215,34 @@ test("zoom scales the rendered story, it does not reflow it", async () => {
 	assert.equal(canvas.style.width, "400px");
 	assert.equal(canvas.style.transform, "scale(2)");
 	assert.equal(scaler.style.width, "800px");
+});
+
+test("full width follows the zoom; a preset does not", async () => {
+	// A preset means what it says — 375 is a 375 viewport at every scale. "Full
+	// width" has no number of its own, so it follows the zoom: out to see a
+	// wider viewport, in to see a narrower one, filling the stage either way.
+	const shell = await mountShell({ stageWidth: 840 });
+	const canvas = shell.document.getElementById("canvas");
+	const scaler = shell.document.getElementById("canvas-scaler");
+	const zoom = shell.document.getElementById("zoom");
+
+	// 840 stage, 40 of padding: 800 to give.
+	shell.setViewport("");
+	assert.equal(canvas.style.width, "800px");
+	assert.equal(scaler.style.width, "800px");
+
+	shell.select(zoom, "0.5");
+	assert.equal(canvas.style.width, "1600px", "half the scale, twice the room");
+	assert.equal(scaler.style.width, "800px", "still fills the stage");
+
+	shell.select(zoom, "2");
+	assert.equal(canvas.style.width, "400px");
+	assert.equal(scaler.style.width, "800px");
+
+	// And a preset is untouched by all of it.
+	shell.setViewport("375");
+	assert.equal(canvas.style.width, "375px");
+	assert.equal(scaler.style.width, "750px");
 });
 
 test("selecting a story swaps the canvas and its documentation", async () => {

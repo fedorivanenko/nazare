@@ -767,13 +767,14 @@ const WORKBENCH_SCRIPT = `
   let fixedHeight = '';
   function layoutCanvas() {
     const scale = Number(zoom.value) || 1;
-    // Full width means the width the stage can give, measured at scale 1 so
-    // zooming never changes what the story lays out against.
-    const available = Math.max(
-      320,
-      Math.floor(stage.clientWidth - 40),
-    );
-    const width = viewportWidth ? Number(viewportWidth) : available;
+    const available = Math.max(320, Math.floor(stage.clientWidth - 40));
+    // A preset means what it says: 375 lays out at 375 at every zoom, drawn
+    // smaller or larger. "Full width" has no number of its own — it is however
+    // much room there is — so it follows the zoom and fills the stage either
+    // way: zoom out to see a wider viewport, in to see a narrower one.
+    const width = viewportWidth
+      ? Number(viewportWidth)
+      : Math.max(320, Math.floor(available / scale));
     const height = Math.max(320, fixedHeight ? Number(fixedHeight) : contentHeight);
 
     canvas.style.width = width + 'px';
