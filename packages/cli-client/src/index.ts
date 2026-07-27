@@ -48,6 +48,7 @@ import {
 	runPreviewCheck,
 	runPreviewScaffold,
 } from "./preview-command.js";
+import { runPreviewServe } from "./preview-server.js";
 import { packComponent, publishComponent } from "./publish.js";
 
 const THEME_MANIFEST = "nazare.theme.json";
@@ -70,7 +71,7 @@ const INSPECT_VIEWS = new Set([
 const REGISTRY_ALIASES = new Set(["add", "update", "publish"]);
 
 /** Workbench verbs. Serving one is a separate matter; these three do not. */
-const PREVIEW_VERBS = new Set(["build", "check", "scaffold"]);
+const PREVIEW_VERBS = new Set(["serve", "build", "check", "scaffold"]);
 
 type MainOptions = { cwd?: string; env?: NodeJS.ProcessEnv; output?: Output };
 
@@ -447,6 +448,10 @@ async function runPreview(
 	const dir = resolve(projectRoot, root);
 
 	if (verb === "check") return await runPreviewCheck(dir, cliOptions, output);
+	// Serving needs no output directory: the pages never touch a disk.
+	if (verb === "serve") {
+		return await runPreviewServe(dir, root, cliOptions, output);
+	}
 
 	// Asked once, then saved: the next `preview build` is a bare command.
 	const configured = cliOptions.outDir ?? manifest.preview?.outDir;

@@ -58,6 +58,16 @@ export type WorkbenchPageOptions = {
 	stylesheets?: string[];
 	/** What this page was built from, shown in the header. */
 	source?: WorkbenchSource;
+	/**
+	 * An event-stream URL to reload from — a dev server telling the page it has
+	 * rebuilt. Off by default, because a built page has nobody to listen to.
+	 *
+	 * The whole page reloads rather than the frame alone, and that is a design
+	 * choice the URL made cheap: the story is in the fragment, the presentation
+	 * in the query, the panels in storage, so a reload lands exactly where you
+	 * were, with everything on the page consistent with the new build.
+	 */
+	liveReload?: string;
 };
 
 /** The header's provenance line: the directory, then the commit it was at. */
@@ -1096,7 +1106,13 @@ ${links}
     </aside>
   </div>
 <script type="application/json" id="story-index">${JSON.stringify(storyIndex).replace(/</g, "\\u003c")}</script>
-<script>${WORKBENCH_SCRIPT}</script>
+<script>${WORKBENCH_SCRIPT}</script>${
+		options.liveReload
+			? `\n<script>new EventSource(${JSON.stringify(
+					options.liveReload,
+				)}).onmessage = () => location.reload();</script>`
+			: ""
+	}
 </body>
 </html>
 `;

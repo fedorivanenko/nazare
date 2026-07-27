@@ -177,6 +177,7 @@ table, emitted Liquid — from the same `panels.ts`.
 ## Previewing a plain theme
 
 ```sh
+nazare preview serve path/to/theme     # rebuilds as you type
 nazare preview check path/to/theme
 nazare preview build path/to/theme
 ```
@@ -439,6 +440,20 @@ fixtures.ts          shared storefront stand-in data
 panels.ts            per-component documentation, shared by both shells
 theme.ts, html.ts    shared tokens, frame messages, escaping
 ```
+
+`cli-client/src/preview-server.ts` is the same build held in memory and repeated
+on change — it adds no compilation of its own. A file changes, the directory is
+read again, the pages are the same strings `build` would have written, and the
+shell reloads itself over an event stream. The whole page reloads rather than
+the frame alone, which the URL made cheap: story in the fragment, presentation
+in the query, panels in storage, so a reload lands exactly where you were.
+
+Invalidation is deliberately blunt — everything recompiles. The compiler models
+`{% render %}` edges and could say precisely which components a file affects,
+but that dependency map is a second source of truth to keep correct, and the
+whole rebuild costs a few hundred milliseconds at the size a theme reaches.
+A story file that is mid-edit keeps the last good render of its component, since
+a half-typed key should not take away the page you are editing against.
 
 `cli-client/src/preview-command.ts` is pure I/O around the above: it walks a
 directory, resolves each component's story file, and writes the pages. It is

@@ -62,6 +62,12 @@ export type PreviewCollection = {
 	undeclared: string[];
 	/** Story files that did not parse; each one stops its own component. */
 	malformed: string[];
+	/**
+	 * The components those files belonged to. A story file is edited by hand, so
+	 * it is broken more often than not — mid-keystroke — and a server that drops
+	 * the component takes the page you are looking at with it.
+	 */
+	malformedComponents: string[];
 };
 
 const errorText = (error: unknown): string =>
@@ -163,6 +169,7 @@ async function collectTheme(dir: string): Promise<PreviewCollection> {
 		previewed: [],
 		undeclared: [],
 		malformed: [],
+		malformedComponents: [],
 	};
 	// The compiler's filesystem is theme-relative and synchronous.
 	const readThemeFile = (path: string) => readSync(join(dir, path));
@@ -196,6 +203,7 @@ async function collectTheme(dir: string): Promise<PreviewCollection> {
 					});
 				} catch (error) {
 					collection.malformed.push(errorText(error));
+					collection.malformedComponents.push(component.name);
 				}
 			}
 			const entryRecord = { component, stories, file };
@@ -215,6 +223,7 @@ async function collectPackages(dir: string): Promise<PreviewCollection> {
 		previewed: [],
 		undeclared: [],
 		malformed: [],
+		malformedComponents: [],
 	};
 	// Rooted at the collection, not at one package: a component that imports a
 	// sibling (`../notice/notice.nz.liquid`) addresses it across the folder
@@ -232,6 +241,7 @@ async function collectPackages(dir: string): Promise<PreviewCollection> {
 			collection.malformed.push(
 				`${folder}/nazare.json: invalid JSON: ${errorText(error)}`,
 			);
+			collection.malformedComponents.push(folder);
 			continue;
 		}
 		// A function package (`cn`) has no template to preview.

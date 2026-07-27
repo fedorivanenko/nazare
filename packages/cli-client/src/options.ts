@@ -14,6 +14,8 @@ export type CliOptions = {
 	theme?: string;
 	json?: boolean;
 	format?: string;
+	/** preview serve: the port to listen on. */
+	port?: string;
 	positionals: string[];
 };
 
@@ -75,6 +77,12 @@ export function parseCliOptions(args: string[]): CliOptions {
 			index += theme.consumed - 1;
 			continue;
 		}
+		const port = readValueOption(args, index, "--port");
+		if (port) {
+			options.port = port.value;
+			index += port.consumed - 1;
+			continue;
+		}
 		const format = readValueOption(args, index, "--format");
 		if (format) {
 			options.format = format.value;
@@ -126,6 +134,8 @@ export function printHelp(output: Output = console): void {
   nazare graph-server [dir]          serve graph queries over newline-delimited JSON stdio
 
 Preview:
+  nazare preview serve [dir]             serve the workbench, rebuilding on change
+                                         --port (default 4173)
   nazare preview build [dir]             write a static workbench
                                          dir defaults to build.sourceRoot; output
                                          directory is asked once and saved to
@@ -165,6 +175,7 @@ Options:
   --store <domain>                   build --pull-data: Shopify store to pull from
   --theme <id|name>                  build --pull-data: theme to pull from
   --json                             build: print the raw result as JSON
+  --port <number>                    preview serve: port to listen on (default 4173)
   --format json|text|dot             inspect theme: JSON, human report, or Graphviz DOT
 
 Env:
