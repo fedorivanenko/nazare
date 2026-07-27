@@ -1,5 +1,5 @@
 import type Parser from "tree-sitter";
-import type { SourceOffsetIndex } from "./offset-index.js";
+import { SourceOffsetIndex } from "./offset-index.js";
 import type { EmbeddedRegion } from "./types.js";
 
 type BlockKind = "script" | "stylesheet";
@@ -17,9 +17,10 @@ const openTagPattern = /{%-?\s*(script|stylesheet)\b([\s\S]*?)-?%}/g;
 export function collectEmbeddedRegions(
 	source: string,
 	tree: Parser.Tree,
-	index: SourceOffsetIndex,
+	index?: SourceOffsetIndex,
 ): EmbeddedRegion[] {
 	const regions: EmbeddedRegion[] = [];
+	let resolvedIndex = index;
 	openTagPattern.lastIndex = 0;
 	let match = openTagPattern.exec(source);
 	while (match) {
@@ -27,7 +28,8 @@ export function collectEmbeddedRegions(
 		const openStart = match.index;
 		const openEnd = openStart + match[0].length;
 		const keywordStart = openStart + match[0].indexOf(kind);
-		if (!isCstTag(tree, index, keywordStart, kind)) {
+		resolvedIndex ??= new SourceOffsetIndex(source);
+		if (!isCstTag(tree, resolvedIndex, keywordStart, kind)) {
 			match = openTagPattern.exec(source);
 			continue;
 		}

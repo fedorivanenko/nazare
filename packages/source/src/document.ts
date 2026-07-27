@@ -100,14 +100,20 @@ function buildDocument(
 	language: SourceLanguage,
 	source: string,
 	tree: Parser.Tree,
-	index = new SourceOffsetIndex(source),
+	index?: SourceOffsetIndex,
 ): SourceDocument {
+	// Most cold parses need native UTF-16 node offsets only. Building the full
+	// UTF-8/UTF-16 index is linear in source size, so defer it until an error,
+	// embedded region, or incremental edit actually needs conversion.
+	const issues = tree.rootNode.hasError
+		? collectIssues(tree, index ?? new SourceOffsetIndex(source))
+		: [];
 	return {
 		file,
 		language,
 		source,
 		tree,
-		issues: collectIssues(tree, index),
+		issues,
 		embeddedRegions: collectEmbeddedRegions(source, tree, index),
 	};
 }

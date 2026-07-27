@@ -165,8 +165,11 @@ export function liquidSyntaxFacts(document: SourceDocument): LiquidSyntaxFacts {
 	const assetReferences: LiquidSyntaxStringReference[] = [];
 	const localeReferences: LiquidSyntaxStringReference[] = [];
 	const docParams: LiquidSyntaxDocParam[] = [];
+	const reads: LiquidSyntaxRead[] = [];
+	const guards: LiquidSyntaxGuard[] = [];
 	let schema: LiquidSyntaxSchema | undefined;
 	walk(document.tree.rootNode, (node) => {
+		collectReadAndGuards(document.source, node, reads, guards);
 		const pairedName = pairedNodes.get(node.type);
 		if (pairedName) {
 			const block = blockFromNode(document.source, node, pairedName);
@@ -240,11 +243,14 @@ export function liquidSyntaxFacts(document: SourceDocument): LiquidSyntaxFacts {
 			}
 		}
 	});
-	const { reads, guards } = collectReadsAndGuards(
-		document.source,
-		document.tree.rootNode,
-		localBindings,
-	);
+	for (const read of reads) {
+		read.local = localBindings.some(
+			(binding) =>
+				binding.name === read.root &&
+				read.range.start >= binding.scope.start &&
+				read.range.start <= binding.scope.end,
+		);
+	}
 	blocks.sort((left, right) => left.range.end - right.range.end);
 	conditionals.sort((left, right) => left.range.end - right.range.end);
 	dependencies.sort((left, right) => left.range.start - right.range.start);
@@ -291,83 +297,73 @@ const statementTags = new Map<string, string>([
 	["decrement_statement", "decrement"],
 ]);
 
-function collectReadsAndGuards(
+function collectReadAndGuards(
 	source: string,
-	root: Parser.SyntaxNode,
-	bindings: readonly LiquidSyntaxLocalBinding[],
-): { reads: LiquidSyntaxRead[]; guards: LiquidSyntaxGuard[] } {
-	const reads: LiquidSyntaxRead[] = [];
-	const guards: LiquidSyntaxGuard[] = [];
-	walk(root, (node) => {
-		if (hasRawAncestor(node)) return;
-		let lookup: LiquidSyntaxLookup | undefined;
-		if (node.type === "access" && node.parent?.type !== "access") {
-			lookup = lookupFromNode(node);
-		} else if (node.type === "identifier" && node.parent?.type !== "access") {
-			const parent = node.parent;
-			if (parent?.type === "assignment_target") return;
-			const field = childFieldName(parent, node);
-			if (
-				field === "variable_name" ||
-				field === "variable" ||
-				field === "local_name" ||
-				(field === "target" && parent?.type === "nazare_render_statement") ||
-				(field === "item" &&
-					(parent?.type === "for_loop_statement" ||
-						parent?.type === "tablerow_statement")) ||
-				field === "key" ||
-				field === "name" ||
-				field === "property"
-			) {
-				return;
-			}
-			if (["blank", "empty", "nil", "null"].includes(node.text)) return;
-			lookup = lookupFromNode(node);
+	node: Parser.SyntaxNode,
+	reads: LiquidSyntaxRead[],
+	guards: LiquidSyntaxGuard[],
+): void {
+	if (hasRawAncestor(node)) return;
+	let lookup: LiquidSyntaxLookup | undefined;
+	if (node.type === "access" && node.parent?.type !== "access") {
+		lookup = lookupFromNode(node);
+	} else if (node.type === "identifier" && node.parent?.type !== "access") {
+		const parent = node.parent;
+		if (parent?.type === "assignment_target") return;
+		const field = childFieldName(parent, node);
+		if (
+			field === "variable_name" ||
+			field === "variable" ||
+			field === "local_name" ||
+			(field === "target" && parent?.type === "nazare_render_statement") ||
+			(field === "item" &&
+				(parent?.type === "for_loop_statement" ||
+					parent?.type === "tablerow_statement")) ||
+			field === "key" ||
+			field === "name" ||
+			field === "property"
+		) {
+			return;
 		}
-		if (lookup) {
-			const tag = tagAt(source, node);
-			const inCondition =
-				tag === "if" ||
-				tag === "unless" ||
-				tag === "elsif" ||
-				tag === "when" ||
-				tag === "case";
-			const local = bindings.some(
-				(binding) =>
-					binding.name === lookup.root &&
-					lookup.range.start >= binding.scope.start &&
-					lookup.range.start <= binding.scope.end,
-			);
-			reads.push({
-				...lookup,
-				expression: [lookup.root, ...lookup.path].join("."),
-				inCondition,
-				tag,
-				inRenderArgument: tag === "render" || tag === "include",
-				local,
-			});
-			if (inCondition && lookup.path.length === 0) {
-				guards.push({ name: lookup.root, via: "guard", range: lookup.range });
-			}
+		if (["blank", "empty", "nil", "null"].includes(node.text)) return;
+		lookup = lookupFromNode(node);
+	}
+	if (lookup) {
+		const tag = tagAt(source, node);
+		const inCondition =
+			tag === "if" ||
+			tag === "unless" ||
+			tag === "elsif" ||
+			tag === "when" ||
+			tag === "case";
+		reads.push({
+			...lookup,
+			expression: [lookup.root, ...lookup.path].join("."),
+			inCondition,
+			tag,
+			inRenderArgument: tag === "render" || tag === "include",
+			local: false,
+		});
+		if (inCondition && lookup.path.length === 0) {
+			guards.push({ name: lookup.root, via: "guard", range: lookup.range });
 		}
-		if (node.type === "filter" && node.parent?.type !== "filter") {
-			const chain = filterChain(node);
-			if (
-				chain.names.includes("default") &&
-				chain.subject?.type === "identifier"
-			) {
-				const subject = lookupFromNode(chain.subject);
-				if (subject) {
-					guards.push({
-						name: subject.root,
-						via: "default",
-						range: subject.range,
-					});
-				}
+	}
+	if (node.type === "filter" && node.parent?.type !== "filter") {
+		const chain = filterChain(node);
+		if (
+			chain.names.includes("default") &&
+			chain.subject?.type === "identifier"
+		) {
+			const subject = lookupFromNode(chain.subject);
+			if (subject) {
+				guards.push({
+					name: subject.root,
+					via: "default",
+					range: subject.range,
+				});
 			}
 		}
-	});
-	return { reads, guards };
+	}
 }
 
 function filterChain(node: Parser.SyntaxNode): {
