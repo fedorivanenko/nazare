@@ -93,16 +93,15 @@ the window is the point of collapsing them. That state is a workspace
 preference rather than something you send someone, so it lives in
 `localStorage` while everything shareable lives in the URL.
 
-The right column holds three blocks: **Canvas** (viewport, size, background,
-zoom, outline, measure), **Story** (the call that reproduces it, the props it
-passed), and **Component** (kind, install command, diagnostics, props table,
-emitted Liquid). The middle column is the viewport and nothing else — a story
-bar thin enough to ignore, the stage, and what is wrong with the render.
+The split is by what a thing acts on. The middle column holds the story and
+everything that changes how it is drawn — viewport, size, background, zoom,
+outline, measure — as a toolbar above the stage, wrapping rather than cramming.
+The right column holds what is known *about* what you are looking at: **Story**
+(the call that reproduces it, the props it passed) and **Component** (kind,
+install command, diagnostics, props table, emitted Liquid).
 
-That split is the whole composition: the knobs used to be a nine-control toolbar
-across the top of the narrowest column, which is the one place on the page with
-no room for them. A label and a control per row in a column that is already
-scrolling costs nothing and reads at a glance.
+A control that changes the canvas belongs with the canvas; a fact about the
+component belongs in the column you read.
 
 The canvas sits inset on the stage, with its own border and shadow, because a
 frame that runs edge to edge butts against the sidebar's border and reads as a

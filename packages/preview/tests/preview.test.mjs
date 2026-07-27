@@ -852,26 +852,31 @@ test("both side panels collapse, and the docs sit beside the render", async () =
 	assert.ok(docs.includes('id="canvas-call"'));
 	assert.ok(docs.includes('id="canvas-props"'));
 	assert.ok(docs.includes("liquidjs"), "the caveat travels with the docs");
-	// The middle column is the viewport and nothing else: a story bar, the
-	// stage, and what is wrong with the render. Every knob lives in the panel
-	// that has room for it.
 	const main = page.slice(page.indexOf("<main"), page.indexOf("<aside"));
 	assert.ok(main.includes('id="canvas"'));
 	assert.ok(main.includes('id="canvas-issues"'));
 	assert.ok(main.includes("data-substories="), "the story picker stays");
+
+	// What changes how the story is drawn sits with the story.
 	for (const knob of [
-		"canvas-call",
 		"viewport",
 		"viewport-width",
+		"viewport-height",
 		"background",
 		"zoom",
 		"outline",
 		"measure",
 	]) {
-		assert.ok(!main.includes(`id="${knob}"`), `${knob} belongs in the panel`);
+		assert.ok(main.includes(`id="${knob}"`), `${knob} belongs with the canvas`);
+		assert.ok(!docs.includes(`id="${knob}"`), `${knob} escaped into the panel`);
+	}
+
+	// What is known *about* the story stays in the panel beside it.
+	for (const note of ["canvas-call", "canvas-props"]) {
+		assert.ok(docs.includes(`id="${note}"`), `${note} belongs in the panel`);
 		assert.ok(
-			docs.includes(`id="${knob}"`),
-			`${knob} is missing from the panel`,
+			!main.includes(`id="${note}"`),
+			`${note} escaped into the canvas`,
 		);
 	}
 

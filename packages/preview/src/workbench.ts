@@ -466,18 +466,20 @@ const WORKBENCH_STYLES = `
    * so the eye can find one without reading the others. */
   .docs-section + .docs-section { border-top: 1px solid var(--border); margin-top: 1.25rem; padding-top: 1.25rem; }
   .docs .caveat { padding: 1rem 0 0; border-top: 1px solid var(--border); margin-top: 1.25rem; }
-  /* Label left, control right, one row each: nine knobs in a row across the
-   * canvas was a toolbar in the one column with no room for it. */
-  .settings {
-    display: grid;
-    grid-template-columns: 5.5rem minmax(0, 1fr);
+  /* The knobs that change how the story is drawn sit with the story. They read
+   * as a toolbar rather than a list because each is a single control with an
+   * obvious value, and they wrap instead of cramming — the earlier version put
+   * nine of them in one unwrapping row and ran out of column. */
+  .canvas-toolbar {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: .45rem .6rem;
+    gap: .4rem;
+    padding: .5rem 1.25rem;
+    border-bottom: 1px solid var(--border);
   }
-  .setting-label { font-size: .74rem; color: var(--muted-foreground); }
-  .settings .viewport-select { width: 100%; max-width: none; }
-  .setting-toggles { display: flex; gap: .35rem; }
-  .setting-toggles .panel-toggle { flex: 1; }
+  .toolbar-divider { width: 1px; align-self: stretch; margin: 0 .3rem; background: var(--border); }
   /* The panel is a column now, so everything in it that assumed 860px of width
    * has to give that up and scroll on its own instead. */
   .docs .props, .docs .install, .docs .code-details, .docs .issues { max-width: none; }
@@ -988,55 +990,42 @@ ${links}
           <a class="canvas-open" id="canvas-open" href="${escapeHtml(storyBase)}" target="_blank" rel="noreferrer">Open ↗</a>
         </div>
       </div>
+      <div class="canvas-toolbar" role="toolbar" aria-label="Canvas">
+        <select class="viewport-select" id="viewport" aria-label="Viewport">
+          ${VIEWPORTS.map(
+						({ label, width }) =>
+							`<option value="${width}">${escapeHtml(label)}</option>`,
+					).join("")}
+          <option value="custom">Custom…</option>
+        </select>
+        <span class="viewport-size">
+          <input class="viewport-width" id="viewport-width" type="number" min="200" max="3840" step="1" inputmode="numeric" placeholder="auto" aria-label="Width in pixels">
+          <span class="viewport-x">×</span>
+          <input class="viewport-width" id="viewport-height" type="number" min="120" max="4320" step="1" inputmode="numeric" placeholder="auto" aria-label="Height in pixels">
+        </span>
+        <span class="toolbar-divider"></span>
+        <select class="viewport-select" id="background" aria-label="Background">
+          ${BACKGROUNDS.map(
+						({ id, label }) =>
+							`<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`,
+					).join("")}
+        </select>
+        <select class="viewport-select" id="zoom" aria-label="Zoom">
+          ${ZOOMS.map(
+						(zoom) =>
+							`<option value="${zoom}"${zoom === 1 ? " selected" : ""}>${Math.round(
+								zoom * 100,
+							)}%</option>`,
+					).join("")}
+        </select>
+        <span class="toolbar-divider"></span>
+        <button class="panel-toggle" type="button" id="outline" aria-pressed="false">Outline</button>
+        <button class="panel-toggle" type="button" id="measure" aria-pressed="false" title="Hover an element to see its box">Measure</button>
+      </div>
       <div class="canvas-stage"><iframe class="canvas" id="canvas" title="Story canvas"></iframe></div>
       <ul class="story-issues" id="canvas-issues" hidden></ul>
     </main>
-    <aside class="docs" aria-label="Canvas settings and documentation">
-      <section class="docs-section">
-        <p class="docs-heading">Canvas</p>
-        <div class="settings">
-          <span class="setting-label">Viewport</span>
-          <select class="viewport-select" id="viewport" aria-label="Viewport">
-            ${VIEWPORTS.map(
-							({ label, width }) =>
-								`<option value="${width}">${escapeHtml(label)}</option>`,
-						).join("")}
-            <option value="custom">Custom…</option>
-          </select>
-
-          <span class="setting-label">Size</span>
-          <span class="viewport-size">
-            <input class="viewport-width" id="viewport-width" type="number" min="200" max="3840" step="1" inputmode="numeric" placeholder="auto" aria-label="Width in pixels">
-            <span class="viewport-x">×</span>
-            <input class="viewport-width" id="viewport-height" type="number" min="120" max="4320" step="1" inputmode="numeric" placeholder="auto" aria-label="Height in pixels">
-          </span>
-
-          <span class="setting-label">Background</span>
-          <select class="viewport-select" id="background" aria-label="Background">
-            ${BACKGROUNDS.map(
-							({ id, label }) =>
-								`<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`,
-						).join("")}
-          </select>
-
-          <span class="setting-label">Zoom</span>
-          <select class="viewport-select" id="zoom" aria-label="Zoom">
-            ${ZOOMS.map(
-							(zoom) =>
-								`<option value="${zoom}"${zoom === 1 ? " selected" : ""}>${Math.round(
-									zoom * 100,
-								)}%</option>`,
-						).join("")}
-          </select>
-
-          <span class="setting-label">Inspect</span>
-          <span class="setting-toggles">
-            <button class="panel-toggle" type="button" id="outline" aria-pressed="false">Outline</button>
-            <button class="panel-toggle" type="button" id="measure" aria-pressed="false" title="Hover an element to see its box">Measure</button>
-          </span>
-        </div>
-      </section>
-
+    <aside class="docs" aria-label="Story and component documentation">
       <section class="docs-section">
         <p class="docs-heading">Story</p>
         <div class="call" id="canvas-call" hidden>
