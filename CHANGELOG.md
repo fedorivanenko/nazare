@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.0-rc.2 — 2026-07-27
+
+- Compile the pinned Tree-sitter Node runtime as C++20 when no prebuilt binary
+  exists, fixing Node.js 24 builds on Linux ARM64.
+- Include dependency patches in self-contained release staging.
+- Resolve the newest published release candidate in the curl installer.
+
 ## v0.1.0-rc.1 — 2026-07-27
 
 First release candidate of Nazare's canonical Tree-sitter source frontend and

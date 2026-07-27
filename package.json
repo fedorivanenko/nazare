@@ -42,6 +42,9 @@
 			"tree-sitter",
 			"tree-sitter-cli",
 			"tree-sitter-html"
-		]
+		],
+		"patchedDependencies": {
+			"tree-sitter@0.21.1": "patches/tree-sitter@0.21.1.patch"
+		}
 	}
 }

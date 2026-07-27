@@ -35,7 +35,9 @@ esac
 target="$os-$arch"
 
 if [ "$version" = "latest" ]; then
-	version="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
+	# Include prereleases: this project distributes release candidates before a
+	# stable release adopts the current platform-specific artifact layout.
+	version="$(curl -fsSL "https://api.github.com/repos/$repo/releases?per_page=1" \
 		| sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' \
 		| head -1)"
 fi

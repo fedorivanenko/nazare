@@ -36,6 +36,7 @@ mkdir -p "$out/packages" "$out/bin"
 pnpm -s typecheck
 
 cp package.json pnpm-lock.yaml pnpm-workspace.yaml LICENSE README.md "$out/"
+cp -R patches "$out/patches"
 printf '%s\n' "$version" > "$out/VERSION"
 for pkg in cli-client compiler core registry source theme; do
 	mkdir -p "$out/packages/$pkg"

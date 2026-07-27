@@ -6,8 +6,11 @@ other tools that need stable JSON instead of native Tree-sitter objects.
 
 ## Install
 
-The installer requires Node.js 20 or newer. Release artifacts are built on Node.js 24 and smoke-tested on Node.js 20 before publication. It downloads the release artifact
-for the current operating system and architecture and verifies the published
+The installer requires Node.js 20 or newer. Release artifacts are built on
+Node.js 24 and smoke-tested on Node.js 20 before publication. By default it
+selects the newest published release, including release candidates. It downloads
+the release artifact for the current operating system and architecture and
+verifies the published
 SHA-256 sidecar before replacing the active installation.
 
 ```sh
