@@ -93,10 +93,21 @@ the window is the point of collapsing them. That state is a workspace
 preference rather than something you send someone, so it lives in
 `localStorage` while everything shareable lives in the URL.
 
-The right column holds the story first — the call that reproduces it, the props
-it passed — then the component: kind, install command, diagnostics, props table,
-emitted Liquid. Under the canvas there is only the render and what is wrong with
-it, so the thing you came to look at keeps the height.
+The right column holds three blocks: **Canvas** (viewport, size, background,
+zoom, outline, measure), **Story** (the call that reproduces it, the props it
+passed), and **Component** (kind, install command, diagnostics, props table,
+emitted Liquid). The middle column is the viewport and nothing else — a story
+bar thin enough to ignore, the stage, and what is wrong with the render.
+
+That split is the whole composition: the knobs used to be a nine-control toolbar
+across the top of the narrowest column, which is the one place on the page with
+no room for them. A label and a control per row in a column that is already
+scrolling costs nothing and reads at a glance.
+
+The layout is CSS — one `grid-template-columns` on `.workbench`, collapsing to
+`0px` per side. The state is JavaScript: every component's panel is in the DOM
+at once and toggled with `hidden`, and selection reads the `#story-index` JSON.
+No framework, and nothing is rendered in the browser.
 
 Under the canvas is **the call that reproduces this story in a theme**:
 

@@ -815,10 +815,28 @@ test("both side panels collapse, and the docs sit beside the render", async () =
 	assert.ok(docs.includes('id="canvas-call"'));
 	assert.ok(docs.includes('id="canvas-props"'));
 	assert.ok(docs.includes("liquidjs"), "the caveat travels with the docs");
+	// The middle column is the viewport and nothing else: a story bar, the
+	// stage, and what is wrong with the render. Every knob lives in the panel
+	// that has room for it.
 	const main = page.slice(page.indexOf("<main"), page.indexOf("<aside"));
 	assert.ok(main.includes('id="canvas"'));
 	assert.ok(main.includes('id="canvas-issues"'));
-	assert.ok(!main.includes('id="canvas-call"'));
+	assert.ok(main.includes("data-substories="), "the story picker stays");
+	for (const knob of [
+		"canvas-call",
+		"viewport",
+		"viewport-width",
+		"background",
+		"zoom",
+		"outline",
+		"measure",
+	]) {
+		assert.ok(!main.includes(`id="${knob}"`), `${knob} belongs in the panel`);
+		assert.ok(
+			docs.includes(`id="${knob}"`),
+			`${knob} is missing from the panel`,
+		);
+	}
 
 	// A size the presets do not have is the one a bug report actually names,
 	// and a story that has to sit in 600px is a real question.

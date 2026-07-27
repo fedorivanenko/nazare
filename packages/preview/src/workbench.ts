@@ -317,6 +317,9 @@ const WORKBENCH_STYLES = `
   .viewport-width { width: 4.5rem; font-variant-numeric: tabular-nums; }
   .viewport-width::-webkit-outer-spin-button,
   .viewport-width::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  /* The middle column is the viewport and nothing else: a story bar thin enough
+   * to ignore, the stage, and whatever is wrong with the render. Everything a
+   * knob used to occupy here now lives in the panel that has room for it. */
   .main { overflow-y: auto; display: flex; flex-direction: column; }
   .canvas-bar {
     flex: none;
@@ -374,10 +377,23 @@ const WORKBENCH_STYLES = `
     letter-spacing: .07em;
     color: var(--muted-foreground);
   }
-  /* Two things live in this column — the story you are looking at, then the
-   * component it belongs to — and the rule is what says which is which. */
-  .docs-heading--rule { border-top: 1px solid var(--border); padding-top: 1rem; }
-  .docs .caveat { padding: 1rem 0 0; border-top: 1px solid var(--border); margin-top: 1.5rem; }
+  /* Three things live in this column — how the canvas is shown, the story in
+   * it, the component it belongs to — each its own block with a rule between,
+   * so the eye can find one without reading the others. */
+  .docs-section + .docs-section { border-top: 1px solid var(--border); margin-top: 1.25rem; padding-top: 1.25rem; }
+  .docs .caveat { padding: 1rem 0 0; border-top: 1px solid var(--border); margin-top: 1.25rem; }
+  /* Label left, control right, one row each: nine knobs in a row across the
+   * canvas was a toolbar in the one column with no room for it. */
+  .settings {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    align-items: center;
+    gap: .45rem .6rem;
+  }
+  .setting-label { font-size: .74rem; color: var(--muted-foreground); }
+  .settings .viewport-select { width: 100%; max-width: none; }
+  .setting-toggles { display: flex; gap: .35rem; }
+  .setting-toggles .panel-toggle { flex: 1; }
   /* The panel is a column now, so everything in it that assumed 860px of width
    * has to give that up and scroll on its own instead. */
   .docs .props, .docs .install, .docs .code-details, .docs .issues { max-width: none; }
@@ -855,6 +871,17 @@ ${links}
         <span class="canvas-title" id="canvas-title"></span>
         <div class="canvas-tools">
           ${components.map((component) => substories(component)).join("")}
+          <a class="canvas-open" id="canvas-open" href="${escapeHtml(storyBase)}" target="_blank" rel="noreferrer">Open ↗</a>
+        </div>
+      </div>
+      <div class="canvas-stage"><iframe class="canvas" id="canvas" title="Story canvas"></iframe></div>
+      <ul class="story-issues" id="canvas-issues" hidden></ul>
+    </main>
+    <aside class="docs" aria-label="Canvas settings and documentation">
+      <section class="docs-section">
+        <p class="docs-heading">Canvas</p>
+        <div class="settings">
+          <span class="setting-label">Viewport</span>
           <select class="viewport-select" id="viewport" aria-label="Viewport">
             ${VIEWPORTS.map(
 							({ label, width }) =>
@@ -862,17 +889,23 @@ ${links}
 						).join("")}
             <option value="custom">Custom…</option>
           </select>
+
+          <span class="setting-label">Size</span>
           <span class="viewport-size">
             <input class="viewport-width" id="viewport-width" type="number" min="200" max="3840" step="1" inputmode="numeric" placeholder="auto" aria-label="Width in pixels">
             <span class="viewport-x">×</span>
             <input class="viewport-width" id="viewport-height" type="number" min="120" max="4320" step="1" inputmode="numeric" placeholder="auto" aria-label="Height in pixels">
           </span>
+
+          <span class="setting-label">Background</span>
           <select class="viewport-select" id="background" aria-label="Background">
             ${BACKGROUNDS.map(
 							({ id, label }) =>
 								`<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`,
 						).join("")}
           </select>
+
+          <span class="setting-label">Zoom</span>
           <select class="viewport-select" id="zoom" aria-label="Zoom">
             ${ZOOMS.map(
 							(zoom) =>
@@ -881,26 +914,32 @@ ${links}
 								)}%</option>`,
 						).join("")}
           </select>
-          <button class="panel-toggle" type="button" id="outline" aria-pressed="false">Outline</button>
-          <button class="panel-toggle" type="button" id="measure" aria-pressed="false" title="Hover an element to see its box">Measure</button>
-          <a class="canvas-open" id="canvas-open" href="${escapeHtml(storyBase)}" target="_blank" rel="noreferrer">Open ↗</a>
-        </div>
-      </div>
-      <div class="canvas-stage"><iframe class="canvas" id="canvas" title="Story canvas"></iframe></div>
-      <ul class="story-issues" id="canvas-issues" hidden></ul>
-    </main>
-    <aside class="docs" aria-label="Story and component documentation">
-      <p class="docs-heading">Story</p>
-      <section class="call" id="canvas-call" hidden>
-        <p class="call-label"><span id="canvas-call-label"></span></p>
-        <div class="code">
-          <button class="copy" type="button" id="canvas-call-copy" data-copy="" aria-label="Copy">Copy</button>
-          <pre><code id="canvas-call-code"></code></pre>
+
+          <span class="setting-label">Inspect</span>
+          <span class="setting-toggles">
+            <button class="panel-toggle" type="button" id="outline" aria-pressed="false">Outline</button>
+            <button class="panel-toggle" type="button" id="measure" aria-pressed="false" title="Hover an element to see its box">Measure</button>
+          </span>
         </div>
       </section>
-      <p class="story-props" id="canvas-props"></p>
-      <p class="docs-heading docs-heading--rule">Component</p>
-      ${components.map(panel).join("")}
+
+      <section class="docs-section">
+        <p class="docs-heading">Story</p>
+        <div class="call" id="canvas-call" hidden>
+          <p class="call-label"><span id="canvas-call-label"></span></p>
+          <div class="code">
+            <button class="copy" type="button" id="canvas-call-copy" data-copy="" aria-label="Copy">Copy</button>
+            <pre><code id="canvas-call-code"></code></pre>
+          </div>
+        </div>
+        <p class="story-props" id="canvas-props"></p>
+      </section>
+
+      <section class="docs-section">
+        <p class="docs-heading">Component</p>
+        ${components.map(panel).join("")}
+      </section>
+
       <p class="caveat">
         The <strong>emitted</strong> Liquid, rendered by liquidjs — not Shopify's runtime. A design-system
         workbench, not evidence a template behaves on a store.
