@@ -28,8 +28,9 @@ export class SourceAnalysisHost {
 		return this.requireFile(path).update(edits);
 	}
 
-	removeFile(path: string): boolean {
-		return this.files.delete(path);
+	closeFile(path: string): void {
+		this.requireFile(path);
+		this.files.delete(path);
 	}
 
 	getDocument(path: string): SourceDocument | undefined {

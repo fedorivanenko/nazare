@@ -1,173 +1,152 @@
 import type Parser from "tree-sitter";
-import { SourceOffsetIndex } from "./offset-index.js";
-import type { EmbeddedRegion } from "./types.js";
+import {
+	DEFAULT_NAZARE_SCRIPT_LANGUAGE,
+	type EmbeddedRegion,
+} from "./types.js";
 
 type BlockKind = "script" | "stylesheet";
-type LexicalState =
-	| "code"
-	| "single"
-	| "double"
-	| "template"
-	| "line-comment"
-	| "block-comment"
-	| "regex";
 
 const openTagPattern = /{%-?\s*(script|stylesheet)\b([\s\S]*?)-?%}/g;
 
 export function collectEmbeddedRegions(
 	source: string,
 	tree: Parser.Tree,
-	index?: SourceOffsetIndex,
 ): EmbeddedRegion[] {
-	const regions: EmbeddedRegion[] = [];
-	let resolvedIndex = index;
 	openTagPattern.lastIndex = 0;
-	let match = openTagPattern.exec(source);
-	while (match) {
-		const kind = match[1] as BlockKind;
-		const openStart = match.index;
-		const openEnd = openStart + match[0].length;
-		const keywordStart = openStart + match[0].indexOf(kind);
-		resolvedIndex ??= new SourceOffsetIndex(source);
-		if (!isCstTag(tree, resolvedIndex, keywordStart, kind)) {
-			match = openTagPattern.exec(source);
-			continue;
-		}
+	if (!openTagPattern.test(source)) return [];
+	openTagPattern.lastIndex = 0;
+	const regions: EmbeddedRegion[] = [];
+	const representedOpenings = new Set<number>();
 
-		const close = findClose(source, openEnd, kind);
+	walk(tree.rootNode, (node) => {
+		if (
+			node.type !== "nazare_script_statement" &&
+			node.type !== "stylesheet_statement"
+		) {
+			return;
+		}
+		const kind: BlockKind =
+			node.type === "nazare_script_statement" ? "script" : "stylesheet";
+		const boundaries = pairedBlockBoundaries(source, node, kind);
+		const language = languageOfPairedBlock(node, kind);
+		if (!language) return;
+		const body = node.childForFieldName("body");
 		regions.push({
-			language:
-				kind === "stylesheet"
-					? "css"
-					: /\blang\s*=\s*(["'])ts\1/.test(match[2] ?? "")
-						? "typescript"
-						: "javascript",
-			bodyRange: { start: openEnd, end: close?.start ?? source.length },
-			openRange: { start: openStart, end: openEnd },
-			closeRange: close,
+			language,
+			bodyRange: body
+				? { start: body.startIndex, end: body.endIndex }
+				: { start: boundaries.openEnd, end: boundaries.closeStart },
+			openRange: {
+				start: boundaries.openStart,
+				end: boundaries.openEnd,
+			},
+			closeRange: {
+				start: boundaries.closeStart,
+				end: boundaries.closeEnd,
+			},
 		});
+		representedOpenings.add(boundaries.openStart);
+	});
 
-		if (!close) break;
-		openTagPattern.lastIndex = close.end;
-		match = openTagPattern.exec(source);
+	openTagPattern.lastIndex = 0;
+	for (const match of source.matchAll(openTagPattern)) {
+		const openStart = match.index;
+		if (representedOpenings.has(openStart)) continue;
+		const kind = match[1] as BlockKind;
+		const language = languageOfUnclosedBlock(kind, match[2]);
+		if (!language || hasClosingTag(source, openStart + match[0].length, kind)) {
+			continue;
+		}
+		regions.push({
+			language,
+			bodyRange: {
+				start: openStart + match[0].length,
+				end: source.length,
+			},
+			openRange: {
+				start: openStart,
+				end: openStart + match[0].length,
+			},
+		});
 	}
-	return regions;
-}
 
-function isCstTag(
-	tree: Parser.Tree,
-	index: SourceOffsetIndex,
-	keywordStart: number,
-	kind: BlockKind,
-): boolean {
-	let node: Parser.SyntaxNode | null = tree.rootNode.descendantForIndex(
-		index.treeIndexAt(keywordStart),
+	return regions.sort(
+		(left, right) => left.openRange.start - right.openRange.start,
 	);
-	while (node) {
-		if (
-			node.type === "ERROR" ||
-			node.type === "custom_unpaired_statement" ||
-			(kind === "script" && node.type === "nazare_script_statement") ||
-			(kind === "stylesheet" && node.type === "stylesheet_statement")
-		) {
-			return true;
-		}
-		if (node.type === "string" || node.type === "comment") return false;
-		node = node.parent;
-	}
-	return false;
 }
 
-function findClose(
+function pairedBlockBoundaries(
 	source: string,
-	start: number,
+	node: Parser.SyntaxNode,
 	kind: BlockKind,
-): { start: number; end: number } | undefined {
-	const closeName = kind === "script" ? "endscript" : "endstylesheet";
-	let state: LexicalState = "code";
-	let escaped = false;
-	let previousToken: string | undefined;
-
-	for (let offset = start; offset < source.length; offset += 1) {
-		const character = source[offset] as string;
-		const next = source[offset + 1];
-		if (state === "code") {
-			const close = closeAt(source, offset, closeName);
-			if (close !== undefined) return { start: offset, end: close };
-			if (character === "'") state = "single";
-			else if (character === '"') state = "double";
-			else if (kind === "script" && character === "`") state = "template";
-			else if (character === "/" && next === "*") {
-				state = "block-comment";
-				offset += 1;
-			} else if (kind === "script" && character === "/" && next === "/") {
-				state = "line-comment";
-				offset += 1;
-			} else if (
-				kind === "script" &&
-				character === "/" &&
-				mayStartRegex(previousToken)
-			) {
-				state = "regex";
-			} else if (kind === "script" && !/\s/.test(character)) {
-				const identifier = source.slice(offset).match(/^[A-Za-z_$][\w$]*/)?.[0];
-				if (identifier) {
-					previousToken = identifier;
-					offset += identifier.length - 1;
-				} else previousToken = character;
-			}
-			continue;
-		}
-
-		if (state === "line-comment") {
-			if (character === "\n" || character === "\r") state = "code";
-			continue;
-		}
-		if (state === "block-comment") {
-			if (character === "*" && next === "/") {
-				state = "code";
-				offset += 1;
-			}
-			continue;
-		}
-		if (escaped) {
-			escaped = false;
-			continue;
-		}
-		if (character === "\\") {
-			escaped = true;
-			continue;
-		}
-		if (
-			(state === "single" && character === "'") ||
-			(state === "double" && character === '"') ||
-			(state === "template" && character === "`") ||
-			(state === "regex" && character === "/")
-		) {
-			previousToken = state === "regex" ? "/" : "literal";
-			state = "code";
-		}
+): {
+	openStart: number;
+	openEnd: number;
+	closeStart: number;
+	closeEnd: number;
+} {
+	const openStart = source.indexOf("{%", node.startIndex);
+	const openCloser = source.indexOf("%}", openStart);
+	const closeStart = source.lastIndexOf("{%", node.endIndex);
+	const closeCloser = source.indexOf("%}", closeStart);
+	if (
+		openStart < 0 ||
+		openCloser < openStart ||
+		closeStart <= openCloser ||
+		closeCloser < closeStart ||
+		!closingTagPattern(kind).test(source.slice(closeStart, closeCloser + 2))
+	) {
+		throw new Error(
+			`Cannot locate ${kind} boundaries in authoritative ${node.type}`,
+		);
 	}
+	return {
+		openStart,
+		openEnd: openCloser + 2,
+		closeStart,
+		closeEnd: closeCloser + 2,
+	};
+}
+
+function languageOfPairedBlock(
+	node: Parser.SyntaxNode,
+	kind: BlockKind,
+): EmbeddedRegion["language"] | undefined {
+	if (kind === "stylesheet") return "css";
+	const language = node.childForFieldName("language")?.text;
+	if (language === undefined) return DEFAULT_NAZARE_SCRIPT_LANGUAGE;
+	if (language === '"js"' || language === "'js'") return "javascript";
+	if (language === '"ts"' || language === "'ts'") return "typescript";
 	return undefined;
 }
 
-function closeAt(
-	source: string,
-	offset: number,
-	name: string,
-): number | undefined {
-	const match = source
-		.slice(offset)
-		.match(new RegExp(`^\\{%-?\\s*${name}\\s*-?%}`));
-	return match ? offset + match[0].length : undefined;
+function languageOfUnclosedBlock(
+	kind: BlockKind,
+	attributes: string | undefined,
+): EmbeddedRegion["language"] | undefined {
+	if (kind === "stylesheet") return "css";
+	const match = attributes?.match(/\blang\s*=\s*(["'])(js|ts)\1/);
+	if (!match) return undefined;
+	return match[2] === "ts" ? "typescript" : "javascript";
 }
 
-function mayStartRegex(previousToken: string | undefined): boolean {
-	return (
-		previousToken === undefined ||
-		"([{=,:;!&|?+-*~^<>".includes(previousToken) ||
-		/^(return|throw|case|delete|void|typeof|instanceof|in|of|yield|await)$/.test(
-			previousToken,
-		)
-	);
+function hasClosingTag(
+	source: string,
+	start: number,
+	kind: BlockKind,
+): boolean {
+	return closingTagPattern(kind).test(source.slice(start));
+}
+
+function closingTagPattern(kind: BlockKind): RegExp {
+	const name = kind === "script" ? "endscript" : "endstylesheet";
+	return new RegExp(`\\{%-?\\s*${name}\\s*-?%}`);
+}
+
+function walk(
+	node: Parser.SyntaxNode,
+	visit: (node: Parser.SyntaxNode) => void,
+): void {
+	visit(node);
+	for (const child of node.namedChildren) walk(child, visit);
 }

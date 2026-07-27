@@ -17,11 +17,21 @@ export class MissingSourceGrammarError extends Error {
 	}
 }
 
+export class DuplicateSourceGrammarError extends Error {
+	constructor(readonly language: SourceLanguage) {
+		super(`Tree-sitter grammar already registered for ${language}`);
+		this.name = "DuplicateSourceGrammarError";
+	}
+}
+
 export class SourceParserRegistry {
 	private readonly languages = new Map<SourceLanguage, unknown>();
 
 	register(language: SourceLanguage, grammar: unknown): void {
 		if (!grammar) throw new MissingSourceGrammarError(language);
+		if (this.languages.has(language)) {
+			throw new DuplicateSourceGrammarError(language);
+		}
 		this.languages.set(language, grammar);
 	}
 

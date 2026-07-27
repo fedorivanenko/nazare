@@ -27,7 +27,7 @@ import {
 	parseProps,
 } from "./nazare-tag-parser.js";
 import { scanScript } from "./script-scan.js";
-import { spanFromOffsets } from "./source.js";
+import { rangeOfTextWithinRange, spanFromOffsets } from "./source.js";
 
 export type TreeSitterNazareProjection = {
 	ast: NazareAst;
@@ -47,8 +47,6 @@ export function projectTreeSitterNazareAst(
 		source,
 	);
 	const syntax = nazareSyntaxFacts(document);
-	// Keep the transitional AST field structurally valid without parsing authored
-	// source. Tree-sitter facts own all compiler and workspace behavior.
 	const problemDiagnostics = syntax.problems.map((problem) => {
 		const span = spanFromOffsets(source, file, problem.range);
 		switch (problem.kind) {
@@ -68,6 +66,13 @@ export function projectTreeSitterNazareAst(
 				return parseInvalidBlocksSlot(problem.markup, span);
 			case "stylesheet":
 				return parseInvalidStylesheetBinding(problem.markup, span);
+			case "script-language":
+				return {
+					severity: "error" as const,
+					code: "NAZARE_PARSE_SCRIPT_LANGUAGE",
+					message: `Unsupported script language ${problem.value}; expected "js" or "ts"`,
+					span,
+				};
 			case "attribute":
 				return parseInvalidRefAttribute(
 					problem.reason === "dynamic"
@@ -76,7 +81,7 @@ export function projectTreeSitterNazareAst(
 					span,
 				);
 			default:
-				throw new Error("Unknown Nazare syntax problem");
+				return assertNever(problem);
 		}
 	});
 	const treeIssues: Diagnostic[] = document.issues
@@ -99,15 +104,7 @@ export function projectTreeSitterNazareAst(
 		: { nodes: [], diagnostics: [] };
 	const settingsReads = syntax.authoritative
 		? syntax.liquid.settingsReads.map((read) => {
-				const text = source.slice(read.range.start, read.range.end);
-				const nameOffset = text.lastIndexOf(read.name);
-				const range =
-					nameOffset < 0
-						? read.range
-						: {
-								start: read.range.start + nameOffset,
-								end: read.range.start + nameOffset + read.name.length,
-							};
+				const range = rangeOfTextWithinRange(source, read.name, read.range);
 				return {
 					object: read.object,
 					name: read.name,
@@ -150,6 +147,10 @@ export function projectTreeSitterNazareAst(
 		authoritative: syntax.authoritative,
 		factCount: syntax.facts.length,
 	};
+}
+
+function assertNever(value: never): never {
+	throw new Error(`Unhandled Nazare syntax problem: ${JSON.stringify(value)}`);
 }
 
 function syntaxNotes(
@@ -268,13 +269,7 @@ function projectFacts(
 				const scan = scanScript(fact.body);
 				nodes.push({
 					type: "NazareScript",
-					// Compiler compatibility keeps historical default-TypeScript behavior;
-					// source injection still classifies only explicit lang=ts as TypeScript.
-					lang: /\blang\s*=\s*["']?js["']?/.test(
-						source.slice(fact.range.start, fact.bodyRange.start),
-					)
-						? "js"
-						: "ts",
+					lang: fact.language === "javascript" ? "js" : "ts",
 					source: fact.body,
 					refAccesses: scan.refAccesses.map((access) => ({
 						name: access.name,

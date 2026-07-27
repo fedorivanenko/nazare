@@ -157,6 +157,7 @@ export default island(({ root, refs, data }) => {
 
 Rules:
 
+- script blocks default to TypeScript; use `lang="js"` or `lang="ts"` to select explicitly; other language values are errors;
 - `ref="name"` values must be static identifiers;
 - refs must be unique in `strict` mode;
 - `refs.name` must refer to a declared ref in `strict` mode;

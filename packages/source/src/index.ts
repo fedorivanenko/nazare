@@ -45,6 +45,7 @@ export { SourceAnalysisHost } from "./host.js";
 export { SourceOffsetIndex } from "./offset-index.js";
 export {
 	createDefaultSourceParserRegistry,
+	DuplicateSourceGrammarError,
 	MissingSourceGrammarError,
 	SourceParserRegistry,
 	UnsupportedSourceLanguageError,
@@ -59,3 +60,4 @@ export type {
 	SourceRange,
 	SourceUpdate,
 } from "./types.js";
+export { DEFAULT_NAZARE_SCRIPT_LANGUAGE } from "./types.js";

@@ -13,6 +13,7 @@ import type {
 	Diagnostic,
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
+import { DEFAULT_COMPILER_MODE } from "./check.js";
 import type {
 	CompileInput,
 	CompilerFrontend,
@@ -71,6 +72,7 @@ export {
 	checkContractConstraints,
 	checkScriptConstraints,
 	checkStyleConstraints,
+	DEFAULT_COMPILER_MODE,
 } from "./check.js";
 export { checkComponentScripts } from "./check-script.js";
 export {
@@ -98,8 +100,10 @@ export type {
 	FrontendSupport,
 } from "./frontend.js";
 export {
+	DEFAULT_PLAIN_LIQUID_PARSE_MODE,
 	PLAIN_LIQUID_SUPPORT,
 	type PlainLiquidFrontendMetadata,
+	resolvePlainLiquidOptions,
 } from "./frontends/plain-liquid.js";
 export { treeSitterNazareLiquidFrontend } from "./frontends/tree-sitter-nazare-liquid.js";
 export { treeSitterPlainLiquidFrontend } from "./frontends/tree-sitter-plain-liquid.js";
@@ -455,13 +459,15 @@ export function compileArtifact(
 ): CompileArtifactResult {
 	const frontend = selectFrontend(options);
 	if (!frontend) return unsupportedInput(options);
+	const strictness = options.strictness ?? DEFAULT_COMPILER_MODE;
+	const normalizedOptions = { ...options, strictness };
 
-	const frontendResult = frontend.compile(options);
+	const frontendResult = frontend.compile(normalizedOptions);
 	switch (frontendResult.kind) {
 		case "nazare-ast": {
 			const projected = projectArtifact(frontendResult.ast, {
 				contracts: frontendResult.contracts,
-				mode: options.strictness,
+				mode: strictness,
 				resolveIssues: frontendResult.resolveIssues,
 			});
 			return compileSuccess(frontend.name, frontendResult, projected);
@@ -469,12 +475,20 @@ export function compileArtifact(
 		case "direct-ir": {
 			const projected = projectIR(frontendResult.syntax, frontendResult.ir, {
 				contracts: frontendResult.contracts,
-				mode: options.strictness,
+				mode: strictness,
 				contractPath: frontendResult.contractPath,
 				issues: frontendResult.issues,
 			});
 			return compileSuccess(frontend.name, frontendResult, projected);
 		}
+		case "failure":
+			return {
+				ok: false,
+				frontend: frontend.name,
+				issues: frontendResult.issues,
+				notes: frontendResult.notes,
+				canEmit: false,
+			};
 	}
 }
 
@@ -530,7 +544,9 @@ export function buildPlainLiquid(
 	file: string,
 	options: BuildPlainLiquidOptions = {},
 ): BuildPlainLiquidResult {
-	const compiled = compilePlainLiquid(source, file, options);
+	const compiled = compilePlainLiquid(source, file, {
+		parseMode: options.parseMode,
+	});
 	const emittedOnError = !compiled.canEmit && (options.emitOnError ?? false);
 	const shouldEmit = compiled.canEmit || emittedOnError;
 	return {
@@ -568,7 +584,7 @@ function isPlainLiquidAst(value: unknown): value is PlainLiquidAst {
 
 function compileSuccess(
 	frontend: string,
-	frontendResult: FrontendResult,
+	frontendResult: Exclude<FrontendResult, { kind: "failure" }>,
 	projected: ProjectedArtifact,
 ): CompileArtifactSuccess {
 	return {

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
 	createDefaultSourceParserRegistry,
+	DuplicateSourceGrammarError,
 	MissingSourceGrammarError,
+	nazareSyntaxFacts,
 	parseSourceDocument,
 	SourceAnalysisHost,
 	SourceFile,
@@ -140,9 +142,9 @@ test("unclosed embedded blocks produce CST issues and open regions", () => {
 	);
 });
 
-test("script language contract maps explicit ts only to TypeScript", () => {
+test("script language has one named default and rejects unsupported values", () => {
 	for (const [opening, language] of [
-		["{% script %}", "javascript"],
+		["{% script %}", "typescript"],
 		['{% script lang="js" %}', "javascript"],
 		['{% script lang="ts" %}', "typescript"],
 	]) {
@@ -154,7 +156,15 @@ test("script language contract maps explicit ts only to TypeScript", () => {
 			source,
 		);
 		assert.equal(document.embeddedRegions[0].language, language);
+		assert.equal(nazareSyntaxFacts(document).authoritative, true);
 	}
+	const invalid = parseSourceDocument(
+		registry,
+		"x.nz.liquid",
+		"nazare-liquid",
+		'{% script lang="jsx" %}x();{% endscript %}',
+	);
+	assert.equal(nazareSyntaxFacts(invalid).authoritative, false);
 });
 
 test("large sources bypass node-tree-sitter's direct-string ceiling", () => {
@@ -239,8 +249,9 @@ test("analysis host has explicit lifecycle", () => {
 	host.openFile("x.liquid", "liquid", "{{ x }}");
 	assert.equal(host.getDocument("x.liquid")?.file, "x.liquid");
 	assert.throws(() => host.openFile("x.liquid", "liquid", ""), /already open/);
-	assert.equal(host.removeFile("x.liquid"), true);
+	host.closeFile("x.liquid");
 	assert.equal(host.getDocument("x.liquid"), undefined);
+	assert.throws(() => host.closeFile("x.liquid"), /not open/);
 });
 
 test("unsupported and missing grammars fail explicitly", () => {
@@ -251,5 +262,11 @@ test("unsupported and missing grammars fail explicitly", () => {
 	assert.throws(
 		() => new SourceParserRegistry().createParser("liquid"),
 		MissingSourceGrammarError,
+	);
+	const duplicate = new SourceParserRegistry();
+	duplicate.register("liquid", {});
+	assert.throws(
+		() => duplicate.register("liquid", {}),
+		DuplicateSourceGrammarError,
 	);
 });

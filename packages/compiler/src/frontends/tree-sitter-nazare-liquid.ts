@@ -20,6 +20,19 @@ export const treeSitterNazareLiquidFrontend: CompilerFrontend = {
 		return file.endsWith(".nz.liquid");
 	},
 	compile(input: CompileInput): FrontendResult {
+		const optionNames = Object.keys(input.frontendOptions ?? {});
+		if (optionNames.length > 0) {
+			return {
+				kind: "failure",
+				issues: optionNames.map((name) => ({
+					severity: "error",
+					code: "NAZARE_LIQUID_UNKNOWN_FRONTEND_OPTION",
+					message: `Unknown Nazare Liquid frontend option ${JSON.stringify(name)}`,
+					phase: "parse",
+				})),
+				notes: [],
+			};
+		}
 		const projection = projectTreeSitterNazareAst(input.source, input.file);
 		const dependencyResolver =
 			input.dependencyResolver ?? createDependencyResolver(input.readFile);

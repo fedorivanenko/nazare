@@ -63,11 +63,20 @@ export type DirectIRFrontendResult = FrontendResultBase & {
 	ir: ArtifactIR;
 	/** Contract key to use when deriving the artifact contract from IR. */
 	contractPath: string;
-	/** Frontend diagnostics that are not emitted by shared IR checks; compileArtifact() defaults unphased entries to parse. */
+	/** Parse-phase diagnostics owned by the frontend. Shared projection assigns the parse phase. */
 	issues: Diagnostic[];
 };
 
-export type FrontendResult = NazareAstFrontendResult | DirectIRFrontendResult;
+export type FrontendFailureResult = {
+	kind: "failure";
+	issues: Diagnostic[];
+	notes: Diagnostic[];
+};
+
+export type FrontendResult =
+	| NazareAstFrontendResult
+	| DirectIRFrontendResult
+	| FrontendFailureResult;
 
 export type CompilerFrontend = {
 	name: string;

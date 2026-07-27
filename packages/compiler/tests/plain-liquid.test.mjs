@@ -312,11 +312,23 @@ test("plain Liquid frontend validates frontend options", () => {
 		frontendOptions: { parseMode: "loose" },
 	});
 
-	assert.equal(compiled.ok, true);
+	assert.equal(compiled.ok, false);
 	assert.equal(compiled.canEmit, false);
 	assert.ok(
 		compiled.issues.some(
 			(issue) => issue.code === "PLAIN_LIQUID_INVALID_FRONTEND_OPTION",
+		),
+	);
+
+	const unknown = compileArtifact({
+		source: "<div></div>",
+		file: "snippets/card.liquid",
+		frontendOptions: { parseMdoe: "strict" },
+	});
+	assert.equal(unknown.ok, false);
+	assert.ok(
+		unknown.issues.some(
+			(issue) => issue.code === "PLAIN_LIQUID_UNKNOWN_FRONTEND_OPTION",
 		),
 	);
 });

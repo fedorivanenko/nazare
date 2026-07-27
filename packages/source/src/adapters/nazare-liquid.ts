@@ -1,7 +1,11 @@
 import Parser from "tree-sitter";
 import Html from "tree-sitter-html";
 import { parseTreeText } from "../parser-input.js";
-import type { SourceDocument, SourceRange } from "../types.js";
+import {
+	DEFAULT_NAZARE_SCRIPT_LANGUAGE,
+	type SourceDocument,
+	type SourceRange,
+} from "../types.js";
 import { type LiquidSyntaxFacts, liquidSyntaxFacts } from "./liquid.js";
 
 export type NazareComponentFact = {
@@ -134,6 +138,11 @@ export type NazareSyntaxProblem =
 			range: SourceRange;
 	  }
 	| {
+			kind: "script-language";
+			value: string;
+			range: SourceRange;
+	  }
+	| {
 			kind: "attribute";
 			attribute: "ref" | "island";
 			reason: "dynamic" | "invalid-identifier";
@@ -164,72 +173,76 @@ export function nazareSyntaxFacts(document: SourceDocument): NazareSyntaxFacts {
 	}
 	const liquid = liquidSyntaxFacts(document);
 	const problems = tagSyntaxProblems(document);
-	if (document.issues.length > 0) {
+	if (
+		document.issues.length > 0 ||
+		problems.some((problem) => problem.kind === "script-language")
+	) {
 		return { authoritative: false, facts: [], problems, liquid };
 	}
 
 	const facts: NazareSyntaxFact[] = [];
 	const styleBindings = collectStyleBindings(document.tree.rootNode);
 	walk(document.tree.rootNode, (node) => {
-		const range = tagRange(document.source, node);
 		if (node.type === "nazare_component_statement") {
-			const componentKind = node.childForFieldName("kind")?.text;
-			if (isComponentKind(componentKind)) {
-				facts.push({ kind: "component", componentKind, range });
+			const range = tagRange(document.source, node);
+			const componentKind = requiredField(node, "kind").text;
+			if (!isComponentKind(componentKind)) {
+				throw new Error(
+					`Invalid component kind in authoritative CST: ${componentKind}`,
+				);
 			}
+			facts.push({ kind: "component", componentKind, range });
 			return;
 		}
 		if (node.type === "nazare_import_statement") {
-			const localName = node.childForFieldName("local_name")?.text;
-			const source = node.childForFieldName("source")?.text;
-			if (localName && source) {
-				facts.push({
-					kind: "import",
-					localName,
-					specifier: unquote(source),
-					range,
-				});
-			}
+			const range = tagRange(document.source, node);
+			const localName = requiredField(node, "local_name").text;
+			const source = requiredField(node, "source").text;
+			facts.push({
+				kind: "import",
+				localName,
+				specifier: unquote(source),
+				range,
+			});
 			return;
 		}
 		if (node.type === "nazare_props_statement") {
-			const payload = node.childForFieldName("payload");
-			if (payload) {
-				facts.push({
-					kind: "props",
-					payload: payload.text,
-					payloadRange: nodeRange(payload),
-					range,
-				});
-			}
+			const range = tagRange(document.source, node);
+			const payload = requiredField(node, "payload");
+			facts.push({
+				kind: "props",
+				payload: payload.text,
+				payloadRange: nodeRange(payload),
+				range,
+			});
 			return;
 		}
 		if (node.type === "nazare_render_statement") {
-			const target = node.childForFieldName("target")?.text;
-			const payload = node.childForFieldName("payload");
-			if (target && payload) {
-				facts.push({
-					kind: "render",
-					target,
-					payload: payload.text,
-					payloadRange: nodeRange(payload),
-					reachability: hasConditionalAncestor(node)
-						? "conditional-unmodeled"
-						: "unconditional",
-					range,
-				});
-				facts.push(
-					...referencesInText(
-						payload.text,
-						payload.startIndex,
-						styleBindings,
-						"quoted-class",
-					),
-				);
-			}
+			const range = tagRange(document.source, node);
+			const target = requiredField(node, "target").text;
+			const payload = requiredField(node, "payload");
+			facts.push({
+				kind: "render",
+				target,
+				payload: payload.text,
+				payloadRange: nodeRange(payload),
+				reachability: hasConditionalAncestor(node)
+					? "conditional-unmodeled"
+					: "unconditional",
+				range,
+			});
+			facts.push(
+				...referencesInText(
+					payload.text,
+					payload.startIndex,
+					styleBindings,
+					"quoted-class",
+				),
+			);
 			return;
 		}
 		if (node.type === "nazare_blocks_statement") {
+			const range = tagRange(document.source, node);
 			facts.push({
 				kind: "blocks",
 				blockNames: node.childrenForFieldName("name").map((name) => name.text),
@@ -239,15 +252,18 @@ export function nazareSyntaxFacts(document: SourceDocument): NazareSyntaxFacts {
 		}
 		if (node.type === "nazare_script_statement") {
 			const body = node.childForFieldName("body");
-			const language = unquote(
-				node.childForFieldName("language")?.text ?? "js",
-			);
+			const languageNode = node.childForFieldName("language");
+			const language: NazareScriptFact["language"] = languageNode
+				? unquote(languageNode.text) === "ts"
+					? "typescript"
+					: "javascript"
+				: DEFAULT_NAZARE_SCRIPT_LANGUAGE;
 			const bodyRange = body
 				? nodeRange(body)
 				: emptyBodyRange(document.source, node);
 			facts.push({
 				kind: "script",
-				language: language === "ts" ? "typescript" : "javascript",
+				language,
 				body: document.source.slice(bodyRange.start, bodyRange.end),
 				bodyRange,
 				range: pairedTagRange(document.source, node),
@@ -333,6 +349,24 @@ function tagSyntaxProblems(document: SourceDocument): NazareSyntaxProblem[] {
 			block: region.language === "css" ? "stylesheet" : "script",
 			range: region.openRange,
 		}));
+	walk(document.tree.rootNode, (node) => {
+		if (node.type !== "nazare_script_statement") return;
+		const language = node.childForFieldName("language")?.text;
+		if (
+			language === undefined ||
+			language === '"js"' ||
+			language === "'js'" ||
+			language === '"ts"' ||
+			language === "'ts'"
+		) {
+			return;
+		}
+		problems.push({
+			kind: "script-language",
+			value: language,
+			range: openingTagRange(document.source, node),
+		});
+	});
 	const pattern =
 		/\{%-?\s*(component|import|render|blocks|stylesheet)\b([\s\S]*?)-?%\}/g;
 	for (const match of document.source.matchAll(pattern)) {
@@ -583,14 +617,26 @@ function referencesInText(
 	return references;
 }
 
+function requiredField(
+	node: Parser.SyntaxNode,
+	field: string,
+): Parser.SyntaxNode {
+	const child = node.childForFieldName(field);
+	if (!child) {
+		throw new Error(
+			`Authoritative ${node.type} CST node is missing required field ${field}`,
+		);
+	}
+	return child;
+}
+
 function accessPath(
 	node: Parser.SyntaxNode,
 ): { root: string; path: string[] } | undefined {
 	if (node.type === "identifier") return { root: node.text.trim(), path: [] };
 	if (node.type !== "access") return undefined;
-	const receiver = node.childForFieldName("receiver");
-	const property = node.childForFieldName("property");
-	if (!receiver || !property) return undefined;
+	const receiver = requiredField(node, "receiver");
+	const property = requiredField(node, "property");
 	const parent = accessPath(receiver);
 	return parent
 		? {
@@ -625,24 +671,46 @@ function hasConditionalAncestor(node: Parser.SyntaxNode): boolean {
 	return false;
 }
 
+function openingTagRange(source: string, node: Parser.SyntaxNode): SourceRange {
+	const start = source.indexOf("{%", node.startIndex);
+	const close = source.indexOf("%}", start);
+	if (start < 0 || close < start || close >= node.endIndex) {
+		throw new Error(
+			`Cannot locate opening tag delimiters for authoritative ${node.type}`,
+		);
+	}
+	return { start, end: close + 2 };
+}
+
 function tagRange(source: string, node: Parser.SyntaxNode): SourceRange {
 	const start = source.lastIndexOf("{%", node.startIndex);
 	const close = source.indexOf("%}", node.endIndex);
-	return start >= 0 && close >= 0 ? { start, end: close + 2 } : nodeRange(node);
+	if (start < 0 || close < 0) {
+		throw new Error(
+			`Cannot locate tag delimiters for authoritative ${node.type}`,
+		);
+	}
+	return { start, end: close + 2 };
 }
 
 function pairedTagRange(source: string, node: Parser.SyntaxNode): SourceRange {
 	const opening = source.indexOf("{%", node.startIndex);
-	const start =
-		opening >= 0 && opening <= node.endIndex ? opening : node.startIndex;
-	return { start, end: node.endIndex };
+	if (opening < 0 || opening > node.endIndex) {
+		throw new Error(`Cannot locate opening tag for authoritative ${node.type}`);
+	}
+	return { start: opening, end: node.endIndex };
 }
 
 function emptyBodyRange(source: string, node: Parser.SyntaxNode): SourceRange {
 	const openingEnd = source.indexOf("%}", node.startIndex);
 	const closingStart = source.lastIndexOf("{%", node.endIndex);
-	const point = openingEnd < 0 ? node.startIndex : openingEnd + 2;
-	return { start: point, end: Math.max(point, closingStart) };
+	if (openingEnd < 0 || closingStart < openingEnd) {
+		throw new Error(
+			`Cannot locate body boundaries for authoritative ${node.type}`,
+		);
+	}
+	const point = openingEnd + 2;
+	return { start: point, end: closingStart };
 }
 
 function enclosingOutput(

@@ -83,6 +83,21 @@ test("Tree-sitter Nazare selection projects through the shared AST boundary", ()
 	assert.ok(compiled.ir);
 });
 
+test("Nazare frontend rejects every unsupported option", () => {
+	const compiled = compileArtifact({
+		source: "<div></div>",
+		file: "card.nz.liquid",
+		frontendOptions: { parseMode: "strict" },
+	});
+	assert.equal(compiled.ok, false);
+	assert.equal(compiled.canEmit, false);
+	assert.ok(
+		compiled.issues.some(
+			(issue) => issue.code === "NAZARE_LIQUID_UNKNOWN_FRONTEND_OPTION",
+		),
+	);
+});
+
 test("compileArtifact honors an explicit frontend", () => {
 	const source = `<div></div>`;
 	const compiled = compileArtifact({

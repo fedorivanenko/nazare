@@ -75,19 +75,17 @@ export function parseProps(
 	nodeStart: number,
 	diagnostics: NazareAst["diagnostics"],
 ): NazarePropDeclaration[] {
-	// One anchor locates the markup in the source; every entry's span derives
-	// from its tracked offset within it — never a per-name text search, which
-	// could match an earlier occurrence of the same text.
-	const markupStart = source.indexOf(markup, nodeStart);
+	if (source.slice(nodeStart, nodeStart + markup.length) !== markup) {
+		throw new Error(
+			"Nazare props payload range does not match authored source",
+		);
+	}
+	const markupStart = nodeStart;
 	const trimmed = markup.trim();
 	const hasBraces = trimmed.startsWith("{") && trimmed.endsWith("}");
 	const leadingWhitespace = markup.length - markup.trimStart().length;
 	const body = hasBraces ? trimmed.slice(1, -1) : trimmed;
-	const bodyStart =
-		markupStart >= 0
-			? markupStart + leadingWhitespace + (hasBraces ? 1 : 0)
-			: nodeStart;
-	const located = markupStart >= 0;
+	const bodyStart = markupStart + leadingWhitespace + (hasBraces ? 1 : 0);
 	const props: NazarePropDeclaration[] = [];
 	const seen = new Set<string>();
 
@@ -99,8 +97,8 @@ export function parseProps(
 
 		// The entry text is already trimmed, so the name starts exactly at the
 		// entry's offset.
-		const start = located ? bodyStart + entry.start : nodeStart;
-		const length = located ? (name || entry.text).length : 0;
+		const start = bodyStart + entry.start;
+		const length = (name || entry.text).length;
 		const span = spanFromOffsets(source, file, {
 			start,
 			end: start + length,

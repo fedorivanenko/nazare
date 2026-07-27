@@ -1,4 +1,4 @@
-// Converts character offsets (what the Liquid parser reports) into
+// Converts canonical UTF-16 source offsets into
 // line/column SourceSpans (what diagnostics and editors consume), and back.
 //
 // Conversions are hot — every span of every node goes through here — so the
@@ -27,6 +27,23 @@ function lineStartsOf(source: string): number[] {
 	return starts;
 }
 
+export function rangeOfTextWithinRange(
+	source: string,
+	text: string,
+	range: OffsetPosition,
+): OffsetPosition {
+	const relativeOffset = source.slice(range.start, range.end).lastIndexOf(text);
+	if (relativeOffset < 0) {
+		throw new Error(
+			`${JSON.stringify(text)} is absent from its authoritative source range`,
+		);
+	}
+	return {
+		start: range.start + relativeOffset,
+		end: range.start + relativeOffset + text.length,
+	};
+}
+
 export function spanFromOffsets(
 	source: string,
 	file: string,
@@ -44,15 +61,33 @@ export function offsetFromPosition(
 	position: { line: number; column: number },
 ): number {
 	const starts = lineStartsOf(source);
-	if (position.line < 1) return 0;
-	if (position.line > starts.length) return source.length;
-	return Math.min(
-		starts[position.line - 1] + position.column - 1,
-		source.length,
-	);
+	if (
+		!Number.isInteger(position.line) ||
+		!Number.isInteger(position.column) ||
+		position.line < 1 ||
+		position.line > starts.length ||
+		position.column < 1
+	) {
+		throw new RangeError(
+			`Source position ${position.line}:${position.column} is outside the source`,
+		);
+	}
+	const offset = (starts[position.line - 1] as number) + position.column - 1;
+	const lineEnd = starts[position.line] ?? source.length + 1;
+	if (offset >= lineEnd || offset > source.length) {
+		throw new RangeError(
+			`Source position ${position.line}:${position.column} is outside the source`,
+		);
+	}
+	return offset;
 }
 
 export function lineColumnFromOffset(source: string, offset: number) {
+	if (!Number.isInteger(offset) || offset < 0 || offset > source.length) {
+		throw new RangeError(
+			`Source offset ${offset} is outside 0..${source.length}`,
+		);
+	}
 	const starts = lineStartsOf(source);
 	// Binary search: the greatest line start at or before the offset.
 	let low = 0;

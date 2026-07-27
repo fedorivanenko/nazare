@@ -2,6 +2,8 @@ import type Parser from "tree-sitter";
 
 export type SourceLanguage = "liquid" | "nazare-liquid";
 
+export const DEFAULT_NAZARE_SCRIPT_LANGUAGE = "typescript" as const;
+
 /** Half-open JavaScript UTF-16 code-unit range. */
 export type SourceRange = { start: number; end: number };
 
@@ -31,6 +33,7 @@ export type SourceDocument = {
 	embeddedRegions: readonly EmbeddedRegion[];
 };
 
+/** Applied sequentially; every range addresses source produced by prior edits. */
 export type SourceEdit = SourceRange & { text: string };
 
 export type SourceUpdate = {

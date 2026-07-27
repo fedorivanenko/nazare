@@ -44,6 +44,9 @@ export class SourceFile {
 	}
 
 	update(edits: readonly SourceEdit[]): SourceUpdate {
+		if (edits.length === 0) {
+			return { document: this.current, changedRanges: [] };
+		}
 		let source = this.current.source;
 		const oldTree = this.current.tree;
 		let index = new SourceOffsetIndex(source);
@@ -114,7 +117,7 @@ function buildDocument(
 		source,
 		tree,
 		issues,
-		embeddedRegions: collectEmbeddedRegions(source, tree, index),
+		embeddedRegions: collectEmbeddedRegions(source, tree),
 	};
 }
 
@@ -130,13 +133,17 @@ function collectIssues(
 				range: index.rangeFromTreeIndices(node.startIndex, node.endIndex),
 				message: node.isMissing
 					? `Missing ${node.type}`
-					: `Unexpected syntax: ${node.text || node.type}`,
+					: `Unexpected syntax: ${unexpectedSyntax(node)}`,
 			});
 		}
 		for (const child of node.children) visit(child);
 	};
 	visit(tree.rootNode);
 	return issues;
+}
+
+function unexpectedSyntax(node: Parser.SyntaxNode): string {
+	return node.text.length > 0 ? node.text : `<empty ${node.type}>`;
 }
 
 function mapRangeThroughEdit(

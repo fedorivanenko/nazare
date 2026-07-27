@@ -635,6 +635,19 @@ function lookupFromNode(
 		: undefined;
 }
 
+function requiredField(
+	node: Parser.SyntaxNode,
+	field: string,
+): Parser.SyntaxNode {
+	const child = node.childForFieldName(field);
+	if (!child) {
+		throw new Error(
+			`Authoritative ${node.type} CST node is missing required field ${field}`,
+		);
+	}
+	return child;
+}
+
 function childFieldName(
 	parent: Parser.SyntaxNode | null,
 	child: Parser.SyntaxNode,
@@ -659,9 +672,8 @@ function accessPath(
 ): { root: string; path: string[] } | undefined {
 	if (node.type === "identifier") return { root: node.text.trim(), path: [] };
 	if (node.type !== "access") return undefined;
-	const receiver = node.childForFieldName("receiver");
-	const property = node.childForFieldName("property");
-	if (!receiver || !property) return undefined;
+	const receiver = requiredField(node, "receiver");
+	const property = requiredField(node, "property");
 	const parent = accessPath(receiver);
 	return parent
 		? { root: parent.root, path: [...parent.path, property.text.trim()] }
@@ -685,9 +697,14 @@ function openingTagRange(source: string, node: Parser.SyntaxNode): SourceRange {
 		previousStart >= 0 && previousClose >= node.startIndex
 			? previousStart
 			: source.indexOf("{%", node.startIndex);
+	if (start < 0 || start > node.endIndex) {
+		throw new Error(`Cannot locate opening tag for authoritative ${node.type}`);
+	}
 	const close = source.indexOf("%}", Math.max(start, node.startIndex));
-	if (start < 0 || close < 0 || start > node.endIndex) {
-		return { start: node.startIndex, end: node.startIndex };
+	if (close < 0) {
+		throw new Error(
+			`Cannot locate opening tag closer for authoritative ${node.type}`,
+		);
 	}
 	return { start, end: close + 2 };
 }
@@ -705,8 +722,11 @@ function enclosingTagRange(
 	}
 	const start = source.lastIndexOf("{%", node.startIndex);
 	const close = source.indexOf("%}", node.endIndex);
-	if (start < 0 || close < 0)
-		return { start: node.startIndex, end: node.endIndex };
+	if (start < 0 || close < 0) {
+		throw new Error(
+			`Cannot locate enclosing tag for authoritative ${node.type}`,
+		);
+	}
 	return { start, end: close + 2 };
 }
 
@@ -715,17 +735,18 @@ function schemaFromNode(
 	node: Parser.SyntaxNode,
 ): LiquidSyntaxSchema {
 	const openStart = source.indexOf("{%", node.startIndex);
-	const range = {
-		start:
-			openStart >= 0 && openStart < node.endIndex ? openStart : node.startIndex,
-		end: node.endIndex,
-	};
-	const openEnd = source.indexOf("%}", range.start);
+	const openEnd = source.indexOf("%}", openStart);
 	const closeStart = source.lastIndexOf("{%", node.endIndex);
-	const bodyRange = {
-		start: openEnd < 0 ? node.startIndex : openEnd + 2,
-		end: closeStart < 0 ? node.endIndex : closeStart,
-	};
+	if (
+		openStart < 0 ||
+		openStart >= node.endIndex ||
+		openEnd < openStart ||
+		closeStart < openEnd
+	) {
+		throw new Error("Cannot locate schema boundaries in authoritative CST");
+	}
+	const range = { start: openStart, end: node.endIndex };
+	const bodyRange = { start: openEnd + 2, end: closeStart };
 	return {
 		body: source.slice(bodyRange.start, bodyRange.end),
 		bodyRange,

@@ -14,11 +14,11 @@ import {
 	plainLiquidFactsSkipped,
 	validateDependencyName,
 } from "../plain-liquid.js";
-import { spanFromOffsets } from "../source.js";
+import { rangeOfTextWithinRange, spanFromOffsets } from "../source.js";
 import {
 	PLAIN_LIQUID_SUPPORT,
 	type PlainLiquidFrontendMetadata,
-	plainLiquidOptions,
+	resolvePlainLiquidOptions,
 } from "./plain-liquid.js";
 
 /** Canonical plain-Liquid frontend backed by Tree-sitter facts. */
@@ -28,13 +28,21 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 		return file.endsWith(".liquid") && !file.endsWith(".nz.liquid");
 	},
 	compile(input: CompileInput) {
-		const optionResolution = plainLiquidOptions(input.frontendOptions);
+		const optionResolution = resolvePlainLiquidOptions(input.frontendOptions);
+		if (!optionResolution.valid) {
+			return {
+				kind: "failure" as const,
+				issues: markDiagnostics(optionResolution.issues, "parse"),
+				notes: [],
+			};
+		}
+		const { parseMode } = optionResolution.options;
 		if (
-			(optionResolution.options.parseMode ?? "strict") === "liquid-only" &&
+			parseMode === "liquid-only" &&
 			!input.source.includes("{{") &&
 			!input.source.includes("{%")
 		) {
-			return compileLiquidFreeInput(input, optionResolution.issues);
+			return compileLiquidFreeInput(input);
 		}
 		const document = parseSourceDocument(
 			createDefaultSourceParserRegistry(),
@@ -44,8 +52,7 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 		);
 		const syntaxFacts = liquidSyntaxFacts(document);
 		const htmlIssues =
-			(optionResolution.options.parseMode ?? "strict") === "strict" &&
-			syntaxFacts.authoritative
+			parseMode === "strict" && syntaxFacts.authoritative
 				? htmlSyntaxIssues(document)
 				: [];
 		const authoritative = syntaxFacts.authoritative && htmlIssues.length === 0;
@@ -98,15 +105,11 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 		});
 		const settingsReads = authoritative
 			? syntaxFacts.settingsReads.map((read) => {
-					const text = input.source.slice(read.range.start, read.range.end);
-					const nameOffset = text.lastIndexOf(read.name);
-					const range =
-						nameOffset < 0
-							? read.range
-							: {
-									start: read.range.start + nameOffset,
-									end: read.range.start + nameOffset + read.name.length,
-								};
+					const range = rangeOfTextWithinRange(
+						input.source,
+						read.name,
+						read.range,
+					);
 					return {
 						object: read.object,
 						name: read.name,
@@ -138,10 +141,9 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 			diagnostics: treeIssues,
 			notes: [] as [],
 			factsCollected: authoritative,
-			parseMode: optionResolution.options.parseMode ?? "strict",
+			parseMode,
 		};
 		const issues = [
-			...markDiagnostics(optionResolution.issues, "parse"),
 			...markDiagnostics(treeIssues, "parse"),
 			...markDiagnostics(
 				authoritative ? [] : [plainLiquidFactsSkipped(input.file)],
@@ -184,10 +186,7 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 	},
 };
 
-function compileLiquidFreeInput(
-	input: CompileInput,
-	optionIssues: import("@nazare/core").Diagnostic[],
-) {
+function compileLiquidFreeInput(input: CompileInput) {
 	const syntax = [
 		{
 			id: fileSyntaxId(input.file),
@@ -216,7 +215,7 @@ function compileLiquidFreeInput(
 		ir: { syntax, symbols: [], resolutions: [] },
 		contractPath: input.file,
 		contracts: [],
-		issues: markDiagnostics(optionIssues, "parse"),
+		issues: [],
 		notes: [],
 		sourceForEmit: input.source,
 		frontendSupport: PLAIN_LIQUID_SUPPORT,
