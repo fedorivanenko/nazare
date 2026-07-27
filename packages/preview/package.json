@@ -13,5 +13,8 @@
 		"@nazare/compiler": "workspace:^",
 		"@nazare/core": "workspace:^",
 		"liquidjs": "^10.21.1"
+	},
+	"devDependencies": {
+		"linkedom": "^0.18.13"
 	}
 }

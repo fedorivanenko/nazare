@@ -107,9 +107,13 @@ scrolling costs nothing and reads at a glance.
 The canvas sits inset on the stage, with its own border and shadow, because a
 frame that runs edge to edge butts against the sidebar's border and reads as a
 continuation of the panel beside it rather than as the separate surface it is.
-The middle column also has a floor: two fixed side columns against a `1fr`
-middle means the viewport is what gives way when the window narrows, and the
-viewport is the one thing on the page that must not.
+The middle column also has a floor, and there is deliberately no stacking
+breakpoint. Two fixed side columns against a `1fr` middle means the viewport is
+what gives way when the window narrows, and stacking the three columns puts the
+story below a panel and off the screen — both arrangements lose the one thing
+you came to look at. So a side panel closes instead: the documentation below
+940px, the component list below 620px. A panel shut that way is not a
+remembered one, so widening the window brings it back exactly as it was.
 
 The layout is CSS — one `grid-template-columns` on `.workbench`, collapsing to
 `0px` per side. The state is JavaScript: every component's panel is in the DOM

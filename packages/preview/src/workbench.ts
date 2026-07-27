@@ -229,7 +229,7 @@ const WORKBENCH_STYLES = `
     /* The middle column has a floor. Two fixed side columns against a 1fr
      * middle means the viewport is what gives way when the window narrows, and
      * the viewport is the one thing on the page that must not. */
-    grid-template-columns: var(--sidebar-width, 240px) minmax(360px, 1fr) var(--docs-width, 320px);
+    grid-template-columns: var(--sidebar-width, 240px) minmax(320px, 1fr) var(--docs-width, 320px);
     height: calc(100% - 52px);
   }
   .workbench[data-sidebar="closed"] { --sidebar-width: 0px; }
@@ -464,14 +464,11 @@ const WORKBENCH_STYLES = `
   .code .copy { position: absolute; top: .6rem; right: .6rem; }
   .code pre { margin: 0; padding: 1rem 1.1rem; overflow-x: auto; font-size: .78rem; line-height: 1.55; }
   .caveat { padding: .6rem 1.25rem; font-size: .74rem; color: var(--muted-foreground); border-top: 1px solid var(--border); }
-  /* 240 + 360 + 320 is the narrowest the three columns fit; below that they
-   * stack rather than squeezing the viewport past its floor. */
-  @media (max-width: 920px) {
-    .workbench { grid-template-columns: minmax(0, 1fr); height: auto; }
-    .sidebar { border-right: 0; border-bottom: 1px solid var(--border); max-height: 40vh; }
-    .docs { border-left: 0; border-top: 1px solid var(--border); }
-    .workbench[data-sidebar="closed"], .workbench[data-docs="closed"] { grid-template-columns: minmax(0, 1fr); }
-  }
+  /* Deliberately no stacking breakpoint. Stacking the three columns pushes the
+   * canvas above a panel and off the screen, which is the one arrangement this
+   * page must never reach — you came here to look at the story. When there is
+   * not room for three columns a side panel closes instead, in script, so the
+   * viewport is never the thing that gives way. */
 `;
 
 const WORKBENCH_SCRIPT = `
@@ -532,38 +529,66 @@ const WORKBENCH_SCRIPT = `
     get(key) { try { return localStorage.getItem(key); } catch { return null; } },
     set(key, value) { try { localStorage.setItem(key, value); } catch {} },
   };
-  function toggleButton(button, key, apply) {
-    const stored = remember.get(key);
-    const on = stored === null ? true : stored === '1';
-    const set = (next) => {
-      button.setAttribute('aria-pressed', String(next));
-      remember.set(key, next ? '1' : '0');
-      apply(next);
+  /**
+   * A side panel. Two reasons it can be shut and they are not the same: the
+   * viewer closed it, which persists, or the window is too narrow for three
+   * columns, which does not — widen the window and it comes back exactly as it
+   * was.
+   */
+  function sidePanel(button, key, attribute) {
+    let wanted = remember.get(key) === null ? true : remember.get(key) === '1';
+    let squeezed = false;
+    const paint = () => {
+      const open = wanted && !squeezed;
+      button.setAttribute('aria-pressed', String(open));
+      workbench.setAttribute(attribute, open ? 'open' : 'closed');
     };
-    set(on);
+    paint();
     button.addEventListener('click', () => {
-      set(button.getAttribute('aria-pressed') !== 'true');
+      // Pressing the button while the window has it shut means "open it", and
+      // that is an instruction to make room rather than to remember a close.
+      wanted = squeezed ? true : !wanted;
+      squeezed = false;
+      remember.set(key, wanted ? '1' : '0');
+      paint();
     });
-    return set;
+    return {
+      toggle: () => button.click(),
+      squeeze: (next) => {
+        if (squeezed === next) return;
+        squeezed = next;
+        paint();
+      },
+    };
   }
-  const setSidebar = toggleButton(
+  const sidebarPanel = sidePanel(
     document.getElementById('toggle-sidebar'),
     'nazare-preview:sidebar',
-    (open) => workbench.setAttribute('data-sidebar', open ? 'open' : 'closed'),
+    'data-sidebar',
   );
-  const setDocs = toggleButton(
+  const docsPanel = sidePanel(
     document.getElementById('toggle-docs'),
     'nazare-preview:docs',
-    (open) => workbench.setAttribute('data-docs', open ? 'open' : 'closed'),
+    'data-docs',
   );
+
+  // 240 + 360 + 320 is the narrowest three columns fit. Below that a panel
+  // closes; the canvas keeps its floor and stays on screen at every width.
+  const fitColumns = () => {
+    docsPanel.squeeze(innerWidth < 940);
+    sidebarPanel.squeeze(innerWidth < 620);
+  };
+  addEventListener('resize', fitColumns);
+  fitColumns();
+
   // Storybook's own keys, because anyone reaching for one is reaching for these.
   addEventListener('keydown', (event) => {
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const tag = event.target?.tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     const key = event.key.toLowerCase();
-    if (key === 's') setSidebar(workbench.getAttribute('data-sidebar') === 'closed');
-    else if (key === 'd') setDocs(workbench.getAttribute('data-docs') === 'closed');
+    if (key === 's') sidebarPanel.toggle();
+    else if (key === 'd') docsPanel.toggle();
   });
 
   function select(id, push) {
