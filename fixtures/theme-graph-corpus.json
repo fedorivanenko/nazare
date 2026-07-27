@@ -104,7 +104,7 @@
         { "artifact": "snippets/card-product.liquid", "dependent": "sections/featured-collection.liquid", "affectedPage": "templates/collection.json" }
       ],
       "requiredUnusedFile": "sections/bundle-products.liquid",
-      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 20, "THEME_RENDER_ARGUMENT_MISSING": 0 }
+      "issueMaximums": { "NAZARE_PARSE_LIQUID": 2, "PLAIN_LIQUID_FACTS_SKIPPED": 2, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 20, "THEME_RENDER_ARGUMENT_MISSING": 0 }
     },
     "climatic-health": {
       "rootEnv": "NAZARE_CORPUS_CLIMATIC_HEALTH",

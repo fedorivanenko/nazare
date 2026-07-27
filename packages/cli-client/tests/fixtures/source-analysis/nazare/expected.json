@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "file": "input.nz.liquid",
+  "language": "nazare-liquid",
+  "authoritative": true,
+  "issues": [],
+  "problems": [],
+  "embeddedRegions": [
+    {
+      "language": "typescript",
+      "bodyRange": {
+        "start": 116,
+        "end": 148
+      },
+      "openRange": {
+        "start": 94,
+        "end": 116
+      },
+      "closeRange": {
+        "start": 148,
+        "end": 163
+      }
+    },
+    {
+      "language": "css",
+      "bodyRange": {
+        "start": 180,
+        "end": 201
+      },
+      "openRange": {
+        "start": 164,
+        "end": 180
+      },
+      "closeRange": {
+        "start": 201,
+        "end": 220
+      }
+    }
+  ],
+  "syntax": {
+    "nazare": [
+      {
+        "kind": "component",
+        "componentKind": "snippet",
+        "range": {
+          "start": 0,
+          "end": 23
+        }
+      },
+      {
+        "kind": "props",
+        "payload": "{ title: string.required() }",
+        "payloadRange": {
+          "start": 33,
+          "end": 61
+        },
+        "range": {
+          "start": 24,
+          "end": 64
+        }
+      },
+      {
+        "kind": "html-element",
+        "tagName": "div",
+        "leaf": true,
+        "range": {
+          "start": 65,
+          "end": 93
+        }
+      },
+      {
+        "kind": "html-root",
+        "tagName": "div",
+        "tagEnd": 69,
+        "range": {
+          "start": 65,
+          "end": 93
+        }
+      },
+      {
+        "kind": "reference",
+        "target": "prop",
+        "binding": "props",
+        "name": "title",
+        "form": "identifier",
+        "range": {
+          "start": 73,
+          "end": 84
+        }
+      },
+      {
+        "kind": "script",
+        "language": "typescript",
+        "body": "export default island(() => {});",
+        "bodyRange": {
+          "start": 116,
+          "end": 148
+        },
+        "range": {
+          "start": 94,
+          "end": 163
+        }
+      },
+      {
+        "kind": "stylesheet",
+        "body": ".root { color: red; }",
+        "bodyRange": {
+          "start": 180,
+          "end": 201
+        },
+        "range": {
+          "start": 164,
+          "end": 220
+        }
+      }
+    ],
+    "liquid": {
+      "authoritative": true,
+      "dependencies": [],
+      "settingsReads": [],
+      "blocks": [],
+      "conditionals": [],
+      "localBindings": [],
+      "renderArguments": [],
+      "assetReferences": [],
+      "localeReferences": [],
+      "docParams": [],
+      "reads": [
+        {
+          "root": "props",
+          "path": [
+            "title"
+          ],
+          "range": {
+            "start": 73,
+            "end": 84
+          },
+          "expression": "props.title",
+          "inCondition": false,
+          "inRenderArgument": false,
+          "local": false
+        }
+      ],
+      "guards": []
+    }
+  }
+}

@@ -1,19 +1,19 @@
 {
-  "name": "@nazare/compiler",
-  "version": "0.0.0",
-  "private": true,
-  "license": "MIT",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
-  },
-  "dependencies": {
-    "@nazare/core": "workspace:^",
-    "@shopify/liquid-html-parser": "^2.9.2",
-    "postcss": "^8.5.17",
-    "postcss-selector-parser": "^7.1.4",
-    "typescript": "^5.5.0"
-  }
+	"name": "@nazare/compiler",
+	"version": "0.0.0",
+	"private": true,
+	"license": "MIT",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"scripts": {
+		"typecheck": "tsc -p tsconfig.json"
+	},
+	"dependencies": {
+		"@nazare/core": "workspace:^",
+		"@nazare/source": "workspace:^",
+		"postcss": "^8.5.17",
+		"postcss-selector-parser": "^7.1.4",
+		"typescript": "^5.5.0"
+	}
 }

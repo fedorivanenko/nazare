@@ -1,10 +1,23 @@
 import type { Diagnostic } from "@nazare/core";
+import {
+	createDefaultSourceParserRegistry,
+	htmlSyntaxIssues,
+	liquidSyntaxFacts,
+	parseSourceDocument,
+} from "@nazare/source";
+import type { AuthoredSchema, SettingsRead } from "./ast.js";
 import { checkVanillaSchema } from "./check-vanilla.js";
+import { parseLiquidCrash } from "./diagnostics.js";
 import { markDiagnostics } from "./pipeline.js";
-import { type PlainLiquidAst, parsePlainLiquid } from "./plain-liquid.js";
+import {
+	invalidDependencyName,
+	plainLiquidFactsSkipped,
+	validateDependencyName,
+} from "./plain-liquid.js";
+import { spanFromOffsets } from "./source.js";
 import { renderSiteKey, type ThemeFact } from "./theme-facts.js";
 import { themeNameFromPath } from "./theme-file-classifier.js";
-import { collectSourceThemeFacts } from "./theme-source-facts.js";
+import { collectTreeSitterSourceThemeFacts } from "./theme-tree-sitter-facts.js";
 
 export function collectPlainLiquidThemeFacts(
 	path: string,
@@ -13,14 +26,35 @@ export function collectPlainLiquidThemeFacts(
 		parseMode: "liquid-only",
 	},
 ): { facts: ThemeFact[]; issues: Diagnostic[] } {
-	const ast = parsePlainLiquid(contents, path, {
-		parseMode: options.parseMode,
-	});
+	const parseMode = options.parseMode;
+	const document = parseSourceDocument(
+		createDefaultSourceParserRegistry(),
+		path,
+		"liquid",
+		contents,
+	);
+	const syntax = liquidSyntaxFacts(document);
+	const htmlIssues =
+		parseMode === "strict" && syntax.authoritative
+			? htmlSyntaxIssues(document)
+			: [];
+	const authoritative = syntax.authoritative && htmlIssues.length === 0;
 	const facts: ThemeFact[] = [];
-	const issues: Diagnostic[] = [
-		...markDiagnostics(ast.diagnostics, "parse"),
-		...markDiagnostics(checkVanillaSchema(ast), "check"),
-	];
+	const issues: Diagnostic[] = [...document.issues, ...htmlIssues].map(
+		(issue) =>
+			markDiagnostics(
+				[
+					parseLiquidCrash(
+						`${issue.code}: ${issue.message}`,
+						spanFromOffsets(contents, path, issue.range),
+					),
+				],
+				"parse",
+			)[0] as Diagnostic,
+	);
+	if (!authoritative) {
+		issues.push(...markDiagnostics([plainLiquidFactsSkipped(path)], "parse"));
+	}
 	const name = themeNameFromPath(path);
 	if (path.startsWith("sections/") && path.endsWith(".liquid")) {
 		facts.push({ kind: "declaresSection", path, name });
@@ -31,48 +65,67 @@ export function collectPlainLiquidThemeFacts(
 	if (path.startsWith("templates/") && path.endsWith(".liquid")) {
 		facts.push({ kind: "declaresTemplate", path, name });
 	}
-	for (const dependency of ast.dependencies) {
+	if (!authoritative) return { facts, issues };
+
+	for (const dependency of syntax.dependencies) {
+		const at = spanFromOffsets(contents, path, dependency.range);
+		const validation = dependency.name
+			? validateDependencyName(dependency.kind, dependency.name)
+			: { valid: true as const };
+		if (dependency.name && !validation.valid) {
+			issues.push(
+				invalidDependencyName(
+					dependency.kind,
+					dependency.name,
+					at,
+					validation.reason,
+				),
+			);
+		}
+		const targetName = dependency.name;
+		const staticReference = targetName !== undefined;
 		if (dependency.kind === "snippet") {
 			facts.push({
 				kind: "rendersSnippet",
 				fromPath: path,
-				targetName: dependency.name,
-				siteId: renderSiteKey(path, dependency.span),
+				targetName,
+				siteId: renderSiteKey(path, at),
 				invocationKind: dependency.invocationKind ?? "render",
-				static: dependency.static,
-				span: dependency.span,
+				static: staticReference,
+				span: at,
 			});
-		}
-		if (dependency.kind === "section") {
+		} else if (dependency.kind === "section") {
 			facts.push({
 				kind: "containsSection",
 				fromPath: path,
-				targetName: dependency.name,
-				static: dependency.static,
-				span: dependency.span,
+				targetName,
+				static: staticReference,
+				span: at,
 			});
-		}
-		if (dependency.kind === "section-group") {
+		} else if (dependency.kind === "section-group") {
 			facts.push({
 				kind: "containsSectionGroup",
 				fromPath: path,
-				targetName: dependency.name,
-				static: dependency.static,
-				span: dependency.span,
+				targetName,
+				static: staticReference,
+				span: at,
 			});
-		}
-		if (dependency.kind === "layout" && dependency.name !== "none") {
+		} else if (dependency.kind === "layout" && targetName !== "none") {
 			facts.push({
 				kind: "usesLayout",
 				fromPath: path,
-				targetName: dependency.name,
-				static: dependency.static,
-				span: dependency.span,
+				targetName,
+				static: staticReference,
+				span: at,
 			});
 		}
 	}
-	// The parser already located every settings read; map, don't re-scan.
-	for (const read of ast.settingsReads) {
+	const settingsReads: SettingsRead[] = syntax.settingsReads.map((read) => ({
+		object: read.object,
+		name: read.name,
+		span: spanFromOffsets(contents, path, read.range),
+	}));
+	for (const read of settingsReads) {
 		facts.push({
 			kind: "readsSetting",
 			fromPath: path,
@@ -81,35 +134,50 @@ export function collectPlainLiquidThemeFacts(
 			span: read.span,
 		});
 	}
-	if (ast.factsCollected) {
-		const sourceResult = collectSourceThemeFacts(path, contents, ast.liquidAst);
-		facts.push(...sourceResult.facts);
-		issues.push(...sourceResult.issues);
+	const sourceResult = collectTreeSitterSourceThemeFacts(
+		path,
+		contents,
+		syntax,
+	);
+	facts.push(...sourceResult.facts);
+	issues.push(...sourceResult.issues);
+	const schema: AuthoredSchema | undefined = syntax.schema
+		? {
+				source: syntax.schema.body,
+				span: spanFromOffsets(contents, path, syntax.schema.range),
+			}
+		: undefined;
+	if (schema) {
+		issues.push(
+			...markDiagnostics(
+				checkVanillaSchema({ schema, settingsReads }),
+				"check",
+			),
+		);
+		facts.push(...schemaFacts(path, schema, issues));
 	}
-	facts.push(...schemaFacts(path, ast, issues));
 	return { facts, issues };
 }
 
 function schemaFacts(
 	path: string,
-	ast: PlainLiquidAst,
+	schema: AuthoredSchema,
 	issues: Diagnostic[],
 ): ThemeFact[] {
-	if (!ast.schema) return [];
 	const schemaPath = "schema";
 	const facts: ThemeFact[] = [
-		{ kind: "definesSchema", path, schemaPath, span: ast.schema.span },
+		{ kind: "definesSchema", path, schemaPath, span: schema.span },
 	];
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(ast.schema.source);
+		parsed = JSON.parse(schema.source);
 	} catch (error) {
 		issues.push(
 			schemaShapeIssue(
 				path,
 				"THEME_SCHEMA_JSON_INVALID",
 				`Invalid schema JSON: ${error instanceof Error ? error.message : String(error)}`,
-				ast,
+				schema,
 			),
 		);
 		return facts;
@@ -120,7 +188,7 @@ function schemaFacts(
 				path,
 				"THEME_SCHEMA_INVALID_ROOT",
 				"Schema root must be an object",
-				ast,
+				schema,
 			),
 		);
 		return facts;
@@ -131,7 +199,7 @@ function schemaFacts(
 			schemaPath,
 			parsed.settings,
 			path.startsWith("blocks/") ? themeNameFromPath(path) : undefined,
-			ast,
+			schema,
 			facts,
 			issues,
 		);
@@ -143,7 +211,7 @@ function schemaFacts(
 					path,
 					"THEME_SCHEMA_INVALID_BLOCKS",
 					'Schema "blocks" must be an array',
-					ast,
+					schema,
 				),
 			);
 		} else {
@@ -155,7 +223,7 @@ function schemaFacts(
 							path,
 							"THEME_SCHEMA_INVALID_BLOCK",
 							`Schema block ${index} must be an object`,
-							ast,
+							schema,
 						),
 					);
 					continue;
@@ -166,7 +234,7 @@ function schemaFacts(
 							path,
 							"THEME_SCHEMA_INVALID_BLOCK_TYPE",
 							`Schema block ${index} must have a non-empty string type`,
-							ast,
+							schema,
 						),
 					);
 					continue;
@@ -177,7 +245,7 @@ function schemaFacts(
 							path,
 							"THEME_SCHEMA_DUPLICATE_BLOCK_TYPE",
 							`Duplicate schema block type ${block.type}`,
-							ast,
+							schema,
 						),
 					);
 					continue;
@@ -188,7 +256,7 @@ function schemaFacts(
 					path,
 					blockType: block.type,
 					name: typeof block.name === "string" ? block.name : undefined,
-					span: ast.schema.span,
+					span: schema.span,
 				});
 				if (block.settings !== undefined) {
 					collectSchemaSettings(
@@ -196,7 +264,7 @@ function schemaFacts(
 						schemaPath,
 						block.settings,
 						block.type,
-						ast,
+						schema,
 						facts,
 						issues,
 					);
@@ -212,7 +280,7 @@ function collectSchemaSettings(
 	schemaPath: string,
 	value: unknown,
 	blockType: string | undefined,
-	ast: PlainLiquidAst,
+	schema: AuthoredSchema,
 	facts: ThemeFact[],
 	issues: Diagnostic[],
 ): void {
@@ -223,7 +291,7 @@ function collectSchemaSettings(
 				path,
 				"THEME_SCHEMA_INVALID_SETTINGS",
 				`Schema settings for ${owner} must be an array`,
-				ast,
+				schema,
 			),
 		);
 		return;
@@ -236,7 +304,7 @@ function collectSchemaSettings(
 					path,
 					"THEME_SCHEMA_INVALID_SETTING",
 					`Schema setting ${owner}.${index} must be an object`,
-					ast,
+					schema,
 				),
 			);
 			continue;
@@ -247,7 +315,7 @@ function collectSchemaSettings(
 					path,
 					"THEME_SCHEMA_INVALID_SETTING_TYPE",
 					`Schema setting ${owner}.${index} must have a non-empty string type`,
-					ast,
+					schema,
 				),
 			);
 			continue;
@@ -259,7 +327,7 @@ function collectSchemaSettings(
 					path,
 					"THEME_SCHEMA_INVALID_SETTING_ID",
 					`Schema setting ${owner}.${index} must have a non-empty string id`,
-					ast,
+					schema,
 				),
 			);
 			continue;
@@ -270,7 +338,7 @@ function collectSchemaSettings(
 					path,
 					"THEME_SCHEMA_DUPLICATE_SETTING_ID",
 					`Duplicate schema setting id ${setting.id} in ${owner}`,
-					ast,
+					schema,
 				),
 			);
 			continue;
@@ -283,7 +351,7 @@ function collectSchemaSettings(
 				blockType,
 				settingId: setting.id,
 				settingType: setting.type,
-				span: ast.schema?.span,
+				span: schema.span,
 			});
 		} else {
 			facts.push({
@@ -292,7 +360,7 @@ function collectSchemaSettings(
 				schemaPath,
 				settingId: setting.id,
 				settingType: setting.type,
-				span: ast.schema?.span,
+				span: schema.span,
 			});
 		}
 	}
@@ -302,14 +370,14 @@ function schemaShapeIssue(
 	path: string,
 	code: string,
 	message: string,
-	ast: PlainLiquidAst,
+	schema: AuthoredSchema,
 ): Diagnostic {
 	return {
 		severity: "error",
 		code,
 		message: `${message} in ${path}`,
 		phase: "parse",
-		span: ast.schema?.span,
+		span: schema.span,
 	};
 }
 

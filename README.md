@@ -24,7 +24,7 @@ The ecosystem offers many excellent tools, but each addresses only part of the p
 
 ## Quickstart
 
-Install the CLI first. The installer requires Node.js and `pnpm` (or Corepack, which can activate `pnpm`) and downloads the latest GitHub release artifact:
+Install the CLI first. The installer requires Node.js 20 or newer, selects the release artifact for the current OS and architecture, and verifies its SHA-256 checksum. Release artifacts include production dependencies; installation does not require pnpm, Python, node-gyp, or compiler tools:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh | sh
@@ -69,6 +69,31 @@ shopify theme dev --path /theme
 ```
 
 Nazare is designed for incremental adoption: start with existing Shopify Liquid files, add `.nz.liquid` components where stronger contracts help, then build everything into one normal Shopify theme.
+
+### Parser API over the CLI
+
+Analyze authored Shopify Liquid without compiling it:
+
+```sh
+nazare source analyze sections/header.liquid --format json
+cat sections/header.liquid | nazare source analyze --stdin --language liquid
+```
+
+Use `--language nazare-liquid` for Nazare syntax. The default is `liquid`.
+Output is versioned JSON containing `authoritative`, parse issues, embedded
+regions, and syntax facts. Invalid syntax exits non-zero and fails closed: facts
+are not projected from a partial CST. This command is suitable for Shopify CLI
+wrappers and CI scripts. See [`docs/source-analysis-cli.md`](docs/source-analysis-cli.md)
+for the JSON contract, exit codes, and integration example.
+
+Pin a release or installation directory when needed:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh \
+  | NAZARE_VERSION=v0.1.0 NAZARE_HOME="$HOME/.nazare" sh
+```
+
+Uninstall by removing `$HOME/.nazare`, or the custom `NAZARE_HOME` directory.
 
 Nazare has three main parts:
 

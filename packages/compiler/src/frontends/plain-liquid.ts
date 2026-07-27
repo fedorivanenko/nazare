@@ -1,18 +1,5 @@
-import type { ArtifactIR, ArtifactSyntaxNode, Diagnostic } from "@nazare/core";
-import { checkVanillaSchema } from "../check-vanilla.js";
-import type {
-	CompileInput,
-	CompilerFrontend,
-	FrontendResult,
-} from "../frontend.js";
-import { fileSyntaxId } from "../ids.js";
-import { markDiagnostics } from "../pipeline.js";
-import {
-	type PlainLiquidAst,
-	type PlainLiquidOptions,
-	parsePlainLiquid,
-} from "../plain-liquid.js";
-import { spanFromOffsets } from "../source.js";
+import type { Diagnostic } from "@nazare/core";
+import type { PlainLiquidAst, PlainLiquidParseMode } from "../plain-liquid.js";
 
 export type PlainLiquidFrontendMetadata = {
 	ast: PlainLiquidAst;
@@ -29,77 +16,53 @@ export const PLAIN_LIQUID_SUPPORT = {
 	rawInference: true,
 };
 
-export const plainLiquidFrontend: CompilerFrontend = {
-	name: "plain-liquid",
-	accepts(file: string): boolean {
-		return file.endsWith(".liquid") && !file.endsWith(".nz.liquid");
-	},
-	compile(input: CompileInput): FrontendResult {
-		const optionResolution = plainLiquidOptions(input.frontendOptions);
-		const ast = parsePlainLiquid(
-			input.source,
-			input.file,
-			optionResolution.options,
-		);
-		const syntax = plainLiquidSyntax(input.source, input.file);
-		const ir: ArtifactIR = { syntax, symbols: [], resolutions: [] };
+export const DEFAULT_PLAIN_LIQUID_PARSE_MODE: PlainLiquidParseMode = "strict";
 
-		return {
-			kind: "direct-ir",
-			syntax,
-			ir,
-			contractPath: input.file,
-			contracts: [],
-			issues: [
-				...markDiagnostics(optionResolution.issues, "parse"),
-				...markDiagnostics(ast.diagnostics, "parse"),
-				...markDiagnostics(checkVanillaSchema(ast), "check"),
-			],
-			notes: [],
-			sourceForEmit: input.source,
-			frontendSupport: PLAIN_LIQUID_SUPPORT,
-			contractProvenance: "none",
-			metadata: {
-				ast,
-				dependencies: ast.dependencies,
-				factsCollected: ast.factsCollected,
-				parseMode: ast.parseMode,
-			} satisfies PlainLiquidFrontendMetadata,
-		};
-	},
-};
+type PlainLiquidOptionResolution =
+	| { valid: true; options: { parseMode: PlainLiquidParseMode } }
+	| { valid: false; issues: Diagnostic[] };
 
-function plainLiquidSyntax(source: string, file: string): ArtifactSyntaxNode[] {
-	return [
-		{
-			id: fileSyntaxId(file),
-			kind: "file",
-			path: file,
-			span: spanFromOffsets(source, file, {
-				start: 0,
-				end: source.length,
-			}),
-		},
-	];
-}
-
-function plainLiquidOptions(
+export function resolvePlainLiquidOptions(
 	frontendOptions: Record<string, unknown> | undefined,
-): { options: PlainLiquidOptions; issues: Diagnostic[] } {
-	const parseMode = frontendOptions?.parseMode;
-	if (parseMode === undefined) return { options: {}, issues: [] };
-	if (parseMode === "strict" || parseMode === "liquid-only") {
-		return { options: { parseMode }, issues: [] };
+): PlainLiquidOptionResolution {
+	if (frontendOptions === undefined) {
+		return {
+			valid: true,
+			options: { parseMode: DEFAULT_PLAIN_LIQUID_PARSE_MODE },
+		};
 	}
-	return {
-		options: {},
-		issues: [
-			{
-				severity: "error",
-				code: "PLAIN_LIQUID_INVALID_FRONTEND_OPTION",
-				message:
-					'Invalid plain Liquid frontend option parseMode; expected "strict" or "liquid-only"',
-			},
-		],
-	};
+
+	const unknownOptions = Object.keys(frontendOptions).filter(
+		(name) => name !== "parseMode",
+	);
+	const parseMode = frontendOptions.parseMode;
+	const issues: Diagnostic[] = unknownOptions.map((name) => ({
+		severity: "error",
+		code: "PLAIN_LIQUID_UNKNOWN_FRONTEND_OPTION",
+		message: `Unknown plain Liquid frontend option ${JSON.stringify(name)}`,
+	}));
+	if (
+		parseMode !== undefined &&
+		parseMode !== "strict" &&
+		parseMode !== "liquid-only"
+	) {
+		issues.push({
+			severity: "error",
+			code: "PLAIN_LIQUID_INVALID_FRONTEND_OPTION",
+			message:
+				'Invalid plain Liquid frontend option parseMode; expected "strict" or "liquid-only"',
+		});
+	}
+	if (issues.length > 0) return { valid: false, issues };
+
+	if (parseMode === undefined) {
+		return {
+			valid: true,
+			options: { parseMode: DEFAULT_PLAIN_LIQUID_PARSE_MODE },
+		};
+	}
+	if (parseMode === "strict" || parseMode === "liquid-only") {
+		return { valid: true, options: { parseMode } };
+	}
+	throw new Error("Plain Liquid option validation reached an invalid state");
 }

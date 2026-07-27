@@ -6,23 +6,42 @@ import {
 	type FrontendResult,
 	NAZARE_LIQUID_SUPPORT,
 } from "../frontend.js";
-import { parseNazareLiquid } from "../parser.js";
 import { markDiagnostics } from "../pipeline.js";
-import { resolveAssetImports, resolveComponentContracts } from "../resolver.js";
+import {
+	createDependencyResolver,
+	resolveAssetImports,
+	resolveComponentContracts,
+} from "../resolver.js";
+import { projectTreeSitterNazareAst } from "../tree-sitter-nazare-projector.js";
 
-export const nazareLiquidFrontend: CompilerFrontend = {
-	name: "nazare-liquid",
+export const treeSitterNazareLiquidFrontend: CompilerFrontend = {
+	name: "tree-sitter-nazare-liquid",
 	accepts(file: string): boolean {
 		return file.endsWith(".nz.liquid");
 	},
 	compile(input: CompileInput): FrontendResult {
-		const parsedAst = parseNazareLiquid(input.source, input.file);
+		const optionNames = Object.keys(input.frontendOptions ?? {});
+		if (optionNames.length > 0) {
+			return {
+				kind: "failure",
+				issues: optionNames.map((name) => ({
+					severity: "error",
+					code: "NAZARE_LIQUID_UNKNOWN_FRONTEND_OPTION",
+					message: `Unknown Nazare Liquid frontend option ${JSON.stringify(name)}`,
+					phase: "parse",
+				})),
+				notes: [],
+			};
+		}
+		const projection = projectTreeSitterNazareAst(input.source, input.file);
+		const dependencyResolver =
+			input.dependencyResolver ?? createDependencyResolver(input.readFile);
 		const contractResolution = resolveComponentContracts(
-			parsedAst,
+			projection.ast,
 			input.readFile,
-			input.dependencyResolver,
+			dependencyResolver,
 		);
-		const assetResolution = resolveAssetImports(parsedAst, input.readFile);
+		const assetResolution = resolveAssetImports(projection.ast, input.readFile);
 
 		return {
 			kind: "nazare-ast",
@@ -33,6 +52,10 @@ export const nazareLiquidFrontend: CompilerFrontend = {
 			sourceForEmit: input.source,
 			frontendSupport: NAZARE_LIQUID_SUPPORT,
 			contractProvenance: contractProvenance(assetResolution.ast),
+			metadata: {
+				authoritative: projection.authoritative,
+				factCount: projection.factCount,
+			},
 		};
 	},
 };

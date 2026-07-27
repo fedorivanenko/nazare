@@ -1,0 +1,413 @@
+import type { SourceSpan } from "@nazare/core";
+import type { LiquidSyntaxFacts } from "@nazare/source";
+import { spanFromOffsets } from "./source.js";
+import { renderSiteKey, type ThemeFact } from "./theme-facts.js";
+import {
+	LIQUID_GLOBAL_NAMES,
+	lookupCapabilityRules,
+	SHOPIFY_DATA_OBJECTS,
+	textCapabilityRules,
+} from "./theme-liquid-policy.js";
+
+type Range = { start: number; end: number };
+type Binding = {
+	name: string;
+	scope: Range;
+	alias?: { root: string; path: string[] };
+};
+
+/** Applies theme semantics to canonical Tree-sitter Liquid facts. */
+export function collectTreeSitterSourceThemeFacts(
+	path: string,
+	source: string,
+	liquid: LiquidSyntaxFacts,
+): { facts: ThemeFact[]; issues: [] } {
+	if (!liquid.authoritative) return { facts: [], issues: [] };
+	const facts: ThemeFact[] = [];
+	const span = (range: Range): SourceSpan =>
+		spanFromOffsets(source, path, range);
+	const branchBodies = [
+		...liquid.blocks
+			.filter((block) => block.name === "for")
+			.map((block) => block.body),
+		...liquid.conditionals.flatMap((conditional) => conditional.branches),
+	];
+	const bindings: Binding[] = liquid.localBindings.map((binding) => ({
+		name: binding.name,
+		scope: narrowToBranch(binding.scope, branchBodies),
+		alias:
+			binding.via === "for" || binding.via === "tablerow"
+				? collectionElementAlias(binding.value)
+				: bareLookup(binding.value),
+	}));
+	promoteDefiniteAssignments(
+		bindings,
+		liquid.conditionals,
+		branchBodies,
+		source.length,
+	);
+	const visibleBinding = (name: string, at: number): Binding | undefined =>
+		bindings
+			.filter(
+				(binding) =>
+					binding.name === name &&
+					at >= binding.scope.start &&
+					at <= binding.scope.end,
+			)
+			.sort((left, right) => right.scope.start - left.scope.start)[0];
+	const resolve = (root: string, pathParts: string[], at: number) => {
+		let object = root;
+		let resolvedPath = [...pathParts];
+		for (let depth = 0; depth < 8; depth += 1) {
+			const binding = visibleBinding(object, at);
+			if (!binding?.alias) break;
+			resolvedPath = [...binding.alias.path, ...resolvedPath];
+			object = binding.alias.root;
+		}
+		return { object, path: resolvedPath };
+	};
+	const insideBranch = (at: number): boolean =>
+		branchBodies.some((body) => at >= body.start && at <= body.end);
+	const pushCapability = (
+		capability: string,
+		evidenceStrength: (typeof lookupCapabilityRules)[number]["evidenceStrength"],
+		at: SourceSpan,
+	): void => {
+		facts.push({
+			kind: "detectsCapability",
+			path,
+			capability,
+			evidenceStrength,
+			span: at,
+		});
+	};
+
+	for (const read of liquid.reads) {
+		const at = span(read.range);
+		const resolved = resolve(read.root, read.path, read.range.start);
+		const propertyPath =
+			resolved.path.length > 0 ? resolved.path.join(".") : undefined;
+		for (const rule of lookupCapabilityRules) {
+			if (rule.matches(resolved.object, propertyPath ?? "")) {
+				pushCapability(rule.capability, rule.evidenceStrength, at);
+			}
+		}
+		if (SHOPIFY_DATA_OBJECTS.has(resolved.object)) {
+			facts.push({
+				kind: "readsShopifyData",
+				fromPath: path,
+				object: resolved.object,
+				propertyPath,
+				expression: propertyPath
+					? `${resolved.object}.${propertyPath}`
+					: resolved.object,
+				conditional: insideBranch(read.range.start),
+				span: at,
+			});
+		} else if (
+			!LIQUID_GLOBAL_NAMES.has(resolved.object) &&
+			!visibleBinding(resolved.object, read.range.start)
+		) {
+			facts.push({
+				kind: "readsFreeVariable",
+				fromPath: path,
+				name: resolved.object,
+				propertyPath,
+				expression: propertyPath
+					? `${resolved.object}.${propertyPath}`
+					: resolved.object,
+				usage: read.inRenderArgument ? "renderArgument" : "expression",
+				span: at,
+			});
+		}
+	}
+
+	const safeInitializations = new Set<number>();
+	for (const binding of liquid.localBindings) {
+		const alias = bareLookup(binding.value);
+		if (!alias) continue;
+		const initialization = liquid.reads
+			.filter(
+				(read) =>
+					read.tag === "assign" &&
+					read.root === alias.root &&
+					read.range.end <= binding.scope.start,
+			)
+			.at(-1);
+		if (initialization) safeInitializations.add(initialization.range.start);
+	}
+	const defaulted = new Set(
+		liquid.guards
+			.filter((guard) => guard.via === "default")
+			.map((guard) => resolve(guard.name, [], guard.range.start).object),
+	);
+	const guardProxyTargets = new Map<string, Set<string>>();
+	for (const conditional of liquid.conditionals) {
+		if (!conditional.exhaustive || conditional.branches.length < 2) continue;
+		const primary = conditional.branches[0];
+		const alternate = conditional.branches.at(-1);
+		if (!primary || !alternate) continue;
+		const primaryBooleans = booleanBindingsIn(primary, liquid.localBindings);
+		const alternateBooleans = booleanBindingsIn(
+			alternate,
+			liquid.localBindings,
+		);
+		const conditionTargets = liquid.guards
+			.filter(
+				(guard) =>
+					guard.via === "guard" &&
+					guard.range.start >= conditional.range.start &&
+					guard.range.end <= primary.start,
+			)
+			.map((guard) => resolve(guard.name, [], guard.range.start).object);
+		for (const [name, value] of primaryBooleans) {
+			if (value !== true || alternateBooleans.get(name) === true) continue;
+			guardProxyTargets.set(name, new Set(conditionTargets));
+		}
+	}
+	const guarded = new Set<string>();
+	const guardRanges = new Map<string, Range[]>();
+	for (const guard of liquid.guards.filter(
+		(candidate) => candidate.via === "guard",
+	)) {
+		const resolvedGuard = resolve(guard.name, [], guard.range.start);
+		const directName =
+			resolvedGuard.path.length === 0 ? resolvedGuard.object : guard.name;
+		const names = new Set([
+			directName,
+			...(guardProxyTargets.get(guard.name) ?? []),
+		]);
+		for (const name of names) guarded.add(name);
+		const conditional = liquid.conditionals
+			.filter(
+				(candidate) =>
+					guard.range.start >= candidate.range.start &&
+					guard.range.end <= candidate.range.end,
+			)
+			.sort(
+				(left, right) =>
+					left.range.end -
+					left.range.start -
+					(right.range.end - right.range.start),
+			)[0];
+		const primary = conditional?.branches.find(
+			(branch) => branch.start >= guard.range.end,
+		);
+		if (!primary) continue;
+		for (const name of names) {
+			guardRanges.set(name, [...(guardRanges.get(name) ?? []), primary]);
+		}
+		if (
+			liquid.localBindings.some(
+				(binding) =>
+					binding.name === guard.name &&
+					binding.scope.start >= primary.start &&
+					binding.scope.start <= primary.end,
+			)
+		) {
+			defaulted.add(directName);
+		}
+	}
+	const unguarded = new Set(
+		liquid.reads
+			.filter((read) => {
+				if (safeInitializations.has(read.range.start)) return false;
+				if (read.inCondition) return false;
+				const name = resolve(read.root, read.path, read.range.start).object;
+				return !(guardRanges.get(name) ?? []).some(
+					(range) =>
+						read.range.start >= range.start && read.range.end <= range.end,
+				);
+			})
+			.map((read) => resolve(read.root, read.path, read.range.start).object),
+	);
+	for (const name of new Set([...guarded, ...defaulted])) {
+		if (unguarded.has(name) && !defaulted.has(name)) continue;
+		facts.push({
+			kind: "guardsObject",
+			fromPath: path,
+			name,
+			via: defaulted.has(name) ? "default" : "guard",
+		});
+	}
+
+	for (const reference of liquid.assetReferences) {
+		facts.push({
+			kind: "referencesAsset",
+			fromPath: path,
+			targetName: reference.value,
+			static: true,
+			span: span(reference.range),
+		});
+	}
+	for (const reference of liquid.localeReferences) {
+		facts.push({
+			kind: "referencesLocaleKey",
+			fromPath: path,
+			key: reference.value,
+			static: true,
+			span: span(reference.range),
+		});
+	}
+	for (const param of liquid.docParams) {
+		facts.push({
+			kind: "declaresDocParam",
+			path,
+			name: param.name,
+			required: param.required,
+			paramType: param.paramType,
+			description: param.description,
+			span: span(param.range),
+		});
+	}
+	for (const argument of liquid.renderArguments) {
+		if (!argument.targetName) continue;
+		facts.push({
+			kind: "passesRenderArgument",
+			fromPath: path,
+			targetName: argument.targetName,
+			siteId: renderSiteKey(path, span(argument.siteRange)),
+			argumentName: argument.argumentName,
+			valueExpression: argument.valueExpression,
+			...argumentSource(argument.source, argument.implicit),
+			span: span(argument.range),
+		});
+	}
+
+	for (const rule of textCapabilityRules) {
+		rule.pattern.lastIndex = 0;
+		let match = rule.pattern.exec(source);
+		while (match) {
+			pushCapability(
+				rule.capability,
+				rule.evidenceStrength,
+				span({ start: match.index, end: match.index + match[0].length }),
+			);
+			match = rule.pattern.exec(source);
+		}
+	}
+	return { facts, issues: [] };
+}
+
+function booleanBindingsIn(
+	range: Range,
+	bindings: LiquidSyntaxFacts["localBindings"],
+): Map<string, boolean> {
+	const values = new Map<string, boolean>();
+	for (const binding of bindings) {
+		if (
+			binding.via !== "assign" ||
+			binding.scope.start < range.start ||
+			binding.scope.start > range.end
+		)
+			continue;
+		if (binding.value?.trim() === "true") values.set(binding.name, true);
+		if (binding.value?.trim() === "false") values.set(binding.name, false);
+	}
+	return values;
+}
+
+function argumentSource(
+	source: { root: string; path: string[] } | undefined,
+	implicit: boolean,
+): { sourceObject?: string; sourcePath?: string } {
+	if (!source) return {};
+	const propertyPath = source.path.join(".");
+	if (
+		(source.root === "section" || source.root === "block") &&
+		propertyPath.startsWith("settings.")
+	) {
+		return {
+			sourceObject: `${source.root}.settings`,
+			sourcePath: propertyPath.slice("settings.".length),
+		};
+	}
+	if (!SHOPIFY_DATA_OBJECTS.has(source.root)) return {};
+	if (implicit) {
+		const element = collectionElementAlias(
+			[source.root, propertyPath].filter(Boolean).join("."),
+		);
+		if (element) return { sourceObject: element.root };
+	}
+	return {
+		sourceObject: source.root,
+		sourcePath: propertyPath || undefined,
+	};
+}
+
+function bareLookup(value: string | undefined): Binding["alias"] {
+	if (!value || value.includes("|")) return undefined;
+	if (
+		["true", "false", "nil", "null", "blank", "empty"].includes(value.trim())
+	) {
+		return undefined;
+	}
+	const match = value.trim().match(/^([A-Za-z_$][\w$]*)(?:\.([\w$.]+))?$/);
+	if (!match) return undefined;
+	return { root: match[1] as string, path: match[2]?.split(".") ?? [] };
+}
+
+function collectionElementAlias(value: string | undefined): Binding["alias"] {
+	const collection = bareLookup(value);
+	if (!collection) return undefined;
+	const propertyPath = collection.path.join(".");
+	if (collection.root === "collection" && propertyPath === "products") {
+		return { root: "product", path: [] };
+	}
+	if (collection.root === "product" && propertyPath === "variants") {
+		return { root: "variant", path: [] };
+	}
+	return undefined;
+}
+
+function narrowToBranch(scope: Range, branches: Range[]): Range {
+	const containing = branches
+		.filter(
+			(branch) => scope.start >= branch.start && scope.start <= branch.end,
+		)
+		.sort((left, right) => right.start - left.start)[0];
+	return containing
+		? { start: scope.start, end: Math.min(scope.end, containing.end) }
+		: scope;
+}
+
+function promoteDefiniteAssignments(
+	bindings: Binding[],
+	conditionals: LiquidSyntaxFacts["conditionals"],
+	branches: Range[],
+	fileEnd: number,
+): void {
+	const covers = (binding: Binding, branch: Range): boolean =>
+		binding.scope.start >= branch.start && binding.scope.end >= branch.end;
+	for (const conditional of [...conditionals].sort(
+		(left, right) => left.range.end - right.range.end,
+	)) {
+		if (
+			conditional.name === "case" ||
+			!conditional.exhaustive ||
+			conditional.branches.length === 0
+		)
+			continue;
+		const [first, ...rest] = conditional.branches;
+		if (!first) continue;
+		for (const binding of [...bindings]) {
+			if (!covers(binding, first)) continue;
+			if (
+				!rest.every((branch) =>
+					bindings.some(
+						(candidate) =>
+							candidate.name === binding.name && covers(candidate, branch),
+					),
+				)
+			)
+				continue;
+			bindings.push({
+				name: binding.name,
+				scope: narrowToBranch(
+					{ start: conditional.range.end, end: fileEnd },
+					branches,
+				),
+			});
+		}
+	}
+}

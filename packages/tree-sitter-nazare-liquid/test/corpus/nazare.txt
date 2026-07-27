@@ -1,0 +1,52 @@
+==================
+Nazare declarations
+==================
+
+{% component section %}
+{% import Card from "./card.nz.liquid" %}
+{% props { title: string.setting(label: "Title"), count: number } %}
+{% render Card { title: props.title, count: 1 } %}
+{% blocks Card, Banner %}
+
+---
+
+(program
+  (nazare_component_statement)
+  (nazare_import_statement
+    local_name: (identifier)
+    source: (string))
+  (nazare_props_statement)
+  (nazare_render_statement
+    target: (identifier))
+  (nazare_blocks_statement
+    name: (identifier)
+    name: (identifier))
+  (template_content))
+
+==================
+Raw script closing tags in literals
+==================
+
+{% script lang="ts" %}const a="{% endscript %}"; const r=/{% endscript %}/;{% endscript %}
+
+---
+
+(program
+  (nazare_script_statement
+    language: (string)
+    body: (nazare_script_content))
+  (template_content))
+
+==================
+Raw stylesheet closing tags in literals
+==================
+
+{% stylesheet styles %}.x{content:"{% endstylesheet %}"}{% endstylesheet %}
+
+---
+
+(program
+  (stylesheet_statement
+    binding: (identifier)
+    body: (nazare_stylesheet_content))
+  (template_content))

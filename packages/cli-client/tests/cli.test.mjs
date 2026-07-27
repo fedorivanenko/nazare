@@ -70,6 +70,106 @@ const BUILD_MANIFEST = JSON.stringify({
 	build: { sourceRoot: "nazare", outDir: ".nazare-out/theme" },
 });
 
+test("cli: reports its development package version", {
+	smoke: true,
+}, async () => {
+	const out = await runCli(process.cwd(), "--version");
+	assert.equal(out.status, 0, out.stderr);
+	assert.equal(out.stdout.trim(), "0.0.0");
+});
+
+test("cli: source analyze emits authoritative plain-Liquid facts", {
+	smoke: true,
+}, async () => {
+	await withProject(
+		{ "snippets/card.liquid": "{{ product.title }}" },
+		async (cwd) => {
+			const out = await runCli(
+				cwd,
+				"source",
+				"analyze",
+				"snippets/card.liquid",
+			);
+			assert.equal(out.status, 0, out.stderr);
+			const result = JSON.parse(out.stdout);
+			assert.equal(result.schemaVersion, 1);
+			assert.equal(result.language, "liquid");
+			assert.equal(result.authoritative, true);
+			assert.equal(result.syntax.liquid.reads[0].root, "product");
+		},
+	);
+});
+
+test("cli: source analyze fails closed for malformed source", {
+	smoke: true,
+}, async () => {
+	await withProject({ "broken.liquid": "{% if product %}" }, async (cwd) => {
+		const out = await runCli(cwd, "source", "analyze", "broken.liquid");
+		assert.equal(out.status, 1, out.stderr);
+		const result = JSON.parse(out.stdout);
+		assert.equal(result.authoritative, false);
+		assert.ok(result.issues.length > 0);
+		assert.deepEqual(result.syntax.liquid.reads, []);
+	});
+});
+
+test("cli: source analysis JSON schema matches golden contracts", {
+	smoke: true,
+}, async () => {
+	for (const fixture of [
+		{ name: "liquid", file: "input.liquid", args: [], status: 0 },
+		{
+			name: "nazare",
+			file: "input.nz.liquid",
+			args: ["--language", "nazare-liquid"],
+			status: 0,
+		},
+		{ name: "malformed", file: "input.liquid", args: [], status: 1 },
+	]) {
+		const fixtureRoot = resolve(
+			"packages/cli-client/tests/fixtures/source-analysis",
+			fixture.name,
+		);
+		const source = readFileSync(join(fixtureRoot, fixture.file), "utf8");
+		const expected = JSON.parse(
+			readFileSync(join(fixtureRoot, "expected.json"), "utf8"),
+		);
+		await withProject({ [fixture.file]: source }, async (cwd) => {
+			const out = await runCli(
+				cwd,
+				"source",
+				"analyze",
+				fixture.file,
+				...fixture.args,
+			);
+			assert.equal(out.status, fixture.status, out.stderr);
+			assert.deepEqual(JSON.parse(out.stdout), expected);
+		});
+	}
+});
+
+test("cli: source analyze supports the explicit Nazare grammar", {
+	smoke: true,
+}, async () => {
+	await withProject(
+		{ "card.nz.liquid": "{% component snippet %}<div></div>" },
+		async (cwd) => {
+			const out = await runCli(
+				cwd,
+				"source",
+				"analyze",
+				"card.nz.liquid",
+				"--language",
+				"nazare-liquid",
+			);
+			assert.equal(out.status, 0, out.stderr);
+			const result = JSON.parse(out.stdout);
+			assert.equal(result.language, "nazare-liquid");
+			assert.equal(result.syntax.nazare[0].kind, "component");
+		},
+	);
+});
+
 test("cli: init scaffolds build config and creates the source dir", {
 	smoke: true,
 }, async () => {

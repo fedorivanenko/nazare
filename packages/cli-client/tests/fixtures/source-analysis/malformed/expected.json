@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "file": "input.liquid",
+  "language": "liquid",
+  "authoritative": false,
+  "issues": [
+    {
+      "code": "TREE_SITTER_ERROR",
+      "range": {
+        "start": 0,
+        "end": 37
+      },
+      "message": "Unexpected syntax: {% if product %}\n{{ product.title }}\n"
+    }
+  ],
+  "embeddedRegions": [],
+  "syntax": {
+    "liquid": {
+      "authoritative": false,
+      "dependencies": [],
+      "settingsReads": [],
+      "blocks": [],
+      "conditionals": [],
+      "localBindings": [],
+      "renderArguments": [],
+      "assetReferences": [],
+      "localeReferences": [],
+      "docParams": [],
+      "reads": [],
+      "guards": []
+    }
+  }
+}

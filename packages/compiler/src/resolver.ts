@@ -10,15 +10,12 @@ import type {
 } from "./ast.js";
 import type { CompilerMode } from "./check.js";
 import { importCycle, importNotFound } from "./diagnostics.js";
-import {
-	parseNazareLiquid,
-	scanDataAccesses,
-	scanRefAccesses,
-} from "./parser.js";
 import { markDiagnostics, projectArtifact } from "./pipeline.js";
 import type { ReadFile } from "./read-file.js";
+import { scanDataAccesses, scanRefAccesses } from "./script-accesses.js";
 import { bindArtifactIR, contractFromIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
+import { projectTreeSitterNazareAst } from "./tree-sitter-nazare-projector.js";
 
 export type { ReadFile } from "./read-file.js";
 
@@ -59,7 +56,9 @@ export function createDependencyResolver(
 		if (astCache.has(path)) return astCache.get(path);
 		const contents = readFile?.(path);
 		const ast =
-			contents === undefined ? undefined : parseNazareLiquid(contents, path);
+			contents === undefined
+				? undefined
+				: projectTreeSitterNazareAst(contents, path).ast;
 		astCache.set(path, ast);
 		return ast;
 	};
@@ -129,7 +128,10 @@ export function createDependencyResolver(
 		return { contracts, issues };
 	};
 
-	return { loadAst, resolveComponentContracts: resolveContractsForAst };
+	return {
+		loadAst,
+		resolveComponentContracts: resolveContractsForAst,
+	};
 }
 
 /**
@@ -159,7 +161,10 @@ export function resolveComponentContracts(
 export function checkDependencies(
 	ast: NazareAst,
 	readFile: ReadFile | undefined,
-	options: { mode?: CompilerMode; resolver?: DependencyResolver } = {},
+	options: {
+		mode?: CompilerMode;
+		resolver?: DependencyResolver;
+	} = {},
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const checked = new Set<string>();

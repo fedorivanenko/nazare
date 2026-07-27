@@ -6,6 +6,9 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "engines": {
+    "node": ">=20"
+  },
   "bin": {
     "nazare": "dist/index.js"
   },
@@ -16,6 +19,7 @@
     "@nazare/compiler": "workspace:^",
     "@nazare/core": "workspace:^",
     "@nazare/registry": "workspace:^",
+    "@nazare/source": "workspace:^",
     "@nazare/theme": "workspace:^"
   }
 }

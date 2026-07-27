@@ -46,7 +46,7 @@ export function syntaxFromAst(ast: NazareAst): ArtifactSyntaxNode[] {
 	const syntax: ArtifactSyntaxNode[] = [];
 	const fileId = fileSyntaxId(ast.file);
 	const componentId = componentSyntaxId(ast.file);
-	const source = ast.liquidAst._source;
+	const source = ast.source;
 	const fileSpan = spanFromOffsets(source, ast.file, {
 		start: 0,
 		end: source.length,

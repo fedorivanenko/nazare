@@ -13,6 +13,7 @@ import type {
 	Diagnostic,
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
+import { DEFAULT_COMPILER_MODE } from "./check.js";
 import type {
 	CompileInput,
 	CompilerFrontend,
@@ -20,11 +21,9 @@ import type {
 	FrontendResult,
 	FrontendSupport,
 } from "./frontend.js";
-import { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
-import {
-	type PlainLiquidFrontendMetadata,
-	plainLiquidFrontend,
-} from "./frontends/plain-liquid.js";
+import type { PlainLiquidFrontendMetadata } from "./frontends/plain-liquid.js";
+import { treeSitterNazareLiquidFrontend } from "./frontends/tree-sitter-nazare-liquid.js";
+import { treeSitterPlainLiquidFrontend } from "./frontends/tree-sitter-plain-liquid.js";
 import { artifactGraphFromIR } from "./graph.js";
 import {
 	type ProjectedArtifact,
@@ -73,6 +72,7 @@ export {
 	checkContractConstraints,
 	checkScriptConstraints,
 	checkStyleConstraints,
+	DEFAULT_COMPILER_MODE,
 } from "./check.js";
 export { checkComponentScripts } from "./check-script.js";
 export {
@@ -99,27 +99,27 @@ export type {
 	FrontendResult,
 	FrontendSupport,
 } from "./frontend.js";
-export { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
 export {
+	DEFAULT_PLAIN_LIQUID_PARSE_MODE,
 	PLAIN_LIQUID_SUPPORT,
 	type PlainLiquidFrontendMetadata,
-	plainLiquidFrontend,
+	resolvePlainLiquidOptions,
 } from "./frontends/plain-liquid.js";
+export { treeSitterNazareLiquidFrontend } from "./frontends/tree-sitter-nazare-liquid.js";
+export { treeSitterPlainLiquidFrontend } from "./frontends/tree-sitter-plain-liquid.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
 export { mergeArtifactIR } from "./merge.js";
-export { parseNazareLiquid } from "./parser.js";
 export { baseNameOf, resolveImportPath } from "./paths.js";
-export {
-	type BuildPlainLiquidOptions,
-	type BuildPlainLiquidResult,
-	type CompilePlainLiquidResult,
-	type PlainLiquidAst,
-	type PlainLiquidDependency,
-	type PlainLiquidDependencyKind,
-	type PlainLiquidOptions,
-	type PlainLiquidParseMode,
-	parsePlainLiquid,
+export type {
+	BuildPlainLiquidOptions,
+	BuildPlainLiquidResult,
+	CompilePlainLiquidResult,
+	PlainLiquidAst,
+	PlainLiquidDependency,
+	PlainLiquidDependencyKind,
+	PlainLiquidOptions,
+	PlainLiquidParseMode,
 } from "./plain-liquid.js";
 export {
 	checkDependencies,
@@ -378,6 +378,10 @@ export {
 	THEME_ANALYSIS_DEFAULTS,
 	THEME_BUILD_DEFAULTS,
 } from "./theme-workspace.js";
+export {
+	projectTreeSitterNazareAst,
+	type TreeSitterNazareProjection,
+} from "./tree-sitter-nazare-projector.js";
 export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 
 export type CompileNazareArtifactOptions = Pick<
@@ -455,13 +459,15 @@ export function compileArtifact(
 ): CompileArtifactResult {
 	const frontend = selectFrontend(options);
 	if (!frontend) return unsupportedInput(options);
+	const strictness = options.strictness ?? DEFAULT_COMPILER_MODE;
+	const normalizedOptions = { ...options, strictness };
 
-	const frontendResult = frontend.compile(options);
+	const frontendResult = frontend.compile(normalizedOptions);
 	switch (frontendResult.kind) {
 		case "nazare-ast": {
 			const projected = projectArtifact(frontendResult.ast, {
 				contracts: frontendResult.contracts,
-				mode: options.strictness,
+				mode: strictness,
 				resolveIssues: frontendResult.resolveIssues,
 			});
 			return compileSuccess(frontend.name, frontendResult, projected);
@@ -469,12 +475,20 @@ export function compileArtifact(
 		case "direct-ir": {
 			const projected = projectIR(frontendResult.syntax, frontendResult.ir, {
 				contracts: frontendResult.contracts,
-				mode: options.strictness,
+				mode: strictness,
 				contractPath: frontendResult.contractPath,
 				issues: frontendResult.issues,
 			});
 			return compileSuccess(frontend.name, frontendResult, projected);
 		}
+		case "failure":
+			return {
+				ok: false,
+				frontend: frontend.name,
+				issues: frontendResult.issues,
+				notes: frontendResult.notes,
+				canEmit: false,
+			};
 	}
 }
 
@@ -488,7 +502,6 @@ export function compileNazareArtifact(
 		source,
 		file,
 		...options,
-		frontend: nazareLiquidFrontend,
 	});
 	if (!compiled.ok) {
 		throw new Error(
@@ -510,7 +523,6 @@ export function compilePlainLiquid(
 	const compiled = compileArtifact({
 		source,
 		file,
-		frontend: plainLiquidFrontend,
 		frontendOptions: options,
 	});
 	if (!compiled.ok) {
@@ -532,7 +544,9 @@ export function buildPlainLiquid(
 	file: string,
 	options: BuildPlainLiquidOptions = {},
 ): BuildPlainLiquidResult {
-	const compiled = compilePlainLiquid(source, file, options);
+	const compiled = compilePlainLiquid(source, file, {
+		parseMode: options.parseMode,
+	});
 	const emittedOnError = !compiled.canEmit && (options.emitOnError ?? false);
 	const shouldEmit = compiled.canEmit || emittedOnError;
 	return {
@@ -570,7 +584,7 @@ function isPlainLiquidAst(value: unknown): value is PlainLiquidAst {
 
 function compileSuccess(
 	frontend: string,
-	frontendResult: FrontendResult,
+	frontendResult: Exclude<FrontendResult, { kind: "failure" }>,
 	projected: ProjectedArtifact,
 ): CompileArtifactSuccess {
 	return {
@@ -599,11 +613,11 @@ function selectFrontend(
 	for (const frontend of options.frontends ?? []) {
 		if (frontend.accepts(options.file, options.source)) return frontend;
 	}
-	if (nazareLiquidFrontend.accepts(options.file, options.source)) {
-		return nazareLiquidFrontend;
+	if (treeSitterNazareLiquidFrontend.accepts(options.file, options.source)) {
+		return treeSitterNazareLiquidFrontend;
 	}
-	if (plainLiquidFrontend.accepts(options.file, options.source)) {
-		return plainLiquidFrontend;
+	if (treeSitterPlainLiquidFrontend.accepts(options.file, options.source)) {
+		return treeSitterPlainLiquidFrontend;
 	}
 	return undefined;
 }

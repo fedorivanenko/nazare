@@ -1,0 +1,5 @@
+{% component snippet %}
+{% props { title: string.required() } %}
+<div>{{ props.title }}</div>
+{% script lang="ts" %}export default island(() => {});{% endscript %}
+{% stylesheet %}.root { color: red; }{% endstylesheet %}

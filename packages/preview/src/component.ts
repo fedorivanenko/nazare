@@ -4,7 +4,7 @@
 import {
 	buildNazareThemeWorkspace,
 	buildPlainLiquid,
-	parseNazareLiquid,
+	projectTreeSitterNazareAst,
 } from "@nazare/compiler";
 import type { ArtifactContract, ComponentKind, Diagnostic } from "@nazare/core";
 import { controlsFromContract, type PreviewControl } from "./controls.js";
@@ -165,7 +165,7 @@ function importClosure(
 		const path = pending.pop();
 		const contents = path === undefined ? undefined : files.get(path);
 		if (path === undefined || contents === undefined) continue;
-		for (const node of parseNazareLiquid(contents, path).nodes) {
+		for (const node of projectTreeSitterNazareAst(contents, path).ast.nodes) {
 			if (node.type !== "NazareImport" || files.has(node.path)) continue;
 			const imported = readFile(node.path);
 			if (imported === undefined) continue;

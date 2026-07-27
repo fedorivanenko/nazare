@@ -25,16 +25,16 @@ source
 compiler frontend selection
   - explicit frontend option
   - caller frontends in order
-  - built-in nazareLiquidFrontend for .nz.liquid
+  - built-in Tree-sitter frontends for .nz.liquid and .liquid
   - unsupported inputs return diagnostics, not fabricated contracts
   │
   ▼
 selected frontend
   ├─ nazare-ast result
-  │    parseNazareLiquid
-  │      - tolerant LiquidHTML parse
-  │      - extracts Nazare nodes
-  │      - records source spans and unsupported Liquid/HTML notes
+  │    projectTreeSitterNazareAst
+  │      - fail-closed Tree-sitter parse
+  │      - extracts Nazare nodes and canonical Liquid facts
+  │      - records UTF-16 source spans
   │    resolveComponentContracts / resolveAssetImports
   │      - only place that reads project files through readFile(path)
   │      - component imports become contracts

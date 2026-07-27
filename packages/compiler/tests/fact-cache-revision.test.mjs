@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 
 const generator = resolve("scripts/generate-fact-cache-revision.mjs");
-const probeFile = resolve("packages/compiler/src/theme-source-facts.ts");
+const probeFile = resolve("packages/compiler/src/theme-tree-sitter-facts.ts");
 const generatedFile = resolve("packages/compiler/src/fact-cache-revision.ts");
 const workspaceFile = resolve("packages/compiler/src/theme-workspace.ts");
 
