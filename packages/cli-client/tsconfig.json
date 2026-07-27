@@ -9,6 +9,7 @@
   "references": [
     { "path": "../compiler" },
     { "path": "../registry" },
+    { "path": "../source" },
     { "path": "../theme" }
   ]
 }

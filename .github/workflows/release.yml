@@ -27,8 +27,11 @@ jobs:
       - run: pnpm -s typecheck
       - run: pnpm dlx @biomejs/biome@2.4.14 check .
       - run: pnpm -s test:all
-      - run: ./scripts/package-cli.sh "${GITHUB_REF_NAME}-${RUNNER_OS}-${RUNNER_ARCH}"
-      - run: ./scripts/smoke-packaged-cli.sh ".release/nazare-cli-${GITHUB_REF_NAME}-${RUNNER_OS}-${RUNNER_ARCH}.tar.gz"
+      - run: ./scripts/package-cli.sh "${GITHUB_REF_NAME}"
+      - run: ./scripts/smoke-packaged-cli.sh .release/*.tar.gz
+      - run: ./scripts/smoke-installer.sh "${GITHUB_REF_NAME}"
       - uses: softprops/action-gh-release@v2
         with:
-          files: .release/nazare-cli-${{ github.ref_name }}-${{ runner.os }}-${{ runner.arch }}.tar.gz
+          files: |
+            .release/*.tar.gz
+            .release/*.tar.gz.sha256

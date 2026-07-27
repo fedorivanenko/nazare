@@ -16,6 +16,7 @@
     "@nazare/compiler": "workspace:^",
     "@nazare/core": "workspace:^",
     "@nazare/registry": "workspace:^",
+    "@nazare/source": "workspace:^",
     "@nazare/theme": "workspace:^"
   }
 }

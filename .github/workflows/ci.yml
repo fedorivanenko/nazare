@@ -38,13 +38,15 @@ jobs:
         run: ./scripts/package-cli.sh "pr-${{ github.event.pull_request.number }}-${{ github.sha }}"
       - name: smoke packaged CLI and native grammars
         if: github.event_name == 'pull_request'
-        run: ./scripts/smoke-packaged-cli.sh ".release/nazare-cli-pr-${{ github.event.pull_request.number }}-${{ github.sha }}.tar.gz"
+        run: ./scripts/smoke-packaged-cli.sh .release/*.tar.gz
       - name: upload ephemeral PR artifact
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: nazare-cli-pr-${{ github.event.pull_request.number }}-${{ github.sha }}
-          path: .release/nazare-cli-pr-${{ github.event.pull_request.number }}-${{ github.sha }}.tar.gz
+          path: |
+            .release/*.tar.gz
+            .release/*.tar.gz.sha256
           retention-days: 14
       - name: dist is not committed
         run: test -z "$(git ls-files '*/dist/*')"

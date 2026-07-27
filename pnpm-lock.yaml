@@ -57,6 +57,9 @@ importers:
       '@nazare/registry':
         specifier: workspace:^
         version: link:../registry
+      '@nazare/source':
+        specifier: workspace:^
+        version: link:../source
       '@nazare/theme':
         specifier: workspace:^
         version: link:../theme

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import {
 	mkdir,
 	readFile,
@@ -19,6 +19,7 @@ import {
 	sep,
 } from "node:path";
 import { createInterface } from "node:readline/promises";
+import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
 	checkComponentScripts,
@@ -44,6 +45,7 @@ import { diffComponent, installComponent, updateAll } from "./install.js";
 import { type CliOptions, parseCliOptions, printHelp } from "./options.js";
 import type { Output } from "./output.js";
 import { packComponent, publishComponent } from "./publish.js";
+import { runSourceCommand } from "./source-command.js";
 
 const THEME_MANIFEST = "nazare.theme.json";
 
@@ -64,7 +66,12 @@ const INSPECT_VIEWS = new Set([
 /** Registry verbs common enough to also answer at the top level. */
 const REGISTRY_ALIASES = new Set(["add", "update", "publish"]);
 
-type MainOptions = { cwd?: string; env?: NodeJS.ProcessEnv; output?: Output };
+type MainOptions = {
+	cwd?: string;
+	env?: NodeJS.ProcessEnv;
+	output?: Output;
+	input?: Readable;
+};
 
 export async function main(
 	args = process.argv.slice(2),
@@ -73,6 +80,11 @@ export async function main(
 	const output = options.output ?? console;
 	const env = options.env ?? process.env;
 	const command = args[0];
+
+	if (command === "--version" || command === "version") {
+		output.log(readCliVersion());
+		return 0;
+	}
 
 	if (
 		!command ||
@@ -91,6 +103,14 @@ export async function main(
 		// sees is identified by its root-relative POSIX path, and readProjectFile
 		// is the compiler's entire filesystem.
 		const projectRoot = options.cwd ?? process.cwd();
+		if (command === "source") {
+			return await runSourceCommand(
+				projectRoot,
+				cliOptions,
+				output,
+				options.input ?? process.stdin,
+			);
+		}
 		const readProjectFile = (path: string): string | undefined => {
 			try {
 				return readFileSync(join(projectRoot, path), "utf8");
@@ -292,8 +312,16 @@ export async function main(
 	}
 }
 
-if (fileURLToPath(import.meta.url) === resolve(process.argv[1] ?? "")) {
+if (isCliEntrypoint(process.argv[1])) {
 	process.exit(await main());
+}
+
+function isCliEntrypoint(argument: string | undefined): boolean {
+	if (!argument) return false;
+	return (
+		realpathSync(fileURLToPath(import.meta.url)) ===
+		realpathSync(resolve(argument))
+	);
 }
 
 type ProjectManifest = {
@@ -896,6 +924,29 @@ function assertRegistryName(name: string): void {
 	throw new Error(
 		`Invalid registry name ${name}; use only letters, numbers, dot, underscore, and dash`,
 	);
+}
+
+function readCliVersion(): string {
+	for (const url of [
+		new URL("../../../VERSION", import.meta.url),
+		new URL("../package.json", import.meta.url),
+	]) {
+		try {
+			const value = readFileSync(fileURLToPath(url), "utf8").trim();
+			if (url.pathname.endsWith("package.json")) {
+				const packageMetadata = JSON.parse(value) as { version?: unknown };
+				if (typeof packageMetadata.version === "string") {
+					return packageMetadata.version;
+				}
+				throw new Error("CLI package version must be a string");
+			}
+			if (value.length > 0) return value;
+		} catch (error) {
+			if (isMissingFileError(error)) continue;
+			throw error;
+		}
+	}
+	throw new Error("Unable to determine Nazare CLI version");
 }
 
 function hasErrors(
