@@ -104,6 +104,13 @@ across the top of the narrowest column, which is the one place on the page with
 no room for them. A label and a control per row in a column that is already
 scrolling costs nothing and reads at a glance.
 
+The canvas sits inset on the stage, with its own border and shadow, because a
+frame that runs edge to edge butts against the sidebar's border and reads as a
+continuation of the panel beside it rather than as the separate surface it is.
+The middle column also has a floor: two fixed side columns against a `1fr`
+middle means the viewport is what gives way when the window narrows, and the
+viewport is the one thing on the page that must not.
+
 The layout is CSS — one `grid-template-columns` on `.workbench`, collapsing to
 `0px` per side. The state is JavaScript: every component's panel is in the DOM
 at once and toggled with `hidden`, and selection reads the `#story-index` JSON.

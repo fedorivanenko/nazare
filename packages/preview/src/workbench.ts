@@ -226,7 +226,10 @@ const WORKBENCH_STYLES = `
    * the point of collapsing, so the columns go to zero rather than to a rail. */
   .workbench {
     display: grid;
-    grid-template-columns: var(--sidebar-width, 240px) minmax(0, 1fr) var(--docs-width, 320px);
+    /* The middle column has a floor. Two fixed side columns against a 1fr
+     * middle means the viewport is what gives way when the window narrows, and
+     * the viewport is the one thing on the page that must not. */
+    grid-template-columns: var(--sidebar-width, 240px) minmax(360px, 1fr) var(--docs-width, 320px);
     height: calc(100% - 52px);
   }
   .workbench[data-sidebar="closed"] { --sidebar-width: 0px; }
@@ -333,19 +336,28 @@ const WORKBENCH_STYLES = `
   }
   .canvas-title { font-weight: 500; }
   .canvas-title .muted { font-weight: 400; }
-  /* The stage holds the canvas at a viewport width, centred, with the edges
-   * visible — a narrow frame in a wide stage should read as a device, not as a
-   * layout bug. */
-  .canvas-stage { flex: none; display: flex; justify-content: center; background: var(--muted); }
+  /* The stage is the ground the story sits on, and the story is a surface on
+   * it. Without the inset the frame runs edge to edge and butts against the
+   * sidebar's border, so the viewport reads as a continuation of the panel next
+   * to it rather than as the separate thing it is. */
+  .canvas-stage {
+    flex: 1 1 auto;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 1.25rem;
+    background: var(--muted);
+  }
   .canvas {
     flex: none;
     width: 100%;
     min-height: 320px;
-    border: 0;
     display: block;
     background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 8px 24px rgb(0 0 0 / .05);
   }
-  .canvas[data-viewport] { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
   /* The call that reproduces the story: the one thing on this page meant to be
    * copied out and pasted into a theme, so it sits directly under the render
    * rather than in the component panel below. */
@@ -452,9 +464,13 @@ const WORKBENCH_STYLES = `
   .code .copy { position: absolute; top: .6rem; right: .6rem; }
   .code pre { margin: 0; padding: 1rem 1.1rem; overflow-x: auto; font-size: .78rem; line-height: 1.55; }
   .caveat { padding: .6rem 1.25rem; font-size: .74rem; color: var(--muted-foreground); border-top: 1px solid var(--border); }
-  @media (max-width: 720px) {
+  /* 240 + 360 + 320 is the narrowest the three columns fit; below that they
+   * stack rather than squeezing the viewport past its floor. */
+  @media (max-width: 920px) {
     .workbench { grid-template-columns: minmax(0, 1fr); height: auto; }
     .sidebar { border-right: 0; border-bottom: 1px solid var(--border); max-height: 40vh; }
+    .docs { border-left: 0; border-top: 1px solid var(--border); }
+    .workbench[data-sidebar="closed"], .workbench[data-docs="closed"] { grid-template-columns: minmax(0, 1fr); }
   }
 `;
 
