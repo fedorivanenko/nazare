@@ -17,9 +17,9 @@ import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import type { NazareManifest } from "@nazare/core";
 import {
+	galleryPage,
 	type PreviewComponent,
 	type PreviewStory,
-	galleryPage,
 	parseStoryFile,
 	previewComponentFromSource,
 	type RenderedComponent,
@@ -229,7 +229,9 @@ export async function renderCollection(
 	);
 	const rendered: RenderedComponent[] = [];
 	for (const { component, stories } of collection.previewed) {
-		rendered.push(await renderComponentStories(component, stories, { snippets }));
+		rendered.push(
+			await renderComponentStories(component, stories, { snippets }),
+		);
 	}
 	return rendered;
 }

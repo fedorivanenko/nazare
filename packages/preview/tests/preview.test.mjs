@@ -371,7 +371,9 @@ test("a story file declares cases and nothing else", () => {
 	assert.throws(
 		() =>
 			parseStoryFile({
-				stories: [{ name: "dark", argTypes: { scheme: { control: "select" } } }],
+				stories: [
+					{ name: "dark", argTypes: { scheme: { control: "select" } } },
+				],
 			}),
 		/unknown key "argTypes"/,
 	);
@@ -548,7 +550,10 @@ test("an unknown fixture name is left visible, not silently nil", () => {
 
 test("a story id is derived from the names, so it survives reordering", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
-	const rendered = await renderComponentStories(component, scaffoldStories(component));
+	const rendered = await renderComponentStories(
+		component,
+		scaffoldStories(component),
+	);
 
 	assert.equal(storyId("button", "scheme: outline"), "button--scheme-outline");
 	assert.deepEqual(
@@ -564,7 +569,10 @@ test("a story id is derived from the names, so it survives reordering", async ()
 
 test("a story document stands alone: its own page, its own assets", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
-	const rendered = await renderComponentStories(component, scaffoldStories(component));
+	const rendered = await renderComponentStories(
+		component,
+		scaffoldStories(component),
+	);
 	const document = storyDocument(component, rendered.stories[1]);
 
 	assert.ok(document.startsWith("<!doctype html>"));
@@ -600,7 +608,9 @@ test("a failing story documents the failure rather than rendering blank", async 
 
 test("every story gets a document named by its id", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
-	const files = storyDocuments([await renderComponentStories(component, scaffoldStories(component))]);
+	const files = storyDocuments([
+		await renderComponentStories(component, scaffoldStories(component)),
+	]);
 
 	assert.deepEqual(
 		files.map((file) => file.path),
@@ -615,7 +625,10 @@ test("every story gets a document named by its id", async () => {
 
 test("storyBase frames the stories instead of inlining them", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
-	const rendered = await renderComponentStories(component, scaffoldStories(component));
+	const rendered = await renderComponentStories(
+		component,
+		scaffoldStories(component),
+	);
 	const page = galleryPage([rendered], { storyBase: "./stories/" });
 
 	assert.ok(page.includes('src="./stories/button--scheme-outline.html"'));
@@ -630,7 +643,9 @@ test("the workbench lists every story and shows one at a time", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid", {
 		packageId: "@nazare/button",
 	});
-	const page = workbenchPage([await renderComponentStories(component, scaffoldStories(component))]);
+	const page = workbenchPage([
+		await renderComponentStories(component, scaffoldStories(component)),
+	]);
 
 	// One canvas, not one frame per story: the selection chooses what it shows.
 	assert.equal(page.match(/<iframe/g).length, 1);
@@ -660,7 +675,9 @@ test("the workbench lists every story and shows one at a time", async () => {
 
 test("without storyBase the page is still self-contained", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
-	const page = galleryPage([await renderComponentStories(component, scaffoldStories(component))]);
+	const page = galleryPage([
+		await renderComponentStories(component, scaffoldStories(component)),
+	]);
 
 	assert.ok(page.includes('class="btn btn--outline"'));
 	assert.ok(!page.includes("<iframe"));

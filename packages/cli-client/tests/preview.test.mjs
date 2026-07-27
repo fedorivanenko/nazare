@@ -194,7 +194,9 @@ test("scaffold drafts a story file, and will not overwrite one", async () => {
 		);
 		// A required prop is the one the declaration gives no default for, so the
 		// draft states it rather than leaving the story to render a placeholder.
-		assert.deepEqual(drafted.stories, [{ name: "default", props: { price: 0 } }]);
+		assert.deepEqual(drafted.stories, [
+			{ name: "default", props: { price: 0 } },
+		]);
 		// And the draft is valid on arrival: check passes on what scaffold wrote.
 		assert.equal((await runCli(cwd, "preview", "check", ".")).status, 0);
 

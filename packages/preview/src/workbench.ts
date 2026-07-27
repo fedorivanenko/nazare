@@ -97,10 +97,7 @@ function navComponent(
  * authored stories produce those constantly, since a hand-written case is
  * usually the only one that touches its prop. Those stay in the flat list.
  */
-function substories(
-	{ component, stories }: RenderedComponent,
-	storyBase: string,
-): string {
+function substories({ component, stories }: RenderedComponent): string {
 	const id = componentId(component.name);
 	const varied = new Map<string, number>();
 	for (const rendered of stories) {
@@ -523,9 +520,7 @@ ${links}
       <div class="canvas-bar">
         <span class="canvas-title" id="canvas-title"></span>
         <div class="canvas-tools">
-          ${components
-						.map((component) => substories(component, storyBase))
-						.join("")}
+          ${components.map((component) => substories(component)).join("")}
           <select class="viewport-select" id="viewport" aria-label="Viewport">
             ${VIEWPORTS.map(
 							({ label, width }) =>

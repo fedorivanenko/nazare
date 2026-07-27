@@ -65,7 +65,9 @@ export function parseStoryFile(
 			throw new StoryFileError(
 				`${at}: unknown key ${extraStoryKeys
 					.map((key) => `"${key}"`)
-					.join(", ")} — a story declares only name, props, and note. Types and defaults belong in the Liquid.`,
+					.join(
+						", ",
+					)} — a story declares only name, props, and note. Types and defaults belong in the Liquid.`,
 			);
 		}
 		if (typeof entry.name !== "string" || entry.name.trim() === "") {

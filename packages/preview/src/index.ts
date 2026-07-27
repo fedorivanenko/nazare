@@ -29,17 +29,17 @@ export {
 	renderPreview,
 } from "./engine.js";
 export {
-	controlsFromDocParams,
-	controlsFromSchemaSource,
-	plainLiquidControls,
-} from "./plain-controls.js";
-export {
 	formatMoney,
 	resolveFixtures,
 	shopifyFixtures,
 	usesFixtures,
 } from "./fixtures.js";
 export { type GalleryPageOptions, galleryPage } from "./gallery.js";
+export {
+	controlsFromDocParams,
+	controlsFromSchemaSource,
+	plainLiquidControls,
+} from "./plain-controls.js";
 export {
 	type RenderedComponent,
 	type RenderedStory,

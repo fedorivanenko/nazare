@@ -100,7 +100,9 @@ test("the fixture theme previews as plain Liquid, classified by directory", () =
 });
 
 test("a story file is what publishes a component to the workbench", async () => {
-	const previewed = (await renderTheme()).map(({ component }) => component.name);
+	const previewed = (await renderTheme()).map(
+		({ component }) => component.name,
+	);
 
 	// icon.liquid compiles and stays in scope, but nobody wrote it stories, so
 	// it is not something the sidebar offers to look at.
