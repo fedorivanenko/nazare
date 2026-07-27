@@ -70,13 +70,24 @@ shopify theme dev --path /theme
 
 Nazare is designed for incremental adoption: start with existing Shopify Liquid files, add `.nz.liquid` components where stronger contracts help, then build everything into one normal Shopify theme.
 
-### Parser API over the CLI
+### Parser-only distribution
+
+Install only the source parser and its native grammars—without compiler, theme,
+or registry packages:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install-source.sh | sh
+nazare-source analyze sections/header.liquid
+```
+
+The full `nazare` installation exposes the same contract under
+`nazare source analyze`.
 
 Analyze authored Shopify Liquid without compiling it:
 
 ```sh
-nazare source analyze sections/header.liquid --format json
-cat sections/header.liquid | nazare source analyze --stdin --language liquid
+nazare-source analyze sections/header.liquid --format json
+cat sections/header.liquid | nazare-source analyze --stdin --language liquid
 ```
 
 Use `--language nazare-liquid` for Nazare syntax. The default is `liquid`.

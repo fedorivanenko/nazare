@@ -2,17 +2,11 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { Readable } from "node:stream";
 import {
-	createDefaultSourceParserRegistry,
-	liquidSyntaxFacts,
-	nazareSyntaxFacts,
-	parseSourceDocument,
-	type SourceLanguage,
-} from "@nazare/source";
+	analyzeSource,
+	DEFAULT_SOURCE_ANALYSIS_LANGUAGE,
+} from "@nazare/source-cli";
 import type { CliOptions } from "./options.js";
 import type { Output } from "./output.js";
-
-export const SOURCE_ANALYSIS_SCHEMA_VERSION = 1;
-export const DEFAULT_SOURCE_ANALYSIS_LANGUAGE: SourceLanguage = "liquid";
 
 export async function runSourceCommand(
 	projectRoot: string,
@@ -46,48 +40,9 @@ export async function runSourceCommand(
 	const { file, source } = options.stdin
 		? { file: "<stdin>", source: await readUtf8Stream(input) }
 		: await readSourceFile(projectRoot, target as string);
-	const document = parseSourceDocument(
-		createDefaultSourceParserRegistry(),
-		file,
-		language,
-		source,
-	);
-	const result =
-		language === "nazare-liquid"
-			? nazareResult(document)
-			: liquidResult(document);
+	const result = analyzeSource({ file, source, language });
 	output.log(JSON.stringify(result, null, 2));
 	return result.authoritative ? 0 : 1;
-}
-
-function liquidResult(document: ReturnType<typeof parseSourceDocument>) {
-	const liquid = liquidSyntaxFacts(document);
-	return {
-		schemaVersion: SOURCE_ANALYSIS_SCHEMA_VERSION,
-		file: document.file,
-		language: document.language,
-		authoritative: liquid.authoritative,
-		issues: document.issues,
-		embeddedRegions: document.embeddedRegions,
-		syntax: { liquid },
-	};
-}
-
-function nazareResult(document: ReturnType<typeof parseSourceDocument>) {
-	const nazare = nazareSyntaxFacts(document);
-	return {
-		schemaVersion: SOURCE_ANALYSIS_SCHEMA_VERSION,
-		file: document.file,
-		language: document.language,
-		authoritative: nazare.authoritative,
-		issues: document.issues,
-		problems: nazare.problems,
-		embeddedRegions: document.embeddedRegions,
-		syntax: {
-			nazare: nazare.facts,
-			liquid: nazare.liquid,
-		},
-	};
 }
 
 async function readSourceFile(

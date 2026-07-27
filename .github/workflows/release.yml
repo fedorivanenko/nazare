@@ -39,8 +39,11 @@ jobs:
       - run: pnpm dlx @biomejs/biome@2.4.14 check .
       - run: pnpm -s test:all
       - run: ./scripts/package-cli.sh "${GITHUB_REF_NAME}" "${{ matrix.target }}"
-      - run: ./scripts/smoke-packaged-cli.sh .release/*.tar.gz
-      - run: ./scripts/smoke-installer.sh "${GITHUB_REF_NAME}"
+      - run: ./scripts/package-source-cli.sh "${GITHUB_REF_NAME}" "${{ matrix.target }}"
+      - run: ./scripts/smoke-packaged-cli.sh .release/nazare-cli-*.tar.gz
+      - run: ./scripts/smoke-packaged-source-cli.sh .release/nazare-source-*.tar.gz
+      - run: ./scripts/smoke-installer.sh "${GITHUB_REF_NAME}" cli
+      - run: ./scripts/smoke-installer.sh "${GITHUB_REF_NAME}" source
       - uses: softprops/action-gh-release@v2
         with:
           prerelease: ${{ contains(github.ref_name, '-') }}

@@ -13,6 +13,17 @@ the release artifact for the current operating system and architecture and
 verifies the published
 SHA-256 sidecar before replacing the active installation.
 
+Parser-only installation:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install-source.sh | sh
+nazare-source --version
+```
+
+The parser-only artifact excludes compiler, theme, registry, and full-CLI
+packages. Install the complete Nazare CLI separately when those commands are
+needed:
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh | sh
 nazare --version
@@ -21,7 +32,7 @@ nazare --version
 Pin a version or installation root:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install-source.sh \
   | NAZARE_VERSION=v0.1.0 NAZARE_HOME="$HOME/.nazare" sh
 ```
 
@@ -35,20 +46,20 @@ are not required at installation time.
 Plain Shopify Liquid is the explicit default:
 
 ```sh
-nazare source analyze sections/header.liquid
+nazare-source analyze sections/header.liquid
 ```
 
 Select the Nazare grammar explicitly:
 
 ```sh
-nazare source analyze components/card.nz.liquid --language nazare-liquid
+nazare-source analyze components/card.nz.liquid --language nazare-liquid
 ```
 
 Read UTF-8 source from stdin:
 
 ```sh
 cat sections/header.liquid \
-  | nazare source analyze --stdin --language liquid --format json
+  | nazare-source analyze --stdin --language liquid --format json
 ```
 
 A file and `--stdin` are mutually exclusive. JSON is currently the only output
@@ -112,7 +123,7 @@ meaning of an existing field requires a schema-version increment.
 #!/usr/bin/env sh
 set -eu
 
-nazare source analyze "$1" --language liquid --format json > source-analysis.json
+nazare-source analyze "$1" --language liquid --format json > source-analysis.json
 shopify theme check
 ```
 
@@ -122,8 +133,8 @@ result schema.
 
 ## Supported release targets
 
-Artifacts are target-specific because the grammars are native Node addons. Each
-release publishes Linux x64, Linux ARM64, macOS x64, and macOS ARM64 artifacts.
+Artifacts are target-specific because the grammars are native Node addons. Each release publishes full-CLI and parser-only artifacts for Linux x64, Linux
+ARM64, macOS x64, and macOS ARM64.
 The installer selects `<os>-<architecture>` from `linux|darwin` and
 `x64|arm64`. Source archives remain available from the matching Git tag for
 other systems.

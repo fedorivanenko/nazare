@@ -62,9 +62,9 @@ importers:
       '@nazare/registry':
         specifier: workspace:^
         version: link:../registry
-      '@nazare/source':
+      '@nazare/source-cli':
         specifier: workspace:^
-        version: link:../source
+        version: link:../source-cli
       '@nazare/theme':
         specifier: workspace:^
         version: link:../theme
@@ -121,6 +121,12 @@ importers:
       tree-sitter-html:
         specifier: 0.23.2
         version: 0.23.2(tree-sitter@0.21.1(patch_hash=67f64f388cd0aff00cf1198ae701800a8e790f5a366d317f3a0d835187ac2c57))
+
+  packages/source-cli:
+    dependencies:
+      '@nazare/source':
+        specifier: workspace:^
+        version: link:../source
 
   packages/theme:
     dependencies:

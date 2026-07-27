@@ -1,5 +1,5 @@
 {
-  "name": "@nazare/cli-client",
+  "name": "@nazare/source-cli",
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
@@ -10,16 +10,12 @@
     "node": ">=20"
   },
   "bin": {
-    "nazare": "dist/index.js"
+    "nazare-source": "dist/index.js"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@nazare/compiler": "workspace:^",
-    "@nazare/core": "workspace:^",
-    "@nazare/registry": "workspace:^",
-    "@nazare/source-cli": "workspace:^",
-    "@nazare/theme": "workspace:^"
+    "@nazare/source": "workspace:^"
   }
 }

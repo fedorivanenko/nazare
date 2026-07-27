@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.0-rc.4 — 2026-07-27
+
+- Add the parser-only `nazare-source` CLI and release artifacts.
+- Add a dedicated checksum-verifying parser installer.
+- Share one schema-versioned analysis implementation between full and
+  parser-only CLIs.
+
 ## v0.1.0-rc.3 — 2026-07-27
 
 - Build release-native addons on the minimum supported Node.js 20 ABI, fixing

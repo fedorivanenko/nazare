@@ -3,7 +3,6 @@ set -eu
 
 version="${1:?version required (example: v0.1.0)}"
 
-# Keep target names stable across GitHub runners and local release builds.
 detect_target() {
 	case "$(uname -s)" in
 		Darwin) os="darwin" ;;
@@ -26,7 +25,7 @@ if [ "$target" != "$detected_target" ]; then
 fi
 root="$(pwd)"
 release_dir="$root/.release"
-artifact="nazare-cli-$version-$target"
+artifact="nazare-source-$version-$target"
 out="$release_dir/$artifact"
 tarball="$release_dir/$artifact.tar.gz"
 
@@ -39,14 +38,12 @@ pnpm -s typecheck
 cp package.json pnpm-lock.yaml pnpm-workspace.yaml LICENSE README.md "$out/"
 cp -R patches "$out/patches"
 printf '%s\n' "$version" > "$out/VERSION"
-for pkg in cli-client compiler core registry source source-cli theme; do
+for pkg in source source-cli; do
 	mkdir -p "$out/packages/$pkg"
 	cp "packages/$pkg/package.json" "$out/packages/$pkg/package.json"
 	cp -R "packages/$pkg/dist" "$out/packages/$pkg/dist"
 done
 
-# @nazare/source loads both native grammars at runtime. Generated C sources
-# remain available for provenance; release artifacts carry host-built binaries.
 for pkg in tree-sitter-liquid tree-sitter-nazare-liquid; do
 	src="packages/$pkg"
 	dest="$out/packages/$pkg"
@@ -60,7 +57,7 @@ for pkg in tree-sitter-liquid tree-sitter-nazare-liquid; do
 	fi
 done
 
-cat > "$out/bin/nazare" <<'SH'
+cat > "$out/bin/nazare-source" <<'SH'
 #!/usr/bin/env sh
 set -eu
 script="$0"
@@ -73,12 +70,10 @@ while [ -L "$script" ]; do
 	esac
 done
 root="$(CDPATH= cd -- "$(dirname -- "$script")/.." && pwd)"
-exec node "$root/packages/cli-client/dist/index.js" "$@"
+exec node "$root/packages/source-cli/dist/index.js" "$@"
 SH
-chmod +x "$out/bin/nazare"
+chmod +x "$out/bin/nazare-source"
 
-# Resolve production dependencies while building the artifact. Installation is
-# then offline and does not require pnpm, Python, node-gyp, or compiler tools.
 (
 	cd "$out"
 	pnpm install --prod --frozen-lockfile >/dev/null
