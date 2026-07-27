@@ -6,6 +6,13 @@
 // this catches: not a render that threw, which is already reported, but one
 // that rendered something wrong and said nothing.
 //
+// The interface belongs to the Liquid and the story owns only values, so a
+// mismatch is unambiguous: the story is asserting something the declaration
+// denies, and there is no reading where that was meant. These are errors, and
+// they are checkable in both directions — a story that misspells a prop fails,
+// and a template that renames one breaks its stories loudly instead of quietly
+// rendering nil.
+//
 // Only what the component declares is checked. A plain snippet with no
 // `{% doc %}` block declares nothing, so nothing here can be said about it —
 // silence, rather than inventing an interface from the template's body.
@@ -14,6 +21,11 @@ import type { PreviewControl } from "./controls.js";
 import type { PreviewStory } from "./stories.js";
 
 export type StoryIssue = {
+	/**
+	 * Every check here is an error: the story contradicts the declaration. The
+	 * union stays because the shells style both, and a check that is genuinely
+	 * advisory would belong under "warning" rather than under a new mechanism.
+	 */
 	severity: "error" | "warning";
 	/** The prop this is about, when it is about one. */
 	prop?: string;
@@ -65,9 +77,9 @@ function typeMismatch(
 }
 
 /**
- * What is wrong with this story, given what the component declares. Warnings,
- * not failures: a story that trips one still renders, and seeing what it
- * renders is how you judge whether the warning matters.
+ * What is wrong with this story, given what the component declares. Reported,
+ * not thrown: a story that trips one still renders, and seeing what it renders
+ * is how you judge how much the mismatch matters.
  */
 export function validateStory(
 	component: PreviewComponent,
@@ -92,7 +104,7 @@ export function validateStory(
 		const control = byName.get(name);
 		if (!control) {
 			issues.push({
-				severity: "warning",
+				severity: "error",
 				prop: name,
 				// The likeliest cause is a typo, and a typo'd prop is nil on render.
 				message: `${name} is not a declared prop, so the template never reads it`,
@@ -102,17 +114,25 @@ export function validateStory(
 		const mismatch = typeMismatch(control, value);
 		if (mismatch) {
 			issues.push({
-				severity: "warning",
+				severity: "error",
 				prop: name,
 				message: `${name} ${mismatch}`,
 			});
 		}
 	}
 
+	// Required is checked against what the story itself states, not against the
+	// merged props: a control is only `required` when the declaration gives it no
+	// default, so the value it would otherwise merge in is the preview's
+	// type-shaped placeholder — a button whose label reads "label". An explicit
+	// null is the story declining to pass it.
 	for (const control of component.controls) {
-		if (!control.required || control.name in story.props) continue;
+		if (!control.required) continue;
+		if (control.name in story.props && story.props[control.name] !== null) {
+			continue;
+		}
 		issues.push({
-			severity: "warning",
+			severity: "error",
 			prop: control.name,
 			message: `${control.name} is required and this story does not pass it`,
 		});

@@ -6,6 +6,10 @@
  * → stories → render (Liquid) → story documents / gallery. Every pass is pure
  * over its input, so a frontend (static site, local server, editor panel) picks
  * the passes it needs and owns its own I/O.
+ *
+ * The Liquid declares the interface; a story file declares the cases. Nothing
+ * here derives a story at render time — `scaffoldStories` writes a first draft
+ * for an author to edit and commit, and that file is the only source of cases.
  */
 export {
 	type PreviewAsset,
@@ -46,11 +50,11 @@ export {
 	changedProps,
 	declaredStories,
 	defaultStory,
-	generatedStories,
 	manifestStories,
 	type PreviewStory,
+	scaffoldStories,
 	storiesFor,
-	type StoryDeclaration,
+	storyProps,
 	variantStories,
 } from "./stories.js";
 export {
@@ -60,6 +64,7 @@ export {
 	storyDocument,
 	storyDocuments,
 } from "./story-document.js";
+export { parseStoryFile, type StoryDeclaration } from "./story-file.js";
 export { componentId, slug, storyFileName, storyId } from "./story-id.js";
 export {
 	type StoryIssue,

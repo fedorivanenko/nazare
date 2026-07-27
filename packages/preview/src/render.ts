@@ -3,11 +3,7 @@
 // all consume the same result.
 import type { PreviewComponent } from "./component.js";
 import { createPreviewEngine, renderContext, renderPreview } from "./engine.js";
-import {
-	changedProps,
-	generatedStories,
-	type PreviewStory,
-} from "./stories.js";
+import { changedProps, type PreviewStory, storyProps } from "./stories.js";
 import { storyId } from "./story-id.js";
 import { type StoryIssue, validateStory } from "./story-validation.js";
 
@@ -39,9 +35,13 @@ export type RenderStoriesOptions = {
 	assetBase?: string;
 };
 
+/**
+ * Stories are a required argument: there is no derived set to fall back on, and
+ * a component with none does not render at all.
+ */
 export async function renderComponentStories(
 	component: PreviewComponent,
-	stories: PreviewStory[] = generatedStories(component),
+	stories: PreviewStory[],
 	options: RenderStoriesOptions = {},
 ): Promise<RenderedComponent> {
 	const engine = createPreviewEngine(options);
@@ -50,6 +50,8 @@ export async function renderComponentStories(
 		const id = storyId(component.name, story.name);
 		const changed = changedProps(story, component.controls);
 		const issues = validateStory(component, story);
+		// The story states its delta; the declaration supplies the rest.
+		const props = storyProps(story, component.controls);
 		try {
 			rendered.push({
 				id,
@@ -59,7 +61,7 @@ export async function renderComponentStories(
 				html: await renderPreview(
 					engine,
 					component.template,
-					renderContext(story.props, component.componentKind, component.name),
+					renderContext(props, component.componentKind, component.name),
 				),
 			});
 		} catch (error) {

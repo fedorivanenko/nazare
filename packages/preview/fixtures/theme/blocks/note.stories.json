@@ -1,0 +1,20 @@
+{
+  "stories": [
+    {
+      "name": "default"
+    },
+    {
+      "name": "success",
+      "props": { "tone": "success", "text": "Your order is on its way." }
+    },
+    {
+      "name": "warning",
+      "props": {
+        "tone": "warning",
+        "text": "Only two left in stock.",
+        "alignment": "center"
+      },
+      "note": "Both settings at once: tone and alignment are independent, and this is the pair worth seeing together."
+    }
+  ]
+}

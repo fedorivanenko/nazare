@@ -1,12 +1,14 @@
 {
   "stories": [
     {
-      "name": "on sale",
-      "props": {
-        "product": { "$fixture": "product" },
-        "badge": "Sale"
-      },
+      "name": "default",
+      "props": { "product": { "$fixture": "product" } },
       "note": "The fixture product carries a compare-at price, so the composed price snippet strikes it through."
+    },
+    {
+      "name": "with badge",
+      "props": { "product": { "$fixture": "product" }, "badge": "Sale" },
+      "note": "The ribbon is the only optional prop, and it overlaps the image."
     }
   ]
 }

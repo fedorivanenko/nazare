@@ -67,14 +67,24 @@ for (const folder of readdirSync(componentsRoot).sort()) {
 const snippets = snippetLibrary(previewed.map((entry) => entry.component));
 
 const rendered = [];
+const undeclared = [];
 for (const { component, manifest } of previewed) {
-	// Authored stories from nazare.json when the component ships them; the
-	// contract-derived baseline otherwise.
-	rendered.push(
-		await renderComponentStories(component, storiesFor(component, manifest), {
-			snippets,
-		}),
+	// A published component carries its stories in nazare.json, versioned with
+	// it. No stories, no entry: writing one is what publishes the component to
+	// the workbench.
+	const stories = storiesFor({ manifest });
+	if (stories.length === 0) {
+		undeclared.push(manifest.id);
+		continue;
+	}
+	rendered.push(await renderComponentStories(component, stories, { snippets }));
+}
+
+if (undeclared.length > 0) {
+	console.error(
+		`No preview.stories in nazare.json: ${undeclared.join(", ")} — run scaffold-stories.mjs to draft them`,
 	);
+	process.exitCode = 1;
 }
 
 // Behaviors are deliberately NOT wired here: the emitted template already ends

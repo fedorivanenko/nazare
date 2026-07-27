@@ -1,0 +1,25 @@
+{
+  "stories": [
+    {
+      "name": "default",
+      "note": "Every setting at the default the schema declares."
+    },
+    {
+      "name": "dark",
+      "props": { "scheme": "dark" }
+    },
+    {
+      "name": "no button",
+      "props": { "show_button": false },
+      "note": "The heading and body carry the section on their own."
+    },
+    {
+      "name": "long heading",
+      "props": {
+        "heading": "Everything in the winter collection, now made in Portugal",
+        "show_button": false
+      },
+      "note": "A heading a merchant will actually type, which no derived story would try."
+    }
+  ]
+}

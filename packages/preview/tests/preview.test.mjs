@@ -3,11 +3,12 @@ import test from "node:test";
 import {
 	createPreviewEngine,
 	galleryPage,
-	generatedStories,
+	parseStoryFile,
 	previewComponentFromSource,
 	renderComponentStories,
 	renderPreview,
 	resolveFixtures,
+	scaffoldStories,
 	snippetLibrary,
 	storiesFor,
 	storyDocument,
@@ -15,6 +16,9 @@ import {
 	storyId,
 	workbenchPage,
 } from "../dist/index.js";
+
+/** The one story every component has when the test only needs a render. */
+const DEFAULT_ONLY = [{ name: "default", props: {} }];
 
 const PRICE = `{% props {
   price: Money.required(),
@@ -109,9 +113,11 @@ test("the previewed template is the emitted one, not the source", () => {
 	);
 });
 
-test("generated stories cover the defaults plus every enum member", async () => {
+test("a scaffolded draft covers the defaults plus every enum member", async () => {
+	// What `scaffold` writes to a story file for an author to edit — never what
+	// the preview renders on its own.
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
-	const stories = generatedStories(component);
+	const stories = scaffoldStories(component);
 
 	assert.deepEqual(
 		stories.map((story) => story.name),
@@ -129,7 +135,7 @@ test("generated stories cover the defaults plus every enum member", async () => 
 
 test("a section's props render as section.settings, not as bare variables", async () => {
 	const component = previewComponentFromSource(SECTION, "grid.nz.liquid");
-	const rendered = await renderComponentStories(component);
+	const rendered = await renderComponentStories(component, DEFAULT_ONLY);
 
 	// Emit lowers a section's props to section.settings.*, so props handed to a
 	// story have to arrive shaped that way or every setting reads blank.
@@ -166,8 +172,8 @@ test("plain Liquid takes its controls from {% doc %} @param lines", async () => 
 	// opening the story on the string "product".
 	assert.equal(byName.product.value.title, "Merino Crew Sweater");
 
-	// Which means it previews from its declaration, with no authored story.
-	const rendered = await renderComponentStories(component);
+	// A story that states nothing renders on the declaration's own defaults.
+	const rendered = await renderComponentStories(component, DEFAULT_ONLY);
 	// Each string control opens on its own name — the type says string, not url,
 	// so nothing here invents a plausible destination.
 	assert.equal(rendered.stories[0].html, '<a href="url">label</a>');
@@ -208,16 +214,17 @@ test("a plain section takes its controls from {% schema %} settings", async () =
 	assert.equal(byName.featured.value, true);
 	assert.deepEqual(byName.scheme.options, ["solid", "ghost"]);
 
-	// A section's props arrive as section.settings, so the derived stories
-	// render for real — including one per member of the select.
-	const rendered = await renderComponentStories(component);
-	assert.deepEqual(
-		rendered.stories.map((entry) => entry.story.name),
-		["default", "scheme: ghost"],
-	);
+	// A section's props arrive as section.settings, so a story states its delta
+	// in setting names and the schema's defaults supply the rest.
+	const rendered = await renderComponentStories(component, [
+		{ name: "default", props: {} },
+		{ name: "ghost", props: { scheme: "ghost" } },
+	]);
 	assert.ok(rendered.stories[0].html.includes('data-columns="2"'));
 	assert.ok(rendered.stories[0].html.includes("<h2>Sale</h2>"));
 	assert.ok(rendered.stories[1].html.includes("<b>ghost</b>"));
+	// The delta was one setting; the heading still came from the schema.
+	assert.ok(rendered.stories[1].html.includes("<h2>Sale</h2>"));
 });
 
 test("a composing component renders against the emitted snippets", async () => {
@@ -248,7 +255,10 @@ test("the gallery page carries the stories, the controls, and the caveat", async
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid", {
 		packageId: "@nazare/button",
 	});
-	const rendered = await renderComponentStories(component);
+	const rendered = await renderComponentStories(
+		component,
+		scaffoldStories(component),
+	);
 	const page = galleryPage([rendered], {
 		title: "Buttons",
 		stylesheets: ["./assets/button.css"],
@@ -267,7 +277,9 @@ test("the gallery page carries the stories, the controls, and the caveat", async
 
 test("each component gets a props table and a code tab of the emitted Liquid", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
-	const page = galleryPage([await renderComponentStories(component)]);
+	const page = galleryPage([
+		await renderComponentStories(component, DEFAULT_ONLY),
+	]);
 
 	// Tabs are radio inputs, so Preview/Code works without JavaScript.
 	assert.ok(page.includes('name="tabs-button"'));
@@ -280,7 +292,7 @@ test("each component gets a props table and a code tab of the emitted Liquid", a
 	assert.ok(page.includes("badge--required"));
 });
 
-test("authored stories add to the derived set rather than deleting it", async () => {
+test("the stories are the ones declared, in the order declared", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
 	const manifest = {
 		id: "@nazare/button",
@@ -289,38 +301,92 @@ test("authored stories add to the derived set rather than deleting it", async ()
 		files: ["button.nz.liquid"],
 		preview: {
 			stories: [
-				// A case no type can express, and an override of a derived story.
+				{ name: "shop all", props: { label: "Shop all" } },
 				{ name: "empty label", props: { label: "" } },
-				{ name: "default", props: { label: "Shop all", scheme: "solid" } },
 			],
 		},
 	};
 
-	const names = storiesFor(component, manifest).map((story) => story.name);
-	// The enum coverage survives writing one edge case.
-	assert.deepEqual(names, [
-		"default",
-		"scheme: outline",
-		"scheme: ghost",
-		"size: sm",
-		"empty label",
-	]);
-	// A name that matches a derived story overrides it, so no two stories claim
-	// the same document — and the component gets to state a better default.
+	// No enum fan-out, no invented "default": what the author wrote is the set.
+	assert.deepEqual(
+		storiesFor({ manifest }).map((story) => story.name),
+		["shop all", "empty label"],
+	);
 	const rendered = await renderComponentStories(
 		component,
-		storiesFor(component, manifest),
+		storiesFor({ manifest }),
 	);
 	assert.ok(rendered.stories[0].html.includes(">Shop all<"));
+});
 
-	// Unless the author says the derived ones are not worth showing.
-	assert.deepEqual(
-		storiesFor(component, {
-			...manifest,
-			preview: { ...manifest.preview, replace: true },
-		}).map((story) => story.name),
-		["empty label", "default"],
+test("a story states its delta; the declaration supplies the rest", async () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const rendered = await renderComponentStories(component, [
+		{ name: "outline", props: { label: "Shop all", scheme: "outline" } },
+	]);
+
+	// `size` was never stated, so it renders at the default the type declares —
+	// which matters beyond convenience: emit does not materialize a snippet
+	// prop's default, so an unmerged omission would arrive nil.
+	assert.ok(rendered.stories[0].html.includes("btn--outline"));
+	assert.ok(rendered.stories[0].html.includes(">Shop all<"));
+	assert.deepEqual(rendered.stories[0].changed, ["label", "scheme"]);
+});
+
+test("an explicit null unsets a prop the declaration gives a default", async () => {
+	const component = previewComponentFromSource(
+		`{% doc %}
+  @param {string} label - Button text
+  @param {string} [badge] - Ribbon, when there is one
+{% enddoc %}
+<a>{{ label }}{% if badge != blank %}<b>{{ badge }}</b>{% endif %}</a>
+`,
+		"snippets/badged.liquid",
 	);
+	const rendered = await renderComponentStories(component, [
+		{ name: "with badge", props: { label: "Shop", badge: "Sale" } },
+		{ name: "no badge", props: { label: "Shop", badge: null } },
+	]);
+
+	assert.ok(rendered.stories[0].html.includes("<b>Sale</b>"));
+	// Absent, not the string "null" and not the declared default.
+	assert.ok(!rendered.stories[1].html.includes("<b>"));
+	assert.deepEqual(rendered.stories[1].issues, []);
+});
+
+test("a story file declares cases and nothing else", () => {
+	const parsed = parseStoryFile({
+		stories: [
+			{ name: "default" },
+			{ name: "dark", props: { scheme: "dark" }, note: "why" },
+		],
+	});
+	assert.deepEqual(
+		parsed.stories.map((story) => story.name),
+		["default", "dark"],
+	);
+
+	// Interface belongs to the Liquid, so a story file that tries to declare one
+	// stops rather than being quietly ignored.
+	assert.throws(
+		() =>
+			parseStoryFile({
+				stories: [{ name: "dark", argTypes: { scheme: { control: "select" } } }],
+			}),
+		/unknown key "argTypes"/,
+	);
+	// A typo that would otherwise render a story setting nothing.
+	assert.throws(
+		() => parseStoryFile({ stories: [{ name: "dark", prop: { a: 1 } }] }),
+		/unknown key "prop"/,
+	);
+	// Names are the story's identity, so two cannot claim the same document.
+	assert.throws(
+		() => parseStoryFile({ stories: [{ name: "a" }, { name: "a" }] }),
+		/duplicate story name/,
+	);
+	assert.throws(() => parseStoryFile({ stories: {} }), /must be an array/);
+	assert.throws(() => parseStoryFile({ cases: [] }), /unknown key "cases"/);
 });
 
 test("a story is checked against the interface the component declares", async () => {
@@ -358,7 +424,12 @@ test("a story is checked against the interface the component declares", async ()
 			?.severity,
 		"error",
 	);
-	// The story still rendered: seeing the output is how you judge the warning.
+	// The story owns only values, so every one of these is the story contra-
+	// dicting the declaration — an error, not a matter of taste.
+	assert.ok(
+		rendered.stories[0].issues.every((issue) => issue.severity === "error"),
+	);
+	// The story still rendered: seeing the output is how you judge the damage.
 	assert.equal(rendered.stories[0].error, undefined);
 	assert.ok(rendered.stories[0].html.includes("btn--solid"));
 });
@@ -378,7 +449,6 @@ test("a component that declares nothing is not second-guessed", async () => {
 });
 
 test("a sidecar declaration outranks the manifest", () => {
-	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
 	const manifest = {
 		id: "@nazare/button",
 		version: "0.1.0",
@@ -388,8 +458,9 @@ test("a sidecar declaration outranks the manifest", () => {
 	};
 	// A theme has no manifest at all, so the file beside the template is the
 	// only place its stories can live — and the more local statement wins.
-	const names = storiesFor(component, manifest, {
-		stories: [{ name: "from sidecar", props: { label: "Local" } }],
+	const names = storiesFor({
+		manifest,
+		sidecar: { stories: [{ name: "from sidecar", props: { label: "Local" } }] },
 	}).map((story) => story.name);
 
 	assert.ok(names.includes("from sidecar"));
@@ -434,13 +505,12 @@ test("manifest stories resolve fixtures", async () => {
 			],
 		},
 	};
-	const stories = storiesFor(component, manifest);
+	const stories = storiesFor({ manifest });
 	const onSale = stories.find((story) => story.name === "on sale");
 
-	// The derived default is still there; the authored case is added to it.
 	assert.deepEqual(
 		stories.map((story) => story.name),
-		["default", "on sale"],
+		["on sale"],
 	);
 	// The reference resolved to shared stand-in data, and the story says so.
 	assert.equal(onSale.props.price, 2400);
@@ -453,8 +523,11 @@ test("manifest stories resolve fixtures", async () => {
 	assert.ok(rendered.stories[0].html.includes("$40.00"));
 });
 
-test("a component with no authored stories still previews", () => {
-	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+test("a component with no authored stories does not appear", () => {
+	// Writing a story is what publishes a component to the workbench. Without
+	// one there is nothing to show, and the preview does not invent a case to
+	// fill the gap — that is how a theme's hundred helper snippets stay out of
+	// the sidebar.
 	const manifest = {
 		id: "@nazare/button",
 		version: "0.1.0",
@@ -462,10 +535,8 @@ test("a component with no authored stories still previews", () => {
 		files: ["button.nz.liquid"],
 	};
 
-	assert.deepEqual(
-		storiesFor(component, manifest).map((story) => story.name),
-		generatedStories(component).map((story) => story.name),
-	);
+	assert.deepEqual(storiesFor({ manifest }), []);
+	assert.deepEqual(storiesFor({}), []);
 });
 
 test("an unknown fixture name is left visible, not silently nil", () => {
@@ -477,7 +548,7 @@ test("an unknown fixture name is left visible, not silently nil", () => {
 
 test("a story id is derived from the names, so it survives reordering", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
-	const rendered = await renderComponentStories(component);
+	const rendered = await renderComponentStories(component, scaffoldStories(component));
 
 	assert.equal(storyId("button", "scheme: outline"), "button--scheme-outline");
 	assert.deepEqual(
@@ -493,7 +564,7 @@ test("a story id is derived from the names, so it survives reordering", async ()
 
 test("a story document stands alone: its own page, its own assets", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
-	const rendered = await renderComponentStories(component);
+	const rendered = await renderComponentStories(component, scaffoldStories(component));
 	const document = storyDocument(component, rendered.stories[1]);
 
 	assert.ok(document.startsWith("<!doctype html>"));
@@ -529,7 +600,7 @@ test("a failing story documents the failure rather than rendering blank", async 
 
 test("every story gets a document named by its id", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
-	const files = storyDocuments([await renderComponentStories(component)]);
+	const files = storyDocuments([await renderComponentStories(component, scaffoldStories(component))]);
 
 	assert.deepEqual(
 		files.map((file) => file.path),
@@ -544,7 +615,7 @@ test("every story gets a document named by its id", async () => {
 
 test("storyBase frames the stories instead of inlining them", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
-	const rendered = await renderComponentStories(component);
+	const rendered = await renderComponentStories(component, scaffoldStories(component));
 	const page = galleryPage([rendered], { storyBase: "./stories/" });
 
 	assert.ok(page.includes('src="./stories/button--scheme-outline.html"'));
@@ -559,7 +630,7 @@ test("the workbench lists every story and shows one at a time", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid", {
 		packageId: "@nazare/button",
 	});
-	const page = workbenchPage([await renderComponentStories(component)]);
+	const page = workbenchPage([await renderComponentStories(component, scaffoldStories(component))]);
 
 	// One canvas, not one frame per story: the selection chooses what it shows.
 	assert.equal(page.match(/<iframe/g).length, 1);
@@ -589,7 +660,7 @@ test("the workbench lists every story and shows one at a time", async () => {
 
 test("without storyBase the page is still self-contained", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
-	const page = galleryPage([await renderComponentStories(component)]);
+	const page = galleryPage([await renderComponentStories(component, scaffoldStories(component))]);
 
 	assert.ok(page.includes('class="btn btn--outline"'));
 	assert.ok(!page.includes("<iframe"));
@@ -613,13 +684,13 @@ test("a composing component needs the snippet library in scope", async () => {
 	const snippets = snippetLibrary([link, bar]);
 	assert.deepEqual(Object.keys(snippets), ["link"]);
 
-	const withLibrary = await renderComponentStories(bar, undefined, {
+	const withLibrary = await renderComponentStories(bar, DEFAULT_ONLY, {
 		snippets,
 	});
 	assert.equal(withLibrary.stories[0].error, undefined);
 	assert.ok(withLibrary.stories[0].html.includes('<a href="/x">'));
 
 	// Without it the render tag resolves nothing, and the story says so.
-	const withoutLibrary = await renderComponentStories(bar);
+	const withoutLibrary = await renderComponentStories(bar, DEFAULT_ONLY);
 	assert.match(withoutLibrary.stories[0].error, /link/);
 });

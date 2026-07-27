@@ -5,7 +5,8 @@ with the stories' knobs derived from the compiler instead of hand-written.
 
 ```txt
 source → compile (the real compiler) → emitted template + contract
-       → controls → stories → render (Liquid) → gallery
+       → controls ─┐
+story file ────────┴→ stories → render (Liquid) → gallery
 ```
 
 Every pass is pure over its input, so a frontend picks the passes it needs and
@@ -24,9 +25,14 @@ declares them, and the compiler already produces the contract:
 | `featured: boolean.setting({ label: "Featured" })` | checkbox labelled "Featured" |
 | `label: string.required()` | text, marked required |
 
-Defaults come from `.default(v)` or a setting's `default`, so a story opens on
-the values the component actually ships with. For a section, the same pass
-produces what the theme editor's settings panel would show.
+Defaults come from `.default(v)` or a setting's `default`, so a story that says
+nothing about a prop renders on the value the component actually ships with. For
+a section, the same pass produces what the theme editor's settings panel would
+show.
+
+Reading a declaration an author wrote is not the same as inventing one. The
+controls are derived; the *cases* are not — those are written down, in a story
+file, as described below.
 
 ## What it renders
 
@@ -37,7 +43,7 @@ behaviors into the page makes island components genuinely interactive.
 
 ## One story, one document
 
-Every story has an id — `button--scheme-outline`, derived from the component and
+Every story has an id — `button--outline`, derived from the component and
 story names, so adding or reordering stories never renumbers the others.
 
 `storyDocuments()` turns each rendered story into a standalone HTML page named by
@@ -64,7 +70,7 @@ prop each one varies, and a viewport dropdown constrains the canvas to 375, 768,
 or 1280 — the frame is a real document, so a narrower frame is a real viewport,
 media queries included.
 
-The story is a URL fragment (`#button--scheme-outline`) and the viewport a query
+The story is a URL fragment (`#button--outline`) and the viewport a query
 parameter (`?viewport=375`), so both survive a reload and a link, and changing
 the story leaves the viewport alone. The sidebar entries are real links to story
 documents, so with JavaScript off, clicking one opens that component on its own
@@ -81,63 +87,99 @@ table, emitted Liquid — from the same `panels.ts`.
 ```sh
 node packages/preview/examples/preview-theme.mjs path/to/theme
 node packages/preview/examples/preview-theme.mjs packages/preview/fixtures/theme
+node packages/preview/examples/preview-theme.mjs path/to/theme --all
 ```
 
-`fixtures/theme` is a five-component theme kept here for exactly this: two
-snippets declaring `{% doc %}` params, a section and a block declaring
-`{% schema %}` settings, one authored story in a sidecar, and a stylesheet the
-sections link through `asset_url`. Every one of its ten stories renders markup
-with no error and nothing its declaration says is wrong, and `tests/theme.test.mjs`
-holds that true — the plain-Liquid path claims to work on files nobody wrote for
-Nazare, and this is the claim being checked.
+`fixtures/theme` is the theme kept here for exactly this: two snippets declaring
+`{% doc %}` params, a section and a block declaring `{% schema %}` settings, a
+story file beside each, a stylesheet the sections link through `asset_url` — and
+one helper snippet with no story file, because every theme has a hundred of
+those. Every one of its stories renders markup with no error and nothing its
+declaration says is wrong, and `tests/theme.test.mjs` holds that true: the
+plain-Liquid path claims to work on files nobody wrote for Nazare, and this is
+the claim being checked.
 
 No manifests, no Nazare syntax. The walk over `snippets/`, `sections/`, and
 `blocks/` is the classification — Shopify addresses a theme file by its
 directory, and the kind decides whether props arrive as bare variables or as
 `section.settings.*`. Each file's controls come from its own `{% doc %}` params
-or `{% schema %}` settings, the whole `snippets/` directory is in scope so
-`{% render %}` resolves, and the theme's `assets/` are served where `asset_url`
-points.
+or `{% schema %}` settings, and its cases from the story file beside it.
 
-## Fixtures and authored stories
+Everything compiles; only what has a story file is previewed. That matters for
+composition — `product-card` renders `icon`, which nobody wrote stories for, so
+the snippet library has to hold templates the sidebar does not show. The theme's
+`assets/` are served where `asset_url` points.
 
-Storefront data lives in the preview, not in the components: one canonical mock
-product, collection, image, and shop in `fixtures.ts`, plus the `money` and
-`img_url` filters. If each component shipped its own mock product, forty
-components would disagree about the shop they belong to.
+## The Liquid declares the interface; a story file declares the cases
 
-Cases a type cannot express belong with the component, in its `nazare.json`:
+Two things, two places, and they never overlap:
+
+| | Declares | Lives in |
+| --- | --- | --- |
+| **Interface** — prop names, types, ranges, enum members, requiredness, defaults | the Liquid: `{% doc %}`, `{% schema %}`, `{% props %}` | the template |
+| **Cases** — which values are worth looking at, and what to call them | a story file | `nazare.json` or `*.stories.json` |
+
+A story file never introduces a prop, a type, or a control. It is a set of named
+value bundles addressed by names the template already declared — because two
+places to declare an interface means they eventually disagree.
 
 ```json
-"preview": {
+{
   "stories": [
-    {
-      "name": "on sale",
-      "props": {
-        "price": { "$fixture": "price" },
-        "compare_at_price": { "$fixture": "compare_at_price" },
-        "show_compare_at": true
-      },
-      "note": "Compare-at above the price, so the strikethrough shows."
-    }
+    { "name": "default" },
+    { "name": "on sale", "props": { "product": { "$fixture": "product" } } },
+    { "name": "no badge", "props": { "badge": null },
+      "note": "What the card looks like without the ribbon." }
   ]
 }
 ```
 
-A theme has no `nazare.json`, so its stories live in a sidecar beside the
-template — `product-card.stories.json` for `product-card.liquid` — in the same
-shape, minus the manifest wrapper. The sidecar wins where both exist: the file
-beside the template is the more local statement.
+Four keys, and no others: `stories`, and each case's `name`, `props`, `note`.
+Anything else is a parse error rather than a field quietly ignored — every
+Storybook field that isn't in that list is one that ends up declaring interface
+in the story file.
 
-`{ "$fixture": "name" }` addresses the shared data. Authored stories **add** to
-the derived set rather than replacing it, so writing one edge case does not
-silently delete the enum coverage the contract gave you; a story named after a
-derived one overrides it, which is how a component states a better default than
-the type-shaped one. `"replace": true` drops the derived set entirely. A
-component with no stories at all is still previewable from its contract.
-Stories drawing on fixtures are badged in the gallery, because a fixture is tidy
-in ways a real catalogue is not: no missing compare-at price, no 60-character
-title, no sold-out variant.
+**Stories are partial.** Since the declaration owns the defaults, a case states
+only what it changes; `default` above sets nothing and renders the component as
+it ships. That keeps a story about its delta, which is also what makes the
+workbench's grouping by changed prop mean anything. `null` is an explicit unset,
+distinct from absent — "what does this look like without the optional thing."
+
+**A story file is what publishes a component to the workbench.** No file, no
+sidebar entry. That is the whole discovery rule, and it is what keeps a real
+theme's hundred helper snippets — `icon.liquid`, `meta-tags.liquid` — out of a
+sidebar where they would render blank. They stay in scope for `{% render %}`;
+they just aren't things to look at. `--all` shows them anyway, which is how you
+survey a theme to decide what to write next.
+
+A published component carries its stories in `nazare.json`, versioned with it
+and travelling with the install. A theme has no manifest, so its stories live in
+a sidecar beside the template — `product-card.stories.json` for
+`product-card.liquid`, the same shape minus the wrapper. The sidecar wins where
+both exist: the file beside the template is the more local statement.
+
+Storefront data lives in the preview, not in the components: one canonical mock
+product, collection, image, and shop in `fixtures.ts`, addressed as
+`{ "$fixture": "name" }`, plus the `money` and `img_url` filters. If each
+component shipped its own mock product, forty components would disagree about
+the shop they belong to. Stories drawing on fixtures are badged in the gallery,
+because a fixture is tidy in ways a real catalogue is not: no missing compare-at
+price, no 60-character title, no sold-out variant.
+
+### Nothing is derived at render time
+
+`scaffoldStories` still produces the obvious set — the defaults, then one case
+per enum member — but it writes a *file*, for an author to read and edit and
+commit:
+
+```sh
+node packages/preview/examples/scaffold-stories.mjs snippets/product-card.liquid
+```
+
+The difference is not cosmetic. A guess in a file is something you can correct;
+a guess made fresh on every render is something the tool asserts on your behalf
+forever. It also gives the sidebar a meaning — "17 of 130 snippets" reads as a
+number somebody moved, rather than one that is always 130.
 
 ## Stories are checked against the declaration
 
@@ -148,9 +190,16 @@ declares — an undeclared prop (usually a typo), a value outside an enum, a
 number outside its range, a required prop nobody passed, a `$fixture` name that
 does not exist.
 
-These are warnings shown beside the render, not failures: a story that trips one
-still renders, and the render is how you judge whether it matters. A component
-that declares nothing — plain Liquid with no `{% doc %}` block — is not
+Since the interface belongs to the Liquid and the story owns only values, a
+mismatch is unambiguous: the story asserts something the declaration denies, and
+there is no reading where that was meant. These are **errors**. They are also
+checkable in both directions — a story that misspells a prop fails, and a
+template that renames one breaks its stories loudly instead of quietly rendering
+nil.
+
+They are reported beside the render, not thrown: a story that trips one still
+renders, and the render is how you judge how much it matters. A component that
+declares nothing — plain Liquid with no `{% doc %}` block — is not
 second-guessed, because inferring an interface from the template's body would be
 the preview inventing a contract nobody wrote.
 
@@ -203,19 +252,23 @@ All three produce `PreviewControl { name, label, kind, required, options?,
 range?, value, typeExpression }` — the argTypes equivalent, derived rather than
 written.
 
-**Controls → stories.** `generatedStories` is the defaults plus one story per
-enum member. `storiesFor(component, manifest?, sidecar?)` layers the authored
-cases on top. Names are unique in the result, which is what keeps story ids from
-colliding.
+**Story file → stories.** `parseStoryFile(json)` checks the file strictly and
+`storiesFor({ manifest, sidecar })` resolves which of the two sources applies,
+returning `[]` when neither declares anything — the signal that this component
+does not appear. Story names are unique within a file, which is what keeps story
+ids from colliding. `scaffoldStories(component)` is the draft generator, called
+by the scaffold runner and by nothing on the render path.
 
-**Stories → rendered.** `renderComponentStories(component, stories?, options)`
+**Stories → rendered.** `renderComponentStories(component, stories, options)`
 assigns each story its id, computes which props it `changed`, validates it
-against the declaration, and renders it in the scope the kind dictates.
+against the declaration, merges its delta over the declared defaults with
+`storyProps`, and renders it in the scope the kind dictates. `stories` is
+required: there is no derived set to fall back on.
 
 ```ts
 type RenderedStory = {
-  id: string;          // "button--scheme-outline"
-  story: PreviewStory; // { name, props, note?, fixtures? }
+  id: string;          // "button--outline"
+  story: PreviewStory; // { name, props (the delta), note?, fixtures? }
   html: string;
   changed: string[];
   issues: StoryIssue[];
@@ -233,6 +286,8 @@ them. All three return strings.
 | --- | --- |
 | Preview one file | `previewComponentFromSource` |
 | Take only the knobs, for an editor panel | `controlsFromContract`, `plainLiquidControls` |
+| Read a story file | `parseStoryFile`, `storiesFor` |
+| Draft one for an author to edit | `scaffoldStories` |
 | Render stories without a page | `renderComponentStories` |
 | Render a template yourself | `createPreviewEngine`, `renderPreview` |
 | Build a static site or serve a dev server | `storyDocuments`, `workbenchPage` |
@@ -264,7 +319,8 @@ the query — so a reload, a link, and a fresh tab all arrive at the same place.
 component.ts         source → PreviewComponent
 controls.ts          contract → controls
 plain-controls.ts    doc params / schema settings → controls
-stories.ts           controls + authored cases → stories
+story-file.ts        the story file format, parsed strictly
+stories.ts           declared cases → stories; delta over declared defaults
 story-validation.ts  story vs. declaration → issues
 engine.ts            liquidjs, plus the Shopify tags and filters it lacks
 render.ts            stories → html
@@ -277,9 +333,10 @@ panels.ts            per-component documentation, shared by both shells
 theme.ts, html.ts    shared tokens, frame messages, escaping
 ```
 
-`examples/build-gallery.mjs` (the registry) and `examples/preview-theme.mjs` (any
-theme directory) are pure I/O around the above, and the shape a `nazare preview`
-command would take.
+`examples/build-gallery.mjs` (the registry), `examples/preview-theme.mjs` (any
+theme directory), and `examples/scaffold-stories.mjs` (one file's first draft)
+are pure I/O around the above, and the shape a `nazare preview` command would
+take.
 
 ## What it is not
 

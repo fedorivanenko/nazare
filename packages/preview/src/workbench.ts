@@ -90,19 +90,30 @@ function navComponent(
  * them wrapped onto two lines before the canvas even appeared.
  *
  * Options are grouped by the prop the story varies, which the render already
- * computed (`changed`): a component with three enums reads as three menus of
- * values rather than one flat list of `prop: value` strings.
+ * computed (`changed`): a component whose stories walk one enum reads as a menu
+ * of that prop's values rather than a flat list.
+ *
+ * A group of one is not a group — it is a heading over a single item, and
+ * authored stories produce those constantly, since a hand-written case is
+ * usually the only one that touches its prop. Those stay in the flat list.
  */
 function substories(
 	{ component, stories }: RenderedComponent,
 	storyBase: string,
 ): string {
 	const id = componentId(component.name);
+	const varied = new Map<string, number>();
+	for (const rendered of stories) {
+		if (rendered.changed.length !== 1) continue;
+		const prop = rendered.changed[0];
+		varied.set(prop, (varied.get(prop) ?? 0) + 1);
+	}
 	const groups = new Map<string, RenderedStory[]>();
 	for (const rendered of stories) {
-		// A story that changed exactly one prop belongs to that prop; anything
-		// else (the defaults, a hand-written case, a combination) stands alone.
-		const group = rendered.changed.length === 1 ? rendered.changed[0] : "";
+		// A story that changed exactly one prop belongs to that prop, but only
+		// where the prop has more than one story to gather.
+		const prop = rendered.changed.length === 1 ? rendered.changed[0] : "";
+		const group = (varied.get(prop) ?? 0) > 1 ? prop : "";
 		groups.set(group, [...(groups.get(group) ?? []), rendered]);
 	}
 	const option = (rendered: RenderedStory): string =>

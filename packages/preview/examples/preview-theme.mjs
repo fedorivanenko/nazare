@@ -8,9 +8,12 @@
 // declared interface comes from its own {% doc %} params or {% schema %}
 // settings.
 //
-// Authored stories live in a sidecar beside the template (card.stories.json for
-// card.liquid), because a theme has no nazare.json to put them in. They add to
-// the derived set rather than replacing it.
+// Stories live in a sidecar beside the template (card.stories.json for
+// card.liquid), because a theme has no nazare.json to put them in — and the
+// sidecar is what publishes a template to the workbench. A theme has a hundred
+// helper snippets that render nothing standalone; the ones somebody wrote
+// stories for are the ones worth a sidebar entry. `--all` shows the rest,
+// which is how you survey a theme to decide what to write next.
 //
 // This is the shape a `nazare preview` command would take: walk, preview, write.
 import {
@@ -23,7 +26,9 @@ import {
 } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import {
+	defaultStory,
 	galleryPage,
+	parseStoryFile,
 	previewComponentFromSource,
 	renderComponentStories,
 	snippetLibrary,
@@ -32,9 +37,14 @@ import {
 	workbenchPage,
 } from "../dist/index.js";
 
-const themeDir = resolve(process.argv[2] ?? ".");
+const args = process.argv.slice(2);
+// Show every template, story file or not, badged with an empty default case.
+const showAll = args.includes("--all");
+const positional = args.filter((arg) => !arg.startsWith("--"));
+
+const themeDir = resolve(positional[0] ?? ".");
 const outDir = resolve(
-	process.argv[3] ?? join(themeDir, ".nazare-out/preview"),
+	positional[1] ?? join(themeDir, ".nazare-out/preview"),
 );
 
 // The directories a theme keeps renderable components in. templates/ and
@@ -50,18 +60,25 @@ const readThemeFile = (path) => {
 	}
 };
 
-const readJson = (path) => {
+// A story file that does not parse stops that component rather than previewing
+// half of it — the author is mid-edit, and a silently-dropped story is the one
+// thing worse than an error.
+const readStoryFile = (path) => {
 	const contents = readThemeFile(path);
 	if (contents === undefined) return undefined;
 	try {
-		return JSON.parse(contents);
+		return parseStoryFile(JSON.parse(contents), path);
 	} catch (error) {
-		console.warn(`skipping ${path}: ${error.message}`);
+		console.error(`${path}: ${error.message}`);
+		process.exitCode = 1;
 		return undefined;
 	}
 };
 
-const previewed = [];
+// Everything compiles, because a component that renders a helper snippet needs
+// that helper in scope whether or not the helper is worth a sidebar entry of
+// its own. Only what has a story file is previewed.
+const compiled = [];
 for (const dir of COMPONENT_DIRS) {
 	const absolute = join(themeDir, dir);
 	if (!existsSync(absolute)) continue;
@@ -70,38 +87,51 @@ for (const dir of COMPONENT_DIRS) {
 		const file = `${dir}/${entry}`;
 		const source = readThemeFile(file);
 		if (source === undefined) continue;
-		// card.liquid → card.stories.json, beside the template.
-		const sidecar = readJson(
-			`${dir}/${basename(entry, ".liquid")}.stories.json`,
-		);
-		previewed.push({
+		compiled.push({
 			component: previewComponentFromSource(source, file, {
 				readFile: readThemeFile,
 			}),
-			sidecar,
+			// card.liquid → card.stories.json, beside the template.
+			sidecar: readStoryFile(
+				`${dir}/${basename(entry, ".liquid")}.stories.json`,
+			),
+			file,
 		});
 	}
 }
 
+// Templates with no story file: not previewed, but counted and named, because
+// the failure mode of convention-based discovery is a file that vanishes
+// without saying why.
+const undeclared = compiled
+	.filter((entry) => !entry.sidecar)
+	.map((entry) => entry.file);
+const previewed = showAll
+	? compiled
+	: compiled.filter((entry) => entry.sidecar);
+
 if (previewed.length === 0) {
 	console.error(
-		`No ${COMPONENT_DIRS.join("/, ")}/ Liquid found in ${themeDir}`,
+		undeclared.length > 0
+			? `No story files in ${themeDir} — ${undeclared.length} templates have none. Write a <name>.stories.json beside one, or pass --all to see them anyway.`
+			: `No ${COMPONENT_DIRS.join("/, ")}/ Liquid found in ${themeDir}`,
 	);
 	process.exit(1);
 }
 
-// Every snippet in scope, so a component that renders another resolves.
-const snippets = snippetLibrary(previewed.map((entry) => entry.component));
+// Every snippet in scope, so a component that renders another resolves — drawn
+// from everything compiled, not only from what is previewed.
+const snippets = snippetLibrary(compiled.map((entry) => entry.component));
 
 const rendered = [];
 for (const { component, sidecar } of previewed) {
-	rendered.push(
-		await renderComponentStories(
-			component,
-			storiesFor(component, undefined, sidecar),
-			{ snippets },
-		),
-	);
+	// Under --all, a template with no story file still gets one case: the
+	// defaults, so there is something to look at while deciding whether to
+	// write it a story file of its own.
+	const stories = sidecar
+		? storiesFor({ sidecar })
+		: [defaultStory(component)];
+	rendered.push(await renderComponentStories(component, stories, { snippets }));
 }
 
 mkdirSync(outDir, { recursive: true });
@@ -142,4 +172,11 @@ console.log(
 		0,
 	)} stories, ${failed.length} failed to render`,
 );
+if (undeclared.length > 0 && !showAll) {
+	console.log(
+		`skipped ${undeclared.length} template${
+			undeclared.length === 1 ? "" : "s"
+		} with no story file — run with --all to see them`,
+	);
+}
 console.log(join(outDir, "index.html"));

@@ -7,5 +7,25 @@
   "dependencies": {},
   "files": [
     "notice.nz.liquid"
-  ]
+  ],
+  "preview": {
+    "stories": [
+      { "name": "info" },
+      {
+        "name": "success",
+        "props": { "tone": "success", "message": "Your order is on its way." }
+      },
+      {
+        "name": "warning",
+        "props": { "tone": "warning", "message": "Only two left in stock." }
+      },
+      {
+        "name": "long message",
+        "props": {
+          "message": "Orders placed after 2pm on Friday ship the following Monday, and delivery to the islands takes a further two days."
+        },
+        "note": "Wrapping is where the padding is judged."
+      }
+    ]
+  }
 }

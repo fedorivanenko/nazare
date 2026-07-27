@@ -9,5 +9,17 @@
   },
   "files": [
     "notice-board.nz.liquid"
-  ]
+  ],
+  "preview": {
+    "stories": [
+      {
+        "name": "default",
+        "note": "The blocks slot renders as a labelled placeholder: a workbench has no merchant blocks to inject."
+      },
+      {
+        "name": "custom heading",
+        "props": { "heading": "Store updates" }
+      }
+    ]
+  }
 }
