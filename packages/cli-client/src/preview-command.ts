@@ -96,39 +96,59 @@ export function previewSource(
 	dir: string,
 	label: string,
 	outDir?: string,
-): WorkbenchSource {
-	const git = (...args: string[]): string | undefined => {
-		try {
-			return execFileSync("git", args, {
-				cwd: dir,
-				encoding: "utf8",
-				stdio: ["ignore", "pipe", "ignore"],
-			}).trim();
-		} catch {
-			return undefined;
+): { source: WorkbenchSource; problem?: string } {
+	const run = (...args: string[]): string => {
+		return execFileSync("git", args, {
+			cwd: dir,
+			encoding: "utf8",
+			stdio: ["ignore", "pipe", "ignore"],
+		}).trim();
+	};
+
+	// Two questions, and only the first is allowed to fail quietly: a theme
+	// often is not in a repository, and git often is not installed. Neither is
+	// a problem with the preview, so neither is worth a word.
+	try {
+		if (run("rev-parse", "--is-inside-work-tree") !== "true") {
+			return { source: { path: label } };
 		}
-	};
-	// A detached HEAD reports the string "HEAD", which names nothing.
-	const branch = git("rev-parse", "--abbrev-ref", "HEAD");
-	const commit = git("rev-parse", "--short", "HEAD");
-	// Scoped to what was previewed: edits elsewhere in the repository say
-	// nothing about whether these components match their commit. The output
-	// directory is excluded when it sits inside the previewed one, or every
-	// build would report the previous build as a change.
-	const nested = outDir ? relative(dir, outDir) : "";
-	const changes = git(
-		"status",
-		"--porcelain",
-		"--",
-		".",
-		...(nested && !nested.startsWith("..") ? [`:(exclude)${nested}`] : []),
-	);
-	return {
-		path: label,
-		...(branch && branch !== "HEAD" ? { branch } : {}),
-		...(commit ? { commit } : {}),
-		...(changes ? { dirty: true } : {}),
-	};
+	} catch {
+		return { source: { path: label } };
+	}
+
+	// Inside a work tree, though, a failing git command is unexpected, and a
+	// header that silently drops the commit is a header that lies about being
+	// unable to name one.
+	try {
+		// A detached HEAD reports the string "HEAD", which names nothing.
+		const branch = run("rev-parse", "--abbrev-ref", "HEAD");
+		const commit = run("rev-parse", "--short", "HEAD");
+		// Scoped to what was previewed: edits elsewhere in the repository say
+		// nothing about whether these components match their commit. The output
+		// directory is excluded when it sits inside the previewed one, or every
+		// build would report the previous build as a change.
+		const nested = outDir ? relative(dir, outDir) : "";
+		const changes = run(
+			"status",
+			"--porcelain",
+			"--",
+			".",
+			...(nested && !nested.startsWith("..") ? [`:(exclude)${nested}`] : []),
+		);
+		return {
+			source: {
+				path: label,
+				...(branch && branch !== "HEAD" ? { branch } : {}),
+				...(commit ? { commit } : {}),
+				...(changes ? { dirty: true } : {}),
+			},
+		};
+	} catch (error) {
+		return {
+			source: { path: label },
+			problem: `${dir} is a git work tree, but reading its revision failed: ${errorText(error)}`,
+		};
+	}
 }
 
 /**
@@ -178,12 +198,22 @@ export function fixtureReader(dir: string): {
 	};
 }
 
-/** The compiler reads synchronously, and a missing import is not an error. */
+/**
+ * The compiler reads synchronously, and a missing import is not an error — a
+ * template may name something that is not there, and saying so is the
+ * compiler's job rather than this reader's.
+ *
+ * Missing is the only thing forgiven. A file that exists and cannot be read —
+ * no permission, a directory where a file was expected, a device error — is not
+ * the same as one that is not there, and answering "not found" for it sends the
+ * author looking for a file they are staring at.
+ */
 const readSync = (path: string): string | undefined => {
 	try {
 		return readFileSync(path, "utf8");
-	} catch {
-		return undefined;
+	} catch (error) {
+		if (isMissingFileError(error)) return undefined;
+		throw new Error(`Unable to read ${path}: ${errorText(error)}`);
 	}
 };
 
@@ -205,13 +235,16 @@ const readIfPresent = async (path: string): Promise<string | undefined> => {
  */
 export async function detectLayout(
 	dir: string,
-): Promise<PreviewLayout | undefined> {
+): Promise<PreviewLayout | "missing" | undefined> {
 	if (THEME_DIRS.some((name) => existsSync(join(dir, name)))) return "theme";
 	let entries: string[];
 	try {
 		entries = await readdir(dir);
-	} catch {
-		return undefined;
+	} catch (error) {
+		// "There is nothing to preview here" and "here is not a directory" are
+		// different answers, and only one of them is about stories.
+		if (isMissingFileError(error)) return "missing";
+		throw new Error(`Unable to read ${dir}: ${errorText(error)}`);
 	}
 	for (const entry of entries) {
 		if (existsSync(join(dir, entry, "nazare.json"))) return "package";
@@ -338,8 +371,9 @@ async function collectPackages(
 /** Everything in `dir`, compiled, with its stories resolved. */
 export async function collectPreview(
 	dir: string,
-): Promise<PreviewCollection | undefined> {
+): Promise<PreviewCollection | "missing" | undefined> {
 	const layout = await detectLayout(dir);
+	if (layout === "missing") return "missing";
 	if (layout === undefined) return undefined;
 	const fixtures = fixtureReader(dir);
 	const collection =
@@ -392,7 +426,9 @@ export async function runPreviewBuild(
 	label = dir,
 ): Promise<number> {
 	const collection = await collectPreview(dir);
-	if (!collection) return missingLayout(dir, output);
+	if (!collection || collection === "missing") {
+		return missingLayout(dir, output, collection === "missing");
+	}
 	const rendered = await renderCollection(collection);
 	if (rendered.length === 0) return nothingToPreview(collection, dir, output);
 
@@ -423,12 +459,14 @@ export async function runPreviewBuild(
 	}
 
 	const title = basename(resolve(dir));
+	const sourceOf = previewSource(dir, label, outDir);
+	if (sourceOf.problem) output.error(sourceOf.problem);
 	await writeFile(
 		join(outDir, "index.html"),
 		workbenchPage(rendered, {
 			title: `${title} — Nazare preview`,
 			storyBase: "./stories/",
-			source: previewSource(dir, label, outDir),
+			source: sourceOf.source,
 		}),
 	);
 	await writeFile(
@@ -469,7 +507,9 @@ export async function runPreviewCheck(
 	output: Output,
 ): Promise<number> {
 	const collection = await collectPreview(dir);
-	if (!collection) return missingLayout(dir, output);
+	if (!collection || collection === "missing") {
+		return missingLayout(dir, output, collection === "missing");
+	}
 	const rendered = await renderCollection(collection);
 	if (rendered.length === 0) return nothingToPreview(collection, dir, output);
 
@@ -631,11 +671,15 @@ export async function runPreviewScaffold(
 	return 0;
 }
 
-function missingLayout(dir: string, output: Output): number {
+function missingLayout(dir: string, output: Output, missing = false): number {
+	// "There is nothing to preview here" reads as advice about stories, which is
+	// the wrong thing to think about when the directory is not there at all.
 	output.error(
-		`Nothing to preview in ${dir}. Expected a theme (${THEME_DIRS.map(
-			(name) => `${name}/`,
-		).join(", ")}) or a directory of packages (folders with nazare.json).`,
+		missing
+			? `${dir} does not exist.`
+			: `Nothing to preview in ${dir}. Expected a theme (${THEME_DIRS.map(
+					(name) => `${name}/`,
+				).join(", ")}) or a directory of packages (folders with nazare.json).`,
 	);
 	return 1;
 }

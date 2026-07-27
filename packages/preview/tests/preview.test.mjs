@@ -243,6 +243,29 @@ test("a plain section takes its controls from {% schema %} settings", async () =
 	assert.ok(rendered.stories[1].html.includes("<h2>Sale</h2>"));
 });
 
+test("a schema that does not parse yields no controls, and says why", async () => {
+	// `controlsFromSchemaSource` returns nothing for a schema it cannot read,
+	// which is only acceptable because the reason is reported elsewhere. This
+	// holds that "elsewhere" true rather than leaving it as a claim in a comment.
+	const component = previewComponentFromSource(
+		`<section>{{ section.settings.x }}</section>
+{% schema %}
+{ "name": "Broken", settings: [ }
+{% endschema %}
+`,
+		"sections/broken.liquid",
+	);
+
+	assert.deepEqual(component.controls, []);
+	assert.ok(
+		component.issues.some(
+			(issue) =>
+				issue.severity === "error" && /not valid JSON/.test(issue.message),
+		),
+		"the compiler reports the schema it could not read",
+	);
+});
+
 test("a composing component renders against the emitted snippets", async () => {
 	const engine = createPreviewEngine({
 		snippets: { button: '<a class="btn">{{ label }}</a>' },

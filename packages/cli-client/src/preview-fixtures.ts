@@ -11,6 +11,7 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { starterFixtures } from "@nazare/preview";
+import { isMissingFileError } from "./inspect-input.js";
 import type { CliOptions } from "./options.js";
 import type { Output } from "./output.js";
 
@@ -46,8 +47,17 @@ async function writeFixture(
 	},
 ): Promise<boolean> {
 	const path = join(dir, FIXTURES_DIR, `${name}.json`);
+	// No fixtures directory yet is the normal case on a first run; anything else
+	// going wrong with it is not, and is not something to answer by writing.
 	const existing = await readdir(join(dir, FIXTURES_DIR)).catch(
-		(): string[] => [],
+		(error): string[] => {
+			if (isMissingFileError(error)) return [];
+			throw new Error(
+				`Unable to read ${join(dir, FIXTURES_DIR)}: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+		},
 	);
 	if (existing.includes(`${name}.json`) && !force) {
 		output.error(

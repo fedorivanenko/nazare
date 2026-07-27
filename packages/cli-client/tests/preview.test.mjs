@@ -337,6 +337,15 @@ test("a directory that is neither a theme nor packages says so", async () => {
 		assert.equal(status, 1);
 		assert.match(stderr, /Expected a theme .* or a directory of packages/);
 	});
+
+	// And a directory that is not there says *that*, because advice about
+	// stories is the wrong thing to read when the path is simply wrong.
+	await withProject({ "notes.md": "#\n" }, async (cwd) => {
+		const { status, stderr } = await runCli(cwd, "preview", "check", "typo");
+
+		assert.equal(status, 1);
+		assert.match(stderr, /does not exist/);
+	});
 });
 
 test("a theme with no story files at all points at scaffold", async () => {

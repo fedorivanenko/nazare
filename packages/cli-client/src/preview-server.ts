@@ -68,6 +68,8 @@ type ServerState = {
 	assets: Map<string, string>;
 	collection: PreviewCollection;
 	rendered: RenderedComponent[];
+	/** Anything about the checkout the header could not answer, said once. */
+	sourceProblem?: string;
 	/** Kept so a draft render resolves a `$file` the same way the build did. */
 	readFixture: (path: string) => unknown;
 	snippets: Record<string, string>;
@@ -80,7 +82,7 @@ async function buildState(
 	previous?: ServerState,
 ): Promise<ServerState | undefined> {
 	const collection = await collectPreview(dir);
-	if (!collection) return undefined;
+	if (!collection || collection === "missing") return undefined;
 	const fresh = await renderCollection(collection);
 
 	// A story file is written by hand, so it spends time being invalid — every
@@ -117,6 +119,7 @@ async function buildState(
 		};
 	}
 
+	const revision = previewSource(dir, label);
 	const pages = new Map<string, string>();
 	// The shell reloads itself when the server says something changed; that is
 	// the only difference between these pages and the ones written to disk.
@@ -125,7 +128,7 @@ async function buildState(
 		workbenchPage(rendered, {
 			title: `${label} — Nazare preview`,
 			storyBase: "/stories/",
-			source: previewSource(dir, label),
+			source: revision.source,
 			liveReload: EVENTS_PATH,
 			saveEndpoint: SAVE_PATH,
 			renderEndpoint: RENDER_PATH,
@@ -157,6 +160,7 @@ async function buildState(
 		assets,
 		collection,
 		rendered,
+		...(revision.problem ? { sourceProblem: revision.problem } : {}),
 		readFixture: fixtureReader(dir).read,
 		snippets: snippetLibrary(collection.compiled.map((one) => one.component)),
 	};
@@ -355,6 +359,7 @@ export async function renderStoryDraft(
 
 /** Reports what a rebuild found, in the same words the build command uses. */
 function report(state: ServerState, output: Output): void {
+	if (state.sourceProblem) output.error(state.sourceProblem);
 	for (const message of state.collection.malformed) output.error(message);
 	const stories = state.rendered.reduce(
 		(total, entry) => total + entry.stories.length,
