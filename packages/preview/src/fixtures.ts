@@ -85,14 +85,21 @@ export const shop = {
 	url: "https://example.myshopify.com",
 };
 
-/** Every fixture, addressable by name from a story's `{ "$fixture": "..." }`. */
+/**
+ * Every fixture, addressable by name from a story's `{ "$fixture": "..." }`.
+ *
+ * Objects only, and that is the whole rule: a fixture exists because JSON
+ * cannot hold the thing — a product with its images, variants and compare-at
+ * price — and because forty components should agree about the shop they belong
+ * to. A number is not that. `{ "$fixture": "price" }` was 2400 wearing a
+ * costume: longer to write than the number, and a layer of indirection for a
+ * reader to unpick for nothing. Scalars are literals; you type them.
+ */
 export const shopifyFixtures: Record<string, unknown> = {
 	product,
 	collection,
 	image,
 	shop,
-	price: money.price,
-	compare_at_price: money.compareAtPrice,
 };
 
 type FixtureReference = { $fixture: string };

@@ -260,7 +260,14 @@ both exist: the file beside the template is the more local statement.
 
 Storefront data lives in the preview, not in the components: one canonical mock
 product, collection, image, and shop in `fixtures.ts`, addressed as
-`{ "$fixture": "name" }`, plus the `money` and `img_url` filters. If each
+`{ "$fixture": "name" }`, plus the `money` and `img_url` filters.
+
+**Objects only.** A fixture exists because JSON cannot reasonably hold the
+thing — a product with its images, variants and compare-at price — and because
+forty components should agree about the shop they belong to. A number is not
+that: `{ "$fixture": "price" }` was `2400` wearing a costume, longer to write
+than the number and a layer of indirection for a reader to unpick for nothing.
+Scalars are literals, and you type them. If each
 component shipped its own mock product, forty components would disagree about
 the shop they belong to. Stories drawing on fixtures are badged in the gallery,
 because a fixture is tidy in ways a real catalogue is not: no missing compare-at
@@ -463,11 +470,9 @@ rebuilds, and the page reloads with the real render. That is why the button
 says Save rather than the canvas following your keystrokes: the alternative is
 a canvas that quietly stops matching the controls above it.
 
-Whether a prop holds a literal or a fixture is itself an edit: a fixture row
-offers the other fixture names and a **use a value** switch that seeds the
-literal it resolved to. Storefront data is the exception — a product cannot be
-typed into a field — so that one direction stays shut and says why. What is
-written is the story's delta, with `{ "$fixture": "product" }` left as the
+A fixture prop is shown as the reference it is, with no field pretending
+otherwise; the JSON tab is where one changes. What is written is the story's
+delta, with `{ "$fixture": "product" }` left as the
 reference it is rather than the three kilobytes it resolves to, which is why
 `PreviewStory` keeps `source` alongside its resolved props.
 

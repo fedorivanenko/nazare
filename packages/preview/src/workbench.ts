@@ -12,7 +12,6 @@
 // opens the story on its own, which is the honest degraded behaviour rather
 // than a dead page.
 import type { PreviewComponent } from "./component.js";
-import { shopifyFixtures } from "./fixtures.js";
 import { escapeHtml } from "./html.js";
 import {
 	renderCode,
@@ -564,22 +563,6 @@ const WORKBENCH_STYLES = `
     border-radius: calc(var(--radius) - 3px);
     padding: .35rem .5rem;
   }
-  .control-label { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }
-  /* Which kind of value a prop holds is itself an edit, so the switch sits on
-   * the row rather than being a mode you have to find. */
-  .control-swap {
-    border: 0;
-    background: transparent;
-    color: var(--muted-foreground);
-    font: inherit;
-    font-size: .68rem;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    cursor: pointer;
-    padding: 0;
-  }
-  .control-swap:hover:not([disabled]) { color: var(--foreground); }
-  .control-swap[disabled] { opacity: .4; cursor: default; text-decoration: none; }
   .edit-modes { float: right; display: inline-flex; gap: .2rem; }
   .edit-mode {
     border: 1px solid var(--border);
@@ -910,10 +893,6 @@ const WORKBENCH_SCRIPT = `
   const controlsIndex = JSON.parse(
     document.getElementById('controls-index').textContent,
   );
-  const fixtures = JSON.parse(
-    document.getElementById('fixtures-index').textContent,
-  );
-  const fixtureNames = Object.keys(fixtures);
   const storyFiles = JSON.parse(
     document.getElementById('story-files').textContent,
   );
@@ -933,46 +912,16 @@ const WORKBENCH_SCRIPT = `
     label.innerHTML = '<code>' + control.name + '</code>' +
       (control.required ? ' <span class="control-required">required</span>' : '');
 
-    // A prop can hold a literal or a name from the shared storefront data, and
-    // which one it holds is itself an edit. A product cannot be typed into a
-    // field, but a price is a named number — refusing to edit either was the
-    // reason a story made of two fixtures had nothing to change.
-    const resolved = fixtures[isFixture(value) ? value.$fixture : ''];
-    const swap = document.createElement('button');
-    swap.type = 'button';
-    swap.className = 'control-swap';
-    swap.textContent = isFixture(value) ? 'use a value' : 'use a fixture';
-    // Nothing sensible to type for a product or a collection, so that one
-    // direction stays shut, and says why.
-    swap.disabled = isFixture(value) && resolved !== null && typeof resolved === 'object';
-    if (swap.disabled) swap.title = 'This fixture is storefront data, not a value';
-    swap.addEventListener('click', () => {
-      const next = isFixture(value)
-        ? (typeof resolved === 'object' ? '' : resolved)
-        : { $fixture: fixtureNames[0] };
-      row.replaceWith(controlRow(control, next));
-      dirty = true;
-      paintControlsBar();
-    });
-    label.append(swap);
     row.append(label);
 
+    // A fixture is storefront data — a product with its images and variants —
+    // which is the only reason the indirection exists. There is nothing to type
+    // for one, so the row says what it is and the JSON tab is where it changes.
     if (isFixture(value)) {
-      const picker = document.createElement('select');
-      for (const name of fixtureNames) {
-        const option = document.createElement('option');
-        option.value = name;
-        option.textContent = 'fixture: ' + name;
-        if (name === value.$fixture) option.selected = true;
-        picker.append(option);
-      }
-      picker.dataset.control = control.name;
-      picker.dataset.kind = 'fixture';
-      picker.addEventListener('change', () => {
-        dirty = true;
-        paintControlsBar();
-      });
-      row.append(picker);
+      const chip = document.createElement('span');
+      chip.className = 'control-fixture';
+      chip.textContent = 'fixture: ' + value.$fixture;
+      row.append(chip);
       return row;
     }
 
@@ -1064,8 +1013,7 @@ const WORKBENCH_SCRIPT = `
     const props = { ...editing.source };
     for (const input of controlsForm.querySelectorAll('[data-control]')) {
       const name = input.dataset.control;
-      if (input.dataset.kind === 'fixture') props[name] = { $fixture: input.value };
-      else if (input.type === 'checkbox') props[name] = input.checked;
+      if (input.type === 'checkbox') props[name] = input.checked;
       else if (input.dataset.kind === 'number') {
         props[name] = input.value === '' ? null : Number(input.value);
       } else if (input.value === '') delete props[name];
@@ -1502,9 +1450,6 @@ ${links}
       </p>
     </aside>
   </div>
-<script type="application/json" id="fixtures-index">${JSON.stringify(
-		shopifyFixtures,
-	).replace(/</g, "\\u003c")}</script>
 <script type="application/json" id="story-files">${JSON.stringify(
 		options.storyFiles ?? {},
 	).replace(/</g, "\\u003c")}</script>

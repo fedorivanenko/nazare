@@ -10,6 +10,7 @@ import {
 	renderPreview,
 	resolveFixtures,
 	scaffoldStories,
+	shopifyFixtures,
 	snippetLibrary,
 	storiesFor,
 	storyDocument,
@@ -531,7 +532,7 @@ test("Shopify's form tag renders its body instead of failing the story", async (
 	);
 });
 
-test("manifest stories resolve fixtures", async () => {
+test("a scalar is a literal, and only storefront data is a fixture", async () => {
 	const component = previewComponentFromSource(PRICE, "price.nz.liquid");
 	const manifest = {
 		id: "@nazare/price",
@@ -543,8 +544,8 @@ test("manifest stories resolve fixtures", async () => {
 				{
 					name: "on sale",
 					props: {
-						price: { $fixture: "price" },
-						compare_at_price: { $fixture: "compare_at_price" },
+						price: 2400,
+						compare_at_price: 4000,
 						show_compare_at: true,
 					},
 				},
@@ -558,9 +559,17 @@ test("manifest stories resolve fixtures", async () => {
 		stories.map((story) => story.name),
 		["on sale"],
 	);
-	// The reference resolved to shared stand-in data, and the story says so.
+	// A price is a number. `{ "$fixture": "price" }` was 2400 wearing a costume
+	// — longer than the number and a layer of indirection for nothing — so the
+	// preview owns objects only, and this story names no fixture at all.
 	assert.equal(onSale.props.price, 2400);
-	assert.equal(onSale.fixtures, true);
+	assert.equal(onSale.fixtures, false);
+	assert.deepEqual(Object.keys(shopifyFixtures), [
+		"product",
+		"collection",
+		"image",
+		"shop",
+	]);
 
 	const rendered = await renderComponentStories(component, [onSale]);
 	// Money is minor units, formatted by the preview's `money` filter.

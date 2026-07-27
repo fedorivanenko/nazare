@@ -291,37 +291,6 @@ test("the controls are the declaration, seeded from the story as written", async
 	assert.equal(shell.document.getElementById("controls-reset").disabled, true);
 });
 
-test("a fixture prop can be swapped for a value, and back", async () => {
-	// The bug this pins: every fixture prop was read-only, so a story whose
-	// props were all fixtures — `price`'s, for one — had nothing to edit at all.
-	// Which kind of value a prop holds is itself an edit.
-	const shell = await mountShell({
-		stories: [
-			{
-				name: "solid",
-				props: { label: 2400 },
-				source: { label: { $fixture: "price" } },
-			},
-		],
-	});
-	const row = () =>
-		[...shell.document.querySelectorAll("#controls .control")].find(
-			(entry) => entry.querySelector("code").textContent === "label",
-		);
-
-	// A fixture is a choice among the names the preview owns.
-	const picker = row().querySelector('[data-kind="fixture"]');
-	assert.ok(picker, "a fixture prop offers the other fixtures");
-	assert.ok(picker.querySelectorAll("option").length > 1);
-
-	// And it can stop being one: what it resolved to is where typing starts.
-	row()
-		.querySelector(".control-swap")
-		.dispatchEvent(new shell.window.Event("click"));
-	assert.equal(row().querySelector("input").getAttribute("value"), "2400");
-	assert.equal(shell.document.getElementById("controls-save").disabled, false);
-});
-
 test("storefront data stays a reference, because it is not a value", async () => {
 	// Resolving `{ "$fixture": "product" }` gives a product object; putting that
 	// in a text field and saving it would inline three kilobytes of stand-in
@@ -336,12 +305,17 @@ test("storefront data stays a reference, because it is not a value", async () =>
 			},
 		],
 	});
-	const swap = [...shell.document.querySelectorAll("#controls .control")]
-		.find((entry) => entry.querySelector("code").textContent === "label")
-		.querySelector(".control-swap");
+	const row = [...shell.document.querySelectorAll("#controls .control")].find(
+		(entry) => entry.querySelector("code").textContent === "label",
+	);
 
-	assert.equal(swap.disabled, true);
-	assert.match(swap.title, /storefront data/);
+	// Named, not typed — and no field pretending otherwise. Changing which
+	// fixture a story uses is what the JSON tab is for.
+	assert.equal(
+		row.querySelector(".control-fixture").textContent,
+		"fixture: product",
+	);
+	assert.equal(row.querySelector("input"), null);
 });
 
 test("the file itself can be edited when a server offers it", async () => {
