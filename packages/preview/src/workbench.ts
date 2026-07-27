@@ -26,6 +26,26 @@ import { renderCall } from "./render-call.js";
 import { componentId, storyFileName } from "./story-id.js";
 import { BACKGROUNDS, FRAME_MESSAGE, TOKEN_STYLES } from "./theme.js";
 
+/**
+ * Where the previewed components came from.
+ *
+ * A built workbench outlives the checkout that produced it — it gets deployed,
+ * linked, and looked at days later — and then "is this current?" has no answer
+ * anywhere on the page. The directory and the commit are that answer. Every
+ * field is optional because the caller may know none of them: a theme outside a
+ * repository has a path and nothing else.
+ */
+export type WorkbenchSource = {
+	/** The directory previewed, as the caller would name it. */
+	path?: string;
+	/** Branch, when the directory is in a git work tree and not detached. */
+	branch?: string;
+	/** Short commit SHA. */
+	commit?: string;
+	/** Whether the previewed files have uncommitted changes. */
+	dirty?: boolean;
+};
+
 export type WorkbenchPageOptions = {
 	title?: string;
 	/**
@@ -36,7 +56,36 @@ export type WorkbenchPageOptions = {
 	storyBase?: string;
 	/** Stylesheets for the shell itself, not for the stories. */
 	stylesheets?: string[];
+	/** What this page was built from, shown in the header. */
+	source?: WorkbenchSource;
 };
+
+/** The header's provenance line: the directory, then the commit it was at. */
+function sourceLine(source: WorkbenchSource | undefined): string {
+	if (!source) return "";
+	const parts: string[] = [];
+	if (source.path) {
+		parts.push(`<code class="source-path">${escapeHtml(source.path)}</code>`);
+	}
+	const revision = [source.branch, source.commit]
+		.filter((part): part is string => Boolean(part))
+		.join(" · ");
+	if (revision) {
+		// The asterisk is the usual shorthand for a work tree with edits in it,
+		// and it is the part that decides whether the page can be trusted as a
+		// record of a commit.
+		parts.push(
+			`<span class="source-rev"${
+				source.dirty
+					? ' title="Uncommitted changes in the previewed files"'
+					: ""
+			}>${escapeHtml(revision)}${source.dirty ? "*" : ""}</span>`,
+		);
+	}
+	return parts.length > 0
+		? `<span class="source">${parts.join('<span class="source-sep">/</span>')}</span>`
+		: "";
+}
 
 /** Shared by both selectors: a link that selects a story. */
 function storyLink(
@@ -262,7 +311,22 @@ const WORKBENCH_STYLES = `
   }
   .panel-toggle[aria-pressed="true"] { background: var(--muted); color: var(--foreground); }
   .panel-toggle:hover { background: var(--accent); color: var(--foreground); }
-  .topbar-tools { display: flex; align-items: center; gap: .4rem; }
+  .topbar-tools { display: flex; align-items: center; gap: .4rem; min-width: 0; }
+  /* Provenance, not chrome: quiet enough to ignore while working, present when
+   * someone asks what this page was built from. First thing to give up its
+   * width when the header is tight. */
+  .source {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    min-width: 0;
+    font-size: .74rem;
+    color: var(--muted-foreground);
+  }
+  .source-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .source-rev { white-space: nowrap; }
+  .source-sep { opacity: .5; }
+  @media (max-width: 760px) { .source { display: none; } }
   .sidebar-heading {
     margin: 0 0 .5rem;
     padding: 0 .5rem;
@@ -893,6 +957,7 @@ ${links}
     <div class="topbar-tools">
       <button class="panel-toggle" type="button" id="toggle-sidebar" aria-pressed="true" title="Show or hide the component list (S)">◧ Components</button>
       <strong>${escapeHtml(title)}</strong>
+      ${sourceLine(options.source)}
     </div>
     <div class="topbar-tools">
       <select class="viewport-select" id="theme" aria-label="Theme">

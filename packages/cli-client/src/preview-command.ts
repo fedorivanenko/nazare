@@ -12,6 +12,7 @@
 // invents a case for a template that has none. Those are counted and named,
 // because the failure mode of convention-based discovery is a file that
 // vanishes without saying why.
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -28,6 +29,7 @@ import {
 	snippetLibrary,
 	storiesFor,
 	storyDocuments,
+	type WorkbenchSource,
 	workbenchPage,
 } from "@nazare/preview";
 import { isMissingFileError } from "./inspect-input.js";
@@ -64,6 +66,53 @@ export type PreviewCollection = {
 
 const errorText = (error: unknown): string =>
 	error instanceof Error ? error.message : String(error);
+
+/**
+ * What the page was built from: the directory, and the commit it was at.
+ *
+ * A built workbench outlives its checkout — deployed, linked, opened days later
+ * — and "is this current?" otherwise has no answer on the page. Every call is
+ * allowed to fail: a theme is often not in a repository at all, and a preview
+ * is not the place to insist on one.
+ */
+export function previewSource(
+	dir: string,
+	label: string,
+	outDir?: string,
+): WorkbenchSource {
+	const git = (...args: string[]): string | undefined => {
+		try {
+			return execFileSync("git", args, {
+				cwd: dir,
+				encoding: "utf8",
+				stdio: ["ignore", "pipe", "ignore"],
+			}).trim();
+		} catch {
+			return undefined;
+		}
+	};
+	// A detached HEAD reports the string "HEAD", which names nothing.
+	const branch = git("rev-parse", "--abbrev-ref", "HEAD");
+	const commit = git("rev-parse", "--short", "HEAD");
+	// Scoped to what was previewed: edits elsewhere in the repository say
+	// nothing about whether these components match their commit. The output
+	// directory is excluded when it sits inside the previewed one, or every
+	// build would report the previous build as a change.
+	const nested = outDir ? relative(dir, outDir) : "";
+	const changes = git(
+		"status",
+		"--porcelain",
+		"--",
+		".",
+		...(nested && !nested.startsWith("..") ? [`:(exclude)${nested}`] : []),
+	);
+	return {
+		path: label,
+		...(branch && branch !== "HEAD" ? { branch } : {}),
+		...(commit ? { commit } : {}),
+		...(changes ? { dirty: true } : {}),
+	};
+}
 
 /** The compiler reads synchronously, and a missing import is not an error. */
 const readSync = (path: string): string | undefined => {
@@ -250,6 +299,7 @@ export async function runPreviewBuild(
 	dir: string,
 	outDir: string,
 	output: Output,
+	label = dir,
 ): Promise<number> {
 	const collection = await collectPreview(dir);
 	if (!collection) return missingLayout(dir, output);
@@ -288,6 +338,7 @@ export async function runPreviewBuild(
 		workbenchPage(rendered, {
 			title: `${title} — Nazare preview`,
 			storyBase: "./stories/",
+			source: previewSource(dir, label, outDir),
 		}),
 	);
 	await writeFile(

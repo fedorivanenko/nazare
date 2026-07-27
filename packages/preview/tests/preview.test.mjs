@@ -792,6 +792,43 @@ test("the workbench carries the toolbar, the call, and per-story status", async 
 	assert.ok(page.includes("typo — 2 issues"));
 });
 
+test("the header says what the page was built from", async () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const rendered = await renderComponentStories(component, DEFAULT_ONLY);
+	const header = (source) => {
+		const page = workbenchPage([rendered], { source });
+		return page.slice(page.indexOf("<header"), page.indexOf("</header>"));
+	};
+
+	// A built workbench outlives its checkout, so "is this current?" has to be
+	// answerable from the page itself.
+	const full = header({
+		path: "registry/components",
+		branch: "main",
+		commit: "abc1234",
+	});
+	assert.ok(full.includes("registry/components"));
+	assert.ok(full.includes("main · abc1234"));
+	// Clean, so no marker.
+	assert.ok(!full.includes("abc1234*"));
+
+	// Uncommitted changes are the part that decides whether the page can be
+	// trusted as a record of a commit.
+	assert.ok(
+		header({ branch: "main", commit: "abc1234", dirty: true }).includes(
+			"main · abc1234*",
+		),
+	);
+
+	// A theme outside a repository has a path and nothing else.
+	const pathOnly = header({ path: "theme" });
+	assert.ok(pathOnly.includes("theme"));
+	assert.ok(!pathOnly.includes("source-rev"));
+
+	// And a caller that knows nothing says nothing.
+	assert.ok(!header(undefined).includes('class="source"'));
+});
+
 test("both side panels collapse, and the docs sit beside the render", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid", {
 		packageId: "@nazare/button",

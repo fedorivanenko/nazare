@@ -164,6 +164,24 @@ test("build writes the workbench and saves where it wrote it", async () => {
 	});
 });
 
+test("build records the directory it read, and the commit when there is one", async () => {
+	await withProject({ ...THEME, "nazare.theme.json": "{}" }, async (cwd) => {
+		await runCli(cwd, "preview", "build", ".");
+		const page = readFileSync(
+			join(cwd, ".nazare-out/preview/index.html"),
+			"utf8",
+		);
+
+		// The directory as the caller named it: "." and an absolute path describe
+		// the same place, and only one of them is worth reading in a header.
+		assert.match(page, /class="source-path">\.</);
+		// Not a repository, so there is no revision to claim — and a preview is
+		// not the place to insist on one. Matched as markup: the stylesheet
+		// mentions the class whether or not anything uses it.
+		assert.ok(!page.includes('<span class="source-rev"'));
+	});
+});
+
 test("build takes the saved output directory on the next run", async () => {
 	await withProject(
 		{

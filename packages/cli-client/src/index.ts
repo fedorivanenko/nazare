@@ -459,7 +459,9 @@ async function runPreview(
 			preview: { ...manifest.preview, outDir },
 		});
 	}
-	return await runPreviewBuild(dir, resolve(projectRoot, outDir), output);
+	// The directory as the caller named it, for the header: "." and an absolute
+	// path describe the same place, and only one of them is worth reading.
+	return await runPreviewBuild(dir, resolve(projectRoot, outDir), output, root);
 }
 
 async function runInspect(

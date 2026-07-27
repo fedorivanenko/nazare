@@ -73,4 +73,8 @@ export {
 	validateStory,
 } from "./story-validation.js";
 export { BACKGROUNDS } from "./theme.js";
-export { type WorkbenchPageOptions, workbenchPage } from "./workbench.js";
+export {
+	type WorkbenchPageOptions,
+	type WorkbenchSource,
+	workbenchPage,
+} from "./workbench.js";

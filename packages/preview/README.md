@@ -149,6 +149,13 @@ to them. The story dropdown says which ones (`typo — 2 issues`, `broken —
 failed`), so a template rename that breaks nine stories is navigable rather than
 just loud.
 
+The header carries what the page was built from: the directory as the caller
+named it, then the branch and short commit, with `*` for uncommitted changes in
+the previewed files. A built workbench outlives its checkout — deployed, linked,
+opened days later — and "is this current?" otherwise has no answer anywhere on
+the page. Every part is optional, because a theme outside a repository has a
+path and nothing else.
+
 `galleryPage()` is the catalogue: every story of every component at once, for a
 sweep over the whole registry or for embedding in a docs site.
 
