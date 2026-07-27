@@ -26,6 +26,7 @@ import {
 	type RenderedComponent,
 	renderComponentStories,
 	scaffoldStories,
+	shopifyFixtures,
 	snippetLibrary,
 	storiesFor,
 	storyDocuments,
@@ -126,6 +127,39 @@ export function previewSource(
 	};
 }
 
+/**
+ * The project's own stand-in data: every `fixtures/*.json`, by basename.
+ *
+ * A fixture exists because JSON cannot reasonably hold a product with its
+ * images and variants, and because the components that take one should agree
+ * about the shop they belong to. That is a reason to share a file — not a
+ * reason for the file to live inside this package, where nobody can read it or
+ * change it. A project's own fixtures win over the built-in set, so the
+ * shipped product is a starting point rather than a fact.
+ */
+export async function projectFixtures(
+	dir: string,
+): Promise<Record<string, unknown>> {
+	const fixtures: Record<string, unknown> = { ...shopifyFixtures };
+	let entries: string[];
+	try {
+		entries = await readdir(join(dir, "fixtures"));
+	} catch {
+		return fixtures;
+	}
+	for (const entry of entries.sort()) {
+		if (!entry.endsWith(".json")) continue;
+		const raw = await readIfPresent(join(dir, "fixtures", entry));
+		if (raw === undefined) continue;
+		try {
+			fixtures[basename(entry, ".json")] = JSON.parse(raw);
+		} catch (error) {
+			throw new Error(`fixtures/${entry}: invalid JSON: ${errorText(error)}`);
+		}
+	}
+	return fixtures;
+}
+
 /** The compiler reads synchronously, and a missing import is not an error. */
 const readSync = (path: string): string | undefined => {
 	try {
@@ -168,7 +202,10 @@ export async function detectLayout(
 }
 
 /** A theme: the directory a file sits in is what the file is. */
-async function collectTheme(dir: string): Promise<PreviewCollection> {
+async function collectTheme(
+	dir: string,
+	fixtures: Record<string, unknown>,
+): Promise<PreviewCollection> {
 	const collection: PreviewCollection = {
 		layout: "theme",
 		compiled: [],
@@ -206,6 +243,7 @@ async function collectTheme(dir: string): Promise<PreviewCollection> {
 					}
 					stories = storiesFor({
 						sidecar: parseStoryFile(parsed, storyPath),
+						fixtures,
 					});
 				} catch (error) {
 					collection.malformed.push(errorText(error));
@@ -222,7 +260,10 @@ async function collectTheme(dir: string): Promise<PreviewCollection> {
 }
 
 /** A folder of packages: each one's nazare.json says what it is. */
-async function collectPackages(dir: string): Promise<PreviewCollection> {
+async function collectPackages(
+	dir: string,
+	fixtures: Record<string, unknown>,
+): Promise<PreviewCollection> {
 	const collection: PreviewCollection = {
 		layout: "package",
 		compiled: [],
@@ -262,7 +303,7 @@ async function collectPackages(dir: string): Promise<PreviewCollection> {
 			// A function package was already skipped, so the kind is a template one.
 			kind: manifest.kind as Exclude<NazareManifest["kind"], "function">,
 		});
-		const stories = storiesFor({ manifest });
+		const stories = storiesFor({ manifest, fixtures });
 		const entryRecord = {
 			component,
 			stories,
@@ -282,7 +323,10 @@ export async function collectPreview(
 ): Promise<PreviewCollection | undefined> {
 	const layout = await detectLayout(dir);
 	if (layout === undefined) return undefined;
-	return layout === "theme" ? collectTheme(dir) : collectPackages(dir);
+	const fixtures = await projectFixtures(dir);
+	return layout === "theme"
+		? collectTheme(dir, fixtures)
+		: collectPackages(dir, fixtures);
 }
 
 /**

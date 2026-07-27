@@ -230,6 +230,42 @@ test("scaffold drafts a story file, and will not overwrite one", async () => {
 	});
 });
 
+test("a project's own fixtures are files it can read and change", async () => {
+	const CARD = `{% doc %}
+  @param {product} product - The product shown
+{% enddoc %}
+<h3>{{ product.title }}</h3>
+`;
+	await withProject(
+		{
+			"snippets/card.liquid": CARD,
+			"snippets/card.stories.json": JSON.stringify({
+				stories: [
+					{ name: "default", props: { product: { $fixture: "product" } } },
+				],
+			}),
+			// A fixture is shared because JSON cannot reasonably hold a product and
+			// because the components taking one should agree about the shop. That
+			// is a reason to share a file — not a reason for the file to live
+			// inside the preview package where nobody can read it.
+			"fixtures/product.json": JSON.stringify({ title: "Shop's own product" }),
+		},
+		async (cwd) => {
+			const { status, stdout } = await runCli(cwd, "preview", "check", ".");
+			assert.equal(status, 0, stdout);
+
+			await runCli(cwd, "preview", "build", ".");
+			const story = readFileSync(
+				join(cwd, ".nazare-out/preview/stories/card--default.html"),
+				"utf8",
+			);
+			// The project's file wins over the built-in stand-in.
+			assert.match(story, /Shop's own product/);
+			assert.ok(!story.includes("Merino Crew Sweater"));
+		},
+	);
+});
+
 test("a directory that is neither a theme nor packages says so", async () => {
 	await withProject({ "notes.md": "# nothing to preview\n" }, async (cwd) => {
 		const { status, stderr } = await runCli(cwd, "preview", "check", ".");

@@ -267,7 +267,16 @@ thing — a product with its images, variants and compare-at price — and becau
 forty components should agree about the shop they belong to. A number is not
 that: `{ "$fixture": "price" }` was `2400` wearing a costume, longer to write
 than the number and a layer of indirection for a reader to unpick for nothing.
-Scalars are literals, and you type them. If each
+Scalars are literals, and you type them.
+
+**And they are your files.** `fixtures/product.json` beside your theme wins over
+the built-in one, by basename. Sharing a product between the nine components
+that take one is a reason to share a *file*; it was never a reason for that file
+to live inside this package, where nobody could read it, diff it, or change it.
+The shipped set is a starting point, not a fact — and inlining a product into
+one story stays available for the case a shared one cannot express, which is
+most of the interesting ones: a sold-out variant, a 60-character title, no
+compare-at price. If each
 component shipped its own mock product, forty components would disagree about
 the shop they belong to. Stories drawing on fixtures are badged in the gallery,
 because a fixture is tidy in ways a real catalogue is not: no missing compare-at

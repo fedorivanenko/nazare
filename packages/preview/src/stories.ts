@@ -106,11 +106,12 @@ export function scaffoldStories(component: PreviewComponent): PreviewStory[] {
  */
 export function declaredStories(
 	declaration: { stories?: NazareManifestStory[] } | undefined,
+	fixtures?: Record<string, unknown>,
 ): PreviewStory[] {
 	return (declaration?.stories ?? []).map((story) => ({
 		name: story.name,
 		note: story.note,
-		props: resolveFixtures(story.props ?? {}),
+		props: resolveFixtures(story.props ?? {}, fixtures),
 		source: story.props ?? {},
 		fixtures: usesFixtures(story.props ?? {}),
 	}));
@@ -134,11 +135,17 @@ export function manifestStories(manifest: NazareManifest): PreviewStory[] {
 export function storiesFor(sources: {
 	manifest?: NazareManifest;
 	sidecar?: StoryDeclaration;
+	/**
+	 * The data `{ "$fixture": "name" }` resolves against. A project's own
+	 * `fixtures/*.json` when it has them, so the stand-in product is a file the
+	 * author can read and change rather than a name owned by this package.
+	 */
+	fixtures?: Record<string, unknown>;
 }): PreviewStory[] {
 	const declaration = sources.sidecar?.stories?.length
 		? sources.sidecar
 		: sources.manifest?.preview;
-	return declaredStories(declaration);
+	return declaredStories(declaration, sources.fixtures);
 }
 
 /** Props this story states, for showing which knob a case turned. */

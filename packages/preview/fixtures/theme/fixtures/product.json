@@ -1,0 +1,23 @@
+{
+  "id": 1,
+  "title": "Merino Crew Sweater",
+  "handle": "merino-crew-sweater",
+  "url": "/products/merino-crew-sweater",
+  "price": 2400,
+  "compare_at_price": 4000,
+  "available": true,
+  "vendor": "Nazare Supply",
+  "type": "Knitwear",
+  "tags": ["wool", "winter"],
+  "featured_image": {
+    "src": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%204%203%22%3E%3Ctitle%3Eproduct%3C%2Ftitle%3E%3Crect%20width%3D%224%22%20height%3D%223%22%20fill%3D%22%23e4e4e7%22%2F%3E%3C%2Fsvg%3E",
+    "alt": "A placeholder product image",
+    "width": 400,
+    "height": 300,
+    "aspect_ratio": 1.3333333333333333
+  },
+  "variants": [
+    { "id": 11, "title": "Small", "price": 2400, "available": true },
+    { "id": 12, "title": "Medium", "price": 2400, "available": false }
+  ]
+}
