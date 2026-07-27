@@ -469,6 +469,11 @@ why `PreviewStory` keeps `source` alongside its resolved props. It goes back
 through `parseStoryFile` before it is written, so the editor cannot produce a
 file `preview check` would reject.
 
+One consequence to know about: saving rewrites the whole file through
+`JSON.stringify`, so hand-written compact objects come back expanded. The
+content is preserved exactly — stories nobody edited, their notes, their order —
+but the diff is larger than the edit.
+
 `cli-client/src/preview-command.ts` is pure I/O around the above: it walks a
 directory, resolves each component's story file, and writes the pages. It is
 also where the theme-versus-package distinction lives — detected from what is in

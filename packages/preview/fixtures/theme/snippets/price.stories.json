@@ -3,29 +3,22 @@
     {
       "name": "on sale",
       "props": {
-        "price": 2400,
-        "compare_at_price": {
-          "$fixture": "compare_at_price"
-        }
+        "price": { "$fixture": "price" },
+        "compare_at_price": { "$fixture": "compare_at_price" }
       },
       "note": "Compare-at above the price, so the strikethrough shows."
     },
     {
       "name": "full price",
       "props": {
-        "price": {
-          "$fixture": "price"
-        },
+        "price": { "$fixture": "price" },
         "compare_at_price": null
       },
       "note": "Explicitly unset, not omitted: the strikethrough is absent rather than empty."
     },
     {
       "name": "free",
-      "props": {
-        "price": 0,
-        "compare_at_price": null
-      },
+      "props": { "price": 0, "compare_at_price": null },
       "note": "Zero is a price, not a missing one — it must render as $0.00."
     }
   ]
