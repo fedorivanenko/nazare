@@ -9,7 +9,11 @@
 // something to fix.
 import type { NazareManifest, NazareManifestStory } from "@nazare/core";
 import type { PreviewComponent } from "./component.js";
-import { defaultProps, type PreviewControl } from "./controls.js";
+import {
+	declaredDefaults,
+	defaultProps,
+	type PreviewControl,
+} from "./controls.js";
 import { resolveFixtures, usesFixtures } from "./fixtures.js";
 import type { StoryDeclaration } from "./story-file.js";
 
@@ -36,13 +40,19 @@ export type PreviewStory = {
  * and it is also load-bearing for correctness — emit does not materialize a
  * snippet prop's default, so a value the story omits would otherwise arrive nil
  * on render even though the component declares one.
+ *
+ * Only *declared* defaults merge. A control for an optional prop with no
+ * default still carries a type-shaped placeholder so a panel has something to
+ * open on, and rendering with that would put the prop's own name into the
+ * markup. An undeclared prop a story does not state arrives nil, which is what
+ * a storefront would do.
  */
 export function storyProps(
 	story: PreviewStory,
 	controls: PreviewControl[],
 ): Record<string, unknown> {
 	const props: Record<string, unknown> = {
-		...defaultProps(controls),
+		...declaredDefaults(controls),
 		...story.props,
 	};
 	// An explicit null is the story saying "without this one" — the prop is

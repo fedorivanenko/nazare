@@ -172,11 +172,23 @@ test("plain Liquid takes its controls from {% doc %} @param lines", async () => 
 	// opening the story on the string "product".
 	assert.equal(byName.product.value.title, "Merino Crew Sweater");
 
-	// A story that states nothing renders on the declaration's own defaults.
-	const rendered = await renderComponentStories(component, DEFAULT_ONLY);
-	// Each string control opens on its own name — the type says string, not url,
-	// so nothing here invents a plausible destination.
-	assert.equal(rendered.stories[0].html, '<a href="url">label</a>');
+	// The value a control opens on is a placeholder this pass invented — the
+	// prop's own name — because `{% doc %}` has no syntax for a default.
+	assert.equal(byName.label.value, "label");
+	assert.equal(byName.label.hasDefault, false);
+
+	// So it is never merged into a render. A story that states nothing has
+	// nothing to render, exactly as the snippet would on a storefront; a story
+	// renders what it states, and no placeholder rides along.
+	const rendered = await renderComponentStories(component, [
+		{ name: "empty", props: {} },
+		{ name: "stated", props: { label: "Shop all", url: "/collections/all" } },
+	]);
+	assert.equal(rendered.stories[0].html, '<a href=""></a>');
+	assert.equal(
+		rendered.stories[1].html,
+		'<a href="/collections/all">Shop all</a>',
+	);
 });
 
 test("a plain section takes its controls from {% schema %} settings", async () => {
@@ -331,6 +343,37 @@ test("a story states its delta; the declaration supplies the rest", async () => 
 	assert.ok(rendered.stories[0].html.includes("btn--outline"));
 	assert.ok(rendered.stories[0].html.includes(">Shop all<"));
 	assert.deepEqual(rendered.stories[0].changed, ["label", "scheme"]);
+});
+
+test("a placeholder is never merged into a render", async () => {
+	// The control for an optional prop with no declared default still carries a
+	// type-shaped value, so a panel has something to open on. Rendering with it
+	// puts the prop's own name into the markup — `class="… class"` and a bare
+	// `attributes` on every button, from props no story mentioned.
+	const component = previewComponentFromSource(
+		`{% component snippet %}
+
+{% props {
+  label: string.required(),
+  scheme: string.enum("solid", "outline").default("solid"),
+  class: string.optional(),
+  attributes: string.optional(),
+} %}
+
+<a class="btn btn--{{ scheme }} {{ class }}" {{ attributes }}>{{ label }}</a>
+`,
+		"button.nz.liquid",
+	);
+	const rendered = await renderComponentStories(component, [
+		{ name: "solid", props: { label: "Add to cart" } },
+	]);
+
+	// `scheme` is declared with a default and merges; `class` and `attributes`
+	// are declared without one and arrive nil, as they would on a storefront.
+	assert.ok(rendered.stories[0].html.includes("btn--solid"));
+	assert.ok(!rendered.stories[0].html.includes("class</a>"));
+	assert.ok(!/\battributes\b/.test(rendered.stories[0].html));
+	assert.ok(!/btn--solid class/.test(rendered.stories[0].html));
 });
 
 test("an explicit null unsets a prop the declaration gives a default", async () => {

@@ -20,6 +20,7 @@ export {
 } from "./component.js";
 export {
 	controlsFromContract,
+	declaredDefaults,
 	defaultProps,
 	type PreviewControl,
 } from "./controls.js";

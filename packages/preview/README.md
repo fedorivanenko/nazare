@@ -144,6 +144,14 @@ it ships. That keeps a story about its delta, which is also what makes the
 workbench's grouping by changed prop mean anything. `null` is an explicit unset,
 distinct from absent — "what does this look like without the optional thing."
 
+Only *declared* defaults fall through. A control for an optional prop with no
+default still carries a type-shaped placeholder, so a panel has something to
+open on, but rendering with one would put the prop's own name into the markup —
+`class="… class"`, a bare `attributes`. A prop the declaration says nothing
+about arrives nil, exactly as it would on a storefront. `{% schema %}` states
+its defaults outright; `{% doc %}` has no syntax for one, so a plain snippet's
+story states every prop it wants rendered.
+
 **A story file is what publishes a component to the workbench.** No file, no
 sidebar entry. That is the whole discovery rule, and it is what keeps a real
 theme's hundred helper snippets — `icon.liquid`, `meta-tags.liquid` — out of a
@@ -248,8 +256,11 @@ type PreviewComponent = {
 | Plain section | `{% schema %}` settings | `controlsFromSchemaSource` |
 
 All three produce `PreviewControl { name, label, kind, required, options?,
-range?, value, typeExpression }` — the argTypes equivalent, derived rather than
-written.
+range?, value, hasDefault, typeExpression }` — the argTypes equivalent, derived
+rather than written. `hasDefault` separates a declared default from a
+placeholder this pass invented, which is what `storyProps` merges on and what
+`required` already meant: a required prop is exactly one the declaration gives
+no default for.
 
 **Story file → stories.** `parseStoryFile(json)` checks the file strictly and
 `storiesFor({ manifest, sidecar })` resolves which of the two sources applies,

@@ -23,6 +23,18 @@ export type PreviewControl = {
 	range?: NumberConstraints;
 	/** Initial value: the setting default when declared, else a type-shaped one. */
 	value: unknown;
+	/**
+	 * Whether `value` is the declaration's own default rather than a placeholder
+	 * this pass invented.
+	 *
+	 * The distinction is load-bearing, not bookkeeping. A story states its delta
+	 * and the declaration supplies the rest — but only what the declaration
+	 * actually says. Merging a placeholder would put the prop's own name into the
+	 * render, which is how `class="… class"` and a bare `attributes` end up in
+	 * markup nobody wrote. A placeholder is fine as the value a control panel
+	 * opens on; it is not a value to render with.
+	 */
+	hasDefault: boolean;
 	/** The authored type expression, shown as the control's tooltip/source. */
 	typeExpression: string;
 };
@@ -123,6 +135,11 @@ export function controlsFromContract(
 				? { range: type.constraints }
 				: {}),
 			value: initialValue(prop, type, options),
+			// The first enum member is a guess like any other placeholder; only
+			// `.default(v)` and a setting's `default` are the declaration speaking.
+			hasDefault:
+				(prop.typeInfo.defaultValue ?? prop.typeInfo.setting?.default) !==
+				undefined,
 			typeExpression: prop.typeExpression,
 		});
 	}
@@ -136,6 +153,23 @@ export function defaultProps(
 	const props: Record<string, unknown> = {};
 	for (const control of controls) {
 		if (control.value !== undefined) props[control.name] = control.value;
+	}
+	return props;
+}
+
+/**
+ * The props the declaration itself supplies — what a partial story falls
+ * through to. Placeholders are deliberately absent: a prop the declaration says
+ * nothing about renders nil, exactly as it would on a storefront.
+ */
+export function declaredDefaults(
+	controls: PreviewControl[],
+): Record<string, unknown> {
+	const props: Record<string, unknown> = {};
+	for (const control of controls) {
+		if (control.hasDefault && control.value !== undefined) {
+			props[control.name] = control.value;
+		}
 	}
 	return props;
 }

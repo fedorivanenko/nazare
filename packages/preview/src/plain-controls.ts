@@ -76,6 +76,9 @@ export function controlsFromDocParams(facts: ThemeFact[]): PreviewControl[] {
 			kind: kindFromDocType(fact.paramType),
 			required: fact.required,
 			value: docParamValue(fact),
+			// `{% doc %}` has no syntax for a default: `[name]` says optional and
+			// nothing more, so every value here is this pass's own placeholder.
+			hasDefault: false,
 			typeExpression: fact.paramType ?? "unknown",
 		});
 	}
@@ -192,6 +195,8 @@ export function controlsFromSchemaSource(source: string): PreviewControl[] {
 			...(options ? { options } : {}),
 			...(range ? { range } : {}),
 			value: settingValue(entry, kind, options),
+			// A schema states its defaults outright, so most settings have one.
+			hasDefault: entry.default !== undefined,
 			typeExpression: type,
 		});
 	}
