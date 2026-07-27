@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.0-rc.3 — 2026-07-27
+
+- Build release-native addons on the minimum supported Node.js 20 ABI, fixing
+  Linux ARM64 artifact startup under Node.js 20.
+
 ## v0.1.0-rc.2 — 2026-07-27
 
 - Compile the pinned Tree-sitter Node runtime as C++20 when no prebuilt binary
