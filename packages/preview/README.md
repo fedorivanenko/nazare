@@ -79,9 +79,17 @@ because alpha reads as opaque against anything flat), **zoom**, **outline**,
 which draws every box so a spacing bug stops hiding, and **measure**, which on
 hover reports the box a element actually occupies — the numbers the browser
 computed, not the ones the stylesheet asked for, so a padding that lost to a
-more specific rule shows up here and nowhere else. All of it is applied inside
-the frame, since the frame owns that document's rendering — one `postMessage`,
-resent whenever a story loads.
+more specific rule shows up here and nowhere else. Background, outline and measure are applied inside the frame, since the frame
+owns that document's rendering — one `postMessage`, resent whenever a story
+loads.
+
+Zoom is the exception, and deliberately so: it is a transform on the frame from
+the outside, not a zoom within it. Scaling inside the document would re-lay-out
+the story, so 50% would show a double-width layout rather than the same layout
+drawn smaller — and "what does this look like, larger" is the question zoom
+exists to answer. The frame keeps the width the viewport gave it, whatever the
+scale, so media queries stay honest; a wrapper reserves the scaled size, since a
+transform takes up no space of its own.
 
 Theme is three states rather than a toggle: Light, Dark, and System. A toggle
 cannot say "follow the OS", which is the one a designer checking both wants to

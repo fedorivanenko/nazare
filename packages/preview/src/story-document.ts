@@ -159,10 +159,10 @@ const STORY_SCRIPT = `
     }
     body.toggleAttribute('data-canvas-outline', Boolean(event.data.outline));
     setMeasure(Boolean(event.data.measure));
-    // Zoom rather than transform: the body keeps reporting a real height, so
-    // the frame still sizes itself. It does change layout width, which is why
-    // zoom and the viewport presets answer different questions.
-    body.style.zoom = event.data.zoom && event.data.zoom !== 1 ? event.data.zoom : '';
+    // Zoom is not here on purpose. Scaling inside the document would re-lay-out
+    // the story — 50% would become a double-width layout — and the question
+    // zoom answers is "what does this look like, larger", not "how does it
+    // reflow". The host scales the rendered frame instead.
   });
 `;
 

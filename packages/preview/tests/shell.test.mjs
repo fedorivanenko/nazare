@@ -92,6 +92,21 @@ async function mountShell({ width = 1400, storage = new Map() } = {}) {
 		}),
 		click: (id) =>
 			document.getElementById(id).dispatchEvent(new window.Event("click")),
+		// linkedom's select.value is getter-only, so a choice is made the way a
+		// browser represents it: on the option.
+		select: (menu, value) => {
+			for (const option of menu.querySelectorAll("option")) {
+				if (option.getAttribute("value") === value) {
+					option.setAttribute("selected", "");
+				} else option.removeAttribute("selected");
+			}
+			menu.dispatchEvent(new window.Event("change"));
+		},
+		setViewport: (value) => {
+			const field = document.getElementById("viewport-width");
+			field.setAttribute("value", value);
+			field.dispatchEvent(new window.Event("input"));
+		},
 	};
 }
 
@@ -158,6 +173,33 @@ test("a squeezed panel is not a remembered one", async () => {
 		(await mountShell({ width: 1400, storage })).state().docs,
 		"open",
 	);
+});
+
+test("zoom scales the rendered story, it does not reflow it", async () => {
+	// The bug this pins: zoom applied inside the frame re-lays-out the story, so
+	// 50% shows a double-width layout instead of the same layout drawn smaller.
+	// The frame keeps its real width and the host scales the result.
+	const shell = await mountShell();
+	const canvas = shell.document.getElementById("canvas");
+	const scaler = shell.document.getElementById("canvas-scaler");
+	const zoom = shell.document.getElementById("zoom");
+
+	shell.setViewport("400");
+	assert.equal(canvas.style.width, "400px");
+	assert.equal(canvas.style.transform, "");
+
+	shell.select(zoom, "0.5");
+	// The story still lays out at 400 — media queries see the viewport it was
+	// given, whatever the zoom.
+	assert.equal(canvas.style.width, "400px");
+	assert.equal(canvas.style.transform, "scale(0.5)");
+	// A transform reserves no space, so the wrapper carries the visible size.
+	assert.equal(scaler.style.width, "200px");
+
+	shell.select(zoom, "2");
+	assert.equal(canvas.style.width, "400px");
+	assert.equal(canvas.style.transform, "scale(2)");
+	assert.equal(scaler.style.width, "800px");
 });
 
 test("selecting a story swaps the canvas and its documentation", async () => {

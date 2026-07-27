@@ -419,16 +419,23 @@ const WORKBENCH_STYLES = `
     align-items: flex-start;
     padding: 1.25rem;
     background: var(--muted);
+    /* Zoomed past the stage, the story is scrolled to rather than shrunk. */
+    overflow: auto;
   }
+  /* A transform does not change the space an element takes, so the scaler
+   * reserves the scaled size and the stage lays out around the picture you can
+   * actually see. */
+  .canvas-scaler { flex: none; }
   .canvas {
-    flex: none;
-    width: 100%;
-    min-height: 320px;
     display: block;
+    border: 0;
+    transform-origin: top left;
     background: var(--background);
-    border: 1px solid var(--border);
+    box-shadow:
+      0 0 0 1px var(--border),
+      0 1px 2px rgb(0 0 0 / .06),
+      0 8px 24px rgb(0 0 0 / .05);
     border-radius: var(--radius);
-    box-shadow: 0 1px 2px rgb(0 0 0 / .06), 0 8px 24px rgb(0 0 0 / .05);
   }
   /* The call that reproduces the story: the one thing on this page meant to be
    * copied out and pasted into a theme, so it sits directly under the render
@@ -554,6 +561,8 @@ const WORKBENCH_SCRIPT = `
   const propsLine = document.getElementById('canvas-props');
   const issueList = document.getElementById('canvas-issues');
   const viewport = document.getElementById('viewport');
+  const stage = document.getElementById('canvas-stage');
+  const scaler = document.getElementById('canvas-scaler');
   const background = document.getElementById('background');
   const zoom = document.getElementById('zoom');
   const outline = document.getElementById('outline');
@@ -589,7 +598,6 @@ const WORKBENCH_SCRIPT = `
       background: backgrounds[background.value] ?? '',
       outline: outline.getAttribute('aria-pressed') === 'true',
       measure: measure.getAttribute('aria-pressed') === 'true',
-      zoom: Number(zoom.value) || 1,
     }, '*');
   };
 
@@ -625,6 +633,9 @@ const WORKBENCH_SCRIPT = `
       squeezed = false;
       remember.set(key, wanted ? '1' : '0');
       paint();
+      // Opening or closing a column changes what the stage can give, and a
+      // full-width story is measured against exactly that.
+      layoutCanvas();
     });
     return {
       toggle: () => button.click(),
@@ -652,7 +663,10 @@ const WORKBENCH_SCRIPT = `
     docsPanel.squeeze(innerWidth < 940);
     sidebarPanel.squeeze(innerWidth < 620);
   };
-  addEventListener('resize', fitColumns);
+  addEventListener('resize', () => {
+    fitColumns();
+    layoutCanvas();
+  });
   fitColumns();
 
   // Storybook's own keys, because anyone reaching for one is reaching for these.
@@ -684,7 +698,10 @@ const WORKBENCH_SCRIPT = `
       // Height is stale until the new story measures itself; start from the
       // floor so a short story after a tall one does not leave a gap. A height
       // the viewer fixed is not stale, so it stays.
-      if (!fixedHeight) canvas.style.height = '320px';
+      if (!fixedHeight) {
+        contentHeight = 320;
+        layoutCanvas();
+      }
       canvas.setAttribute('src', story.href);
     }
     title.innerHTML = story.component + ' <span class="muted">/ ' + story.name + '</span>';
@@ -736,6 +753,36 @@ const WORKBENCH_SCRIPT = `
 
   // Viewport width. The frame is a real document, so narrowing the element it
   // lives in is a real viewport — media queries included.
+  /**
+   * Width, height and scale in one place, because they are one arrangement.
+   *
+   * The story lays out at its real width and the *result* is scaled — a
+   * transform on the frame, not a zoom inside it. Scaling inside would reflow
+   * the story, so 50% would show a double-width layout rather than the same
+   * layout drawn smaller, and the whole question zoom answers would be lost.
+   * The scaler reserves the scaled size, since a transform does not.
+   */
+  let viewportWidth = '';
+  let contentHeight = 320;
+  let fixedHeight = '';
+  function layoutCanvas() {
+    const scale = Number(zoom.value) || 1;
+    // Full width means the width the stage can give, measured at scale 1 so
+    // zooming never changes what the story lays out against.
+    const available = Math.max(
+      320,
+      Math.floor(stage.clientWidth - 40),
+    );
+    const width = viewportWidth ? Number(viewportWidth) : available;
+    const height = Math.max(320, fixedHeight ? Number(fixedHeight) : contentHeight);
+
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+    canvas.style.transform = scale === 1 ? '' : 'scale(' + scale + ')';
+    scaler.style.width = width * scale + 'px';
+    scaler.style.height = height * scale + 'px';
+  }
+
   function setViewport(width, push) {
     // The presets and the field are two ways to say the same number, so both
     // always show it: a width typed by hand still reads as "Mobile · 375" if
@@ -745,13 +792,8 @@ const WORKBENCH_SCRIPT = `
     );
     viewport.value = width ? (known ? String(width) : 'custom') : '';
     widthField.value = width || '';
-    if (width) {
-      canvas.style.maxWidth = width + 'px';
-      canvas.setAttribute('data-viewport', width);
-    } else {
-      canvas.style.maxWidth = '';
-      canvas.removeAttribute('data-viewport');
-    }
+    viewportWidth = width;
+    layoutCanvas();
     if (!push) return;
     // In the query, not the fragment: the fragment names the story, and a width
     // outlives which story you happen to be looking at.
@@ -782,11 +824,10 @@ const WORKBENCH_SCRIPT = `
    * that has to sit in 600px on a phone is a real question, and answering it
    * means overriding what the content asked for.
    */
-  let fixedHeight = '';
   function setHeight(height, push) {
     fixedHeight = height;
     heightField.value = height || '';
-    if (height) canvas.style.height = height + 'px';
+    layoutCanvas();
     if (push) writeQuery('h', height, '');
   }
   heightField.addEventListener('input', () => {
@@ -811,7 +852,7 @@ const WORKBENCH_SCRIPT = `
   });
   zoom.addEventListener('change', () => {
     writeQuery('zoom', zoom.value, '1');
-    tellPresentation();
+    layoutCanvas();
   });
   outline.addEventListener('click', () => {
     const on = outline.getAttribute('aria-pressed') !== 'true';
@@ -878,9 +919,9 @@ const WORKBENCH_SCRIPT = `
   addEventListener('message', (event) => {
     if (event.data?.type !== ${JSON.stringify(FRAME_MESSAGE.height)}) return;
     if (!Number.isFinite(event.data.height)) return;
+    contentHeight = event.data.height;
     // A height the viewer asked for outranks the one the content reports.
-    if (fixedHeight) return;
-    canvas.style.height = Math.max(320, event.data.height) + 'px';
+    if (!fixedHeight) layoutCanvas();
   });
 
   document.addEventListener('click', async (event) => {
@@ -1022,7 +1063,11 @@ ${links}
         <button class="panel-toggle" type="button" id="outline" aria-pressed="false">Outline</button>
         <button class="panel-toggle" type="button" id="measure" aria-pressed="false" title="Hover an element to see its box">Measure</button>
       </div>
-      <div class="canvas-stage"><iframe class="canvas" id="canvas" title="Story canvas"></iframe></div>
+      <div class="canvas-stage" id="canvas-stage">
+        <div class="canvas-scaler" id="canvas-scaler">
+          <iframe class="canvas" id="canvas" title="Story canvas"></iframe>
+        </div>
+      </div>
       <ul class="story-issues" id="canvas-issues" hidden></ul>
     </main>
     <aside class="docs" aria-label="Story and component documentation">
