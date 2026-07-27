@@ -63,9 +63,6 @@ importers:
       '@nazare/core':
         specifier: workspace:^
         version: link:../core
-      '@nazare/scan':
-        specifier: workspace:^
-        version: link:../scan
       '@nazare/source':
         specifier: workspace:^
         version: link:../source
@@ -101,8 +98,6 @@ importers:
       '@nazare/core':
         specifier: workspace:^
         version: link:../core
-
-  packages/scan: {}
 
   packages/source:
     dependencies:

@@ -1,13 +1,5 @@
 import type { Diagnostic } from "@nazare/core";
 import {
-	LineIndex,
-	type LiquidScanIssue,
-	liquidDependencies,
-	liquidSchema,
-	liquidSettingsReads,
-	scanLiquid,
-} from "@nazare/scan";
-import {
 	createDefaultSourceParserRegistry,
 	htmlSyntaxIssues,
 	liquidSyntaxFacts,
@@ -19,167 +11,22 @@ import { parseLiquidCrash } from "./diagnostics.js";
 import { markDiagnostics } from "./pipeline.js";
 import {
 	invalidDependencyName,
-	parsePlainLiquid,
 	plainLiquidFactsSkipped,
 	validateDependencyName,
 } from "./plain-liquid.js";
 import { spanFromOffsets } from "./source.js";
 import { renderSiteKey, type ThemeFact } from "./theme-facts.js";
 import { themeNameFromPath } from "./theme-file-classifier.js";
-import { collectScannedSourceFacts } from "./theme-scan-facts.js";
 import { collectTreeSitterSourceThemeFacts } from "./theme-tree-sitter-facts.js";
 
 export function collectPlainLiquidThemeFacts(
 	path: string,
 	contents: string,
-	options: {
-		parseMode: "strict" | "liquid-only";
-		sourceFrontend?: "legacy" | "tree-sitter";
-	} = {
+	options: { parseMode: "strict" | "liquid-only" } = {
 		parseMode: "liquid-only",
 	},
 ): { facts: ThemeFact[]; issues: Diagnostic[] } {
-	if (options.sourceFrontend === "tree-sitter") {
-		return collectTreeSitterPlainLiquidThemeFacts(
-			path,
-			contents,
-			options.parseMode,
-		);
-	}
-	const scan = scanLiquid(contents);
-	const index = new LineIndex(contents);
-	const document = scan.status === "valid" ? scan.document : undefined;
-	const schemaToken = document ? liquidSchema(document) : undefined;
-	// Schema validation still uses Shopify's parser. Files without authored
-	// schema stay entirely on the scanner-backed analysis path.
-	const schemaAst = schemaToken
-		? parsePlainLiquid(contents, path, { parseMode: options.parseMode })
-		: undefined;
-	const factsCollected = schemaAst?.factsCollected ?? document !== undefined;
-	const settingsReads: SettingsRead[] = document
-		? liquidSettingsReads(document).map((read) => ({
-				object: read.object,
-				name: read.name,
-				span: index.spanAt(path, read.range),
-			}))
-		: [];
-	const facts: ThemeFact[] = [];
-	const issues: Diagnostic[] = schemaAst
-		? [
-				...markDiagnostics(schemaAst.diagnostics, "parse"),
-				...markDiagnostics(
-					checkVanillaSchema({
-						schema: schemaAst.schema,
-						settingsReads,
-					}),
-					"check",
-				),
-			]
-		: scan.status === "invalid"
-			? [
-					...markDiagnostics(
-						scan.issues.map((issue) =>
-							parseLiquidCrash(
-								scanIssueMessage(issue.code, issue.name),
-								index.spanAt(path, issue.range),
-							),
-						),
-						"parse",
-					),
-					...markDiagnostics([plainLiquidFactsSkipped(path)], "parse"),
-				]
-			: [];
-	const name = themeNameFromPath(path);
-	if (path.startsWith("sections/") && path.endsWith(".liquid")) {
-		facts.push({ kind: "declaresSection", path, name });
-	}
-	if (path.startsWith("snippets/") && path.endsWith(".liquid")) {
-		facts.push({ kind: "declaresSnippet", path, name });
-	}
-	if (path.startsWith("templates/") && path.endsWith(".liquid")) {
-		facts.push({ kind: "declaresTemplate", path, name });
-	}
-	if (factsCollected && document) {
-		for (const dependency of liquidDependencies(document)) {
-			const span = index.spanAt(path, dependency.range);
-			const validation = dependency.name
-				? validateDependencyName(dependency.kind, dependency.name)
-				: { valid: true as const };
-			if (dependency.name && !validation.valid) {
-				issues.push(
-					invalidDependencyName(
-						dependency.kind,
-						dependency.name,
-						span,
-						validation.reason,
-					),
-				);
-			}
-			const targetName = dependency.name;
-			const staticReference = targetName !== undefined;
-			if (dependency.kind === "snippet") {
-				facts.push({
-					kind: "rendersSnippet",
-					fromPath: path,
-					targetName,
-					siteId: renderSiteKey(path, span),
-					invocationKind: dependency.invocationKind ?? "render",
-					static: staticReference,
-					span,
-				});
-			}
-			if (dependency.kind === "section") {
-				facts.push({
-					kind: "containsSection",
-					fromPath: path,
-					targetName,
-					static: staticReference,
-					span,
-				});
-			}
-			if (dependency.kind === "section-group") {
-				facts.push({
-					kind: "containsSectionGroup",
-					fromPath: path,
-					targetName,
-					static: staticReference,
-					span,
-				});
-			}
-			if (dependency.kind === "layout" && targetName !== "none") {
-				facts.push({
-					kind: "usesLayout",
-					fromPath: path,
-					targetName,
-					static: staticReference,
-					span,
-				});
-			}
-		}
-		for (const read of settingsReads) {
-			facts.push({
-				kind: "readsSetting",
-				fromPath: path,
-				settingObject: read.object,
-				settingId: read.name,
-				span: read.span,
-			});
-		}
-		const sourceResult = collectScannedSourceFacts(path, contents, document);
-		facts.push(...sourceResult.facts);
-		issues.push(...sourceResult.issues);
-	}
-	if (schemaAst?.schema) {
-		facts.push(...schemaFacts(path, schemaAst.schema, issues));
-	}
-	return { facts, issues };
-}
-
-function collectTreeSitterPlainLiquidThemeFacts(
-	path: string,
-	contents: string,
-	parseMode: "strict" | "liquid-only",
-): { facts: ThemeFact[]; issues: Diagnostic[] } {
+	const parseMode = options.parseMode;
 	const document = parseSourceDocument(
 		createDefaultSourceParserRegistry(),
 		path,
@@ -310,25 +157,6 @@ function collectTreeSitterPlainLiquidThemeFacts(
 		facts.push(...schemaFacts(path, schema, issues));
 	}
 	return { facts, issues };
-}
-
-function scanIssueMessage(
-	code: LiquidScanIssue["code"],
-	name: string | undefined,
-): string {
-	switch (code) {
-		case "UNTERMINATED_TAG":
-			return "Unterminated Liquid tag";
-		case "UNCLOSED_RAW_TAG":
-		case "UNCLOSED_BLOCK":
-			return `Unclosed Liquid ${name} block`;
-		case "MISMATCHED_BLOCK":
-			return `Mismatched Liquid end${name} tag`;
-		case "UNTERMINATED_STRING":
-			return "Unterminated Liquid string";
-		case "UNCLOSED_BRACKET":
-			return "Unclosed Liquid bracket lookup";
-	}
 }
 
 function schemaFacts(

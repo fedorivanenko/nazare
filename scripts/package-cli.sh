@@ -13,7 +13,7 @@ mkdir -p "$out/packages"
 pnpm -s typecheck
 
 cp package.json pnpm-lock.yaml pnpm-workspace.yaml "$out/"
-for pkg in cli-client compiler core registry scan source theme; do
+for pkg in cli-client compiler core registry source theme; do
 	mkdir -p "$out/packages/$pkg"
 	cp "packages/$pkg/package.json" "$out/packages/$pkg/package.json"
 	cp -R "packages/$pkg/dist" "$out/packages/$pkg/dist"
