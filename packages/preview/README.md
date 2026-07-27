@@ -70,8 +70,10 @@ prop each one varies, and a viewport dropdown constrains the canvas to 375, 768,
 or 1280 — the frame is a real document, so a narrower frame is a real viewport,
 media queries included.
 
-The presets sit next to a plain px field, because the width in a bug report is
-414, not "mobile". Beside them are the other questions you ask of a component
+The presets sit next to plain px fields for width and height, because the size
+in a bug report is 414, not "mobile". Height is auto by default — the frame
+measures its own content and reports it — and a number typed there outranks
+that, for the times the question is whether a section fits in 600px. Beside them are the other questions you ask of a component
 you are looking at: **background** (page, white, dark, grey, or a checkerboard,
 because alpha reads as opaque against anything flat), **zoom**, **outline**,
 which draws every box so a spacing bug stops hiding, and **measure**, which on
@@ -90,6 +92,11 @@ collapse**, to `S` and `D` or their buttons, because a canvas the full width of
 the window is the point of collapsing them. That state is a workspace
 preference rather than something you send someone, so it lives in
 `localStorage` while everything shareable lives in the URL.
+
+The right column holds the story first — the call that reproduces it, the props
+it passed — then the component: kind, install command, diagnostics, props table,
+emitted Liquid. Under the canvas there is only the render and what is wrong with
+it, so the thing you came to look at keeps the height.
 
 Under the canvas is **the call that reproduces this story in a theme**:
 

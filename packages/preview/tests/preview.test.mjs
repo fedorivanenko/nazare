@@ -809,8 +809,21 @@ test("both side panels collapse, and the docs sit beside the render", async () =
 	assert.ok(docs.includes("<th>Default</th>"));
 	assert.ok(docs.includes("nazare add @nazare/button"));
 
-	// A width the presets do not have is the one a bug report actually names.
+	// The story's own documentation — the call that reproduces it, the props it
+	// passed — moved into the column too, so nothing is stacked under the canvas
+	// but the render and what is wrong with it.
+	assert.ok(docs.includes('id="canvas-call"'));
+	assert.ok(docs.includes('id="canvas-props"'));
+	assert.ok(docs.includes("liquidjs"), "the caveat travels with the docs");
+	const main = page.slice(page.indexOf("<main"), page.indexOf("<aside"));
+	assert.ok(main.includes('id="canvas"'));
+	assert.ok(main.includes('id="canvas-issues"'));
+	assert.ok(!main.includes('id="canvas-call"'));
+
+	// A size the presets do not have is the one a bug report actually names,
+	// and a story that has to sit in 600px is a real question.
 	assert.ok(page.includes('id="viewport-width"'));
+	assert.ok(page.includes('id="viewport-height"'));
 	assert.ok(page.includes(">Custom…</option>"));
 	// System is a theme state a toggle cannot express.
 	assert.ok(page.includes('id="theme"'));

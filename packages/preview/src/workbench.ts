@@ -312,7 +312,9 @@ const WORKBENCH_STYLES = `
   }
   /* The presets are the common widths; the field is the one you were actually
    * sent — a bug report says 414, not "mobile". */
-  .viewport-width { width: 5.5rem; font-variant-numeric: tabular-nums; }
+  .viewport-size { display: inline-flex; align-items: center; gap: .3rem; }
+  .viewport-x { color: var(--muted-foreground); font-size: .72rem; }
+  .viewport-width { width: 4.5rem; font-variant-numeric: tabular-nums; }
   .viewport-width::-webkit-outer-spin-button,
   .viewport-width::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .main { overflow-y: auto; display: flex; flex-direction: column; }
@@ -344,18 +346,20 @@ const WORKBENCH_STYLES = `
   /* The call that reproduces the story: the one thing on this page meant to be
    * copied out and pasted into a theme, so it sits directly under the render
    * rather than in the component panel below. */
-  .call { padding: .75rem 1.25rem 1rem; border-top: 1px solid var(--border); }
+  .call { margin: 0 0 .75rem; }
   .call[hidden] { display: none; }
   .call-label {
-    margin: 0 0 .45rem;
-    font-size: .7rem;
+    margin: 0 0 .4rem;
+    font-size: .68rem;
     text-transform: uppercase;
     letter-spacing: .06em;
     color: var(--muted-foreground);
   }
-  .call .code { max-width: 860px; }
-  .call pre { margin: 0; padding: .75rem .9rem; overflow-x: auto; font-size: .78rem; line-height: 1.5; }
-  .story-props { padding: .5rem 1.25rem; font-size: .72rem; color: var(--muted-foreground); border-top: 1px solid var(--border); word-break: break-word; }
+  /* The copy button floats over the code, so a call long enough to scroll must
+   * not run under it — the reason the snippet reads as truncated otherwise. */
+  .call .code { max-width: none; }
+  .call pre { margin: 0; padding: .7rem 3.6rem .7rem .8rem; overflow-x: auto; font-size: .74rem; line-height: 1.5; }
+  .story-props { margin: 0 0 1rem; font-size: .72rem; color: var(--muted-foreground); word-break: break-word; }
   .story-issues { list-style: none; margin: 0; padding: .5rem 1.25rem; display: grid; gap: .25rem; border-top: 1px solid var(--border); font-size: .76rem; }
   /* An explicit display beats the hidden attribute, so say it again. */
   .story-issues[hidden] { display: none; }
@@ -370,6 +374,10 @@ const WORKBENCH_STYLES = `
     letter-spacing: .07em;
     color: var(--muted-foreground);
   }
+  /* Two things live in this column — the story you are looking at, then the
+   * component it belongs to — and the rule is what says which is which. */
+  .docs-heading--rule { border-top: 1px solid var(--border); padding-top: 1rem; }
+  .docs .caveat { padding: 1rem 0 0; border-top: 1px solid var(--border); margin-top: 1.5rem; }
   /* The panel is a column now, so everything in it that assumed 860px of width
    * has to give that up and scroll on its own instead. */
   .docs .props, .docs .install, .docs .code-details, .docs .issues { max-width: none; }
@@ -454,6 +462,7 @@ const WORKBENCH_SCRIPT = `
   const sidebarEmpty = document.getElementById('sidebar-empty');
   const workbench = document.getElementById('workbench');
   const widthField = document.getElementById('viewport-width');
+  const heightField = document.getElementById('viewport-height');
   const measure = document.getElementById('measure');
   const themeSelect = document.getElementById('theme');
   const backgrounds = ${JSON.stringify(
@@ -484,12 +493,19 @@ const WORKBENCH_SCRIPT = `
   // A pressed-state button that remembers itself. Which panels are open is a
   // workspace preference, not something you send someone, so it lives in
   // storage rather than in the URL beside the story.
+  // Storage can throw outright — a file:// page, a browser with site data
+  // blocked — and a preference that cannot be remembered is no reason for the
+  // panel to stop opening.
+  const remember = {
+    get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+    set(key, value) { try { localStorage.setItem(key, value); } catch {} },
+  };
   function toggleButton(button, key, apply) {
-    const stored = localStorage.getItem(key);
+    const stored = remember.get(key);
     const on = stored === null ? true : stored === '1';
     const set = (next) => {
       button.setAttribute('aria-pressed', String(next));
-      localStorage.setItem(key, next ? '1' : '0');
+      remember.set(key, next ? '1' : '0');
       apply(next);
     };
     set(on);
@@ -535,8 +551,9 @@ const WORKBENCH_SCRIPT = `
     }
     if (canvas.getAttribute('src') !== story.href) {
       // Height is stale until the new story measures itself; start from the
-      // floor so a short story after a tall one does not leave a gap.
-      canvas.style.height = '320px';
+      // floor so a short story after a tall one does not leave a gap. A height
+      // the viewer fixed is not stale, so it stays.
+      if (!fixedHeight) canvas.style.height = '320px';
       canvas.setAttribute('src', story.href);
     }
     title.innerHTML = story.component + ' <span class="muted">/ ' + story.name + '</span>';
@@ -627,6 +644,25 @@ const WORKBENCH_SCRIPT = `
     if (widthField.value !== '' && !(width >= 200)) return;
     setViewport(widthField.value === '' ? '' : String(width), true);
   });
+
+  /**
+   * A fixed height, when you want one. Auto is the default and the honest
+   * setting — the frame measures its own content and reports it — but a story
+   * that has to sit in 600px on a phone is a real question, and answering it
+   * means overriding what the content asked for.
+   */
+  let fixedHeight = '';
+  function setHeight(height, push) {
+    fixedHeight = height;
+    heightField.value = height || '';
+    if (height) canvas.style.height = height + 'px';
+    if (push) writeQuery('h', height, '');
+  }
+  heightField.addEventListener('input', () => {
+    const height = Number(heightField.value);
+    if (heightField.value !== '' && !(height >= 120)) return;
+    setHeight(heightField.value === '' ? '' : String(height), true);
+  });
   setViewport(new URL(location.href).searchParams.get('viewport') ?? '', false);
 
   // Presentation lives in the query beside the viewport, for the same reason:
@@ -664,6 +700,7 @@ const WORKBENCH_SCRIPT = `
   if (params.get('zoom')) zoom.value = params.get('zoom');
   outline.setAttribute('aria-pressed', String(params.get('outline') === '1'));
   measure.setAttribute('aria-pressed', String(params.get('measure') === '1'));
+  if (params.get('h')) setHeight(params.get('h'), false);
 
   // Which components have a story with something wrong with it. The counts are
   // already in the markup, so the filter is a read of the DOM rather than a
@@ -710,6 +747,8 @@ const WORKBENCH_SCRIPT = `
   addEventListener('message', (event) => {
     if (event.data?.type !== ${JSON.stringify(FRAME_MESSAGE.height)}) return;
     if (!Number.isFinite(event.data.height)) return;
+    // A height the viewer asked for outranks the one the content reports.
+    if (fixedHeight) return;
     canvas.style.height = Math.max(320, event.data.height) + 'px';
   });
 
@@ -787,7 +826,7 @@ ${links}
 <body>
   <header class="topbar">
     <div class="topbar-tools">
-      <button class="panel-toggle" type="button" id="toggle-sidebar" aria-pressed="true" title="Components (S)">☰</button>
+      <button class="panel-toggle" type="button" id="toggle-sidebar" aria-pressed="true" title="Show or hide the component list (S)">◧ Components</button>
       <strong>${escapeHtml(title)}</strong>
     </div>
     <div class="topbar-tools">
@@ -796,10 +835,10 @@ ${links}
         <option value="light">Light</option>
         <option value="dark">Dark</option>
       </select>
-      <button class="panel-toggle" type="button" id="toggle-docs" aria-pressed="true" title="Documentation (D)">Docs</button>
+      <button class="panel-toggle" type="button" id="toggle-docs" aria-pressed="true" title="Show or hide the documentation panel (D)">Docs ◨</button>
     </div>
   </header>
-  <div class="workbench" id="workbench">
+  <div class="workbench" id="workbench" data-sidebar="open" data-docs="open">
     <nav class="sidebar" aria-label="Components">
       <p class="sidebar-heading">Components</p>
       <label class="sidebar-filter">
@@ -823,7 +862,11 @@ ${links}
 						).join("")}
             <option value="custom">Custom…</option>
           </select>
-          <input class="viewport-width" id="viewport-width" type="number" min="200" max="3840" step="1" inputmode="numeric" placeholder="auto" aria-label="Width in pixels">
+          <span class="viewport-size">
+            <input class="viewport-width" id="viewport-width" type="number" min="200" max="3840" step="1" inputmode="numeric" placeholder="auto" aria-label="Width in pixels">
+            <span class="viewport-x">×</span>
+            <input class="viewport-width" id="viewport-height" type="number" min="120" max="4320" step="1" inputmode="numeric" placeholder="auto" aria-label="Height in pixels">
+          </span>
           <select class="viewport-select" id="background" aria-label="Background">
             ${BACKGROUNDS.map(
 							({ id, label }) =>
@@ -845,6 +888,9 @@ ${links}
       </div>
       <div class="canvas-stage"><iframe class="canvas" id="canvas" title="Story canvas"></iframe></div>
       <ul class="story-issues" id="canvas-issues" hidden></ul>
+    </main>
+    <aside class="docs" aria-label="Story and component documentation">
+      <p class="docs-heading">Story</p>
       <section class="call" id="canvas-call" hidden>
         <p class="call-label"><span id="canvas-call-label"></span></p>
         <div class="code">
@@ -853,14 +899,12 @@ ${links}
         </div>
       </section>
       <p class="story-props" id="canvas-props"></p>
+      <p class="docs-heading docs-heading--rule">Component</p>
+      ${components.map(panel).join("")}
       <p class="caveat">
         The <strong>emitted</strong> Liquid, rendered by liquidjs — not Shopify's runtime. A design-system
         workbench, not evidence a template behaves on a store.
       </p>
-    </main>
-    <aside class="docs" aria-label="Component documentation">
-      <p class="docs-heading">Component</p>
-      ${components.map(panel).join("")}
     </aside>
   </div>
 <script type="application/json" id="story-index">${JSON.stringify(storyIndex).replace(/</g, "\\u003c")}</script>
