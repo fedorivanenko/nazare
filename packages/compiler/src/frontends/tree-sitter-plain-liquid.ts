@@ -4,13 +4,13 @@ import {
 	liquidSyntaxFacts,
 	parseSourceDocument,
 } from "@nazare/source";
-import { toLiquidHtmlAST } from "@shopify/liquid-html-parser";
 import { checkVanillaSchema } from "../check-vanilla.js";
 import type { CompileInput, CompilerFrontend } from "../frontend.js";
 import { fileSyntaxId } from "../ids.js";
 import { markDiagnostics } from "../pipeline.js";
 import {
 	dependencyPath,
+	invalidDependencyName,
 	plainLiquidFactsSkipped,
 	validateDependencyName,
 } from "../plain-liquid.js";
@@ -29,6 +29,13 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 	},
 	compile(input: CompileInput) {
 		const optionResolution = plainLiquidOptions(input.frontendOptions);
+		if (
+			(optionResolution.options.parseMode ?? "strict") === "liquid-only" &&
+			!input.source.includes("{{") &&
+			!input.source.includes("{%")
+		) {
+			return compileLiquidFreeInput(input, optionResolution.issues);
+		}
 		const document = parseSourceDocument(
 			createDefaultSourceParserRegistry(),
 			input.file,
@@ -72,6 +79,23 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 					};
 				})
 			: [];
+		const dependencyIssues = dependencies.flatMap((dependency) => {
+			if (!dependency.name) return [];
+			const validation = validateDependencyName(
+				dependency.kind,
+				dependency.name,
+			);
+			return validation.valid
+				? []
+				: [
+						invalidDependencyName(
+							dependency.kind,
+							dependency.name,
+							dependency.span,
+							validation.reason,
+						),
+					];
+		});
 		const settingsReads = authoritative
 			? syntaxFacts.settingsReads.map((read) => {
 					const text = input.source.slice(read.range.start, read.range.end);
@@ -98,10 +122,6 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 		}));
 		const ast = {
 			file: input.file,
-			liquidAst: toLiquidHtmlAST("", {
-				mode: "tolerant" as const,
-				allowUnclosedDocumentNode: true,
-			}),
 			nodes: [] as [],
 			schema: syntaxFacts.schema
 				? {
@@ -127,7 +147,10 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 				authoritative ? [] : [plainLiquidFactsSkipped(input.file)],
 				"parse",
 			),
-			...markDiagnostics(checkVanillaSchema(ast), "check"),
+			...markDiagnostics(
+				[...dependencyIssues, ...checkVanillaSchema(ast)],
+				"check",
+			),
 		];
 		const syntax = [
 			{
@@ -160,6 +183,52 @@ export const treeSitterPlainLiquidFrontend: CompilerFrontend = {
 		};
 	},
 };
+
+function compileLiquidFreeInput(
+	input: CompileInput,
+	optionIssues: import("@nazare/core").Diagnostic[],
+) {
+	const syntax = [
+		{
+			id: fileSyntaxId(input.file),
+			kind: "file" as const,
+			path: input.file,
+			span: spanFromOffsets(input.source, input.file, {
+				start: 0,
+				end: input.source.length,
+			}),
+		},
+	];
+	const ast = {
+		file: input.file,
+		nodes: [] as [],
+		schema: undefined,
+		settingsReads: [],
+		dependencies: [],
+		diagnostics: [],
+		notes: [] as [],
+		factsCollected: true,
+		parseMode: "liquid-only" as const,
+	};
+	return {
+		kind: "direct-ir" as const,
+		syntax,
+		ir: { syntax, symbols: [], resolutions: [] },
+		contractPath: input.file,
+		contracts: [],
+		issues: markDiagnostics(optionIssues, "parse"),
+		notes: [],
+		sourceForEmit: input.source,
+		frontendSupport: PLAIN_LIQUID_SUPPORT,
+		contractProvenance: "none" as const,
+		metadata: {
+			ast,
+			dependencies: ast.dependencies,
+			factsCollected: true,
+			parseMode: ast.parseMode,
+		} satisfies PlainLiquidFrontendMetadata,
+	};
+}
 
 function dependencyMarkup(
 	tag: string,

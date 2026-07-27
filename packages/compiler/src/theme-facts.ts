@@ -6,7 +6,6 @@ import type {
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
 import type { EmitResult } from "./emit.js";
-import type { SourceFrontend } from "./frontend.js";
 import type { ThemeCheckPolicyInput } from "./theme-check-policy.js";
 import type { ThemeEvidenceStrength } from "./theme-evidence-strength.js";
 import type { ThemeEvidenceRecord } from "./theme-evidence-types.js";
@@ -39,8 +38,6 @@ export interface ThemeAnalysisMemo {
 
 export interface AnalyzeNazareThemeOptions {
 	root?: string;
-	/** Built-in source implementation. Defaults to legacy until cutover. */
-	sourceFrontend?: SourceFrontend;
 	strictness?: "strict" | "loose";
 	/** strict validates HTML and Liquid; liquid-only masks HTML but validates Liquid structure. */
 	plainLiquidParseMode?: "strict" | "liquid-only";

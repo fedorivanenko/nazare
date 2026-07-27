@@ -10,14 +10,9 @@ import type {
 } from "./ast.js";
 import type { CompilerMode } from "./check.js";
 import { importCycle, importNotFound } from "./diagnostics.js";
-import type { SourceFrontend } from "./frontend.js";
-import {
-	parseNazareLiquid,
-	scanDataAccesses,
-	scanRefAccesses,
-} from "./parser.js";
 import { markDiagnostics, projectArtifact } from "./pipeline.js";
 import type { ReadFile } from "./read-file.js";
+import { scanDataAccesses, scanRefAccesses } from "./script-accesses.js";
 import { bindArtifactIR, contractFromIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
 import { projectTreeSitterNazareAst } from "./tree-sitter-nazare-projector.js";
@@ -41,7 +36,6 @@ export type AssetImportResolution = {
  * one-off calls that pass none get a private resolver instead.
  */
 export type DependencyResolver = {
-	sourceFrontend: SourceFrontend;
 	loadAst: (path: string) => NazareAst | undefined;
 	resolveComponentContracts: (ast: NazareAst) => ComponentContractResolution;
 };
@@ -54,9 +48,7 @@ type ContractDerivation = {
 
 export function createDependencyResolver(
 	readFile: ReadFile | undefined,
-	options: { sourceFrontend?: SourceFrontend } = {},
 ): DependencyResolver {
-	const sourceFrontend = options.sourceFrontend ?? "tree-sitter";
 	const astCache = new Map<string, NazareAst | undefined>();
 	const contractCache = new Map<string, ArtifactContract | undefined>();
 
@@ -66,9 +58,7 @@ export function createDependencyResolver(
 		const ast =
 			contents === undefined
 				? undefined
-				: sourceFrontend === "tree-sitter"
-					? projectTreeSitterNazareAst(contents, path).ast
-					: parseNazareLiquid(contents, path);
+				: projectTreeSitterNazareAst(contents, path).ast;
 		astCache.set(path, ast);
 		return ast;
 	};
@@ -139,7 +129,6 @@ export function createDependencyResolver(
 	};
 
 	return {
-		sourceFrontend,
 		loadAst,
 		resolveComponentContracts: resolveContractsForAst,
 	};
@@ -156,10 +145,9 @@ export function resolveComponentContracts(
 	ast: NazareAst,
 	readFile: ReadFile | undefined,
 	resolver?: DependencyResolver,
-	options: { sourceFrontend?: SourceFrontend } = {},
 ): ComponentContractResolution {
 	return (
-		resolver ?? createDependencyResolver(readFile, options)
+		resolver ?? createDependencyResolver(readFile)
 	).resolveComponentContracts(ast);
 }
 
@@ -176,16 +164,11 @@ export function checkDependencies(
 	options: {
 		mode?: CompilerMode;
 		resolver?: DependencyResolver;
-		sourceFrontend?: SourceFrontend;
 	} = {},
 ): Diagnostic[] {
 	const issues: Diagnostic[] = [];
 	const checked = new Set<string>();
-	const dependencies =
-		options.resolver ??
-		createDependencyResolver(readFile, {
-			sourceFrontend: options.sourceFrontend,
-		});
+	const dependencies = options.resolver ?? createDependencyResolver(readFile);
 
 	const visit = (path: string): void => {
 		if (checked.has(path)) return;

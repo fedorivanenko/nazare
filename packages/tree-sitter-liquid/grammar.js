@@ -54,6 +54,7 @@ module.exports = grammar({
         $._tagged_unpaired_statement,
         $._tagged_paired_statment,
         $._output_statement,
+        $._foreign_output_statement,
       ),
 
     liquid_tag: ($) =>
@@ -75,7 +76,10 @@ module.exports = grammar({
     _tagged_unpaired_statement: ($) =>
       tag(choice($._untagged_unpaired_statement, $.liquid_tag)),
 
-    _output_statement: ($) => output($._expression),
+    _output_statement: ($) => output(optional($._expression)),
+
+    _foreign_output_statement: ($) =>
+      output(alias(/[^}]*\?[^}]*/, $.foreign_output_content)),
 
     _untagged_unpaired_statement: ($) =>
       choice(
@@ -137,9 +141,12 @@ module.exports = grammar({
     // Primitives //
     // //////////////
 
-    identifier: (_) => /([a-zA-Z][0-9a-zA-Z_\?-]*)/,
+    identifier: (_) => /([a-zA-Z_](?:[0-9a-zA-Z_\?-]*[0-9a-zA-Z_\?])?)/,
 
-    _literal: ($) => choice($.string, $.number, $.boolean),
+    _literal: ($) => choice($.string, $.number, $.boolean, $.array),
+
+    array: ($) =>
+      seq('[', optional(sep1(choice($._literal, $.identifier, $.access), ',')), ']'),
 
     string: (_) => choice(seq('\'', /[^']*/, '\''), seq('"', /[^"]*/, '"')),
 
@@ -195,7 +202,7 @@ module.exports = grammar({
 
     decrement_statement: ($) => seq('decrement', $.identifier),
 
-    layout_statement: ($) => seq('layout', choice($.string, 'none')),
+    layout_statement: ($) => seq('layout', choice($.string, $.identifier)),
 
     custom_unpaired_statement: ($) =>
       seq(alias($.identifier, 'custom_keyword'), repeat($._expression)),
@@ -203,10 +210,13 @@ module.exports = grammar({
     assignment_statement: ($) =>
       seq(
         'assign',
-        field('variable_name', $.identifier),
+        field('variable_name', $.assignment_target),
         '=',
         field('value', $._expression),
       ),
+
+    assignment_target: ($) =>
+      seq($.identifier, optional(seq('[', choice($.number, $.string), ']'))),
 
     cycle_statement: ($) =>
       seq(
@@ -226,7 +236,7 @@ module.exports = grammar({
     include_statement: ($) =>
       seq(
         choice('include', 'include_relative'),
-        choice(
+        field('file', choice(
           $.string,
           output($._expression),
           alias(
@@ -234,12 +244,20 @@ module.exports = grammar({
             /(\{[^{%\s][^{\s]*|[^{\s]+)(?:\{[^{%\s][^{\s]*)*/,
             $.string,
           ),
-        ),
-        repeat($._include_param),
+        )),
+        repeat(choice(
+          $._include_param,
+          seq(optional(','), $.render_argument),
+          seq(optional(','), 'with', field('with', choice($.identifier, $.access))),
+        )),
       ),
 
     _include_param: ($) =>
-      seq($.identifier, token.immediate('='), $._expression),
+      seq(
+        $.identifier,
+        token.immediate('='),
+        choice($.render_filter, $._literal, $.identifier, $.access),
+      ),
 
     render_statement: ($) =>
       seq(
@@ -247,7 +265,12 @@ module.exports = grammar({
         field('file', choice($.string, $.identifier, $.access)),
         optional(
           choice(
-            field('arguments', seq(',', $.argument_list)),
+            field('arguments', seq(
+              optional(','),
+              $.render_argument,
+              repeat(seq(optional(','), $.render_argument)),
+              optional(','),
+            )),
             field('iteration', seq('for', $._render_param)),
             field('with', seq('with', $._render_param)),
           ),
@@ -266,16 +289,31 @@ module.exports = grammar({
       ),
 
     access: ($) =>
-      seq(
+      prec(2, seq(
         field('receiver', choice($.access, $.identifier)),
         choice(
           seq('.', field('property', $.identifier)),
-          seq('[', field('property', choice($.number, $.string)), ']'),
+          seq('[', field('property', choice($.number, $.string, $.identifier, $.access)), ']'),
         ),
-      ),
+      )),
 
     argument_list: ($) =>
       sep1(choice($._literal, $.identifier, $.access, $.argument), ','),
+
+    render_argument: ($) =>
+      seq(
+        field('key', $.identifier),
+        ':',
+        field('value', choice($.render_filter, $._literal, $.identifier, $.access)),
+      ),
+
+    render_filter: ($) =>
+      seq(
+        field('body', choice($.render_filter, $._literal, $.identifier, $.access)),
+        '|',
+        field('name', $.identifier),
+        optional(seq(':', choice($._literal, $.identifier, $.access, $.argument))),
+      ),
 
     argument: ($) =>
       seq(
@@ -359,7 +397,15 @@ module.exports = grammar({
         1,
         seq(
           field('iterator', choice($.identifier, $.access, $.range)),
-          optional(field('modifier', choice($.argument_list, $.identifier))),
+          repeat(
+            field(
+              'modifier',
+              choice(
+                seq(choice('limit', 'offset'), ':', choice($.number, $.identifier, $.access)),
+                'reversed',
+              ),
+            ),
+          ),
         ),
       ),
 
@@ -433,7 +479,11 @@ module.exports = grammar({
     comment: ($) => choice($._inline_comment, $._paired_comment),
 
     comment_liq: ($) =>
-      choice($._inline_comment_content, $._paired_comment_liq),
+      choice(
+        seq('#', token.immediate(/[^\r\n]*/), /(\r\n|\r|\n)/),
+        $._inline_comment_content,
+        $._paired_comment_liq,
+      ),
 
     doc: ($) =>
       seq(
@@ -443,6 +493,7 @@ module.exports = grammar({
           $.doc_param_annotation,
           $.doc_description_annotation,
           $.doc_example_annotation,
+          $.doc_unknown_annotation,
           $.doc_type,
         )),
         tag('enddoc'),
@@ -453,6 +504,8 @@ module.exports = grammar({
       optional($.doc_type),
       optional($.doc_param_name),
     )),
+
+    doc_unknown_annotation: (_) => /@[a-zA-Z_][^\r\n]*/,
 
     doc_description_annotation: (_) => '@description',
 
@@ -553,7 +606,7 @@ function statements($, rules) {
       repeat(field('alternative', rules.elsif)),
       optional(field('alternative', rules.else)),
 
-      prec.right(rules.wrapper('endunless')),
+      prec.right(rules.wrapper('endunless', optional($._expression))),
     ),
 
     _when: prec.dynamic(
@@ -571,6 +624,7 @@ function statements($, rules) {
     _case: seq(
       rules.wrapper('case', field('receiver', choice($.identifier, $.access))),
 
+      repeat(rules.node),
       field('conditions', alias(repeat(rules.when), $.block)),
       optional(field('alternative', rules.else)),
 

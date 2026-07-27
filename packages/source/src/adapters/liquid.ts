@@ -305,6 +305,7 @@ function collectReadsAndGuards(
 			lookup = lookupFromNode(node);
 		} else if (node.type === "identifier" && node.parent?.type !== "access") {
 			const parent = node.parent;
+			if (parent?.type === "assignment_target") return;
 			const field = childFieldName(parent, node);
 			if (
 				field === "variable_name" ||
@@ -355,14 +356,14 @@ function collectReadsAndGuards(
 				chain.names.includes("default") &&
 				chain.subject?.type === "identifier"
 			) {
-				guards.push({
-					name: chain.subject.text,
-					via: "default",
-					range: {
-						start: chain.subject.startIndex,
-						end: chain.subject.endIndex,
-					},
-				});
+				const subject = lookupFromNode(chain.subject);
+				if (subject) {
+					guards.push({
+						name: subject.root,
+						via: "default",
+						range: subject.range,
+					});
+				}
 			}
 		}
 	});
@@ -376,7 +377,7 @@ function filterChain(node: Parser.SyntaxNode): {
 	const names: string[] = [];
 	let subject: Parser.SyntaxNode | null = node;
 	while (subject?.type === "filter") {
-		const name = subject.childForFieldName("name")?.text;
+		const name = subject.childForFieldName("name")?.text.trim();
 		if (name) names.push(name);
 		subject = subject.childForFieldName("body");
 	}
@@ -530,7 +531,11 @@ function collectRenderArguments(
 			implicit: true,
 		});
 	}
-	for (const argument of node.descendantsOfType("argument")) {
+	const explicitArguments = [
+		...node.descendantsOfType("argument"),
+		...node.descendantsOfType("render_argument"),
+	].sort((left, right) => left.startIndex - right.startIndex);
+	for (const argument of explicitArguments) {
 		const key = argument.childForFieldName("key");
 		const value = argument.childForFieldName("value");
 		if (!key || !value) continue;
@@ -556,7 +561,7 @@ function collectStringReference(
 	const names: string[] = [];
 	let subject: Parser.SyntaxNode | null = filter;
 	while (subject?.type === "filter") {
-		const name = subject.childForFieldName("name")?.text;
+		const name = subject.childForFieldName("name")?.text.trim();
 		if (name) names.push(name);
 		subject = subject.childForFieldName("body");
 	}
@@ -607,7 +612,10 @@ function collectDocParams(
 function firstLookup(node: Parser.SyntaxNode): LiquidSyntaxLookup | undefined {
 	const direct = lookupFromNode(node);
 	if (direct) return direct;
+	const filterName =
+		node.type === "render_filter" ? node.childForFieldName("name") : undefined;
 	for (const child of node.namedChildren) {
+		if (child === filterName) continue;
 		const lookup = firstLookup(child);
 		if (lookup) return lookup;
 	}
@@ -618,10 +626,15 @@ function lookupFromNode(
 	node: Parser.SyntaxNode,
 ): LiquidSyntaxLookup | undefined {
 	const path = accessPath(node);
+	const leading = node.text.length - node.text.trimStart().length;
+	const trailing = node.text.length - node.text.trimEnd().length;
 	return path
 		? {
 				...path,
-				range: { start: node.startIndex, end: node.endIndex },
+				range: {
+					start: node.startIndex + leading,
+					end: node.endIndex - trailing,
+				},
 			}
 		: undefined;
 }
@@ -648,14 +661,14 @@ function walk(
 function accessPath(
 	node: Parser.SyntaxNode,
 ): { root: string; path: string[] } | undefined {
-	if (node.type === "identifier") return { root: node.text, path: [] };
+	if (node.type === "identifier") return { root: node.text.trim(), path: [] };
 	if (node.type !== "access") return undefined;
 	const receiver = node.childForFieldName("receiver");
 	const property = node.childForFieldName("property");
 	if (!receiver || !property) return undefined;
 	const parent = accessPath(receiver);
 	return parent
-		? { root: parent.root, path: [...parent.path, property.text] }
+		? { root: parent.root, path: [...parent.path, property.text.trim()] }
 		: undefined;
 }
 
@@ -687,6 +700,13 @@ function enclosingTagRange(
 	source: string,
 	node: Parser.SyntaxNode,
 ): SourceRange {
+	let ancestor = node.parent;
+	while (ancestor) {
+		if (ancestor.type === "liquid_tag") {
+			return { start: node.startIndex, end: node.endIndex };
+		}
+		ancestor = ancestor.parent;
+	}
 	const start = source.lastIndexOf("{%", node.startIndex);
 	const close = source.indexOf("%}", node.endIndex);
 	if (start < 0 || close < 0)
@@ -718,5 +738,6 @@ function schemaFromNode(
 }
 
 function unquote(value: string): string {
-	return value.length >= 2 ? value.slice(1, -1) : value;
+	const trimmed = value.trim();
+	return trimmed.length >= 2 ? trimmed.slice(1, -1) : trimmed;
 }

@@ -19,13 +19,8 @@ import type {
 	ContractProvenance,
 	FrontendResult,
 	FrontendSupport,
-	SourceFrontend,
 } from "./frontend.js";
-import { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
-import {
-	type PlainLiquidFrontendMetadata,
-	plainLiquidFrontend,
-} from "./frontends/plain-liquid.js";
+import type { PlainLiquidFrontendMetadata } from "./frontends/plain-liquid.js";
 import { treeSitterNazareLiquidFrontend } from "./frontends/tree-sitter-nazare-liquid.js";
 import { treeSitterPlainLiquidFrontend } from "./frontends/tree-sitter-plain-liquid.js";
 import { artifactGraphFromIR } from "./graph.js";
@@ -101,31 +96,26 @@ export type {
 	ContractProvenance,
 	FrontendResult,
 	FrontendSupport,
-	SourceFrontend,
 } from "./frontend.js";
-export { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
 export {
 	PLAIN_LIQUID_SUPPORT,
 	type PlainLiquidFrontendMetadata,
-	plainLiquidFrontend,
 } from "./frontends/plain-liquid.js";
 export { treeSitterNazareLiquidFrontend } from "./frontends/tree-sitter-nazare-liquid.js";
 export { treeSitterPlainLiquidFrontend } from "./frontends/tree-sitter-plain-liquid.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
 export { mergeArtifactIR } from "./merge.js";
-export { parseNazareLiquid } from "./parser.js";
 export { baseNameOf, resolveImportPath } from "./paths.js";
-export {
-	type BuildPlainLiquidOptions,
-	type BuildPlainLiquidResult,
-	type CompilePlainLiquidResult,
-	type PlainLiquidAst,
-	type PlainLiquidDependency,
-	type PlainLiquidDependencyKind,
-	type PlainLiquidOptions,
-	type PlainLiquidParseMode,
-	parsePlainLiquid,
+export type {
+	BuildPlainLiquidOptions,
+	BuildPlainLiquidResult,
+	CompilePlainLiquidResult,
+	PlainLiquidAst,
+	PlainLiquidDependency,
+	PlainLiquidDependencyKind,
+	PlainLiquidOptions,
+	PlainLiquidParseMode,
 } from "./plain-liquid.js";
 export {
 	checkDependencies,
@@ -393,11 +383,9 @@ export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
 export type CompileNazareArtifactOptions = Pick<
 	CompileInput,
 	"readFile" | "strictness" | "dependencyResolver"
-> & { sourceFrontend?: SourceFrontend };
+>;
 
 export type CompileArtifactOptions = CompileInput & {
-	/** Built-in source implementation. Defaults to legacy until parity gates pass. */
-	sourceFrontend?: SourceFrontend;
 	/** Explicit frontend wins over registry selection. */
 	frontend?: CompilerFrontend;
 	/** Extra frontends checked before built-ins. */
@@ -500,10 +488,6 @@ export function compileNazareArtifact(
 		source,
 		file,
 		...options,
-		frontend:
-			options.sourceFrontend === "tree-sitter"
-				? undefined
-				: nazareLiquidFrontend,
 	});
 	if (!compiled.ok) {
 		throw new Error(
@@ -520,18 +504,11 @@ export function compileNazareArtifact(
 export function compilePlainLiquid(
 	source: string,
 	file: string,
-	options: Pick<BuildPlainLiquidOptions, "parseMode"> & {
-		sourceFrontend?: SourceFrontend;
-	} = {},
+	options: Pick<BuildPlainLiquidOptions, "parseMode"> = {},
 ): CompilePlainLiquidResult {
 	const compiled = compileArtifact({
 		source,
 		file,
-		sourceFrontend: options.sourceFrontend,
-		frontend:
-			options.sourceFrontend === "tree-sitter"
-				? undefined
-				: plainLiquidFrontend,
 		frontendOptions: options,
 	});
 	if (!compiled.ok) {
@@ -551,7 +528,7 @@ export function compilePlainLiquid(
 export function buildPlainLiquid(
 	source: string,
 	file: string,
-	options: BuildPlainLiquidOptions & { sourceFrontend?: SourceFrontend } = {},
+	options: BuildPlainLiquidOptions = {},
 ): BuildPlainLiquidResult {
 	const compiled = compilePlainLiquid(source, file, options);
 	const emittedOnError = !compiled.canEmit && (options.emitOnError ?? false);
@@ -620,21 +597,11 @@ function selectFrontend(
 	for (const frontend of options.frontends ?? []) {
 		if (frontend.accepts(options.file, options.source)) return frontend;
 	}
-	const sourceFrontend = options.sourceFrontend ?? "tree-sitter";
-	if (sourceFrontend === "tree-sitter") {
-		if (treeSitterNazareLiquidFrontend.accepts(options.file, options.source)) {
-			return treeSitterNazareLiquidFrontend;
-		}
-		if (treeSitterPlainLiquidFrontend.accepts(options.file, options.source)) {
-			return treeSitterPlainLiquidFrontend;
-		}
-		return undefined;
+	if (treeSitterNazareLiquidFrontend.accepts(options.file, options.source)) {
+		return treeSitterNazareLiquidFrontend;
 	}
-	if (nazareLiquidFrontend.accepts(options.file, options.source)) {
-		return nazareLiquidFrontend;
-	}
-	if (plainLiquidFrontend.accepts(options.file, options.source)) {
-		return plainLiquidFrontend;
+	if (treeSitterPlainLiquidFrontend.accepts(options.file, options.source)) {
+		return treeSitterPlainLiquidFrontend;
 	}
 	return undefined;
 }

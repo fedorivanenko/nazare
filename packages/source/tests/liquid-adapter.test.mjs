@@ -89,6 +89,35 @@ test("all mechanical fact families cover focused syntax", () => {
 	);
 });
 
+test("production Liquid extensions remain authoritative", () => {
+	const source = `{% liquid
+# generated theme comment
+assign _menu = linklists[section.settings.menu]
+for image in product.images limit: 3
+render 'card', class: classes | strip
+endfor
+%}
+{{- -}}
+{% case kind %}{% when 'a' %}A{% endcase-%}`;
+	const document = parseSourceDocument(
+		registry,
+		"production.liquid",
+		"liquid",
+		source,
+	);
+	assert.deepEqual(document.issues, []);
+	const facts = liquidSyntaxFacts(document);
+	assert.equal(facts.authoritative, true);
+	assert.equal(
+		facts.localBindings.some((binding) => binding.name === "_menu"),
+		true,
+	);
+	assert.equal(
+		facts.renderArguments.some((argument) => argument.argumentName === "class"),
+		true,
+	);
+});
+
 test("invalid CST never produces authoritative facts", () => {
 	const document = parseSourceDocument(
 		registry,

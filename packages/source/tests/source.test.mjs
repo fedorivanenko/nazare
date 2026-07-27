@@ -39,8 +39,8 @@ test("plain Liquid produces a persistent CST with UTF-16 issue ranges", () => {
 	const access = document.tree.rootNode.namedChildren[1];
 	assert.equal(access.type, "access");
 	assert.equal(
-		access.startIndex,
-		6,
+		access.childForFieldName("property")?.startIndex,
+		14,
 		"node-tree-sitter exposes JavaScript UTF-16 indices",
 	);
 });

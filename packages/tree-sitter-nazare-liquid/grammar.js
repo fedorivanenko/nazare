@@ -57,7 +57,7 @@ module.exports = grammar(Liquid, {
 			seq(
 				"render",
 				field("target", $.identifier),
-				field("payload", alias(/\{[^%]*\}/, "render_payload")),
+				field("payload", alias(/\{[^}]*\}/, "render_payload")),
 			),
 
 		nazare_script_statement: ($) =>

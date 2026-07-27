@@ -5,8 +5,7 @@ import {
 	compileArtifact,
 	compileNazareArtifact,
 	compilePlainLiquid,
-	parsePlainLiquid,
-	plainLiquidFrontend,
+	treeSitterPlainLiquidFrontend,
 } from "../dist/index.js";
 import { collectPlainLiquidThemeFacts } from "../dist/theme-liquid-facts.js";
 
@@ -61,7 +60,7 @@ test("plain Liquid frontend reports authored schema setting drift", () => {
 });
 
 test("plain Liquid frontend keeps dynamic dependencies indexed without paths", () => {
-	const ast = parsePlainLiquid(
+	const { ast } = compilePlainLiquid(
 		"{% render snippet_name %}\n{% layout layout_name %}",
 		"templates/page.liquid",
 	);
@@ -128,9 +127,7 @@ test("plain Liquid fact scanning rejects malformed expressions", () => {
 		},
 	]);
 	assert.ok(
-		result.issues.some((issue) =>
-			issue.message.includes("Unterminated Liquid string"),
-		),
+		result.issues.some((issue) => issue.code === "NAZARE_PARSE_LIQUID"),
 	);
 	assert.ok(
 		result.issues.some((issue) => issue.code === "PLAIN_LIQUID_FACTS_SKIPPED"),
@@ -172,7 +169,6 @@ test("Tree-sitter plain Liquid strict mode rejects malformed HTML", () => {
 	const strict = compileArtifact({
 		source,
 		file: "sections/malformed-html.liquid",
-		sourceFrontend: "tree-sitter",
 		frontendOptions: { parseMode: "strict" },
 	});
 	assert.equal(strict.frontendMetadata.factsCollected, false);
@@ -190,7 +186,6 @@ test("Tree-sitter plain Liquid strict mode rejects malformed HTML", () => {
 	const liquidOnly = compileArtifact({
 		source,
 		file: "sections/malformed-html.liquid",
-		sourceFrontend: "tree-sitter",
 		frontendOptions: { parseMode: "liquid-only" },
 	});
 	assert.equal(liquidOnly.frontendMetadata.factsCollected, true);
@@ -299,46 +294,15 @@ test("compileArtifact defaults to the Tree-sitter plain Liquid frontend", () => 
 	assert.equal(compiled.frontendSupport.explicitSchemaSyntax, true);
 });
 
-test("legacy plain Liquid frontend remains an explicit parity oracle", () => {
-	const source = `{% render "card", title: section.settings.title %}
-{% section "featured" %}
-{% schema %}{"name":"Main","settings":[{"type":"text","id":"title"}]}{% endschema %}`;
-	const legacy = compileArtifact({
-		source,
-		file: "sections/main.liquid",
-		sourceFrontend: "legacy",
-	});
-	const treeSitter = compileArtifact({
-		source,
-		file: "sections/main.liquid",
-		sourceFrontend: "tree-sitter",
-	});
-
-	assert.equal(legacy.ok, true);
-	assert.equal(treeSitter.ok, true);
-	assert.equal(legacy.frontend, "plain-liquid");
-	assert.equal(treeSitter.frontend, "tree-sitter-plain-liquid");
-	assert.deepEqual(treeSitter.issues, legacy.issues);
-	assert.deepEqual(
-		treeSitter.frontendMetadata.ast.dependencies,
-		legacy.frontendMetadata.ast.dependencies,
-	);
-	assert.deepEqual(
-		treeSitter.frontendMetadata.ast.settingsReads,
-		legacy.frontendMetadata.ast.settingsReads,
-	);
-	assert.deepEqual(
-		treeSitter.frontendMetadata.ast.schema,
-		legacy.frontendMetadata.ast.schema,
-	);
-});
-
-test("plainLiquidFrontend does not accept Nazare Liquid files", () => {
+test("Tree-sitter plain Liquid frontend does not accept Nazare Liquid files", () => {
 	assert.equal(
-		plainLiquidFrontend.accepts("components/card.nz.liquid", ""),
+		treeSitterPlainLiquidFrontend.accepts("components/card.nz.liquid", ""),
 		false,
 	);
-	assert.equal(plainLiquidFrontend.accepts("snippets/card.liquid", ""), true);
+	assert.equal(
+		treeSitterPlainLiquidFrontend.accepts("snippets/card.liquid", ""),
+		true,
+	);
 });
 
 test("plain Liquid frontend validates frontend options", () => {

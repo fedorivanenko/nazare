@@ -5,7 +5,6 @@ import {
 	nazareSyntaxFacts,
 	parseSourceDocument,
 } from "@nazare/source";
-import { toLiquidHtmlAST } from "@shopify/liquid-html-parser";
 import type { NazareAst, NazareNode } from "./ast.js";
 import {
 	controlFlowNotLowered,
@@ -26,7 +25,7 @@ import {
 	parseNazareImportTag,
 	parsePassedProps,
 	parseProps,
-} from "./parser.js";
+} from "./nazare-tag-parser.js";
 import { scanScript } from "./script-scan.js";
 import { spanFromOffsets } from "./source.js";
 
@@ -50,10 +49,6 @@ export function projectTreeSitterNazareAst(
 	const syntax = nazareSyntaxFacts(document);
 	// Keep the transitional AST field structurally valid without parsing authored
 	// source. Tree-sitter facts own all compiler and workspace behavior.
-	const emptyLiquidAst = toLiquidHtmlAST("", {
-		mode: "tolerant",
-		allowUnclosedDocumentNode: true,
-	});
 	const problemDiagnostics = syntax.problems.map((problem) => {
 		const span = spanFromOffsets(source, file, problem.range);
 		switch (problem.kind) {
@@ -142,7 +137,6 @@ export function projectTreeSitterNazareAst(
 			source,
 			htmlRoots,
 			liquidFacts: syntax.liquid,
-			liquidAst: emptyLiquidAst,
 			nodes: projected.nodes,
 			settingsReads,
 			schema,

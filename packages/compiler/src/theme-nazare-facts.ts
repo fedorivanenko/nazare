@@ -1,6 +1,4 @@
 import type { Diagnostic } from "@nazare/core";
-import type { SourceFrontend } from "./frontend.js";
-import { nazareLiquidFrontend } from "./frontends/nazare-liquid.js";
 import { treeSitterNazareLiquidFrontend } from "./frontends/tree-sitter-nazare-liquid.js";
 import { projectArtifact } from "./pipeline.js";
 import type { DependencyResolver, ReadFile } from "./resolver.js";
@@ -10,7 +8,6 @@ import {
 	type ThemeFact,
 } from "./theme-facts.js";
 import { themeNameFromPath } from "./theme-file-classifier.js";
-import { collectSourceThemeFacts } from "./theme-source-facts.js";
 import { collectTreeSitterSourceThemeFacts } from "./theme-tree-sitter-facts.js";
 
 export function collectNazareThemeFacts(
@@ -21,15 +18,10 @@ export function collectNazareThemeFacts(
 		/** Workspace-shared dependency caches; see resolver.ts. */
 		dependencyResolver?: DependencyResolver;
 		strictness?: "strict" | "loose";
-		sourceFrontend?: SourceFrontend;
 	} = {},
 ): { facts: ThemeFact[]; issues: Diagnostic[]; artifact?: ThemeBuiltArtifact } {
 	const facts: ThemeFact[] = [];
-	const frontend =
-		options.sourceFrontend === "tree-sitter"
-			? treeSitterNazareLiquidFrontend
-			: nazareLiquidFrontend;
-	const frontendResult = frontend.compile({
+	const frontendResult = treeSitterNazareLiquidFrontend.compile({
 		source: contents,
 		file: path,
 		readFile: options.readFile,
@@ -176,13 +168,11 @@ export function collectNazareThemeFacts(
 				: [],
 		),
 	]);
-	const sourceResult = frontendResult.ast.liquidFacts
-		? collectTreeSitterSourceThemeFacts(
-				path,
-				contents,
-				frontendResult.ast.liquidFacts,
-			)
-		: collectSourceThemeFacts(path, contents, frontendResult.ast.liquidAst);
+	const sourceResult = collectTreeSitterSourceThemeFacts(
+		path,
+		contents,
+		frontendResult.ast.liquidFacts,
+	);
 	facts.push(
 		...sourceResult.facts.filter(
 			(fact) =>

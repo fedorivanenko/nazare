@@ -5,7 +5,6 @@ import { type EmitResult, emitTheme } from "./emit.js";
 // Generated from a digest of this package's source, so any change to fact
 // derivation invalidates persisted caches without anyone remembering to.
 import { THEME_FACT_CACHE_REVISION } from "./fact-cache-revision.js";
-import { parseNazareLiquid } from "./parser.js";
 import { markDiagnostics } from "./pipeline.js";
 import {
 	checkDependencies,
@@ -89,11 +88,7 @@ export function buildNazareThemeWorkspace(
 	const scopeIssues = buildScopeIssues(buildOptions.scope, normalized.byPath);
 	const scopePaths = hasErrors(scopeIssues)
 		? new Set<string>()
-		: buildScopePaths(
-				buildOptions.scope,
-				normalized.byPath,
-				buildOptions.sourceFrontend,
-			);
+		: buildScopePaths(buildOptions.scope, normalized.byPath);
 	const filesToAnalyze =
 		buildOptions.scope.kind === "workspace"
 			? normalized.files
@@ -110,9 +105,7 @@ export function buildNazareThemeWorkspace(
 		normalized.byPath.get(normalizeThemePath(path));
 	// One resolver for every artifact's dependency check: the workspace's
 	// components import each other, so the parse/contract caches are shared.
-	const dependencyResolver = createDependencyResolver(readFile, {
-		sourceFrontend: buildOptions.sourceFrontend,
-	});
+	const dependencyResolver = createDependencyResolver(readFile);
 	let selected = buildScopeArtifacts(
 		analysis.artifacts,
 		buildOptions.scope,
@@ -127,7 +120,6 @@ export function buildNazareThemeWorkspace(
 		const dependencyIssues = checkDependencies(artifact.ast, readFile, {
 			mode: buildOptions.strictness,
 			resolver: dependencyResolver,
-			sourceFrontend: buildOptions.sourceFrontend,
 		});
 		dependencyIssuesByPath.set(artifact.path, dependencyIssues);
 		pushUniqueDiagnostics(allIssues, dependencyIssues);
@@ -238,7 +230,6 @@ function analyzeNormalizedThemeFiles(
 		initialIssues?: Diagnostic[];
 	} = {},
 ): ThemeAnalysis {
-	const sourceFrontend = options.sourceFrontend ?? "tree-sitter";
 	const facts: ThemeFact[] = [];
 	const artifacts: ThemeBuildResult["artifacts"] = [];
 	const issues: Diagnostic[] = [...(options.initialIssues ?? [])];
@@ -246,15 +237,10 @@ function analyzeNormalizedThemeFiles(
 		byPath.get(normalizeThemePath(path));
 	// Shared across every component in the workspace: without it each
 	// component re-parses its whole import closure from scratch.
-	const dependencyResolver: DependencyResolver = createDependencyResolver(
-		readFile,
-		{ sourceFrontend },
-	);
+	const dependencyResolver: DependencyResolver =
+		createDependencyResolver(readFile);
 	const cache = options.cache?.version === 1 ? options.cache : undefined;
-	const componentDependencyFingerprints = fingerprintComponentSources(
-		files,
-		sourceFrontend,
-	);
+	const componentDependencyFingerprints = fingerprintComponentSources(files);
 	if (cache) {
 		const currentPaths = new Set(files.map((file) => file.path));
 		for (const path of Object.keys(cache.entries)) {
@@ -335,7 +321,6 @@ function analyzeNormalizedThemeFiles(
 				readFile,
 				dependencyResolver,
 				strictness: options.strictness,
-				sourceFrontend,
 			});
 			facts.push(...result.facts);
 			issues.push(...result.issues);
@@ -430,13 +415,12 @@ function themeFileFingerprint(
 	options: AnalyzeNazareThemeOptions,
 	dependencyFingerprint?: string,
 ): string {
-	const input = `${THEME_FACT_CACHE_REVISION}\0${fileKind}\0${options.strictness ?? "strict"}\0${options.plainLiquidParseMode ?? "liquid-only"}\0${options.sourceFrontend ?? "tree-sitter"}\0${dependencyFingerprint ?? ""}\0${file.contents}`;
+	const input = `${THEME_FACT_CACHE_REVISION}\0${fileKind}\0${options.strictness ?? "strict"}\0${options.plainLiquidParseMode ?? "liquid-only"}\0${dependencyFingerprint ?? ""}\0${file.contents}`;
 	return createHash("sha256").update(input).digest("hex");
 }
 
 function fingerprintComponentSources(
 	files: ThemeInputFile[],
-	sourceFrontend: AnalyzeNazareThemeOptions["sourceFrontend"],
 ): Map<string, string> {
 	const sources = new Map(files.map((file) => [file.path, file]));
 	const components = files.filter(
@@ -452,11 +436,7 @@ function fingerprintComponentSources(
 			closure.add(path);
 			const source = sources.get(path);
 			if (!source?.path.endsWith(".nz.liquid")) continue;
-			const ast = parseWorkspaceNazareAst(
-				source.contents,
-				source.path,
-				sourceFrontend,
-			);
+			const ast = parseWorkspaceNazareAst(source.contents, source.path);
 			for (const node of ast.nodes) {
 				if (node.type !== "NazareImport" && node.type !== "NazareAssetImport")
 					continue;
@@ -513,17 +493,12 @@ function buildScopeIssues(
 function buildScopePaths(
 	scope: NonNullable<BuildNazareThemeWorkspaceOptions["scope"]>,
 	byPath: Map<string, string>,
-	sourceFrontend: AnalyzeNazareThemeOptions["sourceFrontend"],
 ): Set<string> {
 	if (scope.kind === "workspace") return new Set(byPath.keys());
 	const entries = scope.kind === "files" ? scope.paths : [scope.path];
 	const paths = new Set<string>();
 	for (const entry of entries) {
-		for (const path of scopedNazareClosure(
-			normalizeThemePath(entry),
-			byPath,
-			sourceFrontend,
-		)) {
+		for (const path of scopedNazareClosure(normalizeThemePath(entry), byPath)) {
 			paths.add(path);
 		}
 	}
@@ -533,7 +508,6 @@ function buildScopePaths(
 function scopedNazareClosure(
 	entryPath: string,
 	byPath: Map<string, string>,
-	sourceFrontend: AnalyzeNazareThemeOptions["sourceFrontend"],
 ): Set<string> {
 	const visited = new Set<string>();
 	const pending = [entryPath];
@@ -543,7 +517,7 @@ function scopedNazareClosure(
 		visited.add(path);
 		const source = byPath.get(path);
 		if (source === undefined || !path.endsWith(".nz.liquid")) continue;
-		const ast = parseWorkspaceNazareAst(source, path, sourceFrontend);
+		const ast = parseWorkspaceNazareAst(source, path);
 		for (const node of ast.nodes) {
 			if (
 				node.type === "NazareImport" &&
@@ -658,14 +632,8 @@ function diagnosticKey(diagnostic: Diagnostic): string {
 	});
 }
 
-function parseWorkspaceNazareAst(
-	source: string,
-	path: string,
-	sourceFrontend: AnalyzeNazareThemeOptions["sourceFrontend"],
-) {
-	return sourceFrontend === "tree-sitter"
-		? projectTreeSitterNazareAst(source, path).ast
-		: parseNazareLiquid(source, path);
+function parseWorkspaceNazareAst(source: string, path: string) {
+	return projectTreeSitterNazareAst(source, path).ast;
 }
 
 function hasErrors(issues: Diagnostic[]): boolean {

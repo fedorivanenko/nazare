@@ -22,11 +22,7 @@ export const treeSitterNazareLiquidFrontend: CompilerFrontend = {
 	compile(input: CompileInput): FrontendResult {
 		const projection = projectTreeSitterNazareAst(input.source, input.file);
 		const dependencyResolver =
-			input.dependencyResolver?.sourceFrontend === "tree-sitter"
-				? input.dependencyResolver
-				: createDependencyResolver(input.readFile, {
-						sourceFrontend: "tree-sitter",
-					});
+			input.dependencyResolver ?? createDependencyResolver(input.readFile);
 		const contractResolution = resolveComponentContracts(
 			projection.ast,
 			input.readFile,

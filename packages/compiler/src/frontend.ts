@@ -8,8 +8,6 @@ import type { NazareAst } from "./ast.js";
 import type { CompilerMode } from "./check.js";
 import type { DependencyResolver, ReadFile } from "./resolver.js";
 
-export type SourceFrontend = "legacy" | "tree-sitter";
-
 export type CompileInput = {
 	source: string;
 	file: string;

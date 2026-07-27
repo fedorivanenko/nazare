@@ -286,7 +286,7 @@ export function nazareSyntaxFacts(document: SourceDocument): NazareSyntaxFacts {
 					binding: "props",
 					name: lookup.path[0] as string,
 					form: "identifier",
-					range: nodeRange(node),
+					range: trimmedNodeRange(node),
 				});
 			} else if (styleBindings.has(lookup.root)) {
 				const output = enclosingOutput(document.source, node);
@@ -586,14 +586,17 @@ function referencesInText(
 function accessPath(
 	node: Parser.SyntaxNode,
 ): { root: string; path: string[] } | undefined {
-	if (node.type === "identifier") return { root: node.text, path: [] };
+	if (node.type === "identifier") return { root: node.text.trim(), path: [] };
 	if (node.type !== "access") return undefined;
 	const receiver = node.childForFieldName("receiver");
 	const property = node.childForFieldName("property");
 	if (!receiver || !property) return undefined;
 	const parent = accessPath(receiver);
 	return parent
-		? { root: parent.root, path: [...parent.path, unquote(property.text)] }
+		? {
+				root: parent.root,
+				path: [...parent.path, unquote(property.text.trim())],
+			}
 		: undefined;
 }
 
@@ -650,11 +653,19 @@ function enclosingOutput(
 	const close = source.indexOf("}}", node.endIndex);
 	if (start < 0 || close < 0) return undefined;
 	const inner = source.slice(start + 2, close).replace(/^-|-$|\s/g, "");
-	return inner === node.text ? { start, end: close + 2 } : undefined;
+	const expression = node.text.replace(/\s/g, "");
+	return inner === expression ? { start, end: close + 2 } : undefined;
 }
 
 function nodeRange(node: Parser.SyntaxNode): SourceRange {
 	return { start: node.startIndex, end: node.endIndex };
+}
+
+function trimmedNodeRange(node: Parser.SyntaxNode): SourceRange {
+	return {
+		start: node.startIndex + (node.text.length - node.text.trimStart().length),
+		end: node.endIndex - (node.text.length - node.text.trimEnd().length),
+	};
 }
 
 function walk(

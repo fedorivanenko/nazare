@@ -33,10 +33,6 @@ jobs:
       # Runs the corpus theme committed to fixtures/. External themes named in
       # the manifest live on individual machines and are skipped here.
       - run: pnpm -s test:corpus
-      - name: Tree-sitter frontend performance gate
-        env:
-          NAZARE_BENCH_MAX_FRONTEND_RELATIVE_TIME: "0.9"
-        run: pnpm --dir packages/compiler benchmark:frontends
       - name: package ephemeral PR artifact
         if: github.event_name == 'pull_request'
         run: ./scripts/package-cli.sh "pr-${{ github.event.pull_request.number }}-${{ github.sha }}"
@@ -67,8 +63,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -s build
-      - name: Tree-sitter frontend performance gate
-        env:
-          NAZARE_BENCH_MAX_FRONTEND_RELATIVE_TIME: "0.9"
-        run: pnpm --dir packages/compiler benchmark:frontends
       - run: pnpm -s test:package

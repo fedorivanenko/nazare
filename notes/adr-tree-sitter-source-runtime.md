@@ -77,23 +77,21 @@ stylesheet bodies. Closing tags inside strings, comments, regex literals, and
 template literals remain embedded content instead of terminating parent nodes.
 Phase 2 plain-Liquid adapter derives dependencies, settings reads, schema,
 blocks, conditionals, local bindings, reads, guards, render arguments, asset and
-locale references, and LiquidDoc parameters directly from CST. Corpus and
-focused differential tests compare every family with `@nazare/scan`.
+locale references, and LiquidDoc parameters directly from CST. Committed corpus
+and focused syntax tests cover every fact family.
 
 Phase 3 source adapter now exposes Nazare component/import/props/render/blocks,
 script/stylesheet, prop/style reference, HTML ref/data/island/root facts. HTML
 facts use `tree-sitter-html` over masked Liquid template regions, preserving
 original UTF-16 offsets while preventing embedded syntax from becoming HTML.
-Committed Nazare corpus files and focused legacy-parser comparisons pass.
-The compiler keeps an explicit `sourceFrontend: "legacy" | "tree-sitter"`
-boundary and now defaults to `"tree-sitter"`. Passing `"legacy"` remains the
-differential-oracle escape hatch. Nazare CST facts project through the existing
-`NazareAst` boundary; authored source is never parsed with Shopify on the
-Tree-sitter path. Corpus gates compare complete Nazare nodes, syntax, IR, graph,
-diagnostics, notes, and emission. Invalid CSTs fail closed without partial
-facts. Selection propagates through recursive component resolution, dependency
-checking, workspace scopes, cache fingerprints, and incremental recomputation.
-CLI packaging now includes `@nazare/source`, `@nazare/scan`, both grammar
+Committed Nazare corpus files and focused CST tests pass. Tree-sitter is the
+only built-in source frontend. Nazare CST facts project through `NazareAst`;
+authored source is never parsed with Shopify. Corpus gates cover complete Nazare
+nodes, syntax, IR, graph, diagnostics, notes, and emission. Invalid CSTs fail
+closed without partial facts. The canonical frontend propagates through
+recursive component resolution, dependency checking, workspace scopes, cache
+fingerprints, and incremental recomputation. CLI packaging includes
+`@nazare/source`, both grammar
 packages, generated parser/scanner sources, queries, Node bindings, and the
 release runner's native binaries. Package smoke tests install the isolated
 tarball, load both grammars, parse both languages, and start the CLI. CI checks
@@ -110,13 +108,15 @@ parity is gated in tests. Plain-Liquid compiler and workspace facts now use the
 same Tree-sitter adapter when selected, including schema validation and complete
 theme-corpus fact parity. Strict mode now validates HTML through a masked
 `tree-sitter-html` pass while Liquid-only mode intentionally skips HTML errors.
-Linux and macOS CI enforce a maximum 0.9 Tree-sitter/legacy frontend-time ratio.
-A broader malformed corpus now gates fail-closed behavior and verifies that no
-partial facts escape invalid CSTs. One intentional tightening is recorded:
-Tree-sitter rejects unclosed Liquid blocks that the tolerant legacy Nazare parser
-accepted. Linux and macOS CI passed parity, packaging, and performance gates;
-the default cutover is complete. Legacy paths remain temporarily for explicit
-differential and deletion-gate validation.
+A broad malformed corpus gates fail-closed behavior and verifies that no partial
+facts escape invalid CSTs. One intentional tightening is recorded: Tree-sitter
+rejects unclosed Liquid blocks that the former tolerant parser accepted. Linux
+and macOS CI passed parity, packaging, and performance gates before cutover.
+`@nazare/scan`, authored-source Shopify parsing, legacy frontend selection, and
+their differential harnesses were then deleted. Two large Zipify-generated
+plain-Liquid files remain intentionally fail-closed: their deeply nested,
+minified nonstandard syntax produces invalid CSTs. Corpus gates cap both parse
+and skipped-fact diagnostics at exactly those two files; no partial facts escape.
 
 ## Rejected alternatives
 
@@ -140,8 +140,8 @@ packaging.
 
 ### Extending `@nazare/scan`
 
-Rejected by assignment architecture. Scanner remains a differential oracle only
-until Tree-sitter adapter parity permits deletion.
+Rejected by assignment architecture. Scanner served as a differential oracle
+through cutover, then was deleted after parity gates passed.
 
 ## Measurement
 
@@ -164,8 +164,7 @@ are not an accepted budget.
 
 ## Deletion gate
 
-Do not remove `@nazare/scan`, Shopify parser paths, or existing raw block
-extraction based on this ADR. Deletion requires dedicated Nazare grammar,
-syntax-adapter parity, compiler switch comparisons, corpus replay, distribution
-tests, and accepted performance numbers listed in
-`notes/tree-sitter-frontend-handoff.md`.
+Completed. Dedicated grammars, syntax-adapter parity, compiler comparisons,
+corpus replay, isolated distribution tests, and accepted Linux/macOS performance
+numbers passed before scanner and Shopify parser compatibility paths were
+removed.

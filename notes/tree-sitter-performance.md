@@ -52,10 +52,8 @@ performance work:
 
 1. avoid full secondary HTML reparsing after incremental edits;
 2. profile CST traversal on large files;
-3. monitor the Linux/macOS CI threshold before default cutover.
+3. establish an absolute cross-platform regression budget for the canonical frontend.
 
-Tree-sitter is now the default for Nazare and plain-Liquid compilation and
-workspace analysis, avoiding `@nazare/scan` and authored-source Shopify parsing.
-Passing `sourceFrontend: "legacy"` keeps the old paths available only as
-explicit differential oracles until deletion gates pass. CI now rejects a Nazare Tree-sitter
-frontend/legacy relative time above `0.9` on both Ubuntu and macOS.
+Tree-sitter is the only built-in frontend for Nazare and plain-Liquid
+compilation and workspace analysis. `@nazare/scan`, authored-source Shopify
+parsing, and `sourceFrontend: "legacy"` were removed after deletion gates passed.
