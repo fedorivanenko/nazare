@@ -94,6 +94,20 @@ async function buildState(
 			order.indexOf(left.component.name) - order.indexOf(right.component.name),
 	);
 
+	// The file behind each component, as text, so the panel can offer the file
+	// itself and not only what a form can express.
+	const storyFiles: Record<string, { path: string; contents: string }> = {};
+	for (const entry of collection.compiled) {
+		const contents = await readFile(join(dir, entry.storyFile), "utf8").catch(
+			() => undefined,
+		);
+		if (contents === undefined) continue;
+		storyFiles[componentId(entry.component.name)] = {
+			path: entry.storyFile,
+			contents,
+		};
+	}
+
 	const pages = new Map<string, string>();
 	// The shell reloads itself when the server says something changed; that is
 	// the only difference between these pages and the ones written to disk.
@@ -105,6 +119,7 @@ async function buildState(
 			source: previewSource(dir, label),
 			liveReload: EVENTS_PATH,
 			saveEndpoint: SAVE_PATH,
+			storyFiles,
 		}),
 	);
 	pages.set(
@@ -134,6 +149,8 @@ type SaveRequest = {
 	component?: unknown;
 	story?: unknown;
 	props?: unknown;
+	/** The whole story file as text, when the panel is editing the file itself. */
+	file?: unknown;
 };
 
 /**
@@ -150,11 +167,13 @@ export async function saveStoryFile(
 	state: ServerState,
 	body: SaveRequest,
 ): Promise<string | undefined> {
-	if (typeof body.component !== "string" || typeof body.story !== "string") {
-		return "component and story are required";
-	}
-	if (body.props === null || typeof body.props !== "object") {
-		return "props must be an object";
+	if (typeof body.component !== "string") return "component is required";
+	const editingFile = typeof body.file === "string";
+	if (!editingFile) {
+		if (typeof body.story !== "string") return "story is required";
+		if (body.props === null || typeof body.props !== "object") {
+			return "props must be an object";
+		}
 	}
 	const entry = state.collection.compiled.find(
 		({ component }) => componentId(component.name) === body.component,
@@ -162,6 +181,34 @@ export async function saveStoryFile(
 	if (!entry) return `unknown component ${body.component}`;
 
 	const path = join(dir, entry.storyFile);
+
+	// The file itself, edited as text. Everything a form cannot express lives
+	// here — a note, an explicit null, a story that does not exist yet, the
+	// order they appear in — and it is checked exactly as a hand edit would be.
+	if (editingFile) {
+		const text = body.file as string;
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(text);
+		} catch (error) {
+			return `invalid JSON: ${
+				error instanceof Error ? error.message : String(error)
+			}`;
+		}
+		try {
+			parseStoryFile(
+				state.collection.layout === "package"
+					? ((parsed as { preview?: unknown }).preview ?? {})
+					: parsed,
+				entry.storyFile,
+			);
+		} catch (error) {
+			return error instanceof Error ? error.message : String(error);
+		}
+		// Written as given: the author's own formatting is theirs to keep.
+		await writeFile(path, text.endsWith("\n") ? text : `${text}\n`);
+		return undefined;
+	}
 	const raw = await readFile(path, "utf8").catch(() => undefined);
 	if (raw === undefined) return `cannot read ${entry.storyFile}`;
 

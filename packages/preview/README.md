@@ -463,16 +463,23 @@ rebuilds, and the page reloads with the real render. That is why the button
 says Save rather than the canvas following your keystrokes: the alternative is
 a canvas that quietly stops matching the controls above it.
 
-What is written is the story's delta, with `{ "$fixture": "product" }` left as
-the reference it is rather than the three kilobytes it resolves to — which is
-why `PreviewStory` keeps `source` alongside its resolved props. It goes back
+Whether a prop holds a literal or a fixture is itself an edit: a fixture row
+offers the other fixture names and a **use a value** switch that seeds the
+literal it resolved to. Storefront data is the exception — a product cannot be
+typed into a field — so that one direction stays shut and says why. What is
+written is the story's delta, with `{ "$fixture": "product" }` left as the
+reference it is rather than the three kilobytes it resolves to, which is why
+`PreviewStory` keeps `source` alongside its resolved props.
+
+A **JSON** tab edits the story file as text, for everything a form has no row
+for: a note, an explicit null, a story that does not exist yet, the order they
+appear in. Saved verbatim — the author's formatting is theirs to keep — where
+the field editor round-trips through `JSON.stringify` and expands compact
+objects. It goes back
 through `parseStoryFile` before it is written, so the editor cannot produce a
 file `preview check` would reject.
 
-One consequence to know about: saving rewrites the whole file through
-`JSON.stringify`, so hand-written compact objects come back expanded. The
-content is preserved exactly — stories nobody edited, their notes, their order —
-but the diff is larger than the edit.
+
 
 `cli-client/src/preview-command.ts` is pure I/O around the above: it walks a
 directory, resolves each component's story file, and writes the pages. It is

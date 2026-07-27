@@ -12,6 +12,7 @@
 // opens the story on its own, which is the honest degraded behaviour rather
 // than a dead page.
 import type { PreviewComponent } from "./component.js";
+import { shopifyFixtures } from "./fixtures.js";
 import { escapeHtml } from "./html.js";
 import {
 	renderCode,
@@ -75,6 +76,13 @@ export type WorkbenchPageOptions = {
 	 * editor at all.
 	 */
 	saveEndpoint?: string;
+	/**
+	 * Each component's story file as text, by component id, so the panel can
+	 * offer the file itself and not only the props a form can express — adding a
+	 * story, reordering, a note, an explicit null. Supplied by a server, since
+	 * the package reads nothing.
+	 */
+	storyFiles?: Record<string, { path: string; contents: string }>;
 };
 
 /** The header's provenance line: the directory, then the commit it was at. */
@@ -556,6 +564,53 @@ const WORKBENCH_STYLES = `
     border-radius: calc(var(--radius) - 3px);
     padding: .35rem .5rem;
   }
+  .control-label { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }
+  /* Which kind of value a prop holds is itself an edit, so the switch sits on
+   * the row rather than being a mode you have to find. */
+  .control-swap {
+    border: 0;
+    background: transparent;
+    color: var(--muted-foreground);
+    font: inherit;
+    font-size: .68rem;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+    padding: 0;
+  }
+  .control-swap:hover:not([disabled]) { color: var(--foreground); }
+  .control-swap[disabled] { opacity: .4; cursor: default; text-decoration: none; }
+  .edit-modes { float: right; display: inline-flex; gap: .2rem; }
+  .edit-mode {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted-foreground);
+    border-radius: calc(var(--radius) - 3px);
+    font: inherit;
+    font-size: .66rem;
+    text-transform: none;
+    letter-spacing: 0;
+    padding: .1rem .4rem;
+    cursor: pointer;
+  }
+  .edit-mode[aria-pressed="true"] { background: var(--muted); color: var(--foreground); }
+  .edit-mode[hidden] { display: none; }
+  .json-editor[hidden], .controls[hidden] { display: none; }
+  .json-path { margin: 0 0 .3rem; font-size: .68rem; color: var(--muted-foreground); }
+  .json-text {
+    width: 100%;
+    min-height: 18rem;
+    resize: vertical;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius) - 2px);
+    background: var(--code-bg);
+    color: var(--foreground);
+    padding: .6rem .7rem;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    font-size: .74rem;
+    line-height: 1.5;
+    tab-size: 2;
+  }
   .controls-bar { display: flex; align-items: center; gap: .4rem; margin-top: .8rem; }
   .controls-status { font-size: .72rem; color: var(--muted-foreground); }
   .controls-status--error { color: #b91c1c; }
@@ -663,6 +718,10 @@ const WORKBENCH_SCRIPT = `
   const saveButton = document.getElementById('controls-save');
   const resetButton = document.getElementById('controls-reset');
   const status = document.getElementById('controls-status');
+  const jsonEditor = document.getElementById('json-editor');
+  const jsonText = document.getElementById('json-text');
+  const jsonPath = document.getElementById('json-path');
+  let mode = 'controls';
   let dirty = false;
   const problemsOnly = document.getElementById('problems-only');
   const sidebarEmpty = document.getElementById('sidebar-empty');
@@ -851,6 +910,13 @@ const WORKBENCH_SCRIPT = `
   const controlsIndex = JSON.parse(
     document.getElementById('controls-index').textContent,
   );
+  const fixtures = JSON.parse(
+    document.getElementById('fixtures-index').textContent,
+  );
+  const fixtureNames = Object.keys(fixtures);
+  const storyFiles = JSON.parse(
+    document.getElementById('story-files').textContent,
+  );
   // The endpoint rides on the button rather than in a global: the script is one
   // constant string, and the page is what knows whether a server is behind it.
   const saveEndpoint = saveButton?.dataset.endpoint ?? '';
@@ -860,21 +926,53 @@ const WORKBENCH_SCRIPT = `
     value !== null && typeof value === 'object' && '$fixture' in value;
 
   function controlRow(control, value) {
-    const row = document.createElement('label');
+    const row = document.createElement('div');
     row.className = 'control';
     const label = document.createElement('span');
     label.className = 'control-label';
     label.innerHTML = '<code>' + control.name + '</code>' +
       (control.required ? ' <span class="control-required">required</span>' : '');
+
+    // A prop can hold a literal or a name from the shared storefront data, and
+    // which one it holds is itself an edit. A product cannot be typed into a
+    // field, but a price is a named number — refusing to edit either was the
+    // reason a story made of two fixtures had nothing to change.
+    const resolved = fixtures[isFixture(value) ? value.$fixture : ''];
+    const swap = document.createElement('button');
+    swap.type = 'button';
+    swap.className = 'control-swap';
+    swap.textContent = isFixture(value) ? 'use a value' : 'use a fixture';
+    // Nothing sensible to type for a product or a collection, so that one
+    // direction stays shut, and says why.
+    swap.disabled = isFixture(value) && resolved !== null && typeof resolved === 'object';
+    if (swap.disabled) swap.title = 'This fixture is storefront data, not a value';
+    swap.addEventListener('click', () => {
+      const next = isFixture(value)
+        ? (typeof resolved === 'object' ? '' : resolved)
+        : { $fixture: fixtureNames[0] };
+      row.replaceWith(controlRow(control, next));
+      dirty = true;
+      paintControlsBar();
+    });
+    label.append(swap);
     row.append(label);
 
-    // A prop holding storefront data is a reference to fixture data, not a
-    // value anyone types into a field. Shown, and left exactly as written.
     if (isFixture(value)) {
-      const chip = document.createElement('span');
-      chip.className = 'control-fixture';
-      chip.textContent = 'fixture: ' + value.$fixture;
-      row.append(chip);
+      const picker = document.createElement('select');
+      for (const name of fixtureNames) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = 'fixture: ' + name;
+        if (name === value.$fixture) option.selected = true;
+        picker.append(option);
+      }
+      picker.dataset.control = control.name;
+      picker.dataset.kind = 'fixture';
+      picker.addEventListener('change', () => {
+        dirty = true;
+        paintControlsBar();
+      });
+      row.append(picker);
       return row;
     }
 
@@ -919,10 +1017,21 @@ const WORKBENCH_SCRIPT = `
 
   function renderControls(story) {
     const controls = controlsIndex[story.component] ?? [];
-    // Nothing declared, nothing to edit — and no invented interface either.
-    controlsSection.hidden = controls.length === 0;
-    if (controls.length === 0) return;
+    const file = storyFiles[story.component];
+    // Nothing declared and no file to show: nothing to edit, and no invented
+    // interface either.
+    controlsSection.hidden = controls.length === 0 && !file;
+    if (controlsSection.hidden) return;
     editing = story;
+    // The file itself is the escape hatch — a note, an explicit null, a story
+    // the form has no row for, the order they appear in.
+    for (const button of document.querySelectorAll('[data-mode]')) {
+      button.hidden = !file;
+    }
+    if (file) {
+      jsonPath.textContent = file.path;
+      jsonText.value = file.contents;
+    } else if (mode === 'json') setMode('controls');
     dirty = false;
     controlsForm.replaceChildren(
       ...controls.map((control) =>
@@ -934,12 +1043,29 @@ const WORKBENCH_SCRIPT = `
     paintControlsBar();
   }
 
+  function setMode(next) {
+    mode = next;
+    for (const button of document.querySelectorAll('[data-mode]')) {
+      button.setAttribute('aria-pressed', String(button.dataset.mode === next));
+    }
+    controlsForm.hidden = next !== 'controls';
+    jsonEditor.hidden = next !== 'json';
+  }
+  for (const button of document.querySelectorAll('[data-mode]')) {
+    button.addEventListener('click', () => setMode(button.dataset.mode));
+  }
+  jsonText.addEventListener('input', () => {
+    dirty = true;
+    paintControlsBar();
+  });
+
   /** What the form says, as a story's props: only what it changes. */
   function formProps() {
     const props = { ...editing.source };
     for (const input of controlsForm.querySelectorAll('[data-control]')) {
       const name = input.dataset.control;
-      if (input.type === 'checkbox') props[name] = input.checked;
+      if (input.dataset.kind === 'fixture') props[name] = { $fixture: input.value };
+      else if (input.type === 'checkbox') props[name] = input.checked;
       else if (input.dataset.kind === 'number') {
         props[name] = input.value === '' ? null : Number(input.value);
       } else if (input.value === '') delete props[name];
@@ -964,11 +1090,15 @@ const WORKBENCH_SCRIPT = `
       const response = await fetch(saveEndpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          component: editing.component,
-          story: editing.storyName,
-          props: formProps(),
-        }),
+        body: JSON.stringify(
+          mode === 'json'
+            ? { component: editing.component, file: jsonText.value }
+            : {
+                component: editing.component,
+                story: editing.storyName,
+                props: formProps(),
+              },
+        ),
       });
       if (!response.ok) throw new Error(await response.text());
       // The write lands on the watcher, which rebuilds and reloads the page —
@@ -1328,8 +1458,18 @@ ${links}
       </section>
 
       <section class="docs-section" id="controls-section" hidden>
-        <p class="docs-heading">Controls</p>
+        <p class="docs-heading">
+          Controls
+          <span class="edit-modes">
+            <button class="edit-mode" type="button" data-mode="controls" aria-pressed="true">Fields</button>
+            <button class="edit-mode" type="button" data-mode="json" aria-pressed="false">JSON</button>
+          </span>
+        </p>
         <form class="controls" id="controls"></form>
+        <div class="json-editor" id="json-editor" hidden>
+          <p class="json-path" id="json-path"></p>
+          <textarea class="json-text" id="json-text" spellcheck="false" aria-label="Story file"></textarea>
+        </div>
         <div class="controls-bar">
           <button class="panel-toggle" type="button" id="controls-save" data-endpoint="${escapeHtml(
 						options.saveEndpoint ?? "",
@@ -1362,6 +1502,12 @@ ${links}
       </p>
     </aside>
   </div>
+<script type="application/json" id="fixtures-index">${JSON.stringify(
+		shopifyFixtures,
+	).replace(/</g, "\\u003c")}</script>
+<script type="application/json" id="story-files">${JSON.stringify(
+		options.storyFiles ?? {},
+	).replace(/</g, "\\u003c")}</script>
 <script type="application/json" id="controls-index">${JSON.stringify(
 		Object.fromEntries(
 			components.map(({ component }) => [

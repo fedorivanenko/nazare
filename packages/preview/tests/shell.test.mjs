@@ -33,6 +33,7 @@ async function mountShell({
 	stageWidth = 0,
 	fetch = async () => ({ ok: true, text: async () => "saved" }),
 	stories,
+	storyFiles,
 } = {}) {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
 	const rendered = await renderComponentStories(
@@ -52,7 +53,10 @@ async function mountShell({
 			},
 		],
 	);
-	const html = workbenchPage([rendered], { saveEndpoint: "/__save" });
+	const html = workbenchPage([rendered], {
+		saveEndpoint: "/__save",
+		...(storyFiles ? { storyFiles } : {}),
+	});
 	const { window, document } = parseHTML(html);
 
 	// linkedom does no layout, so the stage reports whatever room the test says
@@ -287,24 +291,77 @@ test("the controls are the declaration, seeded from the story as written", async
 	assert.equal(shell.document.getElementById("controls-reset").disabled, true);
 });
 
-test("a fixture prop is shown as the reference it is, not as a value", async () => {
+test("a fixture prop can be swapped for a value, and back", async () => {
+	// The bug this pins: every fixture prop was read-only, so a story whose
+	// props were all fixtures — `price`'s, for one — had nothing to edit at all.
+	// Which kind of value a prop holds is itself an edit.
+	const shell = await mountShell({
+		stories: [
+			{
+				name: "solid",
+				props: { label: 2400 },
+				source: { label: { $fixture: "price" } },
+			},
+		],
+	});
+	const row = () =>
+		[...shell.document.querySelectorAll("#controls .control")].find(
+			(entry) => entry.querySelector("code").textContent === "label",
+		);
+
+	// A fixture is a choice among the names the preview owns.
+	const picker = row().querySelector('[data-kind="fixture"]');
+	assert.ok(picker, "a fixture prop offers the other fixtures");
+	assert.ok(picker.querySelectorAll("option").length > 1);
+
+	// And it can stop being one: what it resolved to is where typing starts.
+	row()
+		.querySelector(".control-swap")
+		.dispatchEvent(new shell.window.Event("click"));
+	assert.equal(row().querySelector("input").getAttribute("value"), "2400");
+	assert.equal(shell.document.getElementById("controls-save").disabled, false);
+});
+
+test("storefront data stays a reference, because it is not a value", async () => {
 	// Resolving `{ "$fixture": "product" }` gives a product object; putting that
 	// in a text field and saving it would inline three kilobytes of stand-in
-	// data where a one-word reference used to be.
+	// data where a one-word reference used to be. So that one direction stays
+	// shut, and says why.
 	const shell = await mountShell({
 		stories: [
 			{
 				name: "on sale",
-				props: { label: "Add", scheme: "outline" },
-				source: { label: "Add", scheme: { $fixture: "scheme" } },
+				props: { label: "Add" },
+				source: { label: { $fixture: "product" } },
 			},
 		],
 	});
-	const chip = shell.document.querySelector(".control-fixture");
+	const swap = [...shell.document.querySelectorAll("#controls .control")]
+		.find((entry) => entry.querySelector("code").textContent === "label")
+		.querySelector(".control-swap");
 
-	assert.equal(chip.textContent, "fixture: scheme");
-	// No input for it: there is nothing to type, so nothing pretends otherwise.
-	assert.equal(shell.document.querySelector('[data-control="scheme"]'), null);
+	assert.equal(swap.disabled, true);
+	assert.match(swap.title, /storefront data/);
+});
+
+test("the file itself can be edited when a server offers it", async () => {
+	const shell = await mountShell({
+		storyFiles: {
+			button: { path: "snippets/button.stories.json", contents: '{ "x": 1 }' },
+		},
+	});
+	// A form has no row for a note, an explicit null, or a story that does not
+	// exist yet. The file does.
+	shell.document
+		.querySelector('[data-mode="json"]')
+		.dispatchEvent(new shell.window.Event("click"));
+
+	assert.equal(
+		shell.document.getElementById("json-path").textContent,
+		"snippets/button.stories.json",
+	);
+	assert.equal(shell.document.getElementById("json-text").value, '{ "x": 1 }');
+	assert.equal(shell.document.getElementById("controls").hidden, true);
 });
 
 test("editing a control arms Save, and Save sends the story's delta", async () => {

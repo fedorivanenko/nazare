@@ -209,6 +209,60 @@ test("a save that would break the story file is refused", async () => {
 	);
 });
 
+test("the story file can be saved as text, and is checked as one", async () => {
+	await withTheme(
+		{
+			"snippets/price.liquid": PRICE,
+			"snippets/price.stories.json": STORIES,
+		},
+		async (dir) => {
+			const { previewServerState, saveStoryFile } = await load();
+			const state = await previewServerState(dir, "theme");
+
+			// The panel offers the file itself because a form cannot express
+			// everything a story file holds — a note, an explicit null, a story
+			// that does not exist yet, the order they appear in.
+			assert.match(state.pages.get("/index.html"), /id="story-files"/);
+
+			const edited = `{
+  "stories": [
+    { "name": "on sale", "props": { "price": 2400 }, "note": "kept" },
+    { "name": "free", "props": { "price": 0 } }
+  ]
+}
+`;
+			assert.equal(
+				await saveStoryFile(dir, state, { component: "price", file: edited }),
+				undefined,
+			);
+			// Written as given: the author's formatting is theirs to keep, unlike
+			// the field editor which round-trips through JSON.stringify.
+			assert.equal(
+				await readFile(join(dir, "snippets/price.stories.json"), "utf8"),
+				edited,
+			);
+
+			// And held to the same format a hand edit is held to.
+			assert.match(
+				await saveStoryFile(dir, state, { component: "price", file: "{ oops" }),
+				/invalid JSON/,
+			);
+			assert.match(
+				await saveStoryFile(dir, state, {
+					component: "price",
+					file: '{"stories":[{"name":"a","argTypes":{}}]}',
+				}),
+				/unknown key "argTypes"/,
+			);
+			// Neither rejection touched the file.
+			assert.equal(
+				await readFile(join(dir, "snippets/price.stories.json"), "utf8"),
+				edited,
+			);
+		},
+	);
+});
+
 test("a directory with nothing to preview reports rather than serving", async () => {
 	await withTheme({ "notes.md": "# nothing here" }, async (dir) => {
 		const { previewServerState } = await load();
