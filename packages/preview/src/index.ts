@@ -47,6 +47,7 @@ export {
 	type RenderStoriesOptions,
 	renderComponentStories,
 } from "./render.js";
+export { type RenderCall, renderCall } from "./render-call.js";
 export {
 	changedProps,
 	declaredStories,
@@ -71,4 +72,5 @@ export {
 	type StoryIssue,
 	validateStory,
 } from "./story-validation.js";
+export { BACKGROUNDS } from "./theme.js";
 export { type WorkbenchPageOptions, workbenchPage } from "./workbench.js";

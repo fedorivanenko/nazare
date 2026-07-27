@@ -14,7 +14,7 @@
 import type { PreviewComponent } from "./component.js";
 import { escapeHtml } from "./html.js";
 import type { RenderedStory } from "./render.js";
-import { FRAME_MESSAGE, TOKEN_STYLES } from "./theme.js";
+import { CANVAS_STYLES, FRAME_MESSAGE, TOKEN_STYLES } from "./theme.js";
 
 export type StoryDocumentOptions = {
 	/**
@@ -84,10 +84,30 @@ const STORY_SCRIPT = `
   new ResizeObserver(report).observe(document.body);
 
   addEventListener('message', (event) => {
-    if (event.data?.type !== ${JSON.stringify(FRAME_MESSAGE.theme)}) return;
-    const theme = event.data.theme;
-    if (theme === 'dark' || theme === 'light') root.setAttribute('data-theme', theme);
-    else root.removeAttribute('data-theme');
+    if (event.data?.type === ${JSON.stringify(FRAME_MESSAGE.theme)}) {
+      const theme = event.data.theme;
+      if (theme === 'dark' || theme === 'light') root.setAttribute('data-theme', theme);
+      else root.removeAttribute('data-theme');
+      return;
+    }
+    // How the story is shown, not what it is: the ground it sits on, whether
+    // every box is outlined, and how large it is drawn. All three belong to the
+    // frame because the frame owns this document's rendering.
+    if (event.data?.type !== ${JSON.stringify(FRAME_MESSAGE.canvas)}) return;
+    const body = document.body;
+    const background = event.data.background;
+    if (background) {
+      body.style.setProperty('--canvas-background', background);
+      body.setAttribute('data-canvas-background', '');
+    } else {
+      body.style.removeProperty('--canvas-background');
+      body.removeAttribute('data-canvas-background');
+    }
+    body.toggleAttribute('data-canvas-outline', Boolean(event.data.outline));
+    // Zoom rather than transform: the body keeps reporting a real height, so
+    // the frame still sizes itself. It does change layout width, which is why
+    // zoom and the viewport presets answer different questions.
+    body.style.zoom = event.data.zoom && event.data.zoom !== 1 ? event.data.zoom : '';
   });
 `;
 
@@ -142,7 +162,7 @@ export function storyDocument(
 <title>${escapeHtml(title)}</title>
 <base href="${escapeHtml(base)}">
 ${links}
-<style>${TOKEN_STYLES}${STORY_STYLES}</style>
+<style>${TOKEN_STYLES}${STORY_STYLES}${CANVAS_STYLES}</style>
 </head>
 <body>
 ${storyBody(rendered)}

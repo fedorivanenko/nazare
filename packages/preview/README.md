@@ -70,11 +70,41 @@ prop each one varies, and a viewport dropdown constrains the canvas to 375, 768,
 or 1280 — the frame is a real document, so a narrower frame is a real viewport,
 media queries included.
 
-The story is a URL fragment (`#button--outline`) and the viewport a query
-parameter (`?viewport=375`), so both survive a reload and a link, and changing
-the story leaves the viewport alone. The sidebar entries are real links to story
+Beside the viewport sit the other three questions you ask of a component you are
+looking at: **background** (page, white, dark, grey, or a checkerboard, because
+alpha reads as opaque against anything flat), **zoom**, and **outline**, which
+draws every box so a spacing bug stops hiding. All three are applied inside the
+frame, since the frame owns that document's rendering — one `postMessage`,
+resent whenever a story loads.
+
+Under the canvas is **the call that reproduces this story in a theme**:
+
+```liquid
+{% render 'price', price: 2400, compare_at_price: 4000 %}
+```
+
+A snippet is reached by `{% render %}`; a section or a block is placed, so what
+you get is the settings object a template's JSON holds. It is built from the
+story's own delta, which is exactly what a caller has to write — anything the
+story omits is already the component's default, and repeating it in the call
+would be noise a merchant has to maintain. This is the one thing on the page
+meant to be copied out, so it sits with the render rather than in the panel
+below. A component the preview cannot classify gets no snippet at all: a wrong
+call behind a copy button is worse than no call.
+
+The story is a URL fragment (`#button--outline`); the viewport, background,
+zoom, outline, and the sidebar filter are query parameters
+(`?viewport=375&bg=dark&outline=1`). So all of it survives a reload and a link,
+a shared URL arrives showing what the sender was seeing, and changing the story
+leaves the presentation alone. The sidebar entries are real links to story
 documents, so with JavaScript off, clicking one opens that component on its own
 rather than doing nothing.
+
+The sidebar counts each component's problem stories — how many, not whether,
+since that is what decides whether you look now — and **Problems only** filters
+to them. The story dropdown says which ones (`typo — 2 issues`, `broken —
+failed`), so a template rename that breaks nine stories is navigable rather than
+just loud.
 
 `galleryPage()` is the catalogue: every story of every component at once, for a
 sweep over the whole registry or for embedding in a docs site.
@@ -303,6 +333,7 @@ them. All three return strings.
 | Build a static site or serve a dev server | `storyDocuments`, `workbenchPage` |
 | Sweep the whole registry at once | `galleryPage` |
 | Check a story is well-formed | `validateStory` |
+| Show how to reproduce a story in a theme | `renderCall` |
 | Address a story in a URL, a file, a snapshot | `storyId`, `componentId`, `storyFileName` |
 | Reach the shared storefront data | `shopifyFixtures`, `resolveFixtures` |
 
@@ -319,6 +350,8 @@ exactly two messages, both named in `theme.ts`:
   layout of a document it does not own.
 - shell → frame: `nazare-preview:theme`, because the frame cannot see the
   shell's `data-theme`.
+- shell → frame: `nazare-preview:canvas` — background, outline, zoom. How a
+  story is shown belongs to the document that renders it.
 
 The rest of the state is in the URL — the story in the fragment, the viewport in
 the query — so a reload, a link, and a fresh tab all arrive at the same place.
@@ -329,6 +362,7 @@ the query — so a reload, a link, and a fresh tab all arrive at the same place.
 component.ts         source → PreviewComponent
 controls.ts          contract → controls
 plain-controls.ts    doc params / schema settings → controls
+render-call.ts       one story → the call that reproduces it in a theme
 story-file.ts        the story file format, parsed strictly
 stories.ts           declared cases → stories; delta over declared defaults
 story-validation.ts  story vs. declaration → issues

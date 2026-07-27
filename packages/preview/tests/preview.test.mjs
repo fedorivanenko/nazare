@@ -5,6 +5,7 @@ import {
 	galleryPage,
 	parseStoryFile,
 	previewComponentFromSource,
+	renderCall,
 	renderComponentStories,
 	renderPreview,
 	resolveFixtures,
@@ -714,6 +715,81 @@ test("the workbench lists every story and shows one at a time", async () => {
 	assert.ok(page.includes("nazare add @nazare/button"));
 	assert.ok(page.includes("<th>Default</th>"));
 	assert.ok(page.includes("{{ label }}"));
+});
+
+test("a story carries the call that reproduces it in a theme", async () => {
+	const button = previewComponentFromSource(BUTTON, "button.nz.liquid");
+
+	// A snippet is reached by {% render %}, and the story's delta is exactly what
+	// a caller has to write — anything omitted is already the default.
+	assert.deepEqual(
+		renderCall(button, {
+			name: "outline",
+			props: { label: "Add to cart", scheme: "outline" },
+		}),
+		{
+			label: "Render this story",
+			language: "liquid",
+			code: "{% render 'button', label: 'Add to cart', scheme: 'outline' %}",
+		},
+	);
+
+	// A null is the story declining to pass a prop, so the call leaves it out.
+	assert.equal(
+		renderCall(button, { name: "bare", props: { label: "Go", scheme: null } })
+			.code,
+		"{% render 'button', label: 'Go' %}",
+	);
+
+	// A section is placed, not called: what you paste is a template's JSON.
+	const section = previewComponentFromSource(SECTION, "grid.nz.liquid");
+	const placed = renderCall(section, {
+		name: "three up",
+		props: { columns: 3 },
+	});
+	assert.equal(placed.language, "json");
+	assert.deepEqual(JSON.parse(placed.code), {
+		type: "grid",
+		settings: { columns: 3 },
+	});
+
+	// A file the preview could not classify gets no snippet: a wrong call in a
+	// copy button is worse than no call.
+	const bare = previewComponentFromSource("<a>{{ label }}</a>", "bare.liquid");
+	assert.equal(renderCall(bare, { name: "default", props: {} }), undefined);
+});
+
+test("the workbench carries the toolbar, the call, and per-story status", async () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
+	const rendered = await renderComponentStories(component, [
+		{ name: "solid", props: { label: "Add to cart" } },
+		// Contradicts the declaration, so this component has one problem story.
+		{ name: "typo", props: { lable: "Add to cart" } },
+	]);
+	const page = workbenchPage([rendered]);
+
+	// Ground, zoom, and outline: how the story is shown, alongside the viewport.
+	assert.ok(page.includes('id="background"'));
+	assert.ok(page.includes('id="zoom"'));
+	assert.ok(page.includes('id="outline"'));
+	assert.ok(page.includes(">Transparent</option>"));
+
+	// The call rides in the index, per story rather than per component.
+	const index = JSON.parse(
+		page.match(/id="story-index">([\s\S]*?)<\/script>/)[1],
+	);
+	assert.equal(
+		index["button--solid"].call.code,
+		"{% render 'button', label: 'Add to cart' %}",
+	);
+
+	// One of the two stories has a problem, and the count is what the sidebar
+	// shows and what the filter reads.
+	assert.ok(page.includes('data-problems="1"'));
+	assert.ok(page.includes('id="problems-only"'));
+	// A story's own state belongs on the story, in the menu where you pick it.
+	// Two, because a misspelled prop also leaves the real one unpassed.
+	assert.ok(page.includes("typo — 2 issues"));
 });
 
 test("without storyBase the page is still self-contained", async () => {

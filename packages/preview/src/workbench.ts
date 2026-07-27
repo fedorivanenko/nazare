@@ -22,8 +22,9 @@ import {
 	renderKindLine,
 } from "./panels.js";
 import type { RenderedComponent, RenderedStory } from "./render.js";
+import { renderCall } from "./render-call.js";
 import { componentId, storyFileName } from "./story-id.js";
-import { FRAME_MESSAGE, TOKEN_STYLES } from "./theme.js";
+import { BACKGROUNDS, FRAME_MESSAGE, TOKEN_STYLES } from "./theme.js";
 
 export type WorkbenchPageOptions = {
 	title?: string;
@@ -44,7 +45,7 @@ function storyLink(
 	component: PreviewComponent,
 	rendered: RenderedStory,
 	storyBase: string,
-	failed = false,
+	problems = 0,
 ): string {
 	const href = `${storyBase}${storyFileName(rendered.id)}`;
 	return `<a class="${className}" href="${escapeHtml(href)}" data-story="${escapeHtml(
@@ -52,8 +53,10 @@ function storyLink(
 	)}" data-component="${escapeHtml(componentId(component.name))}" data-name="${escapeHtml(
 		rendered.story.name,
 	)}">${escapeHtml(label)}${
-		failed
-			? ' <span class="nav-flag" title="A story here failed to render">!</span>'
+		problems > 0
+			? ` <span class="nav-flag" title="${problems} ${
+					problems === 1 ? "story has" : "stories have"
+				} a problem">${problems}</span>`
 			: ""
 	}</a>`;
 }
@@ -74,13 +77,20 @@ function navComponent(
 			component.name,
 		)}</span></li>`;
 	}
-	return `<li>${storyLink(
+	// How many of this component's stories have something wrong with them —
+	// counted, not flagged. "!" says a problem exists somewhere in here; "3"
+	// says how much of the component is affected, which is what decides whether
+	// you look now or later. The count is also what the filter reads.
+	const problems = stories.filter(
+		(rendered) => rendered.error !== undefined || rendered.issues.length > 0,
+	).length;
+	return `<li data-problems="${problems}">${storyLink(
 		"nav-component",
 		component.name,
 		component,
 		first,
 		storyBase,
-		stories.some((rendered) => rendered.error !== undefined),
+		problems,
 	)}</li>`;
 }
 
@@ -113,10 +123,18 @@ function substories({ component, stories }: RenderedComponent): string {
 		const group = (varied.get(prop) ?? 0) > 1 ? prop : "";
 		groups.set(group, [...(groups.get(group) ?? []), rendered]);
 	}
-	const option = (rendered: RenderedStory): string =>
-		`<option value="${escapeHtml(rendered.id)}">${escapeHtml(
+	// A story's state belongs on the story, not only on the component that holds
+	// it: the dropdown is where you choose which one to look at.
+	const option = (rendered: RenderedStory): string => {
+		const state = rendered.error
+			? " — failed"
+			: rendered.issues.length > 0
+				? ` — ${rendered.issues.length} issue${rendered.issues.length === 1 ? "" : "s"}`
+				: "";
+		return `<option value="${escapeHtml(rendered.id)}">${escapeHtml(
 			rendered.story.name,
-		)}${rendered.error ? " (failed)" : ""}</option>`;
+		)}${state}</option>`;
+	};
 	const options = [...groups]
 		.map(([group, entries]) =>
 			group === ""
@@ -143,6 +161,13 @@ const VIEWPORTS: { label: string; width: number | "" }[] = [
 	{ label: "Tablet · 768", width: 768 },
 	{ label: "Laptop · 1280", width: 1280 },
 ];
+
+/**
+ * Zoom. A different question from the viewport: the viewport asks how the
+ * component behaves at a width, zoom asks what a 14px label actually looks like
+ * without leaning into the screen. Storybook keeps both, for the same reason.
+ */
+const ZOOMS = [0.5, 0.75, 1, 1.5, 2];
 
 /** One component's documentation, shown when a story of it is selected. */
 function panel({ component }: RenderedComponent): string {
@@ -218,7 +243,32 @@ const WORKBENCH_STYLES = `
   .nav-component:hover { background: var(--accent); color: var(--foreground); }
   .nav-component[aria-current="true"] { background: var(--muted); color: var(--foreground); font-weight: 500; }
   .nav-component--empty { color: var(--muted-foreground); opacity: .6; }
-  .nav-flag { color: #b91c1c; font-weight: 600; }
+  /* A count, not a dot: how many of the component's stories are affected is
+   * what decides whether you look now. */
+  .nav-flag {
+    float: right;
+    min-width: 1.15rem;
+    text-align: center;
+    border-radius: 999px;
+    background: #fee2e2;
+    color: #991b1b;
+    font-size: .68rem;
+    font-weight: 600;
+    line-height: 1.15rem;
+  }
+  :root[data-theme="dark"] .nav-flag { background: #450a0a; color: #fca5a5; }
+  .sidebar-filter {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    padding: 0 .5rem .6rem;
+    font-size: .74rem;
+    color: var(--muted-foreground);
+    cursor: pointer;
+  }
+  .sidebar-empty { padding: .5rem; margin: 0; font-size: .75rem; color: var(--muted-foreground); }
+  .sidebar-empty[hidden] { display: none; }
+  .sidebar li[hidden] { display: none; }
   .canvas-tools { display: flex; align-items: center; gap: .4rem; }
   .substory-select, .viewport-select {
     height: 30px;
@@ -257,6 +307,20 @@ const WORKBENCH_STYLES = `
     background: var(--background);
   }
   .canvas[data-viewport] { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+  /* The call that reproduces the story: the one thing on this page meant to be
+   * copied out and pasted into a theme, so it sits directly under the render
+   * rather than in the component panel below. */
+  .call { padding: .75rem 1.25rem 1rem; border-top: 1px solid var(--border); }
+  .call[hidden] { display: none; }
+  .call-label {
+    margin: 0 0 .45rem;
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted-foreground);
+  }
+  .call .code { max-width: 860px; }
+  .call pre { margin: 0; padding: .75rem .9rem; overflow-x: auto; font-size: .78rem; line-height: 1.5; }
   .story-props { padding: .5rem 1.25rem; font-size: .72rem; color: var(--muted-foreground); border-top: 1px solid var(--border); word-break: break-word; }
   .story-issues { list-style: none; margin: 0; padding: .5rem 1.25rem; display: grid; gap: .25rem; border-top: 1px solid var(--border); font-size: .76rem; }
   /* An explicit display beats the hidden attribute, so say it again. */
@@ -334,6 +398,18 @@ const WORKBENCH_SCRIPT = `
   const propsLine = document.getElementById('canvas-props');
   const issueList = document.getElementById('canvas-issues');
   const viewport = document.getElementById('viewport');
+  const background = document.getElementById('background');
+  const zoom = document.getElementById('zoom');
+  const outline = document.getElementById('outline');
+  const call = document.getElementById('canvas-call');
+  const callLabel = document.getElementById('canvas-call-label');
+  const callCode = document.getElementById('canvas-call-code');
+  const callCopy = document.getElementById('canvas-call-copy');
+  const problemsOnly = document.getElementById('problems-only');
+  const sidebarEmpty = document.getElementById('sidebar-empty');
+  const backgrounds = ${JSON.stringify(
+		Object.fromEntries(BACKGROUNDS.map(({ id, css }) => [id, css])),
+	)};
   // Every story by id: the dropdown offers stories the sidebar does not link,
   // so selection reads from this index rather than from the DOM.
   const stories = JSON.parse(document.getElementById('story-index').textContent);
@@ -342,6 +418,17 @@ const WORKBENCH_SCRIPT = `
     || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   const tellCanvas = (theme) => {
     canvas.contentWindow?.postMessage({ type: ${JSON.stringify(FRAME_MESSAGE.theme)}, theme }, '*');
+  };
+  // How the story is presented — ground, outline, zoom. Sent as one message so
+  // a frame that just loaded gets the whole state rather than whichever pieces
+  // changed since.
+  const tellPresentation = () => {
+    canvas.contentWindow?.postMessage({
+      type: ${JSON.stringify(FRAME_MESSAGE.canvas)},
+      background: backgrounds[background.value] ?? '',
+      outline: outline.getAttribute('aria-pressed') === 'true',
+      zoom: Number(zoom.value) || 1,
+    }, '*');
   };
 
   function select(id, push) {
@@ -377,6 +464,16 @@ const WORKBENCH_SCRIPT = `
       return item;
     }));
     issueList.hidden = story.issues.length === 0;
+    // The line that reproduces this story in a theme — a render tag for a
+    // snippet, a settings object for a section or a block.
+    if (story.call) {
+      callLabel.textContent = story.call.label;
+      callCode.textContent = story.call.code;
+      callCopy.dataset.copy = story.call.code;
+      call.hidden = false;
+    } else {
+      call.hidden = true;
+    }
     for (const panel of document.querySelectorAll('[data-panel]')) {
       panel.hidden = panel.dataset.panel !== story.component;
     }
@@ -424,8 +521,58 @@ const WORKBENCH_SCRIPT = `
   viewport.addEventListener('change', () => setViewport(viewport.value, true));
   setViewport(new URL(location.href).searchParams.get('viewport') ?? '', false);
 
+  // Presentation lives in the query beside the viewport, for the same reason:
+  // it outlives which story you happen to be looking at, and a link should
+  // arrive showing what the sender was seeing.
+  function writeQuery(key, value, fallback) {
+    const url = new URL(location.href);
+    if (value && value !== fallback) url.searchParams.set(key, value);
+    else url.searchParams.delete(key);
+    history.replaceState(null, '', url);
+  }
+  background.addEventListener('change', () => {
+    writeQuery('bg', background.value, 'page');
+    tellPresentation();
+  });
+  zoom.addEventListener('change', () => {
+    writeQuery('zoom', zoom.value, '1');
+    tellPresentation();
+  });
+  outline.addEventListener('click', () => {
+    const on = outline.getAttribute('aria-pressed') !== 'true';
+    outline.setAttribute('aria-pressed', String(on));
+    writeQuery('outline', on ? '1' : '', '');
+    tellPresentation();
+  });
+
+  const params = new URL(location.href).searchParams;
+  if (backgrounds[params.get('bg')] !== undefined) background.value = params.get('bg');
+  if (params.get('zoom')) zoom.value = params.get('zoom');
+  outline.setAttribute('aria-pressed', String(params.get('outline') === '1'));
+
+  // Which components have a story with something wrong with it. The counts are
+  // already in the markup, so the filter is a read of the DOM rather than a
+  // second source of truth.
+  function applyFilter() {
+    const only = problemsOnly.checked;
+    let shown = 0;
+    for (const item of document.querySelectorAll('#component-list [data-problems]')) {
+      const hide = only && item.dataset.problems === '0';
+      item.hidden = hide;
+      if (!hide) shown += 1;
+    }
+    sidebarEmpty.hidden = shown > 0;
+    writeQuery('problems', only ? '1' : '', '');
+  }
+  problemsOnly.checked = params.get('problems') === '1';
+  problemsOnly.addEventListener('change', applyFilter);
+  applyFilter();
+
   addEventListener('hashchange', () => select(location.hash.slice(1), false));
-  canvas.addEventListener('load', () => tellCanvas(currentTheme()));
+  canvas.addEventListener('load', () => {
+    tellCanvas(currentTheme());
+    tellPresentation();
+  });
   select(location.hash.slice(1), true);
 
   document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
@@ -483,16 +630,23 @@ export function workbenchPage(
 	// belongs to, its name, its document, and the props it rendered with.
 	const storyIndex = Object.fromEntries(
 		components.flatMap(({ component, stories }) =>
-			stories.map((rendered) => [
-				rendered.id,
-				{
-					component: componentId(component.name),
-					name: rendered.story.name,
-					href: `${storyBase}${storyFileName(rendered.id)}`,
-					props: formatProps(rendered.story.props),
-					issues: rendered.issues,
-				},
-			]),
+			stories.map((rendered) => {
+				const call = renderCall(component, rendered.story);
+				return [
+					rendered.id,
+					{
+						component: componentId(component.name),
+						name: rendered.story.name,
+						href: `${storyBase}${storyFileName(rendered.id)}`,
+						props: formatProps(rendered.story.props),
+						issues: rendered.issues,
+						// What reproduces this story in a theme. A property of the story,
+						// not of the component, so it rides in the index rather than in the
+						// component's panel.
+						...(call ? { call } : {}),
+					},
+				];
+			}),
 		),
 	);
 	return `<!doctype html>
@@ -512,9 +666,14 @@ ${links}
   <div class="workbench">
     <nav class="sidebar" aria-label="Components">
       <p class="sidebar-heading">Components</p>
-      <ul>${components
+      <label class="sidebar-filter">
+        <input type="checkbox" id="problems-only">
+        Problems only
+      </label>
+      <ul id="component-list">${components
 				.map((component) => navComponent(component, storyBase))
 				.join("")}</ul>
+      <p class="sidebar-empty" id="sidebar-empty" hidden>Nothing here has a problem.</p>
     </nav>
     <main class="main">
       <div class="canvas-bar">
@@ -527,11 +686,33 @@ ${links}
 								`<option value="${width}">${escapeHtml(label)}</option>`,
 						).join("")}
           </select>
+          <select class="viewport-select" id="background" aria-label="Background">
+            ${BACKGROUNDS.map(
+							({ id, label }) =>
+								`<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`,
+						).join("")}
+          </select>
+          <select class="viewport-select" id="zoom" aria-label="Zoom">
+            ${ZOOMS.map(
+							(zoom) =>
+								`<option value="${zoom}"${zoom === 1 ? " selected" : ""}>${Math.round(
+									zoom * 100,
+								)}%</option>`,
+						).join("")}
+          </select>
+          <button class="theme-toggle" type="button" id="outline" aria-pressed="false">Outline</button>
           <a class="canvas-open" id="canvas-open" href="${escapeHtml(storyBase)}" target="_blank" rel="noreferrer">Open ↗</a>
         </div>
       </div>
       <div class="canvas-stage"><iframe class="canvas" id="canvas" title="Story canvas"></iframe></div>
       <ul class="story-issues" id="canvas-issues" hidden></ul>
+      <section class="call" id="canvas-call" hidden>
+        <p class="call-label"><span id="canvas-call-label"></span></p>
+        <div class="code">
+          <button class="copy" type="button" id="canvas-call-copy" data-copy="" aria-label="Copy">Copy</button>
+          <pre><code id="canvas-call-code"></code></pre>
+        </div>
+      </section>
       <p class="story-props" id="canvas-props"></p>
       <p class="caveat">
         The <strong>emitted</strong> Liquid, rendered by liquidjs — not Shopify's runtime. A design-system
