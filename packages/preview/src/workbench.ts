@@ -234,6 +234,14 @@ const WORKBENCH_STYLES = `
   }
   .workbench[data-sidebar="closed"] { --sidebar-width: 0px; }
   .workbench[data-docs="closed"] { --docs-width: 0px; }
+  /* Explicit columns, because display:none takes an element out of the grid
+   * entirely: with auto placement, hiding the sidebar slides main into column
+   * one — which is the 0px column — and the docs panel into column two. The
+   * canvas vanishes and the documentation goes full width. Naming each child's
+   * column means hiding one leaves the others where they are. */
+  .sidebar { grid-column: 1; }
+  .main { grid-column: 2; }
+  .docs { grid-column: 3; }
   .sidebar, .docs { overflow-y: auto; }
   .workbench[data-sidebar="closed"] .sidebar,
   .workbench[data-docs="closed"] .docs { display: none; }
