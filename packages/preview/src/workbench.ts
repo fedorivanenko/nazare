@@ -221,8 +221,37 @@ const WORKBENCH_STYLES = `
     cursor: pointer;
   }
   .theme-toggle:hover, .canvas-open:hover { background: var(--accent); }
-  .workbench { display: grid; grid-template-columns: 240px minmax(0, 1fr); height: calc(100% - 52px); }
-  .sidebar { border-right: 1px solid var(--border); overflow-y: auto; padding: 1rem .75rem 3rem; }
+  /* Three columns: what to look at, the thing itself, what is known about it.
+   * Either side collapses to nothing — a canvas the full width of the window is
+   * the point of collapsing, so the columns go to zero rather than to a rail. */
+  .workbench {
+    display: grid;
+    grid-template-columns: var(--sidebar-width, 240px) minmax(0, 1fr) var(--docs-width, 320px);
+    height: calc(100% - 52px);
+  }
+  .workbench[data-sidebar="closed"] { --sidebar-width: 0px; }
+  .workbench[data-docs="closed"] { --docs-width: 0px; }
+  .sidebar, .docs { overflow-y: auto; }
+  .workbench[data-sidebar="closed"] .sidebar,
+  .workbench[data-docs="closed"] .docs { display: none; }
+  .sidebar { border-right: 1px solid var(--border); padding: 1rem .75rem 3rem; }
+  /* Documentation sits beside the render, not under it: scrolling away from the
+   * thing you are reading about to find its props table was the old shape's
+   * worst habit. */
+  .docs { border-left: 1px solid var(--border); padding: 1rem 1rem 4rem; }
+  .panel-toggle {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted-foreground);
+    border-radius: calc(var(--radius) - 2px);
+    height: 30px;
+    padding: 0 .6rem;
+    font-size: .74rem;
+    cursor: pointer;
+  }
+  .panel-toggle[aria-pressed="true"] { background: var(--muted); color: var(--foreground); }
+  .panel-toggle:hover { background: var(--accent); color: var(--foreground); }
+  .topbar-tools { display: flex; align-items: center; gap: .4rem; }
   .sidebar-heading {
     margin: 0 0 .5rem;
     padding: 0 .5rem;
@@ -270,7 +299,7 @@ const WORKBENCH_STYLES = `
   .sidebar-empty[hidden] { display: none; }
   .sidebar li[hidden] { display: none; }
   .canvas-tools { display: flex; align-items: center; gap: .4rem; }
-  .substory-select, .viewport-select {
+  .substory-select, .viewport-select, .viewport-width {
     height: 30px;
     max-width: 260px;
     border: 1px solid var(--border);
@@ -281,6 +310,11 @@ const WORKBENCH_STYLES = `
     font: inherit;
     font-size: .78rem;
   }
+  /* The presets are the common widths; the field is the one you were actually
+   * sent — a bug report says 414, not "mobile". */
+  .viewport-width { width: 5.5rem; font-variant-numeric: tabular-nums; }
+  .viewport-width::-webkit-outer-spin-button,
+  .viewport-width::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .main { overflow-y: auto; display: flex; flex-direction: column; }
   .canvas-bar {
     flex: none;
@@ -329,7 +363,18 @@ const WORKBENCH_STYLES = `
   .story-issue--warning::before { content: "warning "; text-transform: uppercase; font-size: .62rem; letter-spacing: .06em; }
   .story-issue--error { color: #b91c1c; }
   .story-issue--error::before { content: "error "; text-transform: uppercase; font-size: .62rem; letter-spacing: .06em; }
-  .panels { border-top: 1px solid var(--border); padding: 1.25rem 1.25rem 4rem; }
+  .docs-heading {
+    margin: 0 0 .75rem;
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    color: var(--muted-foreground);
+  }
+  /* The panel is a column now, so everything in it that assumed 860px of width
+   * has to give that up and scroll on its own instead. */
+  .docs .props, .docs .install, .docs .code-details, .docs .issues { max-width: none; }
+  .docs .props { display: block; overflow-x: auto; }
+  .docs .install { flex-wrap: wrap; }
   .component-sub { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; margin: 0 0 1rem; font-size: .78rem; }
   .badge {
     display: inline-flex;
@@ -407,6 +452,10 @@ const WORKBENCH_SCRIPT = `
   const callCopy = document.getElementById('canvas-call-copy');
   const problemsOnly = document.getElementById('problems-only');
   const sidebarEmpty = document.getElementById('sidebar-empty');
+  const workbench = document.getElementById('workbench');
+  const widthField = document.getElementById('viewport-width');
+  const measure = document.getElementById('measure');
+  const themeSelect = document.getElementById('theme');
   const backgrounds = ${JSON.stringify(
 		Object.fromEntries(BACKGROUNDS.map(({ id, css }) => [id, css])),
 	)};
@@ -427,9 +476,47 @@ const WORKBENCH_SCRIPT = `
       type: ${JSON.stringify(FRAME_MESSAGE.canvas)},
       background: backgrounds[background.value] ?? '',
       outline: outline.getAttribute('aria-pressed') === 'true',
+      measure: measure.getAttribute('aria-pressed') === 'true',
       zoom: Number(zoom.value) || 1,
     }, '*');
   };
+
+  // A pressed-state button that remembers itself. Which panels are open is a
+  // workspace preference, not something you send someone, so it lives in
+  // storage rather than in the URL beside the story.
+  function toggleButton(button, key, apply) {
+    const stored = localStorage.getItem(key);
+    const on = stored === null ? true : stored === '1';
+    const set = (next) => {
+      button.setAttribute('aria-pressed', String(next));
+      localStorage.setItem(key, next ? '1' : '0');
+      apply(next);
+    };
+    set(on);
+    button.addEventListener('click', () => {
+      set(button.getAttribute('aria-pressed') !== 'true');
+    });
+    return set;
+  }
+  const setSidebar = toggleButton(
+    document.getElementById('toggle-sidebar'),
+    'nazare-preview:sidebar',
+    (open) => workbench.setAttribute('data-sidebar', open ? 'open' : 'closed'),
+  );
+  const setDocs = toggleButton(
+    document.getElementById('toggle-docs'),
+    'nazare-preview:docs',
+    (open) => workbench.setAttribute('data-docs', open ? 'open' : 'closed'),
+  );
+  // Storybook's own keys, because anyone reaching for one is reaching for these.
+  addEventListener('keydown', (event) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const tag = event.target?.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    const key = event.key.toLowerCase();
+    if (key === 's') setSidebar(workbench.getAttribute('data-sidebar') === 'closed');
+    else if (key === 'd') setDocs(workbench.getAttribute('data-docs') === 'closed');
+  });
 
   function select(id, push) {
     const story = stories[id] ?? stories[firstId];
@@ -502,7 +589,14 @@ const WORKBENCH_SCRIPT = `
   // Viewport width. The frame is a real document, so narrowing the element it
   // lives in is a real viewport — media queries included.
   function setViewport(width, push) {
-    viewport.value = width;
+    // The presets and the field are two ways to say the same number, so both
+    // always show it: a width typed by hand still reads as "Mobile · 375" if
+    // that is what it is, and one that matches no preset reads as Custom.
+    const known = [...viewport.options].some(
+      (option) => option.value === String(width),
+    );
+    viewport.value = width ? (known ? String(width) : 'custom') : '';
+    widthField.value = width || '';
     if (width) {
       canvas.style.maxWidth = width + 'px';
       canvas.setAttribute('data-viewport', width);
@@ -518,7 +612,21 @@ const WORKBENCH_SCRIPT = `
     else url.searchParams.delete('viewport');
     history.replaceState(null, '', url);
   }
-  viewport.addEventListener('change', () => setViewport(viewport.value, true));
+  viewport.addEventListener('change', () => {
+    // "Custom…" is a prompt, not a width: it hands the field the focus and
+    // leaves the canvas where it was.
+    if (viewport.value === 'custom') {
+      widthField.focus();
+      widthField.select();
+      return;
+    }
+    setViewport(viewport.value, true);
+  });
+  widthField.addEventListener('input', () => {
+    const width = Number(widthField.value);
+    if (widthField.value !== '' && !(width >= 200)) return;
+    setViewport(widthField.value === '' ? '' : String(width), true);
+  });
   setViewport(new URL(location.href).searchParams.get('viewport') ?? '', false);
 
   // Presentation lives in the query beside the viewport, for the same reason:
@@ -544,11 +652,18 @@ const WORKBENCH_SCRIPT = `
     writeQuery('outline', on ? '1' : '', '');
     tellPresentation();
   });
+  measure.addEventListener('click', () => {
+    const on = measure.getAttribute('aria-pressed') !== 'true';
+    measure.setAttribute('aria-pressed', String(on));
+    writeQuery('measure', on ? '1' : '', '');
+    tellPresentation();
+  });
 
   const params = new URL(location.href).searchParams;
   if (backgrounds[params.get('bg')] !== undefined) background.value = params.get('bg');
   if (params.get('zoom')) zoom.value = params.get('zoom');
   outline.setAttribute('aria-pressed', String(params.get('outline') === '1'));
+  measure.setAttribute('aria-pressed', String(params.get('measure') === '1'));
 
   // Which components have a story with something wrong with it. The counts are
   // already in the markup, so the filter is a read of the DOM rather than a
@@ -575,11 +690,22 @@ const WORKBENCH_SCRIPT = `
   });
   select(location.hash.slice(1), true);
 
-  document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
-    const theme = currentTheme() === 'dark' ? 'light' : 'dark';
-    root.setAttribute('data-theme', theme);
-    tellCanvas(theme);
-  });
+  // Three states, not two: a toggle cannot say "follow the OS", which is the
+  // one a designer checking both wants to return to.
+  function setTheme(theme, push) {
+    themeSelect.value = theme;
+    if (theme) root.setAttribute('data-theme', theme);
+    else root.removeAttribute('data-theme');
+    tellCanvas(currentTheme());
+    if (push) writeQuery('theme', theme, '');
+  }
+  themeSelect.addEventListener('change', () => setTheme(themeSelect.value, true));
+  setTheme(
+    params.get('theme') === 'dark' || params.get('theme') === 'light'
+      ? params.get('theme')
+      : '',
+    false,
+  );
 
   addEventListener('message', (event) => {
     if (event.data?.type !== ${JSON.stringify(FRAME_MESSAGE.height)}) return;
@@ -660,10 +786,20 @@ ${links}
 </head>
 <body>
   <header class="topbar">
-    <strong>${escapeHtml(title)}</strong>
-    <button class="theme-toggle" type="button" data-theme-toggle>Theme</button>
+    <div class="topbar-tools">
+      <button class="panel-toggle" type="button" id="toggle-sidebar" aria-pressed="true" title="Components (S)">☰</button>
+      <strong>${escapeHtml(title)}</strong>
+    </div>
+    <div class="topbar-tools">
+      <select class="viewport-select" id="theme" aria-label="Theme">
+        <option value="">System</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+      <button class="panel-toggle" type="button" id="toggle-docs" aria-pressed="true" title="Documentation (D)">Docs</button>
+    </div>
   </header>
-  <div class="workbench">
+  <div class="workbench" id="workbench">
     <nav class="sidebar" aria-label="Components">
       <p class="sidebar-heading">Components</p>
       <label class="sidebar-filter">
@@ -685,7 +821,9 @@ ${links}
 							({ label, width }) =>
 								`<option value="${width}">${escapeHtml(label)}</option>`,
 						).join("")}
+            <option value="custom">Custom…</option>
           </select>
+          <input class="viewport-width" id="viewport-width" type="number" min="200" max="3840" step="1" inputmode="numeric" placeholder="auto" aria-label="Width in pixels">
           <select class="viewport-select" id="background" aria-label="Background">
             ${BACKGROUNDS.map(
 							({ id, label }) =>
@@ -700,7 +838,8 @@ ${links}
 								)}%</option>`,
 						).join("")}
           </select>
-          <button class="theme-toggle" type="button" id="outline" aria-pressed="false">Outline</button>
+          <button class="panel-toggle" type="button" id="outline" aria-pressed="false">Outline</button>
+          <button class="panel-toggle" type="button" id="measure" aria-pressed="false" title="Hover an element to see its box">Measure</button>
           <a class="canvas-open" id="canvas-open" href="${escapeHtml(storyBase)}" target="_blank" rel="noreferrer">Open ↗</a>
         </div>
       </div>
@@ -718,10 +857,11 @@ ${links}
         The <strong>emitted</strong> Liquid, rendered by liquidjs — not Shopify's runtime. A design-system
         workbench, not evidence a template behaves on a store.
       </p>
-      <div class="panels">
-        ${components.map(panel).join("")}
-      </div>
     </main>
+    <aside class="docs" aria-label="Component documentation">
+      <p class="docs-heading">Component</p>
+      ${components.map(panel).join("")}
+    </aside>
   </div>
 <script type="application/json" id="story-index">${JSON.stringify(storyIndex).replace(/</g, "\\u003c")}</script>
 <script>${WORKBENCH_SCRIPT}</script>

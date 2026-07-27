@@ -792,6 +792,32 @@ test("the workbench carries the toolbar, the call, and per-story status", async 
 	assert.ok(page.includes("typo — 2 issues"));
 });
 
+test("both side panels collapse, and the docs sit beside the render", async () => {
+	const component = previewComponentFromSource(BUTTON, "button.nz.liquid", {
+		packageId: "@nazare/button",
+	});
+	const page = workbenchPage([
+		await renderComponentStories(component, DEFAULT_ONLY),
+	]);
+
+	// Three columns: what to look at, the thing itself, what is known about it.
+	assert.ok(page.includes('id="toggle-sidebar"'));
+	assert.ok(page.includes('id="toggle-docs"'));
+	assert.ok(page.includes('<aside class="docs"'));
+	// The props table moved with the panel; it is no longer under the canvas.
+	const docs = page.slice(page.indexOf('<aside class="docs"'));
+	assert.ok(docs.includes("<th>Default</th>"));
+	assert.ok(docs.includes("nazare add @nazare/button"));
+
+	// A width the presets do not have is the one a bug report actually names.
+	assert.ok(page.includes('id="viewport-width"'));
+	assert.ok(page.includes(">Custom…</option>"));
+	// System is a theme state a toggle cannot express.
+	assert.ok(page.includes('id="theme"'));
+	assert.ok(page.includes('<option value="">System</option>'));
+	assert.ok(page.includes('id="measure"'));
+});
+
 test("without storyBase the page is still self-contained", async () => {
 	const component = previewComponentFromSource(BUTTON, "button.nz.liquid");
 	const page = galleryPage([

@@ -91,4 +91,30 @@ export const CANVAS_STYLES = `
   /* Every box, one hairline: the fastest way to see a spacing bug that a
    * screenshot would hide. Outlines do not affect layout, so nothing shifts. */
   body[data-canvas-outline] * { outline: 1px solid rgba(139, 92, 246, .45); }
+  /* The measure overlay sits above the story and takes no pointer events, so
+   * hovering keeps reaching the element being measured rather than the ruler. */
+  .measure-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 2147483647; }
+  .measure-overlay[hidden] { display: none; }
+  .measure-box {
+    position: absolute;
+    top: 0;
+    left: 0;
+    /* The border is the padding box drawn to scale: content in the middle, the
+     * declared padding as the band around it. */
+    border-style: solid;
+    border-color: rgba(16, 185, 129, .35);
+    background: rgba(59, 130, 246, .18);
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, .8);
+  }
+  .measure-label {
+    position: absolute;
+    top: 0;
+    left: 0;
+    white-space: nowrap;
+    background: #09090b;
+    color: #fafafa;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
 `;

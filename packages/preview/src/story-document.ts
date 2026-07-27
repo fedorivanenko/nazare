@@ -83,6 +83,60 @@ const STORY_SCRIPT = `
   addEventListener('load', report);
   new ResizeObserver(report).observe(document.body);
 
+  // Measure: hover an element, see the box it actually occupies. The numbers
+  // are the ones the browser computed, not the ones the stylesheet asked for,
+  // which is the whole point — a padding that lost to a more specific rule
+  // shows up here and nowhere else.
+  let measuring = false;
+  let overlay;
+  const ensureOverlay = () => {
+    if (overlay) return overlay;
+    overlay = document.createElement('div');
+    overlay.className = 'measure-overlay';
+    overlay.innerHTML = '<div class="measure-box"></div><div class="measure-label"></div>';
+    document.body.append(overlay);
+    return overlay;
+  };
+  const round = (value) => Math.round(value * 10) / 10;
+  const showMeasure = (event) => {
+    const target = event.target;
+    if (!target || target === document.body || target === overlay) return;
+    const box = ensureOverlay();
+    const rect = target.getBoundingClientRect();
+    const style = getComputedStyle(target);
+    const pad = [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft]
+      .map((value) => round(parseFloat(value)));
+    const margin = [style.marginTop, style.marginRight, style.marginBottom, style.marginLeft]
+      .map((value) => round(parseFloat(value)));
+    const frame = box.firstElementChild;
+    frame.style.transform =
+      'translate(' + (rect.left + scrollX) + 'px,' + (rect.top + scrollY) + 'px)';
+    frame.style.width = rect.width + 'px';
+    frame.style.height = rect.height + 'px';
+    frame.style.borderWidth =
+      pad.map((value) => Math.min(value, 40) + 'px').join(' ');
+    const label = box.lastElementChild;
+    label.textContent =
+      target.tagName.toLowerCase() + ' · ' + round(rect.width) + ' × ' + round(rect.height) +
+      ' · padding ' + pad.join(' ') + ' · margin ' + margin.join(' ');
+    label.style.transform =
+      'translate(' + (rect.left + scrollX) + 'px,' + (rect.top + scrollY - 22) + 'px)';
+    box.hidden = false;
+  };
+  const hideMeasure = () => { if (overlay) overlay.hidden = true; };
+  function setMeasure(on) {
+    if (on === measuring) return;
+    measuring = on;
+    if (on) {
+      addEventListener('mousemove', showMeasure, true);
+      addEventListener('mouseleave', hideMeasure, true);
+    } else {
+      removeEventListener('mousemove', showMeasure, true);
+      removeEventListener('mouseleave', hideMeasure, true);
+      hideMeasure();
+    }
+  }
+
   addEventListener('message', (event) => {
     if (event.data?.type === ${JSON.stringify(FRAME_MESSAGE.theme)}) {
       const theme = event.data.theme;
@@ -104,6 +158,7 @@ const STORY_SCRIPT = `
       body.removeAttribute('data-canvas-background');
     }
     body.toggleAttribute('data-canvas-outline', Boolean(event.data.outline));
+    setMeasure(Boolean(event.data.measure));
     // Zoom rather than transform: the body keeps reporting a real height, so
     // the frame still sizes itself. It does change layout width, which is why
     // zoom and the viewport presets answer different questions.

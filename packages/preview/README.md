@@ -65,17 +65,31 @@ the shared cascade that implies. Both modes render the same story model.
 ## Two shells
 
 `workbenchPage()` is the one to work in: components on the left, one story in the
-canvas. The component's stories are a dropdown beside the canvas, grouped by the
+canvas, the component's documentation on the right. The component's stories are a dropdown beside the canvas, grouped by the
 prop each one varies, and a viewport dropdown constrains the canvas to 375, 768,
 or 1280 — the frame is a real document, so a narrower frame is a real viewport,
 media queries included.
 
-Beside the viewport sit the other three questions you ask of a component you are
-looking at: **background** (page, white, dark, grey, or a checkerboard, because
-alpha reads as opaque against anything flat), **zoom**, and **outline**, which
-draws every box so a spacing bug stops hiding. All three are applied inside the
-frame, since the frame owns that document's rendering — one `postMessage`,
+The presets sit next to a plain px field, because the width in a bug report is
+414, not "mobile". Beside them are the other questions you ask of a component
+you are looking at: **background** (page, white, dark, grey, or a checkerboard,
+because alpha reads as opaque against anything flat), **zoom**, **outline**,
+which draws every box so a spacing bug stops hiding, and **measure**, which on
+hover reports the box a element actually occupies — the numbers the browser
+computed, not the ones the stylesheet asked for, so a padding that lost to a
+more specific rule shows up here and nowhere else. All of it is applied inside
+the frame, since the frame owns that document's rendering — one `postMessage`,
 resent whenever a story loads.
+
+Theme is three states rather than a toggle: Light, Dark, and System. A toggle
+cannot say "follow the OS", which is the one a designer checking both wants to
+get back to.
+
+Three columns — components, the render, the documentation — and **both sides
+collapse**, to `S` and `D` or their buttons, because a canvas the full width of
+the window is the point of collapsing them. That state is a workspace
+preference rather than something you send someone, so it lives in
+`localStorage` while everything shareable lives in the URL.
 
 Under the canvas is **the call that reproduces this story in a theme**:
 
@@ -350,8 +364,9 @@ exactly two messages, both named in `theme.ts`:
   layout of a document it does not own.
 - shell → frame: `nazare-preview:theme`, because the frame cannot see the
   shell's `data-theme`.
-- shell → frame: `nazare-preview:canvas` — background, outline, zoom. How a
-  story is shown belongs to the document that renders it.
+- shell → frame: `nazare-preview:canvas` — background, outline, zoom, measure.
+  How a story is shown belongs to the document that renders it, and measuring
+  one means reading computed styles the shell has no access to.
 
 The rest of the state is in the URL — the story in the fragment, the viewport in
 the query — so a reload, a link, and a fresh tab all arrive at the same place.
