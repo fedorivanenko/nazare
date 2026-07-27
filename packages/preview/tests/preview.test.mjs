@@ -445,7 +445,7 @@ test("a story is checked against the interface the component declares", async ()
 				lable: "Shop",
 				scheme: "outlined",
 				size: 4,
-				extra: { $fixture: "nope" },
+				extra: { $file: "fixtures/nope.json" },
 			},
 		},
 	]);
@@ -559,9 +559,8 @@ test("a scalar is a literal, and only storefront data is a fixture", async () =>
 		stories.map((story) => story.name),
 		["on sale"],
 	);
-	// A price is a number. `{ "$fixture": "price" }` was 2400 wearing a costume
-	// — longer than the number and a layer of indirection for nothing — so the
-	// preview owns objects only, and this story names no fixture at all.
+	// A price is a number, so it is written as one: the indirection exists for
+	// data JSON cannot hold, and this story names no file at all.
 	assert.equal(onSale.props.price, 2400);
 	assert.equal(onSale.fixtures, false);
 	assert.deepEqual(Object.keys(shopifyFixtures), [
@@ -594,9 +593,9 @@ test("a component with no authored stories does not appear", () => {
 	assert.deepEqual(storiesFor({}), []);
 });
 
-test("an unknown fixture name is left visible, not silently nil", () => {
-	assert.deepEqual(resolveFixtures({ a: { $fixture: "nope" }, b: 1 }), {
-		a: { $fixture: "nope" },
+test("a path that does not read is left visible, not silently nil", () => {
+	assert.deepEqual(resolveFixtures({ a: { $file: "nope.json" }, b: 1 }), {
+		a: { $file: "nope.json" },
 		b: 1,
 	});
 });

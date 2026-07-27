@@ -241,7 +241,10 @@ test("a project's own fixtures are files it can read and change", async () => {
 			"snippets/card.liquid": CARD,
 			"snippets/card.stories.json": JSON.stringify({
 				stories: [
-					{ name: "default", props: { product: { $fixture: "product" } } },
+					{
+						name: "default",
+						props: { product: { $file: "fixtures/product.json" } },
+					},
 				],
 			}),
 			// A fixture is shared because JSON cannot reasonably hold a product and
@@ -262,6 +265,64 @@ test("a project's own fixtures are files it can read and change", async () => {
 			// The project's file wins over the built-in stand-in.
 			assert.match(story, /Shop's own product/);
 			assert.ok(!story.includes("Merino Crew Sweater"));
+		},
+	);
+});
+
+test("a story names a file, not a fixture the preview knows about", async () => {
+	const CARD = `{% doc %}
+  @param {product} product - The product shown
+{% enddoc %}
+<h3>{{ product.title }}</h3>
+`;
+	await withProject(
+		{
+			"snippets/card.liquid": CARD,
+			"snippets/card.stories.json": JSON.stringify({
+				stories: [
+					// A path, so there is no registry of names to know and the answer
+					// to "what is this?" is a file you can open.
+					{ name: "shop", props: { product: { $file: "data/hero.json" } } },
+					{ name: "gone", props: { product: { $file: "data/nope.json" } } },
+					{ name: "escape", props: { product: { $file: "../secret.json" } } },
+				],
+			}),
+			"data/hero.json": JSON.stringify({ title: "Hand-picked product" }),
+		},
+		async (cwd) => {
+			await writeFile(
+				join(cwd, "..", "secret.json"),
+				JSON.stringify({ title: "Not yours" }),
+			).catch(() => {});
+
+			const { status, stdout, stderr } = await runCli(
+				cwd,
+				"preview",
+				"check",
+				".",
+			);
+
+			// The one that reads renders; the one that does not is named, not
+			// silently nil — a story that resolved to nothing would look plausible.
+			assert.equal(status, 1, stdout);
+			assert.match(
+				stderr,
+				/points at a file that does not read: data\/nope\.json/,
+			);
+			// A story is data. It does not get to read outside what is previewed.
+			assert.match(
+				stderr,
+				/points at a file that does not read: \.\.\/secret\.json/,
+			);
+
+			await runCli(cwd, "preview", "build", ".");
+			assert.match(
+				readFileSync(
+					join(cwd, ".nazare-out/preview/stories/card--shop.html"),
+					"utf8",
+				),
+				/Hand-picked product/,
+			);
 		},
 	);
 });

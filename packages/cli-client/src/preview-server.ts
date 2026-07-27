@@ -32,9 +32,9 @@ import type { CliOptions } from "./options.js";
 import type { Output } from "./output.js";
 import {
 	collectPreview,
+	fixtureReader,
 	type PreviewCollection,
 	previewSource,
-	projectFixtures,
 	renderCollection,
 } from "./preview-command.js";
 
@@ -68,8 +68,8 @@ type ServerState = {
 	assets: Map<string, string>;
 	collection: PreviewCollection;
 	rendered: RenderedComponent[];
-	/** Kept so a draft render resolves the same way the build did. */
-	fixtures: Record<string, unknown>;
+	/** Kept so a draft render resolves a `$file` the same way the build did. */
+	readFixture: (path: string) => unknown;
 	snippets: Record<string, string>;
 };
 
@@ -157,7 +157,7 @@ async function buildState(
 		assets,
 		collection,
 		rendered,
-		fixtures: await projectFixtures(dir),
+		readFixture: fixtureReader(dir),
 		snippets: snippetLibrary(collection.compiled.map((one) => one.component)),
 	};
 }
@@ -339,7 +339,7 @@ export async function renderStoryDraft(
 					name,
 					props: resolveFixtures(
 						body.props as Record<string, unknown>,
-						state.fixtures,
+						state.readFixture,
 					),
 				},
 			],

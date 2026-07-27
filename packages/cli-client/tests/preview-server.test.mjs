@@ -124,7 +124,7 @@ test("saving a story rewrites its file and leaves the rest of it alone", async (
 					stories: [
 						{
 							name: "on sale",
-							props: { price: { $fixture: "price" } },
+							props: { price: 2400 },
 							note: "why this case matters",
 						},
 						{ name: "free", props: { price: 0 } },
@@ -142,7 +142,7 @@ test("saving a story rewrites its file and leaves the rest of it alone", async (
 				await saveStoryFile(dir, state, {
 					component: "price",
 					story: "on sale",
-					props: { price: { $fixture: "price" }, compare_at_price: 4000 },
+					props: { price: 2400, compare_at_price: 4000 },
 				}),
 				undefined,
 			);
@@ -150,9 +150,9 @@ test("saving a story rewrites its file and leaves the rest of it alone", async (
 			const written = JSON.parse(
 				await readFile(join(dir, "snippets/price.stories.json"), "utf8"),
 			);
-			// The edited story takes the new props, fixture reference intact.
+			// The edited story takes the new props.
 			assert.deepEqual(written.stories[0].props, {
-				price: { $fixture: "price" },
+				price: 2400,
 				compare_at_price: 4000,
 			});
 			// And nothing else in the file moved: the note it was given, and the

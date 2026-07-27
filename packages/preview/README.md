@@ -258,9 +258,18 @@ a sidecar beside the template — `product-card.stories.json` for
 `product-card.liquid`, the same shape minus the wrapper. The sidecar wins where
 both exist: the file beside the template is the more local statement.
 
-Storefront data lives in the preview, not in the components: one canonical mock
-product, collection, image, and shop in `fixtures.ts`, addressed as
-`{ "$fixture": "name" }`, plus the `money` and `img_url` filters.
+Storefront data lives in files, addressed by path:
+
+```json
+{ "props": { "product": { "$file": "fixtures/product.json" } } }
+```
+
+A path, not a name — so there is no registry of fixture names to know, nothing
+built in to shadow yours, and the answer to "what is this?" is a file you can
+open. It resolves relative to the previewed directory, and a story does not get
+to read outside it. A path that does not read is left visible rather than
+becoming nil: the story renders visibly wrong and the validator names the path,
+because a story that quietly resolved to nothing would look plausible.
 
 **Objects only.** A fixture exists because JSON cannot reasonably hold the
 thing — a product with its images, variants and compare-at price — and because
@@ -269,18 +278,17 @@ that: `{ "$fixture": "price" }` was `2400` wearing a costume, longer to write
 than the number and a layer of indirection for a reader to unpick for nothing.
 Scalars are literals, and you type them.
 
-**And they are your files.**
+**They are your files, and there is nowhere else to look.**
 
 ```sh
-nazare preview fixtures init                    # copy the built-ins in
+nazare preview fixtures init                    # write the starter data in
 nazare preview fixtures pull merino-crew \
   --store shop.myshopify.com                    # or take a real one
 ```
 
-`fixtures/product.json` beside your theme wins over the built-in one, by
-basename. `init` copies the shipped set into the project the way a registry
-component is copied in — after that they are ordinary JSON you read, diff and
-edit, and the package's copies stop mattering.
+`init` writes the shipped stand-ins into `fixtures/*.json` the way a registry
+component is copied in. Nothing resolves against the package's copies — they are
+a seed, and after `init` they stop mattering entirely.
 
 `pull` fetches a real product from a live storefront, which is the answer to
 the thing a fixture is worst at: it is tidy in ways a catalogue is not — no

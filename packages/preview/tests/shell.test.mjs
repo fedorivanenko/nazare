@@ -293,7 +293,7 @@ test("the controls are the declaration, seeded from the story as written", async
 });
 
 test("storefront data stays a reference, because it is not a value", async () => {
-	// Resolving `{ "$fixture": "product" }` gives a product object; putting that
+	// Resolving `{ "$file": "…" }` gives a product object; putting that
 	// in a text field and saving it would inline three kilobytes of stand-in
 	// data where a one-word reference used to be. So that one direction stays
 	// shut, and says why.
@@ -302,7 +302,7 @@ test("storefront data stays a reference, because it is not a value", async () =>
 			{
 				name: "on sale",
 				props: { label: "Add" },
-				source: { label: { $fixture: "product" } },
+				source: { label: { $file: "fixtures/product.json" } },
 			},
 		],
 	});
@@ -312,9 +312,10 @@ test("storefront data stays a reference, because it is not a value", async () =>
 
 	// Named, not typed — and no field pretending otherwise. Changing which
 	// fixture a story uses is what the JSON tab is for.
+	// The row names the path, which is an answer you can open.
 	assert.equal(
 		row.querySelector(".control-fixture").textContent,
-		"fixture: product",
+		"fixtures/product.json",
 	);
 	assert.equal(row.querySelector("input"), null);
 });

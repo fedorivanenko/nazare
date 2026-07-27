@@ -960,7 +960,7 @@ const WORKBENCH_SCRIPT = `
   let editing = null;
 
   const isFixture = (value) =>
-    value !== null && typeof value === 'object' && '$fixture' in value;
+    value !== null && typeof value === 'object' && '$file' in value;
 
   function controlRow(control, value) {
     const row = document.createElement('div');
@@ -972,13 +972,13 @@ const WORKBENCH_SCRIPT = `
 
     row.append(label);
 
-    // A fixture is storefront data — a product with its images and variants —
-    // which is the only reason the indirection exists. There is nothing to type
-    // for one, so the row says what it is and the JSON tab is where it changes.
+    // A prop pointing at a file: storefront data, which is the only reason the
+    // indirection exists. There is nothing to type for one, so the row names
+    // the path — an answer you can open — and the JSON tab is where it changes.
     if (isFixture(value)) {
       const chip = document.createElement('span');
       chip.className = 'control-fixture';
-      chip.textContent = 'fixture: ' + value.$fixture;
+      chip.textContent = value.$file;
       row.append(chip);
       return row;
     }

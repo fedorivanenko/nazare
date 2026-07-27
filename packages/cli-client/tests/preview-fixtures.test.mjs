@@ -193,7 +193,10 @@ test("a pulled fixture is what a story then renders against", async () => {
 			join(dir, "snippets/card.stories.json"),
 			JSON.stringify({
 				stories: [
-					{ name: "default", props: { product: { $fixture: "product" } } },
+					{
+						name: "default",
+						props: { product: { $file: "fixtures/product.json" } },
+					},
 				],
 			}),
 		);

@@ -28,6 +28,12 @@ const themeDir = resolve(
 	"../fixtures/theme",
 );
 
+/** Resolves a story's `{ "$file": "…" }`, relative to the theme. */
+const readFixture = (path) => {
+	const raw = readThemeFile(path);
+	return raw === undefined ? undefined : JSON.parse(raw);
+};
+
 const readThemeFile = (path) => {
 	try {
 		return readFileSync(join(themeDir, path), "utf8");
@@ -73,9 +79,13 @@ async function renderTheme() {
 	for (const { component, sidecar } of compiled) {
 		if (!sidecar) continue;
 		rendered.push(
-			await renderComponentStories(component, storiesFor({ sidecar }), {
-				snippets,
-			}),
+			// A story names a file, so something has to read it: the runner does
+			// this walk, and so does this test.
+			await renderComponentStories(
+				component,
+				storiesFor({ sidecar, readFixture }),
+				{ snippets },
+			),
 		);
 	}
 	return rendered;

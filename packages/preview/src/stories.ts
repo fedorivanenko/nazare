@@ -106,12 +106,12 @@ export function scaffoldStories(component: PreviewComponent): PreviewStory[] {
  */
 export function declaredStories(
 	declaration: { stories?: NazareManifestStory[] } | undefined,
-	fixtures?: Record<string, unknown>,
+	readFixture?: (path: string) => unknown,
 ): PreviewStory[] {
 	return (declaration?.stories ?? []).map((story) => ({
 		name: story.name,
 		note: story.note,
-		props: resolveFixtures(story.props ?? {}, fixtures),
+		props: resolveFixtures(story.props ?? {}, readFixture),
 		source: story.props ?? {},
 		fixtures: usesFixtures(story.props ?? {}),
 	}));
@@ -136,16 +136,17 @@ export function storiesFor(sources: {
 	manifest?: NazareManifest;
 	sidecar?: StoryDeclaration;
 	/**
-	 * The data `{ "$fixture": "name" }` resolves against. A project's own
-	 * `fixtures/*.json` when it has them, so the stand-in product is a file the
-	 * author can read and change rather than a name owned by this package.
+	 * Reads the file a `{ "$file": "…" }` names, relative to the project. The
+	 * caller supplies it because this package reads nothing — and the reference
+	 * is a path rather than a name, so there is no registry to consult and the
+	 * answer to "what is this?" is a file you can open.
 	 */
-	fixtures?: Record<string, unknown>;
+	readFixture?: (path: string) => unknown;
 }): PreviewStory[] {
 	const declaration = sources.sidecar?.stories?.length
 		? sources.sidecar
 		: sources.manifest?.preview;
-	return declaredStories(declaration, sources.fixtures);
+	return declaredStories(declaration, sources.readFixture);
 }
 
 /** Props this story states, for showing which knob a case turned. */

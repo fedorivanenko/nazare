@@ -32,11 +32,11 @@ export type StoryIssue = {
 	message: string;
 };
 
-/** A `{ $fixture: "x" }` that resolveFixtures left alone: the name is unknown. */
+/** A `{ $file: "…" }` that resolveFixtures left alone: the path did not read. */
 const isUnresolvedFixture = (value: unknown): boolean =>
 	typeof value === "object" &&
 	value !== null &&
-	"$fixture" in (value as Record<string, unknown>);
+	"$file" in (value as Record<string, unknown>);
 
 /**
  * Whether a value could be what the control asks for. Deliberately loose:
@@ -97,7 +97,9 @@ export function validateStory(
 			issues.push({
 				severity: "error",
 				prop: name,
-				message: `${name} names a fixture the preview does not have: ${JSON.stringify(value)}`,
+				message: `${name} points at a file that does not read: ${
+					(value as { $file?: unknown }).$file
+				}`,
 			});
 			continue;
 		}

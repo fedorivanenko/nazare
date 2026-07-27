@@ -86,14 +86,17 @@ export const shop = {
 };
 
 /**
- * Every fixture, addressable by name from a story's `{ "$fixture": "..." }`.
+ * The stand-in data a project starts from, copied in by `preview fixtures init`
+ * and thereafter the project's own files.
+ *
+ * Nothing resolves against this map. A story names a file — `{ "$file":
+ * "fixtures/product.json" }` — so there is no registry of names to know, and
+ * the answer to "what is this?" is a path you can open. This is only the seed.
  *
  * Objects only, and that is the whole rule: a fixture exists because JSON
  * cannot hold the thing — a product with its images, variants and compare-at
- * price — and because forty components should agree about the shop they belong
- * to. A number is not that. `{ "$fixture": "price" }` was 2400 wearing a
- * costume: longer to write than the number, and a layer of indirection for a
- * reader to unpick for nothing. Scalars are literals; you type them.
+ * price — and because the components that take one should agree about the shop
+ * they belong to. A number is not that. Scalars are literals; you type them.
  */
 export const shopifyFixtures: Record<string, unknown> = {
 	product,
@@ -102,34 +105,43 @@ export const shopifyFixtures: Record<string, unknown> = {
 	shop,
 };
 
-type FixtureReference = { $fixture: string };
+/** A story pointing at a file: `{ "$file": "fixtures/product.json" }`. */
+export type FixtureReference = { $file: string };
 
-const isFixtureReference = (value: unknown): value is FixtureReference =>
+export const isFixtureReference = (value: unknown): value is FixtureReference =>
 	typeof value === "object" &&
 	value !== null &&
-	typeof (value as FixtureReference).$fixture === "string";
+	typeof (value as FixtureReference).$file === "string";
 
 /**
- * Replaces `{ "$fixture": "product" }` with the fixture itself, so a manifest
- * story can name storefront data it could never express as JSON. An unknown
- * name is left as the reference object rather than silently becoming nil — the
- * story then renders visibly wrong instead of quietly empty.
+ * Replaces `{ "$file": "fixtures/product.json" }` with what that file holds, so
+ * a story can use storefront data it could never sensibly express inline.
+ *
+ * The reference is a path rather than a name: there is no registry to know, no
+ * built-in set to shadow, and the answer to "what is this?" is a file you can
+ * open. A path that does not resolve is left as the reference object rather
+ * than silently becoming nil — the story then renders visibly wrong instead of
+ * quietly empty, and the validator says which path.
+ *
+ * `read` is supplied by the caller, because this package reads nothing.
  */
 export function resolveFixtures(
 	props: Record<string, unknown>,
-	fixtures: Record<string, unknown> = shopifyFixtures,
+	read?: (path: string) => unknown,
 ): Record<string, unknown> {
 	const resolved: Record<string, unknown> = {};
 	for (const [name, value] of Object.entries(props)) {
-		resolved[name] =
-			isFixtureReference(value) && value.$fixture in fixtures
-				? fixtures[value.$fixture]
-				: value;
+		if (!isFixtureReference(value)) {
+			resolved[name] = value;
+			continue;
+		}
+		const loaded = read?.(value.$file);
+		resolved[name] = loaded === undefined ? value : loaded;
 	}
 	return resolved;
 }
 
-/** True when any prop referenced a fixture, so the gallery can say so. */
+/** True when any prop pointed at a file, so the gallery can say so. */
 export function usesFixtures(props: Record<string, unknown>): boolean {
 	return Object.values(props).some(isFixtureReference);
 }

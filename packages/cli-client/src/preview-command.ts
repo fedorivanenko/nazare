@@ -128,36 +128,33 @@ export function previewSource(
 }
 
 /**
- * The project's own stand-in data: every `fixtures/*.json`, by basename.
+ * Reads the file a story's `{ "$file": "…" }` names, relative to the previewed
+ * directory.
  *
- * A fixture exists because JSON cannot reasonably hold a product with its
- * images and variants, and because the components that take one should agree
- * about the shop they belong to. That is a reason to share a file — not a
- * reason for the file to live inside this package, where nobody can read it or
- * change it. A project's own fixtures win over the built-in set, so the
- * shipped product is a starting point rather than a fact.
+ * The reference is a path, not a name: there is no registry to know, nothing
+ * built in to shadow it, and the answer to "what is this?" is a file you can
+ * open. A path that escapes the directory, or does not parse, reads as nothing
+ * — the story then renders visibly wrong rather than quietly empty, and the
+ * validator names the path.
  */
-export async function projectFixtures(
-	dir: string,
-): Promise<Record<string, unknown>> {
-	const fixtures: Record<string, unknown> = { ...shopifyFixtures };
-	let entries: string[];
-	try {
-		entries = await readdir(join(dir, "fixtures"));
-	} catch {
-		return fixtures;
-	}
-	for (const entry of entries.sort()) {
-		if (!entry.endsWith(".json")) continue;
-		const raw = await readIfPresent(join(dir, "fixtures", entry));
-		if (raw === undefined) continue;
+export function fixtureReader(dir: string): (path: string) => unknown {
+	const cache = new Map<string, unknown>();
+	return (path: string) => {
+		if (cache.has(path)) return cache.get(path);
+		const resolved = resolve(dir, path);
+		// A story is data; it does not get to read outside what is being
+		// previewed.
+		if (relative(dir, resolved).startsWith("..")) return undefined;
+		const raw = readSync(resolved);
+		let value: unknown;
 		try {
-			fixtures[basename(entry, ".json")] = JSON.parse(raw);
-		} catch (error) {
-			throw new Error(`fixtures/${entry}: invalid JSON: ${errorText(error)}`);
+			value = raw === undefined ? undefined : JSON.parse(raw);
+		} catch {
+			value = undefined;
 		}
-	}
-	return fixtures;
+		cache.set(path, value);
+		return value;
+	};
 }
 
 /** The compiler reads synchronously, and a missing import is not an error. */
@@ -204,7 +201,7 @@ export async function detectLayout(
 /** A theme: the directory a file sits in is what the file is. */
 async function collectTheme(
 	dir: string,
-	fixtures: Record<string, unknown>,
+	readFixture: (path: string) => unknown,
 ): Promise<PreviewCollection> {
 	const collection: PreviewCollection = {
 		layout: "theme",
@@ -243,7 +240,7 @@ async function collectTheme(
 					}
 					stories = storiesFor({
 						sidecar: parseStoryFile(parsed, storyPath),
-						fixtures,
+						readFixture,
 					});
 				} catch (error) {
 					collection.malformed.push(errorText(error));
@@ -262,7 +259,7 @@ async function collectTheme(
 /** A folder of packages: each one's nazare.json says what it is. */
 async function collectPackages(
 	dir: string,
-	fixtures: Record<string, unknown>,
+	readFixture: (path: string) => unknown,
 ): Promise<PreviewCollection> {
 	const collection: PreviewCollection = {
 		layout: "package",
@@ -303,7 +300,7 @@ async function collectPackages(
 			// A function package was already skipped, so the kind is a template one.
 			kind: manifest.kind as Exclude<NazareManifest["kind"], "function">,
 		});
-		const stories = storiesFor({ manifest, fixtures });
+		const stories = storiesFor({ manifest, readFixture });
 		const entryRecord = {
 			component,
 			stories,
@@ -323,10 +320,10 @@ export async function collectPreview(
 ): Promise<PreviewCollection | undefined> {
 	const layout = await detectLayout(dir);
 	if (layout === undefined) return undefined;
-	const fixtures = await projectFixtures(dir);
+	const readFixture = fixtureReader(dir);
 	return layout === "theme"
-		? collectTheme(dir, fixtures)
-		: collectPackages(dir, fixtures);
+		? collectTheme(dir, readFixture)
+		: collectPackages(dir, readFixture);
 }
 
 /**
