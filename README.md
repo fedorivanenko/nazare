@@ -24,7 +24,7 @@ The ecosystem offers many excellent tools, but each addresses only part of the p
 
 ## Quickstart
 
-Install the CLI first. The installer requires Node.js 24 or newer, selects the release artifact for the current OS and architecture, and verifies its SHA-256 checksum. Release artifacts include production dependencies; installation does not require pnpm, Python, node-gyp, or compiler tools:
+Install the CLI first. The installer requires Node.js 20 or newer, selects the release artifact for the current OS and architecture, and verifies its SHA-256 checksum. Release artifacts include production dependencies; installation does not require pnpm, Python, node-gyp, or compiler tools:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh | sh

@@ -18,7 +18,12 @@ detect_target() {
 	printf '%s-%s\n' "$os" "$arch"
 }
 
-target="${2:-$(detect_target)}"
+detected_target="$(detect_target)"
+target="${2:-$detected_target}"
+if [ "$target" != "$detected_target" ]; then
+	echo "release target $target does not match build host $detected_target" >&2
+	exit 1
+fi
 root="$(pwd)"
 release_dir="$root/.release"
 artifact="nazare-cli-$version-$target"

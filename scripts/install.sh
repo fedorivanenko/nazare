@@ -17,8 +17,8 @@ need tar
 need node
 
 node_major="$(node -p 'Number(process.versions.node.split(".")[0])')"
-if [ "$node_major" -lt 24 ]; then
-	echo "Nazare requires Node.js 24 or newer; found $(node --version)" >&2
+if [ "$node_major" -lt 20 ]; then
+	echo "Nazare requires Node.js 20 or newer; found $(node --version)" >&2
 	exit 1
 fi
 

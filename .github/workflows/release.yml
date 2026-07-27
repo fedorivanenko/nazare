@@ -11,9 +11,18 @@ permissions:
 jobs:
   release:
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+          - runner: macos-15-intel
+            target: darwin-x64
+          - runner: macos-15
+            target: darwin-arm64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -27,11 +36,17 @@ jobs:
       - run: pnpm -s typecheck
       - run: pnpm dlx @biomejs/biome@2.4.14 check .
       - run: pnpm -s test:all
-      - run: ./scripts/package-cli.sh "${GITHUB_REF_NAME}"
+      - run: ./scripts/package-cli.sh "${GITHUB_REF_NAME}" "${{ matrix.target }}"
+      - name: switch to minimum supported Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
       - run: ./scripts/smoke-packaged-cli.sh .release/*.tar.gz
       - run: ./scripts/smoke-installer.sh "${GITHUB_REF_NAME}"
       - uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
           files: |
             .release/*.tar.gz
             .release/*.tar.gz.sha256

@@ -113,6 +113,41 @@ test("cli: source analyze fails closed for malformed source", {
 	});
 });
 
+test("cli: source analysis JSON schema matches golden contracts", {
+	smoke: true,
+}, async () => {
+	for (const fixture of [
+		{ name: "liquid", file: "input.liquid", args: [], status: 0 },
+		{
+			name: "nazare",
+			file: "input.nz.liquid",
+			args: ["--language", "nazare-liquid"],
+			status: 0,
+		},
+		{ name: "malformed", file: "input.liquid", args: [], status: 1 },
+	]) {
+		const fixtureRoot = resolve(
+			"packages/cli-client/tests/fixtures/source-analysis",
+			fixture.name,
+		);
+		const source = readFileSync(join(fixtureRoot, fixture.file), "utf8");
+		const expected = JSON.parse(
+			readFileSync(join(fixtureRoot, "expected.json"), "utf8"),
+		);
+		await withProject({ [fixture.file]: source }, async (cwd) => {
+			const out = await runCli(
+				cwd,
+				"source",
+				"analyze",
+				fixture.file,
+				...fixture.args,
+			);
+			assert.equal(out.status, fixture.status, out.stderr);
+			assert.deepEqual(JSON.parse(out.stdout), expected);
+		});
+	}
+});
+
 test("cli: source analyze supports the explicit Nazare grammar", {
 	smoke: true,
 }, async () => {

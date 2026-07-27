@@ -36,7 +36,12 @@ jobs:
       - name: package ephemeral PR artifact
         if: github.event_name == 'pull_request'
         run: ./scripts/package-cli.sh "pr-${{ github.event.pull_request.number }}-${{ github.sha }}"
-      - name: smoke packaged CLI and native grammars
+      - name: switch to minimum supported Node.js
+        if: github.event_name == 'pull_request'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: smoke packaged CLI and native grammars on minimum Node.js
         if: github.event_name == 'pull_request'
         run: ./scripts/smoke-packaged-cli.sh .release/*.tar.gz
       - name: upload ephemeral PR artifact
@@ -66,3 +71,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm -s build
       - run: pnpm -s test:package
+      - name: switch to minimum supported Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: ./scripts/smoke-packaged-cli.sh .release/*.tar.gz
+      - run: ./scripts/smoke-installer.sh smoke

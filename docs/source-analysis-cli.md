@@ -6,7 +6,7 @@ other tools that need stable JSON instead of native Tree-sitter objects.
 
 ## Install
 
-The installer requires Node.js 24 or newer. It downloads the release artifact
+The installer requires Node.js 20 or newer. Release artifacts are built on Node.js 24 and smoke-tested on Node.js 20 before publication. It downloads the release artifact
 for the current operating system and architecture and verifies the published
 SHA-256 sidecar before replacing the active installation.
 
@@ -119,7 +119,8 @@ result schema.
 
 ## Supported release targets
 
-Artifacts are target-specific because the grammars are native Node addons. The
-installer selects `<os>-<architecture>` from `linux|darwin` and `x64|arm64` and
-fails if the corresponding release asset does not exist. Source archives remain
-available from the matching Git tag for unsupported systems.
+Artifacts are target-specific because the grammars are native Node addons. Each
+release publishes Linux x64, Linux ARM64, macOS x64, and macOS ARM64 artifacts.
+The installer selects `<os>-<architecture>` from `linux|darwin` and
+`x64|arm64`. Source archives remain available from the matching Git tag for
+other systems.
