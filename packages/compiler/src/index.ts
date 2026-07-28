@@ -233,6 +233,8 @@ export type {
 	ThemeAnalysis,
 	ThemeAnalysisCache,
 	ThemeAnalysisCacheEntry,
+	ThemeBehaviorFact,
+	ThemeBehaviorRecord,
 	ThemeBlockInstanceRecord,
 	ThemeBlockRecord,
 	ThemeBlockSettingRecord,
@@ -241,6 +243,7 @@ export type {
 	ThemeCapabilitySignalRecord,
 	ThemeClassificationRecord,
 	ThemeDataAccessRecord,
+	ThemeDomHookKind,
 	ThemeEvidenceRecord,
 	ThemeExpectedInputRecord,
 	ThemeFact,
@@ -260,6 +263,8 @@ export type {
 	ThemeSectionInstanceRecord,
 	ThemeSemanticModel,
 	ThemeSettingReadRecord,
+	ThemeSourceAnalysisRecord,
+	ThemeSourceLanguage,
 } from "./theme-facts.js";
 export { shareThemeGraphRecords } from "./theme-graph-output.js";
 export {
@@ -335,8 +340,10 @@ export {
 	getThemeDependents,
 	getThemeEdgesFrom,
 	getThemeEdgesTo,
+	getThemeFileImpact,
 	getThemeNode,
 	summarizeThemeGraph,
+	type ThemeFileImpact,
 	type ThemeGraphSummary,
 	themeGraphToDot,
 } from "./theme-queries.js";
@@ -376,6 +383,25 @@ export {
 	type ThemeUpdateTelemetry,
 	ThemeWorkspaceSession,
 } from "./theme-session.js";
+export type {
+	ThemeSourceAnalysis,
+	ThemeSourceCompleteness,
+	ThemeSourceFrontend,
+	ThemeSourceFrontendContext,
+	ThemeSourceInput,
+	ThemeSourceUncertainty,
+} from "./theme-source-frontend.js";
+export {
+	analyzeThemeSource,
+	assetThemeSourceFrontend,
+	cssThemeSourceFrontend,
+	DEFAULT_THEME_SOURCE_FRONTENDS,
+	javaScriptThemeSourceFrontend,
+	jsonThemeSourceFrontend,
+	nazareLiquidThemeSourceFrontend,
+	opaqueThemeSourceFrontend,
+	plainLiquidThemeSourceFrontend,
+} from "./theme-source-frontends.js";
 export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,

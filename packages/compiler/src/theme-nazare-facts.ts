@@ -1,4 +1,4 @@
-import type { Diagnostic } from "@nazare/core";
+import type { Diagnostic, SourceSpan } from "@nazare/core";
 import { treeSitterNazareLiquidFrontend } from "./frontends/tree-sitter-nazare-liquid.js";
 import { projectArtifact } from "./pipeline.js";
 import type { DependencyResolver, ReadFile } from "./resolver.js";
@@ -19,7 +19,12 @@ export function collectNazareThemeFacts(
 		dependencyResolver?: DependencyResolver;
 		strictness?: "strict" | "loose";
 	} = {},
-): { facts: ThemeFact[]; issues: Diagnostic[]; artifact?: ThemeBuiltArtifact } {
+): {
+	facts: ThemeFact[];
+	issues: Diagnostic[];
+	uncertainty: Array<{ code: string; message: string; span?: SourceSpan }>;
+	artifact?: ThemeBuiltArtifact;
+} {
 	const facts: ThemeFact[] = [];
 	const frontendResult = treeSitterNazareLiquidFrontend.compile({
 		source: contents,
@@ -31,6 +36,7 @@ export function collectNazareThemeFacts(
 	if (frontendResult.kind !== "nazare-ast") {
 		return {
 			facts,
+			uncertainty: [],
 			issues: [
 				{
 					severity: "error",
@@ -172,6 +178,7 @@ export function collectNazareThemeFacts(
 		path,
 		contents,
 		frontendResult.ast.liquidFacts,
+		frontendResult.ast.markupFacts,
 	);
 	facts.push(
 		...sourceResult.facts.filter(
@@ -213,5 +220,5 @@ export function collectNazareThemeFacts(
 			}
 		}
 	}
-	return { facts, issues, artifact };
+	return { facts, issues, uncertainty: sourceResult.uncertainty, artifact };
 }

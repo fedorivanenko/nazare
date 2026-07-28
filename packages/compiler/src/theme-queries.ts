@@ -1,8 +1,10 @@
+import type { Diagnostic } from "@nazare/core";
 import type {
 	InspectNazareThemeResult,
 	SemanticThemeGraphEdge,
 	SemanticThemeGraphNode,
 } from "./theme-facts.js";
+import type { ThemeFileKind } from "./theme-file-classifier.js";
 
 export function themeGraphToDot(graph: InspectNazareThemeResult): string {
 	const lines = ["digraph nazare_theme {", "  rankdir=LR;"];
@@ -87,6 +89,115 @@ export function getThemeEdgesTo(
 	nodeId: string,
 ): SemanticThemeGraphEdge[] {
 	return graph.edges.filter((edge) => edge.to === nodeId);
+}
+
+export type ThemeFileImpact = {
+	version: 1;
+	path: string;
+	fileKind: ThemeFileKind;
+	usage: "entry" | "used" | "unused" | "unknown";
+	certainty: "complete" | "partial";
+	uncertainty: string[];
+	dependencies: string[];
+	dependents: string[];
+	affectedPages: string[];
+	issues: Diagnostic[];
+};
+
+export function getThemeFileImpact(
+	graph: InspectNazareThemeResult,
+	path: string,
+): ThemeFileImpact | undefined {
+	const file = graph.nodes.find(
+		(node) => node.kind === "file" && node.path === path,
+	);
+	if (!file || file.kind !== "file") return undefined;
+	const dependencies = getThemeDependencies(graph, path);
+	const dependents = getThemeDependents(graph, path);
+	const affectedPages = getThemeAffectedPages(graph, path);
+	const unused = graph.impact.unusedFiles.includes(path);
+	const targetKind = dynamicTargetKind(file.fileKind);
+	const hasDynamicReference =
+		targetKind !== undefined &&
+		graph.nodes.some(
+			(node) =>
+				node.kind === "unresolved" &&
+				node.targetKind === targetKind &&
+				node.name === undefined,
+		);
+	const sourceAnalysis = graph.nodes.find(
+		(node) => node.kind === "sourceAnalysis" && node.path === path,
+	);
+	const uncertainty = [
+		...(hasDynamicReference
+			? [
+					`Theme contains a dynamic ${targetKind} reference that may resolve to ${path}`,
+				]
+			: []),
+		...(sourceAnalysis?.kind === "sourceAnalysis"
+			? sourceAnalysis.uncertainty
+			: []),
+	];
+	return {
+		version: 1,
+		path,
+		fileKind: file.fileKind,
+		usage: themeFileUsage(
+			file.fileKind,
+			dependents.length,
+			unused,
+			hasDynamicReference,
+		),
+		certainty: uncertainty.length > 0 ? "partial" : "complete",
+		uncertainty,
+		dependencies,
+		dependents,
+		affectedPages,
+		issues: graph.issues.filter((issue) => issue.span?.file === path),
+	};
+}
+
+function themeFileUsage(
+	fileKind: ThemeFileKind,
+	dependentCount: number,
+	unused: boolean,
+	hasDynamicReference: boolean,
+): ThemeFileImpact["usage"] {
+	if (
+		fileKind === "templateJson" ||
+		fileKind === "templateLiquid" ||
+		fileKind === "layout" ||
+		fileKind === "locale" ||
+		fileKind === "settingsSchema" ||
+		fileKind === "settingsData"
+	) {
+		return "entry";
+	}
+	if (hasDynamicReference) return "unknown";
+	if (unused) return "unused";
+	if (dependentCount > 0) return "used";
+	return "unknown";
+}
+
+function dynamicTargetKind(
+	fileKind: ThemeFileKind,
+):
+	| "snippet"
+	| "section"
+	| "sectionGroup"
+	| "layout"
+	| "themeBlock"
+	| "asset"
+	| "component"
+	| undefined {
+	if (fileKind === "snippet") return "snippet";
+	if (fileKind === "section") return "section";
+	if (fileKind === "sectionGroup") return "sectionGroup";
+	if (fileKind === "layout") return "layout";
+	if (fileKind === "themeBlock") return "themeBlock";
+	if (fileKind === "asset") return "asset";
+	if (fileKind === "nazareComponent") return "component";
+	return undefined;
 }
 
 export function summarizeThemeGraph(

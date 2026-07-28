@@ -31,14 +31,11 @@ import {
 	classifyThemeFile,
 	isUnsafeThemePath,
 	normalizeThemePath,
-	themeAssetNameFromPath,
 	themeNameFromPath,
 } from "./theme-file-classifier.js";
 import { themeGraphFromModel } from "./theme-graph-output.js";
-import { collectJsonThemeFacts } from "./theme-json-facts.js";
-import { collectPlainLiquidThemeFacts } from "./theme-liquid-facts.js";
 import { buildThemeSemanticModel } from "./theme-model.js";
-import { collectNazareThemeFacts } from "./theme-nazare-facts.js";
+import { analyzeThemeSource } from "./theme-source-frontends.js";
 import { projectTreeSitterNazareAst } from "./tree-sitter-nazare-projector.js";
 
 export const THEME_ANALYSIS_DEFAULTS = {
@@ -281,74 +278,19 @@ function analyzeNormalizedThemeFiles(
 				...(artifact ? { artifact } : {}),
 			};
 		};
-		facts.push({ kind: "file", path: file.path, fileKind });
-		if (fileKind === "asset") {
-			// One declaration per asset; the model additionally indexes assets by
-			// path, so references by filename or by full path both resolve to it.
-			facts.push({
-				kind: "declaresAsset",
-				path: file.path,
-				name: themeAssetNameFromPath(file.path),
-			});
-			saveCacheEntry();
-			continue;
-		}
-		if (fileKind === "layout") {
-			facts.push({
-				kind: "declaresLayout",
-				path: file.path,
-				name: themeNameFromPath(file.path),
-			});
-		}
-		if (fileKind === "sectionGroup") {
-			facts.push({
-				kind: "declaresSectionGroup",
-				path: file.path,
-				name: themeNameFromPath(file.path),
-			});
-		}
-		if (fileKind === "themeBlock") {
-			facts.push({
-				kind: "declaresThemeBlock",
-				path: file.path,
-				name: themeNameFromPath(file.path),
-			});
-		}
-		// Locale declarations come from collectJsonThemeFacts, which owns every
-		// declaration derived from a JSON file's path. Declaring one here too
-		// emitted the fact twice; dedupeById hid it from the batch model and the
-		// pass pipeline surfaced it as a duplicate record.
-		if (fileKind === "nazareComponent") {
-			const result = collectNazareThemeFacts(file.path, file.contents, {
+		const sourceAnalysis = analyzeThemeSource(
+			{ path: file.path, contents: file.contents, fileKind },
+			{
 				readFile,
 				dependencyResolver,
-				strictness: options.strictness,
-			});
-			facts.push(...result.facts);
-			issues.push(...result.issues);
-			if (result.artifact) {
-				artifacts.push(result.artifact);
-				saveCacheEntry(result.artifact);
-			} else {
-				saveCacheEntry();
-			}
-			continue;
-		}
-		if (file.path.endsWith(".liquid")) {
-			const result = collectPlainLiquidThemeFacts(file.path, file.contents, {
-				parseMode: options.plainLiquidParseMode ?? "liquid-only",
-			});
-			facts.push(...result.facts);
-			issues.push(...result.issues);
-			saveCacheEntry();
-			continue;
-		}
-		if (file.path.endsWith(".json")) {
-			const result = collectJsonThemeFacts(file.path, file.contents);
-			facts.push(...result.facts);
-			issues.push(...result.issues);
-		}
-		saveCacheEntry();
+				strictness: options.strictness ?? "strict",
+				plainLiquidParseMode: options.plainLiquidParseMode ?? "liquid-only",
+			},
+		);
+		facts.push(...sourceAnalysis.facts);
+		issues.push(...sourceAnalysis.issues);
+		if (sourceAnalysis.artifact) artifacts.push(sourceAnalysis.artifact);
+		saveCacheEntry(sourceAnalysis.artifact);
 	}
 
 	const themeCheckPolicy = parseThemeCheckPolicy(options.themeCheck);

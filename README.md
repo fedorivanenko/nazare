@@ -251,7 +251,7 @@ Because `Hero` imports `Button`, `styles`, and `hero`, the compiler knows the ex
 
 Nazare can also work with plain Liquid. Existing `.liquid` snippets, sections, blocks, layouts, and templates can stay valid Shopify files while Nazare parses and validates them, checks schema and Liquid structure, reports diagnostics, tracks dependencies, and emits them into the final theme alongside `.nz.liquid` components.
 
-Internally, the compiler uses an explicit frontend boundary. The built-in frontend accepts `.nz.liquid` and lowers it into shared compiler facts; future frontends can target the same syntax/IR model without bypassing shared graph, check, validate, and contract projection. Unsupported inputs return diagnostics rather than fabricated contracts.
+Internally, component compilation and whole-theme analysis use explicit frontend boundaries. Whole-theme frontends parse Nazare Liquid, plain Liquid, Shopify JSON, CSS, and JavaScript into file-owned semantic facts. The linker then connects Liquid markup to stylesheet selectors, script DOM queries, dataset reads and mutations, CSS custom properties, events, custom elements, and static JavaScript module imports. Ambiguous, unsupported, failed, and dynamically partial analysis remains explicit; frontends never fabricate empty semantic facts.
 
 Example diagnostic:
 
@@ -272,7 +272,16 @@ nazare check nazare/components/hero.nz.liquid
 nazare inspect schema nazare/components/hero.nz.liquid
 nazare inspect graph nazare/components/hero.nz.liquid
 nazare inspect dump nazare/components/hero.nz.liquid
+nazare inspect impact snippets/product-card.liquid nazare
 ```
+
+`inspect impact` answers the maintenance question Shopify CLI cannot: which
+files this theme file directly depends on, which files use it, and which pages
+can change transitively. Styling and behavior consumers appear as direct
+relationships without falsely broadening page impact through globally loaded
+assets. It also reports whether usage is proven, unused, or unknown because
+dynamic Liquid or JavaScript makes the result partial. See
+[`docs/theme-intelligence-cli.md`](docs/theme-intelligence-cli.md).
 
 Components are also previewable, on their own, in a workbench — including plain
 `.liquid` in an existing theme, which needs no Nazare syntax at all:

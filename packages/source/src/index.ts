@@ -1,4 +1,10 @@
-export { htmlSyntaxIssues } from "./adapters/html.js";
+export {
+	type HtmlMarkupFacts,
+	type HtmlMarkupHookFact,
+	type HtmlMarkupUncertainty,
+	htmlMarkupFacts,
+	htmlSyntaxIssues,
+} from "./adapters/html.js";
 export {
 	type LiquidDependencyKind,
 	type LiquidSyntaxBlock,

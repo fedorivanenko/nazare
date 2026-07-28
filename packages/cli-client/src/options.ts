@@ -9,6 +9,8 @@ export const INSPECT_VIEWS = [
 	"dump",
 ] as const;
 
+export const INSPECT_THEME_QUERIES = ["impact"] as const;
+
 export const PREVIEW_VERBS = [
 	"serve",
 	"build",
@@ -197,6 +199,7 @@ export function printHelp(output: Output = console): void {
   nazare inspect <view> <file>       compiler facts as JSON
   nazare inspect theme [dir]         semantic graph for a whole theme
                                      dir defaults to nazare.theme.json build.sourceRoot
+  nazare inspect impact <file> [dir] change impact for one theme-relative file
   nazare graph-server [dir]          serve graph queries over newline-delimited JSON stdio
 
 Preview:
@@ -288,12 +291,17 @@ Options:
 		output.error(`Usage:
   nazare inspect <${INSPECT_VIEWS.join("|")}> <file>
   nazare inspect theme [dir] [--format json|text|dot]
+  nazare inspect impact <theme-file> [dir] [--format text|json]
 
 Views:
   ast, ir, graph, schema   inspect one compiler projection
   artifact                print complete compiled artifact
   dump                    write compiler projections to dump files
   theme                   inspect whole-theme semantic graph
+
+Theme queries:
+  impact                  show direct dependencies, dependents, affected pages,
+                          usage, diagnostics, and analysis uncertainty for one file
 
 Options:
   --strictness loose|strict

@@ -121,7 +121,16 @@ test("graph server supports MCP tools and build updates", async () => {
 				params: { name: "summary", arguments: {} },
 			},
 			{
+				jsonrpc: "2.0",
 				id: 4,
+				method: "tools/call",
+				params: {
+					name: "fileImpact",
+					arguments: { path: "card.nz.liquid" },
+				},
+			},
+			{
+				id: 5,
 				method: "buildUpdate",
 				params: { path: "card.nz.liquid", contents: "<span>Updated</span>" },
 			},
@@ -132,14 +141,19 @@ test("graph server supports MCP tools and build updates", async () => {
 			responses[1].result.tools.some((tool) => tool.name === "affectedPages"),
 		);
 		assert.ok(
+			responses[1].result.tools.some((tool) => tool.name === "fileImpact"),
+		);
+		assert.ok(
 			responses[1].result.tools.every(
 				(tool) => tool.inputSchema.additionalProperties === false,
 			),
 		);
 		assert.ok(responses[2].result.structuredContent.fileCount >= 1);
 		assert.equal(responses[2].result.isError, false);
-		assert.equal(responses[3].result.revision, 1);
-		assert.ok(responses[3].result.changedOutputPaths.length > 0);
+		assert.equal(responses[3].result.structuredContent.path, "card.nz.liquid");
+		assert.equal(responses[3].result.isError, false);
+		assert.equal(responses[4].result.revision, 1);
+		assert.ok(responses[4].result.changedOutputPaths.length > 0);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

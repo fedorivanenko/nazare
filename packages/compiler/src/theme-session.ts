@@ -1,4 +1,5 @@
 import type { Diagnostic } from "@nazare/core";
+import { collectThemeBehavior } from "./theme-behavior.js";
 import {
 	createThemeCapabilityPass,
 	type ThemeCapabilityPassContext,
@@ -261,6 +262,7 @@ export class ThemeProgram {
 			collection.capabilitySignals,
 			collection.capabilities,
 			collection.classifications,
+			this.factStore.all(),
 		);
 		const model = collectedModel;
 		this.evidenceBySource = evidenceRecordsBySource(model.evidence);
@@ -410,6 +412,7 @@ export class ThemeProgram {
 			collection.capabilitySignals,
 			collection.capabilities,
 			collection.classifications,
+			nextFactStore.all(),
 		);
 		const themeCheckPolicy = parseThemeCheckPolicy(this.options.themeCheck);
 		const ownedIssues = [
@@ -422,9 +425,20 @@ export class ThemeProgram {
 		];
 		const collectedModel = {
 			...collectedBaseModel,
-			evidence: [...collection.evidenceBySource.values()]
-				.flat()
-				.sort((a, b) => a.id.localeCompare(b.id)),
+			evidence: [
+				...[...collection.evidenceBySource.values()]
+					.flat()
+					.filter(
+						(evidence) =>
+							evidence.kind !== "behavior" &&
+							evidence.kind !== "localeTranslation",
+					),
+				...collectedBaseModel.evidence.filter(
+					(evidence) =>
+						evidence.kind === "behavior" ||
+						evidence.kind === "localeTranslation",
+				),
+			].sort((a, b) => a.id.localeCompare(b.id)),
 			issues: ownedIssues,
 			themeCheck: {
 				path: themeCheckPolicy.path,
@@ -1252,6 +1266,7 @@ function modelWithCollectedRecords(
 	capabilitySignalsBySource: Map<string, ThemeCapabilitySignalRecord[]>,
 	capabilitiesBySource: Map<string, ThemeCapabilityRecord[]>,
 	classificationsBySource: Map<string, ThemeClassificationRecord[]>,
+	facts: ThemeFact[],
 ): ThemeSemanticModel {
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
@@ -1309,6 +1324,7 @@ function modelWithCollectedRecords(
 		instances.flatMap((result) => result.sectionInstances),
 		instances.flatMap((result) => result.blockInstances),
 	);
+	const behavior = collectThemeBehavior(facts);
 	return {
 		...model,
 		files,
@@ -1367,6 +1383,24 @@ function modelWithCollectedRecords(
 		),
 		capabilities: uniqueById([...capabilitiesBySource.values()].flat()),
 		classifications: uniqueById([...classificationsBySource.values()].flat()),
+		behavior: behavior.records,
+		sourceAnalyses: behavior.sourceAnalyses,
+		evidence: uniqueById([
+			...model.evidence.filter(
+				(evidence) =>
+					evidence.kind !== "behavior" && evidence.kind !== "localeTranslation",
+			),
+			...behavior.evidence,
+			...locales
+				.flatMap((result) => result.localeTranslations)
+				.map((translation) => ({
+					id: translation.id,
+					kind: "localeTranslation" as const,
+					file: translation.path,
+					span: translation.span,
+					extractor: "theme-json-facts",
+				})),
+		]),
 	};
 }
 

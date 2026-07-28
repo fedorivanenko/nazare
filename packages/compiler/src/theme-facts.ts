@@ -100,8 +100,54 @@ export function renderSiteKey(fromPath: string, span: SourceSpan): string {
 	return `${fromPath}@${span.start.line}:${span.start.column}`;
 }
 
+export type ThemeSourceLanguage =
+	| "nazare-liquid"
+	| "liquid"
+	| "css"
+	| "javascript"
+	| "typescript"
+	| "json"
+	| "asset"
+	| "other";
+
+export type ThemeDomHookKind = "class" | "id" | "attribute";
+
+export type ThemeBehaviorFact = {
+	kind: "behavior";
+	fromPath: string;
+	name: string;
+	span?: SourceSpan;
+	extractor: string;
+} & (
+	| {
+			subjectKind: "domHook";
+			hookKind: ThemeDomHookKind;
+			operation: "emits" | "selects" | "queries" | "mutates";
+	  }
+	| {
+			subjectKind: "customProperty";
+			operation: "defines" | "reads";
+	  }
+	| {
+			subjectKind: "customEvent";
+			operation: "dispatches" | "listens";
+	  }
+	| {
+			subjectKind: "customElement";
+			operation: "defines" | "uses";
+	  }
+);
+
 export type ThemeFact =
 	| { kind: "file"; path: string; fileKind: ThemeFileKind }
+	| {
+			kind: "sourceAnalysis";
+			path: string;
+			language: ThemeSourceLanguage;
+			completeness: "complete" | "partial" | "failed";
+			uncertainty: string[];
+	  }
+	| ThemeBehaviorFact
 	| { kind: "declaresSection"; path: string; name: string }
 	| { kind: "declaresSnippet"; path: string; name: string }
 	| { kind: "declaresTemplate"; path: string; name: string }
@@ -545,6 +591,19 @@ export type ThemeExpectedInputRecord = {
 	evidenceIds: string[];
 };
 
+type ThemeBehaviorRecordFor<Fact extends ThemeBehaviorFact> =
+	Fact extends ThemeBehaviorFact ? Omit<Fact, "kind"> & { id: string } : never;
+
+export type ThemeBehaviorRecord = ThemeBehaviorRecordFor<ThemeBehaviorFact>;
+
+export type ThemeSourceAnalysisRecord = {
+	id: string;
+	path: string;
+	language: ThemeSourceLanguage;
+	completeness: "complete" | "partial" | "failed";
+	uncertainty: string[];
+};
+
 export type ThemeRenderSiteRecord = {
 	id: string;
 	fromPath: string;
@@ -556,7 +615,7 @@ export type ThemeRenderSiteRecord = {
 };
 
 export interface ThemeSemanticModel {
-	version: 2;
+	version: 3;
 	root: string;
 	files: ThemeFileRecord[];
 	declarations: ThemeDeclaration[];
@@ -591,6 +650,8 @@ export interface ThemeSemanticModel {
 	capabilitySignals: ThemeCapabilitySignalRecord[];
 	capabilities: ThemeCapabilityRecord[];
 	classifications: ThemeClassificationRecord[];
+	behavior: ThemeBehaviorRecord[];
+	sourceAnalyses: ThemeSourceAnalysisRecord[];
 	evidence: ThemeEvidenceRecord[];
 	issues: Diagnostic[];
 }
