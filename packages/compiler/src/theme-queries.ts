@@ -173,9 +173,9 @@ function themeFileUsage(
 	) {
 		return "entry";
 	}
-	if (dependentCount > 0) return "used";
 	if (hasDynamicReference) return "unknown";
 	if (unused) return "unused";
+	if (dependentCount > 0) return "used";
 	return "unknown";
 }
 

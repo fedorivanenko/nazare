@@ -133,7 +133,10 @@ export function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
 			)
 			.map((file) => file.path),
 	]);
-	const referencedFiles = new Set([...dependents.keys(), ...entryFiles]);
+	const structurallyReferencedFiles = new Set([
+		...entryFiles,
+		...[...pageDependencies.values()].flatMap((paths) => [...paths]),
+	]);
 	const hasDynamicSnippetReference = model.references.some(
 		(reference) => reference.kind === "rendersSnippet" && !reference.static,
 	);
@@ -158,7 +161,8 @@ export function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
 		affectedPages: sortedRecord(affectedPages),
 		unusedFiles: [...declaredFiles]
 			.filter(
-				(path) => unusedCandidates.has(path) && !referencedFiles.has(path),
+				(path) =>
+					unusedCandidates.has(path) && !structurallyReferencedFiles.has(path),
 			)
 			.sort((a, b) => a.localeCompare(b)),
 	};

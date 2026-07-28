@@ -79,6 +79,20 @@ test("theme compiler links Liquid, CSS, and JavaScript behavior", () => {
 	assert.deepEqual(impact.affectedPages, ["templates/index.liquid"]);
 });
 
+test("behavior consumers do not make unreachable Liquid files used", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "sections/orphan.liquid",
+			contents: '<div class="orphan"></div>',
+		},
+		{ path: "assets/theme.css", contents: ".orphan {}" },
+	]);
+	const impact = getThemeFileImpact(graph, "sections/orphan.liquid");
+	assert.deepEqual(impact.dependents, ["assets/theme.css"]);
+	assert.equal(impact.usage, "unused");
+	assert.deepEqual(impact.affectedPages, []);
+});
+
 test("dynamic markup and script selectors expose explicit uncertainty", () => {
 	const liquid = analyzeThemeSource(
 		{
