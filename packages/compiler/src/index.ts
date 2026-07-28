@@ -378,6 +378,24 @@ export {
 	type ThemeUpdateTelemetry,
 	ThemeWorkspaceSession,
 } from "./theme-session.js";
+export type {
+	ThemeSourceAnalysis,
+	ThemeSourceCompleteness,
+	ThemeSourceFrontend,
+	ThemeSourceFrontendContext,
+	ThemeSourceInput,
+	ThemeSourceLanguage,
+	ThemeSourceUncertainty,
+} from "./theme-source-frontend.js";
+export {
+	analyzeThemeSource,
+	assetThemeSourceFrontend,
+	DEFAULT_THEME_SOURCE_FRONTENDS,
+	jsonThemeSourceFrontend,
+	nazareLiquidThemeSourceFrontend,
+	opaqueThemeSourceFrontend,
+	plainLiquidThemeSourceFrontend,
+} from "./theme-source-frontends.js";
 export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
