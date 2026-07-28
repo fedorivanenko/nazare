@@ -4,7 +4,9 @@
 // itself; a failure here is a compiler bug, not a user error (user errors
 // belong to check.ts).
 import type { ArtifactGraph, ArtifactIR, Diagnostic } from "@nazare/core";
+import type { NazareAst } from "./ast.js";
 import {
+	inertSlotElement,
 	missingEdgeEndpoint,
 	propArgumentAmbiguous,
 	propBindingNotContractProp,
@@ -13,6 +15,15 @@ import {
 } from "./diagnostics.js";
 import { indexArtifactIR } from "./ir-index.js";
 import { analyzePropDefaults } from "./prop-defaults.js";
+
+export function validateNazareAst(ast: NazareAst): Diagnostic[] {
+	const componentKind =
+		ast.nodes.find((node) => node.type === "NazareComponent")?.componentKind ??
+		"snippet";
+	return ast.htmlElements
+		.filter((element) => element.tagName === "slot")
+		.map((element) => inertSlotElement(componentKind, element.span));
+}
 
 export function validateArtifactIR(ir: ArtifactIR): Diagnostic[] {
 	const index = indexArtifactIR(ir);

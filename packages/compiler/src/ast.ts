@@ -180,6 +180,11 @@ export type AuthoredSchema = {
 	span: SourceSpan;
 };
 
+export type NazareHtmlElement = {
+	tagName: string;
+	span: SourceSpan;
+};
+
 export type NazareHtmlRoot = {
 	tagEnd: number;
 	tagName: string;
@@ -190,6 +195,8 @@ export type NazareAst = {
 	file: string;
 	/** Canonical authored source; syntax projection never reads parser internals. */
 	source: string;
+	/** Mechanical HTML elements retained for source-aware validation. */
+	htmlElements: NazareHtmlElement[];
 	/** Tree-sitter-owned top-level HTML candidates. */
 	htmlRoots: NazareHtmlRoot[];
 	/** Canonical Liquid mechanics projected by Tree-sitter. */

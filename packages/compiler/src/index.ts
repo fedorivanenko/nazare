@@ -413,7 +413,11 @@ export {
 	projectTreeSitterNazareAst,
 	type TreeSitterNazareProjection,
 } from "./tree-sitter-nazare-projector.js";
-export { validateArtifactGraph, validateArtifactIR } from "./validate.js";
+export {
+	validateArtifactGraph,
+	validateArtifactIR,
+	validateNazareAst,
+} from "./validate.js";
 
 export type CompileNazareArtifactOptions = Pick<
 	CompileInput,
