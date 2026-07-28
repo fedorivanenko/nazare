@@ -123,13 +123,15 @@ export function buildNazareThemeWorkspace(
 	}
 
 	const scriptErrorPaths = new Set<string>();
-	for (const artifact of analysis.artifacts) {
-		const scriptIssues = markDiagnostics(
-			checkComponentScripts(artifact.ir, { readFile }),
-			"check",
-		);
-		if (hasErrors(scriptIssues)) scriptErrorPaths.add(artifact.path);
-		pushUniqueDiagnostics(allIssues, scriptIssues);
+	if (buildOptions.checkScripts !== false) {
+		for (const artifact of analysis.artifacts) {
+			const scriptIssues = markDiagnostics(
+				checkComponentScripts(artifact.ir, { readFile }),
+				"check",
+			);
+			if (hasErrors(scriptIssues)) scriptErrorPaths.add(artifact.path);
+			pushUniqueDiagnostics(allIssues, scriptIssues);
+		}
 	}
 	const checkedAnalysisArtifacts = analysis.artifacts.map((artifact) =>
 		scriptErrorPaths.has(artifact.path)

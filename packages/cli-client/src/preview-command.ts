@@ -84,6 +84,69 @@ export type PreviewCollection = {
 const errorText = (error: unknown): string =>
 	error instanceof Error ? error.message : String(error);
 
+/**
+ * A compiled component, with every file its compile read.
+ *
+ * Compiling is pure over those files: same bytes in, same component out. So a
+ * rebuild that finds them all unchanged can hand back the previous result
+ * instead of parsing the template, walking its import closure, and building a
+ * TypeScript program again.
+ *
+ * `serve` recompiles the whole directory on every save, and one component with
+ * a `{% script %}` block costs more than all the others together. This is what
+ * keeps a save from paying for the nine components it did not touch.
+ */
+type CompiledComponent = {
+	/** Every path the compile asked for, and what it got — `undefined` included,
+	 *  so an import that did not exist and now does counts as a change. */
+	reads: Map<string, string | undefined>;
+	source: string;
+	component: PreviewComponent;
+};
+
+/** Keyed by previewed directory and file, so two directories cannot collide. */
+const compiledComponents = new Map<string, CompiledComponent>();
+
+/**
+ * `previewComponentFromSource`, skipped when nothing it reads has changed.
+ *
+ * The cache is checked by replaying the reads: cheap next to a compile, and it
+ * needs no theory about which files matter, because the previous compile
+ * already said which ones it asked for.
+ */
+function compileComponent(
+	dir: string,
+	source: string,
+	file: string,
+	options: Parameters<typeof previewComponentFromSource>[2] & {
+		readFile: (path: string) => string | undefined;
+	},
+): PreviewComponent {
+	const key = `${dir}\0${file}\0${options.packageId ?? ""}\0${
+		options.kind ?? ""
+	}\0${options.checkScripts === false ? "unchecked" : "checked"}`;
+	const cached = compiledComponents.get(key);
+	if (
+		cached &&
+		cached.source === source &&
+		[...cached.reads].every(([path, seen]) => options.readFile(path) === seen)
+	) {
+		return cached.component;
+	}
+
+	const reads = new Map<string, string | undefined>();
+	const component = previewComponentFromSource(source, file, {
+		...options,
+		readFile: (path: string) => {
+			const contents = options.readFile(path);
+			reads.set(path, contents);
+			return contents;
+		},
+	});
+	compiledComponents.set(key, { reads, source, component });
+	return component;
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -257,10 +320,18 @@ export async function detectLayout(
 	return undefined;
 }
 
+/**
+ * What a collect is allowed to skip. Only script checking so far, and it is off
+ * the default path: a preview that stops reporting type errors should be a
+ * thing someone asked for.
+ */
+export type CollectOptions = { checkScripts?: boolean };
+
 /** A theme: the directory a file sits in is what the file is. */
 async function collectTheme(
 	dir: string,
 	readFixture: (path: string) => unknown,
+	collectOptions: CollectOptions,
 ): Promise<PreviewCollection> {
 	const collection: PreviewCollection = {
 		layout: "theme",
@@ -280,8 +351,9 @@ async function collectTheme(
 			const file = `${name}/${entry}`;
 			const source = await readIfPresent(join(dir, file));
 			if (source === undefined) continue;
-			const component = previewComponentFromSource(source, file, {
+			const component = compileComponent(dir, source, file, {
 				readFile: readThemeFile,
+				...collectOptions,
 			});
 
 			// card.liquid → card.stories.json, beside the template.
@@ -319,6 +391,7 @@ async function collectTheme(
 async function collectPackages(
 	dir: string,
 	readFixture: (path: string) => unknown,
+	collectOptions: CollectOptions,
 ): Promise<PreviewCollection> {
 	const collection: PreviewCollection = {
 		layout: "package",
@@ -367,11 +440,12 @@ async function collectPackages(
 		const file = `${folder}/${manifest.entry}`;
 		const source = await readIfPresent(join(dir, file));
 		if (source === undefined) continue;
-		const component = previewComponentFromSource(source, file, {
+		const component = compileComponent(dir, source, file, {
 			readFile: readCollectionFile,
 			packageId: manifest.id,
 			// A function package was already skipped, so the kind is a template one.
 			kind: manifest.kind as Exclude<NazareManifest["kind"], "function">,
+			...collectOptions,
 		});
 		let stories: PreviewStory[];
 		try {
@@ -397,6 +471,7 @@ async function collectPackages(
 /** Everything in `dir`, compiled, with its stories resolved. */
 export async function collectPreview(
 	dir: string,
+	collectOptions: CollectOptions = {},
 ): Promise<PreviewCollection | "missing" | undefined> {
 	const layout = await detectLayout(dir);
 	if (layout === "missing") return "missing";
@@ -404,8 +479,8 @@ export async function collectPreview(
 	const fixtures = fixtureReader(dir);
 	const collection =
 		layout === "theme"
-			? await collectTheme(dir, fixtures.read)
-			: await collectPackages(dir, fixtures.read);
+			? await collectTheme(dir, fixtures.read, collectOptions)
+			: await collectPackages(dir, fixtures.read, collectOptions);
 	// Reported after the walk, because that is when every story has been read and
 	// every path it named has been tried.
 	for (const [path, why] of fixtures.problems) {
@@ -450,8 +525,9 @@ export async function runPreviewBuild(
 	outDir: string,
 	output: Output,
 	label = dir,
+	collectOptions: CollectOptions = {},
 ): Promise<number> {
-	const collection = await collectPreview(dir);
+	const collection = await collectPreview(dir, collectOptions);
 	if (!collection || collection === "missing") {
 		return missingLayout(dir, output, collection === "missing");
 	}
@@ -546,6 +622,8 @@ export async function runPreviewCheck(
 	cliOptions: CliOptions,
 	output: Output,
 ): Promise<number> {
+	// `check` is the gate, so it always type-checks scripts: the flag exists for
+	// a server chasing latency, not for the command whose job is to find this.
 	const collection = await collectPreview(dir);
 	if (!collection || collection === "missing") {
 		return missingLayout(dir, output, collection === "missing");
@@ -707,7 +785,11 @@ export async function runPreviewScaffold(
 	}
 
 	await writeFile(storyFile, `${JSON.stringify({ stories }, null, 2)}\n`);
-	output.log(`${named} — ${stories.length} stories, edit before commit`);
+	output.log(
+		`${named} — ${stories.length} ${
+			stories.length === 1 ? "story" : "stories"
+		}, edit before commit`,
+	);
 	return 0;
 }
 

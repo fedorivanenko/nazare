@@ -78,6 +78,17 @@ export interface BuildNazareThemeWorkspaceOptions
 	 * workspace artifacts use their own file basenames.
 	 */
 	name?: string;
+	/**
+	 * Whether `{% script %}` blocks are type-checked. On by default, because a
+	 * script that uses a ref wrongly is a runtime error nobody sees until a
+	 * storefront runs it.
+	 *
+	 * Turning it off buys build time and gives up those diagnostics — a trade
+	 * only a caller looking at its own latency can make, so there is no default
+	 * that quietly makes it. Emit is unaffected either way: this pass reports,
+	 * it does not lower.
+	 */
+	checkScripts?: boolean;
 }
 
 /**

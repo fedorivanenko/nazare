@@ -45,6 +45,14 @@ export type PreviewComponentOptions = {
 	 * off, a plain file is classified by the theme directory it sits in.
 	 */
 	kind?: ComponentKind;
+	/**
+	 * Whether `{% script %}` blocks are type-checked. On by default: the
+	 * workbench lists a component's diagnostics, and a script type error is one
+	 * of the few a preview can show before a storefront runs it.
+	 *
+	 * A caller trading those diagnostics for build time turns it off explicitly.
+	 */
+	checkScripts?: boolean;
 };
 
 /**
@@ -145,6 +153,7 @@ export function previewComponentFromSource(
 			name,
 			strictness: options.strictness ?? "strict",
 			emitOnError: true,
+			...(options.checkScripts === false ? { checkScripts: false } : {}),
 		},
 	);
 	const artifact = built.artifacts.find((candidate) => candidate.path === file);

@@ -38,6 +38,16 @@ export type CliOptions = {
 	format?: string;
 	/** preview serve: the port to listen on. */
 	port?: string;
+	/**
+	 * preview serve: `--no-script-check` turns off `{% script %}` type checking.
+	 *
+	 * Building a TypeScript program is the most expensive thing a rebuild does,
+	 * and a theme with several scripted components pays it on every save. Giving
+	 * that up costs the script diagnostics the workbench would have listed, so it
+	 * is asked for rather than assumed. `preview check` ignores it: that command
+	 * is the gate.
+	 */
+	scriptCheck?: boolean;
 	/** preview fixtures pull: the name to write it under. */
 	as?: string;
 	positionals: string[];
@@ -149,6 +159,10 @@ export function parseCliOptions(args: string[]): CliOptions {
 			options.json = true;
 			continue;
 		}
+		if (arg === "--no-script-check") {
+			options.scriptCheck = false;
+			continue;
+		}
 		if (arg.startsWith("--")) {
 			throw new Error(`Unknown option ${arg}`);
 		}
@@ -191,6 +205,8 @@ export function printHelp(output: Output = console): void {
 Preview:
   nazare preview serve [dir]             serve the workbench, rebuilding on change
                                          --port (default 4173)
+                                         --no-script-check skips {% script %} type
+                                         checking for faster rebuilds
   nazare preview build [dir]             write a static workbench
                                          dir defaults to build.sourceRoot; output
                                          directory is asked once and saved to
