@@ -387,6 +387,18 @@ test("dependency checking reuses parsed transitive imports", async () => {
 	assert.equal(reads.get("c.nz.liquid"), 1);
 });
 
+test("missing asset imports remain resolve diagnostics", () => {
+	const compiled = compileNazareArtifact(
+		`{% import behavior from "./missing.ts" %}\n<div></div>`,
+		"component.nz.liquid",
+	);
+	const issue = compiled.issues.find(
+		(candidate) => candidate.code === "IMPORT_NOT_FOUND",
+	);
+
+	assert.equal(issue?.phase, "resolve");
+});
+
 test("resolveAssetImports returns a resolved AST without mutating parse output", () => {
 	const source = `{% import behavior from "./behavior.ts" %}\n<div></div>`;
 	const ast = projectTreeSitterNazareAst(source, "component.nz.liquid").ast;

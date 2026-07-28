@@ -6,7 +6,10 @@ import type {
 	ThemeInputFile,
 	ThemeSemanticModel,
 } from "./theme-facts.js";
-import { normalizeThemePath } from "./theme-file-classifier.js";
+import {
+	isUnsafeThemePath,
+	normalizeThemePath,
+} from "./theme-file-classifier.js";
 import {
 	type ThemeGraphUpdate,
 	ThemeProgram,
@@ -52,7 +55,13 @@ class ThemeBuildState {
 			cache: options.cache ?? this.cache,
 			memo: options.memo ?? this.memo,
 		};
-		for (const file of files) this.filesByPath.set(file.path, file);
+		for (const file of files) {
+			const normalized = normalizeSessionFile(file);
+			if (this.filesByPath.has(normalized.path)) {
+				throw new Error(`Duplicate theme session path ${normalized.path}`);
+			}
+			this.filesByPath.set(normalized.path, normalized);
+		}
 		this.semanticSession =
 			semanticProgram ?? new ThemeProgram(this.files(), this.options);
 		this.build = buildNazareThemeWorkspace(this.files(), this.options);
@@ -82,28 +91,33 @@ class ThemeBuildState {
 	}
 
 	updateFile(file: ThemeInputFile): ThemeBuildUpdate {
-		const previous = this.filesByPath.get(file.path);
-		if (previous?.contents === file.contents) {
-			return this.emptyUpdate([], this.semanticSession.updateFile(file));
+		const normalized = normalizeSessionFile(file);
+		const previous = this.filesByPath.get(normalized.path);
+		if (previous?.contents === normalized.contents) {
+			return this.emptyUpdate([], this.semanticSession.updateFile(normalized));
 		}
-		this.filesByPath.set(file.path, file);
+		this.filesByPath.set(normalized.path, normalized);
 		try {
-			return this.rebuild([file.path]);
+			return this.rebuild([normalized.path]);
 		} catch (error) {
-			if (previous) this.filesByPath.set(file.path, previous);
-			else this.filesByPath.delete(file.path);
+			if (previous) this.filesByPath.set(normalized.path, previous);
+			else this.filesByPath.delete(normalized.path);
 			throw error;
 		}
 	}
 
 	removeFile(path: string): ThemeBuildUpdate {
-		const previous = this.filesByPath.get(path);
-		if (!previous || !this.filesByPath.delete(path))
-			return this.emptyUpdate([], this.semanticSession.removeFile(path));
+		const normalizedPath = normalizeSessionPath(path);
+		const previous = this.filesByPath.get(normalizedPath);
+		if (!previous || !this.filesByPath.delete(normalizedPath))
+			return this.emptyUpdate(
+				[],
+				this.semanticSession.removeFile(normalizedPath),
+			);
 		try {
-			return this.rebuild([path]);
+			return this.rebuild([normalizedPath]);
 		} catch (error) {
-			this.filesByPath.set(path, previous);
+			this.filesByPath.set(normalizedPath, previous);
 			throw error;
 		}
 	}
@@ -495,6 +509,18 @@ function emptyBuildTelemetry(): ThemeUpdateTelemetry {
 		elapsedMs: 0,
 		peakMemoryBytes: buildTelemetryMemory(),
 	};
+}
+
+function normalizeSessionFile(file: ThemeInputFile): ThemeInputFile {
+	return { ...file, path: normalizeSessionPath(file.path) };
+}
+
+function normalizeSessionPath(path: string): string {
+	const normalized = normalizeThemePath(path);
+	if (isUnsafeThemePath(normalized)) {
+		throw new Error(`Unsafe theme session path ${path}`);
+	}
+	return normalized;
 }
 
 function buildTelemetryNow(): number {

@@ -368,6 +368,18 @@ export function schemaInvalidJson(
 	};
 }
 
+export function schemaInvalidShape(
+	reason: string,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "NAZARE_SCHEMA_INVALID_SHAPE",
+		message: `The {% schema %} block has an invalid shape: ${reason}`,
+		span,
+	};
+}
+
 export function unknownSettingRead(
 	object: "section" | "block",
 	settingId: string,

@@ -209,6 +209,52 @@ test("type-expression: escaped quotes in strings", () => {
 	assert.equal(parsed.typeInfo.setting?.label, `Say "hi"`);
 });
 
+test("type-expression: malformed modifiers fail instead of becoming implicit behavior", () => {
+	for (const [source, message] of [
+		["string.default()", "default() requires exactly one literal value"],
+		["string.enum()", "enum() requires one or more literal values"],
+		["string.required(1)", "required() accepts no arguments"],
+		["string.min(1)", "min() requires one finite number on a number type"],
+		["number.step(0)", "step() requires a number greater than zero"],
+		["function.returns()", "returns() requires one type on a function type"],
+		[
+			'string.setting("Label")',
+			"setting() requires exactly one metadata object",
+		],
+		['string.setting({ typo: "Label" })', "setting() has unknown keys: typo"],
+		[
+			"string.required().optional()",
+			"required() and optional() cannot be combined",
+		],
+		["number.min(10).max(1)", "min() cannot be greater than max()"],
+		[
+			"string.default(1)",
+			"default value is not assignable to the declared type",
+		],
+		["number.min(1).default(0)", "default value is invalid: below minimum 1"],
+	]) {
+		const parsed = parseTypeExpression(source);
+		assert.match(
+			parsed.error ?? "",
+			new RegExp(message.replace(/[()]/g, "\\$&")),
+			source,
+		);
+	}
+	for (const source of [
+		"string.default()",
+		"string.default(1)",
+		"number.min(1).default(0)",
+	]) {
+		const invalidDefault = parseTypeExpression(source);
+		assert.equal(invalidDefault.hasDefault, false, source);
+		assert.equal(invalidDefault.typeInfo.defaultValue, undefined, source);
+	}
+	assert.equal(
+		parseTypeExpression('string.setting("Label")').typeInfo.setting,
+		undefined,
+	);
+});
+
 test("type-expression: a default value is recorded with or without a setting", () => {
 	// A snippet prop's default never reaches a Shopify schema, so `setting` is
 	// undefined — but the value itself has to survive for tooling to read.

@@ -4,6 +4,7 @@ import type {
 	SemanticType,
 } from "@nazare/core";
 import { shopifyObjectTypeNames } from "@nazare/core";
+import { isAssignable, literalValueViolation } from "./assignability.js";
 
 // Parses the props type-expression DSL, e.g.:
 //   string.setting({ label: "Text", default: "Free shipping" })
@@ -94,53 +95,58 @@ export function parseTypeExpression(source: string): ParsedTypeExpression {
 					`unknown type name${unknownTypes.length === 1 ? "" : "s"}: ${unknownTypes.join(", ")}`,
 				]
 			: []),
+		...validateCallShapes(ast),
 	];
-	const error = errors.length ? errors.join("; ") : undefined;
-
-	const settingCall = ast.calls.find((call) => call.name === "setting");
-	const settingArgument = settingCall?.arguments[0];
-	// isObject excludes type refs at runtime; the cast is needed because a
-	// { typeRef } object is structurally assignable to the index signature.
-	const settingObject = isObject(settingArgument)
-		? (settingArgument as TypeExpressionObject)
-		: undefined;
+	const valueType = valueTypeFromAst(ast);
+	const settingCalls = ast.calls.filter((call) => call.name === "setting");
+	const settingCall = settingCalls[0];
+	const settingObject =
+		settingCalls.length === 1
+			? validSettingMetadata(settingCall?.arguments)
+			: undefined;
 	const defaultCall = ast.calls.find((call) => call.name === "default");
 	const defaultCallValue =
-		defaultCall && isLiteral(defaultCall.arguments[0])
+		defaultCall?.arguments.length === 1 && isLiteral(defaultCall.arguments[0])
 			? defaultCall.arguments[0]
 			: undefined;
-	const settingHasDefault =
-		settingObject !== undefined && Object.hasOwn(settingObject, "default");
-	const declaredDefault = settingHasDefault
-		? settingObject.default
+	const settingDefault = settingObject?.default;
+	const settingHasDefault = isLiteral(settingDefault);
+	const candidateDefault = settingHasDefault
+		? settingDefault
 		: defaultCallValue;
+	let declaredDefault = candidateDefault;
+	if (candidateDefault !== undefined) {
+		const defaultType = literalValueType(candidateDefault);
+		if (!isAssignable(defaultType, valueType)) {
+			errors.push("default value is not assignable to the declared type");
+			declaredDefault = undefined;
+		} else {
+			const violation = literalValueViolation(defaultType, valueType);
+			if (violation) {
+				errors.push(`default value is invalid: ${violation}`);
+				declaredDefault = undefined;
+			}
+		}
+	}
+	const hasDefault = declaredDefault !== undefined;
+	const error = errors.length ? errors.join("; ") : undefined;
 
 	return {
 		ast,
 		typeInfo: {
-			valueType: valueTypeFromAst(ast),
-			setting: settingCall
+			valueType,
+			setting: settingObject
 				? {
 						label: stringValue(settingObject?.label),
-						...(settingHasDefault || defaultCall
-							? { default: declaredDefault }
-							: {}),
+						...(settingHasDefault ? { default: declaredDefault } : {}),
 					}
 				: undefined,
 			// Recorded whether or not the prop is a setting: a snippet prop's
 			// `.default()` has no schema to land in, but tooling still needs it.
-			...(settingHasDefault || defaultCall
-				? { defaultValue: declaredDefault }
-				: {}),
+			...(hasDefault ? { defaultValue: declaredDefault } : {}),
 		},
 		required: ast.calls.some((call) => call.name === "required"),
-		hasDefault:
-			ast.calls.some((call) => call.name === "default") ||
-			ast.calls.some((call) =>
-				call.arguments.some(
-					(argument) => isObject(argument) && "default" in argument,
-				),
-			),
+		hasDefault,
 		error,
 	};
 }
@@ -188,6 +194,135 @@ const knownCallNames = new Set([
 	"step",
 	"unit",
 ]);
+
+function validateCallShapes(ast: TypeExpressionAst): string[] {
+	const errors: string[] = [];
+	if (
+		ast.base.argument !== undefined &&
+		!["array", "object"].includes(ast.base.name)
+	) {
+		errors.push(`${ast.base.name} does not accept a base argument`);
+	}
+	const counts = new Map<string, number>();
+	for (const call of ast.calls) {
+		counts.set(call.name, (counts.get(call.name) ?? 0) + 1);
+		if (!knownCallNames.has(call.name)) continue;
+		switch (call.name) {
+			case "required":
+			case "optional":
+				if (call.arguments.length !== 0) {
+					errors.push(`${call.name}() accepts no arguments`);
+				}
+				break;
+			case "default":
+				if (call.arguments.length !== 1 || !isLiteral(call.arguments[0])) {
+					errors.push("default() requires exactly one literal value");
+				}
+				break;
+			case "enum":
+				if (call.arguments.length === 0 || !call.arguments.every(isLiteral)) {
+					errors.push("enum() requires one or more literal values");
+				}
+				break;
+			case "or":
+				if (call.arguments.length === 0) {
+					errors.push("or() requires one or more types or literal values");
+				}
+				break;
+			case "min":
+			case "max":
+			case "step": {
+				const [argument] = call.arguments;
+				if (
+					ast.base.name !== "number" ||
+					call.arguments.length !== 1 ||
+					typeof argument !== "number" ||
+					!Number.isFinite(argument)
+				) {
+					errors.push(
+						`${call.name}() requires one finite number on a number type`,
+					);
+				} else if (call.name === "step" && argument <= 0) {
+					errors.push("step() requires a number greater than zero");
+				}
+				break;
+			}
+			case "unit":
+				if (
+					ast.base.name !== "number" ||
+					call.arguments.length !== 1 ||
+					typeof call.arguments[0] !== "string"
+				) {
+					errors.push("unit() requires one string on a number type");
+				}
+				break;
+			case "returns":
+				if (
+					ast.base.name !== "function" ||
+					call.arguments.length !== 1 ||
+					!isTypeRef(call.arguments[0] as TypeExpressionArgument)
+				) {
+					errors.push("returns() requires one type on a function type");
+				}
+				break;
+			case "setting": {
+				const [argument] = call.arguments;
+				if (call.arguments.length !== 1 || !isObject(argument)) {
+					errors.push("setting() requires exactly one metadata object");
+					break;
+				}
+				const metadata = argument as TypeExpressionObject;
+				const unknownKeys = Object.keys(metadata).filter(
+					(key) => key !== "label" && key !== "default",
+				);
+				if (unknownKeys.length > 0) {
+					errors.push(`setting() has unknown keys: ${unknownKeys.join(", ")}`);
+				}
+				if (
+					metadata.label !== undefined &&
+					typeof metadata.label !== "string"
+				) {
+					errors.push("setting().label must be a string");
+				}
+				if (metadata.default !== undefined && !isLiteral(metadata.default)) {
+					errors.push("setting().default must be a literal value");
+				}
+				break;
+			}
+		}
+	}
+	for (const [name, count] of counts) {
+		if (knownCallNames.has(name) && count > 1) {
+			errors.push(`${name}() is declared more than once`);
+		}
+	}
+	if (counts.has("required") && counts.has("optional")) {
+		errors.push("required() and optional() cannot be combined");
+	}
+	const setting = ast.calls.find((call) => call.name === "setting");
+	const settingArgument = setting?.arguments[0];
+	const settingMetadata = isObject(settingArgument)
+		? (settingArgument as TypeExpressionObject)
+		: undefined;
+	const hasSettingDefault = isLiteral(settingMetadata?.default);
+	if (counts.has("default") && hasSettingDefault) {
+		errors.push("default value must be declared in one place");
+	}
+	if (counts.has("required") && (counts.has("default") || hasSettingDefault)) {
+		errors.push("required() cannot be combined with a default value");
+	}
+	const numberType = applyBaseCalls({ kind: "number" }, ast.calls);
+	if (
+		ast.base.name === "number" &&
+		numberType.kind === "number" &&
+		numberType.constraints?.min !== undefined &&
+		numberType.constraints.max !== undefined &&
+		numberType.constraints.min > numberType.constraints.max
+	) {
+		errors.push("min() cannot be greater than max()");
+	}
+	return errors;
+}
 
 function valueTypeFromAst(ast: TypeExpressionAst): SemanticType {
 	let members = [applyBaseCalls(valueTypeFromBase(ast.base), ast.calls)];
@@ -289,6 +424,25 @@ function literalValueType(literal: TypeExpressionLiteral): SemanticType {
 	return { kind: "boolean" };
 }
 
+function validSettingMetadata(
+	arguments_: TypeExpressionArgument[] | undefined,
+): TypeExpressionObject | undefined {
+	if (arguments_?.length !== 1 || !isObject(arguments_[0])) return undefined;
+	const metadata = arguments_[0] as TypeExpressionObject;
+	if (
+		Object.keys(metadata).some((key) => key !== "label" && key !== "default")
+	) {
+		return undefined;
+	}
+	if (metadata.label !== undefined && typeof metadata.label !== "string") {
+		return undefined;
+	}
+	if (metadata.default !== undefined && !isLiteral(metadata.default)) {
+		return undefined;
+	}
+	return metadata;
+}
+
 function isObject(
 	value: TypeExpressionArgument | undefined,
 ): value is TypeExpressionObject {
@@ -296,15 +450,19 @@ function isObject(
 }
 
 function isTypeRef(
-	value: TypeExpressionArgument,
+	value: TypeExpressionArgument | undefined,
 ): value is TypeExpressionTypeRef {
 	return typeof value === "object" && value !== null && "typeRef" in value;
 }
 
 function isLiteral(
-	value: TypeExpressionArgument,
+	value: TypeExpressionArgument | undefined,
 ): value is TypeExpressionLiteral {
-	return typeof value !== "object";
+	return (
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean"
+	);
 }
 
 function stringValue(
