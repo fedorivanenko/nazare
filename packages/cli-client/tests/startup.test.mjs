@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtempSync } from "node:fs";
-import { rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -94,6 +94,46 @@ test("an unknown command does not load them either", async () => {
 
 	assert.equal(loadsCompiler(specifiers), false);
 	assert.equal(loadsPreview(specifiers), false);
+});
+
+test("a warm impact query loads cache projection without compiler frontends", async () => {
+	const project = mkdtempSync(join(tmpdir(), "nazare-warm-impact-"));
+	try {
+		await mkdir(join(project, "snippets"), { recursive: true });
+		await writeFile(
+			join(project, "snippets", "card.liquid"),
+			"{{ product.title }}",
+		);
+		await run(
+			process.execPath,
+			[
+				cli,
+				"inspect",
+				"impact",
+				"snippets/card.liquid",
+				".",
+				"--format",
+				"json",
+			],
+			{ cwd: project },
+		);
+
+		const specifiers = await specifiersLoadedBy(
+			["inspect", "impact", "snippets/card.liquid", ".", "--format", "json"],
+			project,
+		);
+		assert.ok(specifiers.includes("@nazare/compiler/inspect-cache"));
+		assert.equal(specifiers.includes("@nazare/compiler"), false);
+		assert.equal(
+			specifiers.some(
+				(specifier) =>
+					specifier === "typescript" || specifier.includes("/typescript/"),
+			),
+			false,
+		);
+	} finally {
+		await rm(project, { recursive: true, force: true });
+	}
 });
 
 test("a command that needs the compiler still loads it", async () => {

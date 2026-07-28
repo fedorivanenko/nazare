@@ -75,7 +75,13 @@ Issues: none
   do not broaden affected pages merely because a shared stylesheet or script is
   loaded globally.
 - Missing metafield snapshots and other absent external state remain unknown.
-- Query execution writes only the existing analysis cache under `.nazare-out`.
+- Query execution writes only `.nazare-out/inspect-cache-v4.json`.
+- A warm impact query validates an exact fingerprint of source files, root,
+  strictness, exclusions, metafields, and Theme Check policy, then reads the
+  compiler-owned impact projection without rebuilding the semantic model.
+- A cache hit never rewrites the cache. Any input or compiler fact-revision
+  change forces analysis and atomic replacement; malformed caches are reported
+  and discarded.
 - Any analysis error keeps a non-zero process exit status while still printing
   available intelligence.
 
@@ -88,7 +94,10 @@ tool without reimplementing it.
 
 This split keeps semantic truth in compiler and presentation in client.
 Whole-theme source frontends own local extraction; the linker alone owns
-cross-language relationships and impact.
+cross-language relationships and impact. Persisted impact records are versioned
+compiler query results, not a second CLI dependency model. Cache parsing is
+available through the lightweight `@nazare/compiler/inspect-cache` entry point,
+so warm queries do not load TypeScript or compiler frontends.
 
 ## Extension path
 

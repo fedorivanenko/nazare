@@ -1,4 +1,5 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
+import { THEME_FACT_CACHE_REVISION } from "./fact-cache-revision.js";
 import { themeFactSourcePath } from "./theme-fact-store.js";
 import type {
 	ThemeAnalysisCache,
@@ -9,54 +10,156 @@ import {
 	isUnsafeThemePath,
 	normalizeThemePath,
 } from "./theme-file-classifier.js";
+import type { ThemeFileImpact } from "./theme-queries.js";
 
-const PERSISTED_THEME_ANALYSIS_CACHE_VERSION = 3;
+const PERSISTED_THEME_INSPECTION_CACHE_VERSION = 4;
 
-/** @internal CLI inspect cache contains semantic facts only, never output-bearing build artifacts. */
-export function parsePersistedInspectFactCache(
+export type PersistedThemeInspection = {
+	inputFingerprint: string;
+	root: string;
+	issues: Diagnostic[];
+	impacts: Record<string, ThemeFileImpact>;
+	factCache: ThemeAnalysisCache;
+};
+
+/** @internal Parses the complete CLI inspect cache without loading compiler frontends. */
+export function parsePersistedThemeInspection(
 	value: unknown,
-): ThemeAnalysisCache {
+): PersistedThemeInspection {
 	if (
 		!isRecord(value) ||
-		value.version !== PERSISTED_THEME_ANALYSIS_CACHE_VERSION
+		value.version !== PERSISTED_THEME_INSPECTION_CACHE_VERSION
 	) {
 		throw new Error(
-			`expected persisted theme analysis cache version ${PERSISTED_THEME_ANALYSIS_CACHE_VERSION}`,
+			`expected persisted theme inspection cache version ${PERSISTED_THEME_INSPECTION_CACHE_VERSION}`,
 		);
 	}
+	if (value.factRevision !== THEME_FACT_CACHE_REVISION) {
+		throw new Error(
+			`expected fact revision ${THEME_FACT_CACHE_REVISION}, got ${String(value.factRevision)}`,
+		);
+	}
+	if (
+		!isString(value.inputFingerprint) ||
+		value.inputFingerprint.length === 0
+	) {
+		throw new Error("expected non-empty inputFingerprint");
+	}
+	if (!isSafeThemeRoot(value.root)) throw new Error("expected safe theme root");
+	if (!Array.isArray(value.issues) || !value.issues.every(isDiagnostic)) {
+		throw new Error("expected issues array");
+	}
 	if (!isRecord(value.entries)) throw new Error("expected entries object");
+	if (!isRecord(value.impacts)) throw new Error("expected impacts object");
+
 	const entries: Record<string, ThemeAnalysisCacheEntry> = Object.create(null);
 	for (const [path, entry] of Object.entries(value.entries)) {
-		const normalizedPath = normalizeThemePath(path);
-		if (normalizedPath !== path || isUnsafeThemePath(path)) {
-			throw new Error(`unsafe cache entry path ${JSON.stringify(path)}`);
-		}
+		assertSafeThemePath(path, "cache entry");
 		if (!isPersistedEntry(entry, path)) {
 			throw new Error(`invalid cache entry for ${JSON.stringify(path)}`);
 		}
 		entries[path] = entry;
 	}
-	return { version: 1, entries };
+	const impacts: Record<string, ThemeFileImpact> = Object.create(null);
+	for (const [path, impact] of Object.entries(value.impacts)) {
+		assertSafeThemePath(path, "impact");
+		if (!isThemeFileImpact(impact, path)) {
+			throw new Error(`invalid impact for ${JSON.stringify(path)}`);
+		}
+		impacts[path] = impact;
+	}
+	const factFilePaths = Object.values(entries)
+		.flatMap((entry) => entry.facts)
+		.filter(
+			(fact): fact is Extract<ThemeFact, { kind: "file" }> =>
+				fact.kind === "file",
+		)
+		.map((fact) => fact.path)
+		.sort((left, right) => left.localeCompare(right));
+	const impactPaths = Object.keys(impacts).sort((left, right) =>
+		left.localeCompare(right),
+	);
+	if (JSON.stringify(factFilePaths) !== JSON.stringify(impactPaths)) {
+		throw new Error("impact paths do not match cached file facts");
+	}
+	return {
+		inputFingerprint: value.inputFingerprint,
+		root: value.root,
+		issues: value.issues,
+		impacts,
+		factCache: { version: 1, entries },
+	};
 }
 
-/** @internal Serializes only fields consumed by inspect; component artifacts remain memory-only. */
-export function serializePersistedInspectFactCache(
-	cache: ThemeAnalysisCache,
+/** @internal Serializes facts and compiler-owned query projections atomically. */
+export function serializePersistedThemeInspection(
+	inspection: PersistedThemeInspection,
 ): string {
 	const entries = Object.fromEntries(
-		Object.entries(cache.entries).map(([path, entry]) => [
-			path,
-			{
-				fingerprint: entry.fingerprint,
-				facts: entry.facts,
-				issues: entry.issues,
-			},
-		]),
+		Object.entries(inspection.factCache.entries)
+			.sort(([left], [right]) => left.localeCompare(right))
+			.map(([path, entry]) => [
+				path,
+				{
+					fingerprint: entry.fingerprint,
+					facts: entry.facts,
+					issues: entry.issues,
+				},
+			]),
+	);
+	const impacts = Object.fromEntries(
+		Object.entries(inspection.impacts).sort(([left], [right]) =>
+			left.localeCompare(right),
+		),
 	);
 	return JSON.stringify({
-		version: PERSISTED_THEME_ANALYSIS_CACHE_VERSION,
+		version: PERSISTED_THEME_INSPECTION_CACHE_VERSION,
+		factRevision: THEME_FACT_CACHE_REVISION,
+		inputFingerprint: inspection.inputFingerprint,
+		root: inspection.root,
+		issues: inspection.issues,
 		entries,
+		impacts,
 	});
+}
+
+function assertSafeThemePath(path: string, subject: string): void {
+	const normalizedPath = normalizeThemePath(path);
+	if (normalizedPath !== path || isUnsafeThemePath(path)) {
+		throw new Error(`unsafe ${subject} path ${JSON.stringify(path)}`);
+	}
+}
+
+function isSafeThemeRoot(value: unknown): value is string {
+	return (
+		isString(value) &&
+		(value === "." ||
+			(normalizeThemePath(value) === value && !isUnsafeThemePath(value)))
+	);
+}
+
+function isThemeFileImpact(
+	value: unknown,
+	path: string,
+): value is ThemeFileImpact {
+	return (
+		isRecord(value) &&
+		value.version === 1 &&
+		value.path === path &&
+		isThemeFileKind(value.fileKind) &&
+		["entry", "used", "unused", "unknown"].includes(String(value.usage)) &&
+		["complete", "partial"].includes(String(value.certainty)) &&
+		Array.isArray(value.uncertainty) &&
+		value.uncertainty.every(isString) &&
+		Array.isArray(value.dependencies) &&
+		value.dependencies.every(isString) &&
+		Array.isArray(value.dependents) &&
+		value.dependents.every(isString) &&
+		Array.isArray(value.affectedPages) &&
+		value.affectedPages.every(isString) &&
+		Array.isArray(value.issues) &&
+		value.issues.every(isDiagnostic)
+	);
 }
 
 function isPersistedEntry(

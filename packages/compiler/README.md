@@ -155,6 +155,8 @@ Theme analysis uses `liquid-only` parsing by default: HTML is masked to avoid br
 
 Pass `.shopify/metafields.json` through `options.metafields` to join store definitions with theme reads; missing snapshots remain `unknown`, never proof of absence. Inspect output exposes consumed, unconsumed, broken, and page-impact queries. `getThemeFileImpact(graph, path)` projects direct dependencies, direct dependents, transitive affected pages, usage, diagnostics, and source-analysis uncertainty for one theme-relative file. Behavior dependencies do not broaden affected pages through globally loaded assets. Pass `.theme-check.yml` through `options.themeCheck` to validate and expose the configured ignore list. Shopify rule names are not assumed to match Inspect diagnostics.
 
+The lightweight `@nazare/compiler/inspect-cache` entry point validates and serializes persisted fact buckets plus compiler-owned `ThemeFileImpact` projections. It imports no language frontend. Callers must key projections by an exact input fingerprint; stale fact revisions, unsafe paths, malformed diagnostics, mismatched file/impact sets, and unsupported cache versions are rejected.
+
 ### `buildNazareThemeWorkspace(files, options)`
 
 Analyzes workspace files and emits Shopify theme files for the selected scope.
