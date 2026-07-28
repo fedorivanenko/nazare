@@ -140,8 +140,9 @@ export {
 } from "./symbols.js";
 export { syntaxFromAst } from "./syntax.js";
 export {
-	parsePersistedInspectFactCache,
-	serializePersistedInspectFactCache,
+	type PersistedThemeInspection,
+	parsePersistedThemeInspection,
+	serializePersistedThemeInspection,
 } from "./theme-analysis-cache.js";
 export {
 	ThemeBuildSession,

@@ -5,10 +5,11 @@ import {
 	analyzeNazareTheme,
 	collectMetafieldDefinitions,
 	collectMetafieldReads,
+	getThemeFileImpact,
 	inspectNazareTheme,
 	joinMetafieldReads,
-	parsePersistedInspectFactCache,
-	serializePersistedInspectFactCache,
+	parsePersistedThemeInspection,
+	serializePersistedThemeInspection,
 } from "../dist/index.js";
 
 const issues = (files) => analyzeNazareTheme(files).issues;
@@ -70,23 +71,33 @@ test("theme analysis cache reuses unchanged files and invalidates edits", () => 
 	assert.equal(cache.entries["locales/en.json"], undefined);
 });
 
-test("persisted inspect cache validates behavior and source-analysis facts", () => {
+test("persisted inspection validates facts and impact projections", () => {
 	const cache = { version: 1, entries: {} };
-	analyzeNazareTheme(
-		[
-			{ path: "assets/theme.css", contents: ".card {}" },
-			{
-				path: "assets/theme.js",
-				contents: 'document.querySelector(".card")',
-			},
-		],
-		{ cache },
+	const files = [
+		{ path: "assets/theme.css", contents: ".card {}" },
+		{
+			path: "assets/theme.js",
+			contents: 'document.querySelector(".card")',
+		},
+	];
+	const graph = inspectNazareTheme(files, { cache });
+	const impacts = Object.fromEntries(
+		graph.nodes
+			.filter((node) => node.kind === "file")
+			.map((node) => [node.path, getThemeFileImpact(graph, node.path)]),
 	);
-	const serialized = serializePersistedInspectFactCache(cache);
-	assert.equal(JSON.parse(serialized).version, 3);
+	const inspection = {
+		inputFingerprint: "input-fingerprint",
+		root: ".",
+		issues: graph.issues,
+		impacts,
+		factCache: cache,
+	};
+	const serialized = serializePersistedThemeInspection(inspection);
+	assert.equal(JSON.parse(serialized).version, 4);
 	assert.equal(
-		serializePersistedInspectFactCache(
-			parsePersistedInspectFactCache(JSON.parse(serialized)),
+		serializePersistedThemeInspection(
+			parsePersistedThemeInspection(JSON.parse(serialized)),
 		),
 		serialized,
 	);
@@ -97,8 +108,29 @@ test("persisted inspect cache validates behavior and source-analysis facts", () 
 	);
 	behavior.operation = "guesses";
 	assert.throws(
-		() => parsePersistedInspectFactCache(malformed),
+		() => parsePersistedThemeInspection(malformed),
 		/invalid cache entry for "assets\/theme.js"/,
+	);
+
+	const malformedImpact = JSON.parse(serialized);
+	malformedImpact.impacts["assets/theme.js"].usage = "probably-used";
+	assert.throws(
+		() => parsePersistedThemeInspection(malformedImpact),
+		/invalid impact for "assets\/theme.js"/,
+	);
+
+	const incompleteImpacts = JSON.parse(serialized);
+	delete incompleteImpacts.impacts["assets/theme.js"];
+	assert.throws(
+		() => parsePersistedThemeInspection(incompleteImpacts),
+		/impact paths do not match cached file facts/,
+	);
+
+	const staleRevision = JSON.parse(serialized);
+	staleRevision.factRevision = "theme-facts-stale";
+	assert.throws(
+		() => parsePersistedThemeInspection(staleRevision),
+		/expected fact revision/,
 	);
 });
 

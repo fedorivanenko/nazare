@@ -5,6 +5,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
+	statSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -794,6 +795,9 @@ test("cli: inspect impact answers what a file can affect", async () => {
 				"Uncertainty: none",
 				"Issues: none",
 			]);
+			const cachePath = join(cwd, ".nazare-out", "inspect-cache-v4.json");
+			const coldCache = readFileSync(cachePath, "utf8");
+			const coldCacheInode = statSync(cachePath).ino;
 
 			const json = await runCli(
 				cwd,
@@ -808,6 +812,56 @@ test("cli: inspect impact answers what a file can affect", async () => {
 			const impact = JSON.parse(json.stdout);
 			assert.equal(impact.version, 1);
 			assert.deepEqual(impact.affectedPages, ["templates/product.json"]);
+			assert.equal(readFileSync(cachePath, "utf8"), coldCache);
+			assert.equal(
+				statSync(cachePath).ino,
+				coldCacheInode,
+				"a warm impact query must not rewrite its cache",
+			);
+
+			writeFileSync(join(cwd, "sections/main.liquid"), "<section></section>");
+			const changed = await runCli(
+				cwd,
+				"inspect",
+				"impact",
+				"snippets/card.liquid",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(changed.status, 0, changed.stderr);
+			const changedImpact = JSON.parse(changed.stdout);
+			assert.equal(changedImpact.usage, "unused");
+			assert.deepEqual(changedImpact.dependents, []);
+			assert.notEqual(statSync(cachePath).ino, coldCacheInode);
+		},
+	);
+});
+
+test("cli: warm impact cache preserves analysis error status", async () => {
+	await withProject(
+		{
+			"sections/broken.liquid": `{% schema %}{"name":"Broken","settings":[]}{% endschema %}
+{{ section.settings.missing }}`,
+		},
+		async (cwd) => {
+			for (let run = 0; run < 2; run += 1) {
+				const result = await runCli(
+					cwd,
+					"inspect",
+					"impact",
+					"sections/broken.liquid",
+					".",
+					"--format",
+					"json",
+				);
+				assert.equal(result.status, 1, result.stderr);
+				assert.ok(
+					JSON.parse(result.stdout).issues.some(
+						(issue) => issue.code === "CONSTRAINT_UNKNOWN_SETTING_READ",
+					),
+				);
+			}
 		},
 	);
 });
@@ -839,11 +893,37 @@ test("cli: inspect can render a concise human report", async () => {
 	);
 });
 
+test("cli: inspect reports migration from the legacy cache", async () => {
+	await withProject(
+		{
+			"snippets/card.liquid": "{{ product.title }}",
+			".nazare-out/inspect-cache-v3.json": "{}",
+		},
+		async (cwd) => {
+			const result = await runCli(
+				cwd,
+				"inspect",
+				"impact",
+				"snippets/card.liquid",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(result.status, 0, result.stderr);
+			assert.match(result.stderr, /Ignored legacy theme analysis cache/);
+			assert.equal(
+				existsSync(join(cwd, ".nazare-out", "inspect-cache-v4.json")),
+				true,
+			);
+		},
+	);
+});
+
 test("cli: inspect discards a malformed cache and analyzes from source", async () => {
 	await withProject(
 		{
 			"snippets/card.liquid": "{{ product.title }}",
-			".nazare-out/inspect-cache-v3.json": "{invalid",
+			".nazare-out/inspect-cache-v4.json": "{invalid",
 		},
 		async (cwd) => {
 			const result = await runCli(
@@ -857,7 +937,7 @@ test("cli: inspect discards a malformed cache and analyzes from source", async (
 			// A cache is an optimization. An unusable one is reported and replaced,
 			// never a reason to fail the command.
 			assert.equal(result.status, 0, result.stderr);
-			assert.match(result.stderr, /Discarded theme analysis cache/);
+			assert.match(result.stderr, /Discarded theme inspection cache/);
 			assert.match(result.stderr, /invalid JSON/);
 			const graph = JSON.parse(result.stdout);
 			assert.ok(
@@ -878,7 +958,7 @@ test("cli: inspect discards cache facts owned by another source", async () => {
 			"json",
 		);
 		assert.equal(first.status, 0, first.stderr);
-		const cachePath = join(cwd, ".nazare-out", "inspect-cache-v3.json");
+		const cachePath = join(cwd, ".nazare-out", "inspect-cache-v4.json");
 		const cache = JSON.parse(readFileSync(cachePath, "utf8"));
 		cache.entries["snippets/card.liquid"].facts = [
 			{ kind: "file", path: "snippets/other.liquid", fileKind: "snippet" },
@@ -896,7 +976,7 @@ test("cli: inspect discards cache facts owned by another source", async () => {
 		// Ownership validation still rejects the entry; it just costs a cold
 		// rebuild rather than the whole command.
 		assert.equal(second.status, 0, second.stderr);
-		assert.match(second.stderr, /Discarded theme analysis cache/);
+		assert.match(second.stderr, /Discarded theme inspection cache/);
 		assert.match(second.stderr, /snippets\/card\.liquid/);
 		const graph = JSON.parse(second.stdout);
 		assert.ok(

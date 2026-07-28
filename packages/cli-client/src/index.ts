@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
 import {
+	access,
 	mkdir,
 	readFile,
 	realpath,
@@ -11,6 +12,7 @@ import {
 } from "node:fs/promises";
 import {
 	basename,
+	dirname,
 	extname,
 	isAbsolute,
 	join,
@@ -26,8 +28,10 @@ import { fileURLToPath } from "node:url";
 import type {
 	compileNazareArtifact,
 	inspectNazareTheme,
+	PersistedThemeInspection,
 	ThemeAnalysisCache,
 	ThemeFileImpact,
+	ThemeInputFile,
 } from "@nazare/compiler";
 import {
 	collectThemeInputFiles,
@@ -48,6 +52,7 @@ import type { Output } from "./output.js";
 
 /** Heavy modules, loaded only by commands that use them. */
 const compiler = () => import("@nazare/compiler");
+const inspectCache = () => import("@nazare/compiler/inspect-cache");
 const registry = () => import("@nazare/registry");
 
 const THEME_MANIFEST = "nazare.theme.json";
@@ -607,12 +612,29 @@ async function runInspectThemeQuery(
 		output.error(`Unsupported impact format ${format}; expected text or json`);
 		return 1;
 	}
-	const inspected = await loadThemeInspection(
+	const prepared = await prepareThemeInspection(
 		projectRoot,
 		dirArg,
 		cliOptions,
 		output,
 	);
+	if (prepared.persisted?.inputFingerprint === prepared.inputFingerprint) {
+		const impact = prepared.persisted.impacts[path];
+		if (!impact) {
+			output.error(
+				`Theme file ${path} was not found under inspected root ${prepared.root}`,
+			);
+			return 1;
+		}
+		output.log(
+			format === "json"
+				? JSON.stringify({ root: prepared.root, ...impact }, null, 2)
+				: renderThemeFileImpact(impact),
+		);
+		return hasErrors(prepared.persisted.issues) ? 1 : 0;
+	}
+
+	const inspected = await analyzePreparedThemeInspection(prepared);
 	const impact = (await compiler()).getThemeFileImpact(inspected, path);
 	if (!impact) {
 		output.error(
@@ -628,12 +650,36 @@ async function runInspectThemeQuery(
 	return themeInspectionStatus(inspected);
 }
 
+type PreparedThemeInspection = {
+	root: string;
+	files: ThemeInputFile[];
+	exclude: string[];
+	metafields?: { path: string; contents: string };
+	themeCheck?: { path: string; contents: string };
+	strictness: CliOptions["strictness"];
+	inputFingerprint: string;
+	cachePath: string;
+	factCache: ThemeAnalysisCache;
+	persisted?: PersistedThemeInspection;
+};
+
 async function loadThemeInspection(
 	projectRoot: string,
 	dirArg: string | undefined,
 	cliOptions: CliOptions,
 	output: Output,
 ): Promise<ReturnType<typeof inspectNazareTheme>> {
+	return analyzePreparedThemeInspection(
+		await prepareThemeInspection(projectRoot, dirArg, cliOptions, output),
+	);
+}
+
+async function prepareThemeInspection(
+	projectRoot: string,
+	dirArg: string | undefined,
+	cliOptions: CliOptions,
+	output: Output,
+): Promise<PreparedThemeInspection> {
 	const manifest = await readProjectManifest(projectRoot);
 	const exclude = validateInspectConfiguration(manifest.inspect);
 	const inspectRoot = dirArg ?? manifest.build?.sourceRoot;
@@ -654,24 +700,81 @@ async function loadThemeInspection(
 	);
 	const metafields = await readMetafieldSnapshot(projectRoot);
 	const themeCheck = await readThemeCheckPolicy(projectRoot);
-	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v3.json");
-	const { cache, discardedReason } = await readThemeAnalysisCache(cachePath);
-	if (discardedReason) {
-		output.error(
-			`Discarded theme analysis cache ${cachePath} (${discardedReason}); analyzing from source.`,
-		);
-	}
-	const inspected = (await compiler()).inspectNazareTheme(files, {
-		root:
-			relative(canonicalProjectRoot, canonicalRoot).split(sep).join("/") || ".",
-		strictness: cliOptions.strictness,
-		cache,
+	const relativeRoot =
+		relative(canonicalProjectRoot, canonicalRoot).split(sep).join("/") || ".";
+	const inputFingerprint = themeInspectionInputFingerprint({
+		root: relativeRoot,
+		files,
 		exclude,
 		metafields,
 		themeCheck,
+		strictness: cliOptions.strictness ?? "strict",
 	});
-	await mkdir(join(projectRoot, ".nazare-out"), { recursive: true });
-	await writeThemeAnalysisCache(cachePath, cache);
+	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v4.json");
+	const { persisted, factCache, discardedReason, missing } =
+		await readPersistedThemeInspection(cachePath);
+	if (discardedReason) {
+		output.error(
+			`Discarded theme inspection cache ${cachePath} (${discardedReason}); analyzing from source.`,
+		);
+	} else if (missing) {
+		const legacyCachePath = join(
+			projectRoot,
+			".nazare-out",
+			"inspect-cache-v3.json",
+		);
+		if (await fileExists(legacyCachePath)) {
+			output.error(
+				`Ignored legacy theme analysis cache ${legacyCachePath}; writing version 4 cache after source analysis.`,
+			);
+		}
+	}
+	return {
+		root: relativeRoot,
+		files,
+		exclude,
+		metafields,
+		themeCheck,
+		strictness: cliOptions.strictness,
+		inputFingerprint,
+		cachePath,
+		factCache,
+		persisted,
+	};
+}
+
+async function analyzePreparedThemeInspection(
+	prepared: PreparedThemeInspection,
+): Promise<ReturnType<typeof inspectNazareTheme>> {
+	const compilerModule = await compiler();
+	const inspected = compilerModule.inspectNazareTheme(prepared.files, {
+		root: prepared.root,
+		strictness: prepared.strictness,
+		cache: prepared.factCache,
+		exclude: prepared.exclude,
+		metafields: prepared.metafields,
+		themeCheck: prepared.themeCheck,
+	});
+	if (prepared.persisted?.inputFingerprint !== prepared.inputFingerprint) {
+		const impacts: Record<string, ThemeFileImpact> = Object.create(null);
+		for (const file of inspected.nodes.filter((node) => node.kind === "file")) {
+			const impact = compilerModule.getThemeFileImpact(inspected, file.path);
+			if (!impact) {
+				throw new Error(
+					`Compiler did not produce impact projection for ${file.path}`,
+				);
+			}
+			impacts[file.path] = impact;
+		}
+		await mkdir(dirname(prepared.cachePath), { recursive: true });
+		await writePersistedThemeInspection(prepared.cachePath, {
+			inputFingerprint: prepared.inputFingerprint,
+			root: prepared.root,
+			issues: inspected.issues,
+			impacts,
+			factCache: prepared.factCache,
+		});
+	}
 	return inspected;
 }
 
@@ -758,25 +861,65 @@ function isOutsideRoot(root: string, path: string): boolean {
 	);
 }
 
+function themeInspectionInputFingerprint(input: {
+	root: string;
+	files: ThemeInputFile[];
+	exclude: string[];
+	metafields?: { path: string; contents: string };
+	themeCheck?: { path: string; contents: string };
+	strictness: "strict" | "loose";
+}): string {
+	const hash = createHash("sha256");
+	const add = (value: string): void => {
+		hash.update(`${Buffer.byteLength(value, "utf8")}:`);
+		hash.update(value);
+	};
+	add("nazare-theme-inspection-input-v1");
+	add(input.root);
+	add(input.strictness);
+	add("liquid-only");
+	add(`exclude:${input.exclude.length}`);
+	for (const pattern of input.exclude) add(pattern);
+	add(`files:${input.files.length}`);
+	for (const file of [...input.files].sort((left, right) =>
+		left.path.localeCompare(right.path),
+	)) {
+		add(file.path);
+		add(file.contents);
+	}
+	for (const [name, artifact] of [
+		["metafields", input.metafields],
+		["themeCheck", input.themeCheck],
+	] as const) {
+		add(name);
+		add(artifact ? "present" : "absent");
+		if (artifact) {
+			add(artifact.path);
+			add(artifact.contents);
+		}
+	}
+	return hash.digest("hex");
+}
+
 /**
- * Reads the persisted fact cache. The cache is an optimization, never an
- * input: anything unusable — unreadable, malformed, written by an older
- * compiler — is discarded and the analysis runs from source. Discarding is
- * reported rather than silent, because a cache that never loads is a
- * performance bug worth seeing, and failing the command over one turns a
- * stale file into an outage.
+ * Reads the persisted inspection cache without importing compiler frontends.
+ * The cache is an optimization, never an input: anything unusable is discarded
+ * and reported before source analysis rebuilds it.
  */
-async function readThemeAnalysisCache(
-	path: string,
-): Promise<{ cache: ThemeAnalysisCache; discardedReason?: string }> {
+async function readPersistedThemeInspection(path: string): Promise<{
+	persisted?: PersistedThemeInspection;
+	factCache: ThemeAnalysisCache;
+	discardedReason?: string;
+	missing?: boolean;
+}> {
 	const empty: ThemeAnalysisCache = { version: 1, entries: {} };
 	let raw: string;
 	try {
 		raw = await readFile(path, "utf8");
 	} catch (error) {
-		if (isMissingFileError(error)) return { cache: empty };
+		if (isMissingFileError(error)) return { factCache: empty, missing: true };
 		return {
-			cache: empty,
+			factCache: empty,
 			discardedReason: `unreadable: ${errorMessage(error)}`,
 		};
 	}
@@ -785,26 +928,29 @@ async function readThemeAnalysisCache(
 		parsed = JSON.parse(raw);
 	} catch (error) {
 		return {
-			cache: empty,
+			factCache: empty,
 			discardedReason: `invalid JSON: ${errorMessage(error)}`,
 		};
 	}
 	try {
-		return { cache: (await compiler()).parsePersistedInspectFactCache(parsed) };
+		const persisted = (await inspectCache()).parsePersistedThemeInspection(
+			parsed,
+		);
+		return { persisted, factCache: persisted.factCache };
 	} catch (error) {
-		return { cache: empty, discardedReason: errorMessage(error) };
+		return { factCache: empty, discardedReason: errorMessage(error) };
 	}
 }
 
-async function writeThemeAnalysisCache(
+async function writePersistedThemeInspection(
 	path: string,
-	cache: ThemeAnalysisCache,
+	inspection: PersistedThemeInspection,
 ): Promise<void> {
 	const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
 	try {
 		await writeFile(
 			temporaryPath,
-			(await compiler()).serializePersistedInspectFactCache(cache),
+			(await inspectCache()).serializePersistedThemeInspection(inspection),
 		);
 		await rename(temporaryPath, path);
 	} catch (error) {
@@ -813,12 +959,22 @@ async function writeThemeAnalysisCache(
 		} catch (cleanupError) {
 			throw new AggregateError(
 				[error, cleanupError],
-				`Unable to write theme analysis cache ${path} and remove temporary file ${temporaryPath}`,
+				`Unable to write theme inspection cache ${path} and remove temporary file ${temporaryPath}`,
 			);
 		}
 		throw new Error(
-			`Unable to write theme analysis cache ${path}: ${errorMessage(error)}`,
+			`Unable to write theme inspection cache ${path}: ${errorMessage(error)}`,
 		);
+	}
+}
+
+async function fileExists(path: string): Promise<boolean> {
+	try {
+		await access(path);
+		return true;
+	} catch (error) {
+		if (isMissingFileError(error)) return false;
+		throw new Error(`Unable to inspect ${path}: ${errorMessage(error)}`);
 	}
 }
 
