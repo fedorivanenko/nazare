@@ -8,5 +8,25 @@
   "files": [
     "c-button.liquid",
     "c-button.css"
-  ]
+  ],
+  "preview": {
+    "stories": [
+      {
+        "name": "solid",
+        "props": { "label": "Add to cart", "url": "/cart" }
+      },
+      {
+        "name": "outline",
+        "props": { "label": "Add to cart", "url": "/cart", "scheme": "outline" }
+      },
+      {
+        "name": "submit",
+        "props": { "label": "Subscribe", "tag": "button", "type": "submit" }
+      },
+      {
+        "name": "inert",
+        "props": { "label": "Sold out", "tag": "span" }
+      }
+    ]
+  }
 }

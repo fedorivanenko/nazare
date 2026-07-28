@@ -15,22 +15,22 @@
       {
         "name": "on sale",
         "props": {
-          "price": { "$fixture": "price" },
-          "compare_at_price": { "$fixture": "compare_at_price" },
+          "price": 2400,
+          "compare_at_price": 4000,
           "show_compare_at": true
         },
-        "note": "Compare-at above the price, so the strikethrough shows. show_compare_at is passed explicitly: emit does not materialize a snippet prop's default, so an omitted value arrives nil."
+        "note": "Compare-at above the price, so the strikethrough shows."
       },
       {
         "name": "full price",
-        "props": { "price": { "$fixture": "price" } },
-        "note": "No compare-at: the strikethrough is absent, not empty."
+        "props": { "price": 2400, "compare_at_price": null },
+        "note": "Explicitly unset, not omitted: the strikethrough is absent rather than empty."
       },
       {
         "name": "compare-at suppressed",
         "props": {
-          "price": { "$fixture": "price" },
-          "compare_at_price": { "$fixture": "compare_at_price" },
+          "price": 2400,
+          "compare_at_price": 4000,
           "show_compare_at": false
         }
       }

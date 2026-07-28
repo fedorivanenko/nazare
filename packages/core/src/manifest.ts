@@ -2,22 +2,29 @@
 // Identifies the package, its entry file, and its dependencies; compiling
 // the entry produces the ArtifactContract.
 /**
- * A preview case the component author wrote, for cases a type cannot express:
- * storefront data, a deliberately empty value, a combination worth showing.
- * Optional — a component with no stories is still previewable, since the
- * baseline set is derived from its contract.
+ * A preview case the component author wrote: a name, and the values that make
+ * the case. The interface it draws on — prop names, types, defaults — is
+ * declared in the component's own source, never here, so a story states only
+ * what it changes and the declaration supplies the rest.
  */
 export type NazareManifestStory = {
 	name: string;
 	/**
-	 * Prop values. A value of `{ "$fixture": "product" }` names shared
-	 * storefront stand-in data the preview owns, which JSON could not express.
+	 * The values this case changes, not the whole prop set. Omitted props fall
+	 * through to the defaults the component declares; `null` is an explicit
+	 * unset. `{ "$file": "fixtures/product.json" }` reads shared storefront
+	 * data from a project-relative file; preview package owns no hidden fixture.
 	 */
-	props: Record<string, unknown>;
+	props?: Record<string, unknown>;
 	/** Why this case is worth looking at. */
 	note?: string;
 };
 
+/**
+ * Authored preview cases. A component with none does not appear in the
+ * workbench: writing a story is what publishes it there, rather than every
+ * compilable file showing up whether or not anyone meant it to.
+ */
 export type NazareManifestPreview = {
 	stories?: NazareManifestStory[];
 };

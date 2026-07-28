@@ -8,6 +8,7 @@
   "include": ["src/**/*.ts"],
   "references": [
     { "path": "../compiler" },
+    { "path": "../preview" },
     { "path": "../registry" },
     { "path": "../source-cli" },
     { "path": "../theme" }

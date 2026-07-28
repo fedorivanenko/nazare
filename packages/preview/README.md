@@ -5,7 +5,8 @@ with the stories' knobs derived from the compiler instead of hand-written.
 
 ```txt
 source → compile (the real compiler) → emitted template + contract
-       → controls → stories → render (Liquid) → gallery
+       → controls ─┐
+story file ────────┴→ stories → render (Liquid) → gallery
 ```
 
 Every pass is pure over its input, so a frontend picks the passes it needs and
@@ -24,9 +25,14 @@ declares them, and the compiler already produces the contract:
 | `featured: boolean.setting({ label: "Featured" })` | checkbox labelled "Featured" |
 | `label: string.required()` | text, marked required |
 
-Defaults come from `.default(v)` or a setting's `default`, so a story opens on
-the values the component actually ships with. For a section, the same pass
-produces what the theme editor's settings panel would show.
+Defaults come from `.default(v)` or a setting's `default`, so a story that says
+nothing about a prop renders on the value the component actually ships with. For
+a section, the same pass produces what the theme editor's settings panel would
+show.
+
+Reading a declaration an author wrote is not the same as inventing one. The
+controls are derived; the *cases* are not — those are written down, in a story
+file, as described below.
 
 ## What it renders
 
@@ -35,37 +41,510 @@ what the gallery shows, so a lowering bug is visible here rather than only on a
 store. Emitted stylesheets and behavior modules come back as assets; wiring the
 behaviors into the page makes island components genuinely interactive.
 
-## Fixtures and authored stories
+## One story, one document
 
-Storefront data lives in the preview, not in the components: one canonical mock
-product, collection, image, and shop in `fixtures.ts`, plus the `money` and
-`img_url` filters. If each component shipped its own mock product, forty
-components would disagree about the shop they belong to.
+Every story has an id — `button--outline`, derived from the component and
+story names, so adding or reordering stories never renumbers the others.
 
-Cases a type cannot express belong with the component, in its `nazare.json`:
+`storyDocuments()` turns each rendered story into a standalone HTML page named by
+that id, and `galleryPage(..., { storyBase: "./stories/" })` embeds those pages
+as frames instead of rendering the markup inline. That is what Storybook's iframe
+buys, and it is not cosmetic: forty components in one document share a cascade,
+so a global selector in one component's stylesheet restyles its neighbour's
+story, and emitted ids collide in one DOM. Framed, a story also has a URL that
+opens on its own.
+
+A story document links its own component's emitted CSS and nothing else. It
+reports its height to the host page and follows the host's theme by
+`postMessage`, because a frame is a separate document — opened directly, with no
+host, it still renders and reads `?theme=dark`.
+
+Leave `storyBase` off and the gallery is a single self-contained file again, with
+the shared cascade that implies. Both modes render the same story model.
+
+## Two shells
+
+`workbenchPage()` is the one to work in: components on the left, one story in the
+canvas, the component's documentation on the right. The component's stories are a dropdown beside the canvas, grouped by the
+prop each one varies, and a viewport dropdown constrains the canvas to 375, 768,
+or 1280 — the frame is a real document, so a narrower frame is a real viewport,
+media queries included.
+
+The presets sit next to plain px fields for width and height, because the size
+in a bug report is 414, not "mobile". Height is auto by default — the frame
+measures its own content and reports it — and a number typed there outranks
+that, for the times the question is whether a section fits in 600px. Beside them are the other questions you ask of a component
+you are looking at: **background** (page, white, dark, grey, or a checkerboard,
+because alpha reads as opaque against anything flat), **zoom**, **outline**,
+which draws every box so a spacing bug stops hiding, and **measure**, which on
+hover reports the box a element actually occupies — the numbers the browser
+computed, not the ones the stylesheet asked for, so a padding that lost to a
+more specific rule shows up here and nowhere else. Background, outline and measure are applied inside the frame, since the frame
+owns that document's rendering — one `postMessage`, resent whenever a story
+loads.
+
+Zoom is the exception, and deliberately so: it scales the whole frame from the
+outside, as one picture, rather than the elements inside it. Scaling within the
+document would re-lay-out the story, so 50% would show a double-width layout
+instead of the same layout drawn smaller — and "what does this look like,
+larger" is the question zoom exists to answer. A wrapper reserves the scaled
+size, since a transform takes up no space of its own.
+
+A preset means what it says: `Mobile · 375` lays out at 375 at every scale, so
+media queries stay honest and only the picture changes size. **Full width** has
+no number of its own — it is however much room the stage has — so it follows the
+zoom instead: at 50% the frame lays out twice as wide and still fills the stage,
+which is how you look at a wide layout without a wide window.
+
+Theme is three states rather than a toggle: Light, Dark, and System. A toggle
+cannot say "follow the OS", which is the one a designer checking both wants to
+get back to.
+
+Three columns — components, the render, the documentation — and **both sides
+collapse**, to `S` and `D` or their buttons, because a canvas the full width of
+the window is the point of collapsing them. That state is a workspace
+preference rather than something you send someone, so it lives in
+`localStorage` while everything shareable lives in the URL.
+
+The split is by what a thing acts on. The middle column holds the story and
+everything that changes how it is drawn — viewport, size, background, zoom,
+outline, measure — as a toolbar above the stage, wrapping rather than cramming.
+The right column holds what is known *about* what you are looking at: **Story**
+(the call that reproduces it, the props it passed) and **Component** (kind,
+install command, diagnostics, props table, emitted Liquid).
+
+A control that changes the canvas belongs with the canvas; a fact about the
+component belongs in the column you read.
+
+The canvas sits inset on the stage, with its own border and shadow, because a
+frame that runs edge to edge butts against the sidebar's border and reads as a
+continuation of the panel beside it rather than as the separate surface it is.
+The middle column also has a floor, and there is deliberately no stacking
+breakpoint. Two fixed side columns against a `1fr` middle means the viewport is
+what gives way when the window narrows, and stacking the three columns puts the
+story below a panel and off the screen — both arrangements lose the one thing
+you came to look at. So a side panel closes instead: the documentation below
+940px, the component list below 620px. A panel shut that way is not a
+remembered one, so widening the window brings it back exactly as it was.
+
+The layout is CSS — one `grid-template-columns` on `.workbench`, collapsing to
+`0px` per side. The state is JavaScript: every component's panel is in the DOM
+at once and toggled with `hidden`, and selection reads the `#story-index` JSON.
+No framework, and nothing is rendered in the browser.
+
+Under the canvas is **the call that reproduces this story in a theme**:
+
+```liquid
+{% render 'price', price: 2400, compare_at_price: 4000 %}
+```
+
+A snippet is reached by `{% render %}`; a section or a block is placed, so what
+you get is the settings object a template's JSON holds. It is built from the
+story's own delta, which is exactly what a caller has to write — anything the
+story omits is already the component's default, and repeating it in the call
+would be noise a merchant has to maintain. This is the one thing on the page
+meant to be copied out, so it sits with the render rather than in the panel
+below. A component the preview cannot classify gets no snippet at all: a wrong
+call behind a copy button is worse than no call.
+
+The story is a URL fragment (`#button--outline`); the viewport, background,
+zoom, outline, and the sidebar filter are query parameters
+(`?viewport=375&bg=dark&outline=1`). So all of it survives a reload and a link,
+a shared URL arrives showing what the sender was seeing, and changing the story
+leaves the presentation alone. The sidebar entries are real links to story
+documents, so with JavaScript off, clicking one opens that component on its own
+rather than doing nothing.
+
+The sidebar counts each component's problem stories — how many, not whether,
+since that is what decides whether you look now — and **Problems only** filters
+to them. The story dropdown says which ones (`typo — 2 issues`, `broken —
+failed`), so a template rename that breaks nine stories is navigable rather than
+just loud.
+
+The header carries what the page was built from: the directory as the caller
+named it, then the branch and short commit, with `*` for uncommitted changes in
+the previewed files. A built workbench outlives its checkout — deployed, linked,
+opened days later — and "is this current?" otherwise has no answer anywhere on
+the page. Every part is optional, because a theme outside a repository has a
+path and nothing else.
+
+`galleryPage()` is the catalogue: every story of every component at once, for a
+sweep over the whole registry or for embedding in a docs site.
+
+Both draw their per-component documentation — install command, diagnostics, props
+table, emitted Liquid — from the same `panels.ts`.
+
+## Previewing a plain theme
+
+```sh
+nazare preview serve path/to/theme     # rebuilds as you type
+nazare preview check path/to/theme
+nazare preview build path/to/theme
+```
+
+`fixtures/theme` is the theme kept here for exactly this: two snippets declaring
+`{% doc %}` params, a section and a block declaring `{% schema %}` settings, a
+story file beside each, a stylesheet the sections link through `asset_url` — and
+one helper snippet with no story file, because every theme has a hundred of
+those. Every one of its stories renders markup with no error and nothing its
+declaration says is wrong, and `tests/theme.test.mjs` holds that true: the
+plain-Liquid path claims to work on files nobody wrote for Nazare, and this is
+the claim being checked.
+
+No manifests, no Nazare syntax. The walk over `snippets/`, `sections/`, and
+`blocks/` is the classification — Shopify addresses a theme file by its
+directory, and the kind decides whether props arrive as bare variables or as
+`section.settings.*`. Each file's controls come from its own `{% doc %}` params
+or `{% schema %}` settings, and its cases from the story file beside it.
+
+Everything compiles; only what has a story file is previewed. That matters for
+composition — `product-card` renders `icon`, which nobody wrote stories for, so
+the snippet library has to hold templates the sidebar does not show. The theme's
+`assets/` are served where `asset_url` points.
+
+## The Liquid declares the interface; a story file declares the cases
+
+Two things, two places, and they never overlap:
+
+| | Declares | Lives in |
+| --- | --- | --- |
+| **Interface** — prop names, types, ranges, enum members, requiredness, defaults | the Liquid: `{% doc %}`, `{% schema %}`, `{% props %}` | the template |
+| **Cases** — which values are worth looking at, and what to call them | a story file | `nazare.json` or `*.stories.json` |
+
+A story file never introduces a prop, a type, or a control. It is a set of named
+value bundles addressed by names the template already declared — because two
+places to declare an interface means they eventually disagree.
 
 ```json
-"preview": {
+{
   "stories": [
-    {
-      "name": "on sale",
-      "props": {
-        "price": { "$fixture": "price" },
-        "compare_at_price": { "$fixture": "compare_at_price" },
-        "show_compare_at": true
-      },
-      "note": "Compare-at above the price, so the strikethrough shows."
-    }
+    { "name": "default" },
+    { "name": "on sale", "props": { "product": { "$file": "fixtures/product.json" } } },
+    { "name": "no badge", "props": { "badge": null },
+      "note": "What the card looks like without the ribbon." }
   ]
 }
 ```
 
-`{ "$fixture": "name" }` addresses the shared data. Authored stories replace the
-derived set — an author who writes them has said what is worth showing — and a
-component with no `preview` block is still previewable from its contract alone.
-Stories drawing on fixtures are badged in the gallery, because a fixture is tidy
-in ways a real catalogue is not: no missing compare-at price, no 60-character
-title, no sold-out variant.
+Four keys, and no others: `stories`, and each case's `name`, `props`, `note`.
+Anything else is a parse error rather than a field quietly ignored — every
+Storybook field that isn't in that list is one that ends up declaring interface
+in the story file.
+
+**Stories are partial.** Since the declaration owns the defaults, a case states
+only what it changes; `default` above sets nothing and renders the component as
+it ships. That keeps a story about its delta, which is also what makes the
+workbench's grouping by changed prop mean anything. `null` is an explicit unset,
+distinct from absent — "what does this look like without the optional thing."
+
+Only *declared* defaults fall through. An optional prop with no default stays
+unset; preview never invents a value to make its control look populated. A prop
+the declaration says nothing about arrives nil, exactly as it would on a
+storefront. `{% schema %}` states defaults outright; `{% doc %}` has no syntax
+for one, so a plain snippet's story states every prop it wants rendered.
+
+**A story file is what publishes a component to the workbench.** No file, no
+sidebar entry. That is the whole discovery rule, and it is what keeps a real
+theme's hundred helper snippets — `icon.liquid`, `meta-tags.liquid` — out of a
+sidebar where they would render blank. They stay in scope for `{% render %}`;
+they just aren't things to look at. `build` and `check` both count them, and
+`check --json` names them, so a template never disappears without saying why.
+
+A published component carries its stories in `nazare.json`, versioned with it
+and travelling with the install. A theme has no manifest, so its stories live in
+a sidecar beside the template — `product-card.stories.json` for
+`product-card.liquid`, the same shape minus the wrapper. The sidecar wins where
+both exist: the file beside the template is the more local statement.
+
+Storefront data lives in files, addressed by path:
+
+```json
+{ "props": { "product": { "$file": "fixtures/product.json" } } }
+```
+
+A path, not a name — so there is no registry of fixture names to know, nothing
+built in to shadow yours, and the answer to "what is this?" is a file you can
+open. It resolves relative to the previewed directory, and a story does not get
+to read outside it. A path that does not read is left visible rather than
+becoming nil: the story renders visibly wrong and the validator names the path,
+because a story that quietly resolved to nothing would look plausible.
+
+**Objects only.** A fixture exists because JSON cannot reasonably hold the
+thing — a product with its images, variants and compare-at price — and because
+forty components should agree about the shop they belong to. A number is not
+that: an indirect price fixture would be `2400` wearing a costume, longer to
+write than the number and harder for a reader to understand.
+Scalars are literals, and you type them.
+
+**They are your files, and there is nowhere else to look.**
+
+```sh
+nazare preview fixtures init                    # write the starter data in
+nazare preview fixtures pull merino-crew \
+  --store shop.myshopify.com                    # or take a real one
+```
+
+`init` writes the shipped stand-ins into `fixtures/*.json` the way a registry
+component is copied in. Nothing resolves against the package's copies — they are
+a seed, and after `init` they stop mattering entirely.
+
+`pull` fetches a real product from a live storefront, which is the answer to
+the thing a fixture is worst at: it is tidy in ways a catalogue is not — no
+60-character title, no sold-out variant, no missing compare-at price. It reads
+`/products/<handle>.js`, the storefront endpoint that answers with the Liquid
+product drop itself, in cents. The Admin API is the obvious place to ask and
+the wrong one: it answers `"24.00"` where Liquid has `2400` and
+`featuredImage.url` where Liquid has an image drop, so a fixture built from it
+needs a hand-written translation that can quietly disagree with the runtime. Sharing a product between the nine components
+that take one is a reason to share a *file*; it was never a reason for that file
+to live inside this package, where nobody could read it, diff it, or change it.
+The shipped set is a starting point, not a fact — and inlining a product into
+one story stays available for the case a shared one cannot express, which is
+most of the interesting ones: a sold-out variant, a 60-character title, no
+compare-at price. If each
+component shipped its own mock product, forty components would disagree about
+the shop they belong to. Stories drawing on fixtures are badged in the gallery,
+because a fixture is tidy in ways a real catalogue is not: no missing compare-at
+price, no 60-character title, no sold-out variant.
+
+### Nothing is derived at render time
+
+`scaffoldStories` still produces the obvious set — the defaults, then one case
+per enum member — but it writes a *file*, for an author to read and edit and
+commit:
+
+```sh
+nazare preview scaffold snippets/product-card.liquid
+```
+
+The difference is not cosmetic. A guess in a file is something you can correct;
+a guess made fresh on every render is something the tool asserts on your behalf
+forever. It also gives the sidebar a meaning — "17 of 130 snippets" reads as a
+number somebody moved, rather than one that is always 130.
+
+## Stories are checked against the declaration
+
+Liquid does not complain about a call that passes a prop the template never
+reads, or omits one it needs: the value is nil, the markup is missing, and the
+story looks plausible. So every story is checked against what the component
+declares — an undeclared prop (usually a typo), a value outside an enum, a
+number outside its range, a required prop nobody passed, or a `$file` path that
+does not exist.
+
+Since the interface belongs to the Liquid and the story owns only values, a
+mismatch is unambiguous: the story asserts something the declaration denies, and
+there is no reading where that was meant. These are **errors**. They are also
+checkable in both directions — a story that misspells a prop fails, and a
+template that renames one breaks its stories loudly instead of quietly rendering
+nil.
+
+They are reported beside the render, not thrown: a story that trips one still
+renders, and the render is how you judge how much it matters. A component that
+declares nothing — plain Liquid with no `{% doc %}` block — is not
+second-guessed, because inferring an interface from the template's body would be
+the preview inventing a contract nobody wrote.
+
+## Architecture
+
+### The spine
+
+Each step is pure over its input:
+
+```txt
+source ──▶ compile ──▶ template + declaration ──▶ controls ──▶ stories ──▶ render ──▶ documents ──▶ shell
+        (compiler)     (emitted Liquid;           (knobs)      (cases)   (liquidjs)  (one per      (page)
+                        contract | doc | schema)                                      story)
+```
+
+Nothing in the package touches a filesystem, a server, or a clock. Every
+function takes what it needs and returns a value, so the I/O belongs to the
+caller — which is why `nazare preview` lives in `cli-client` rather than here,
+and why a dev server can reuse every pass unchanged.
+
+### The passes
+
+**Source → component.** `previewComponentFromSource(source, file, options)`
+branches on the extension: `.nz.liquid` through `buildNazareThemeWorkspace` with
+its import closure walked via `options.readFile`, anything else through
+`buildPlainLiquid` and `collectPlainLiquidThemeFacts`.
+
+```ts
+type PreviewComponent = {
+  name; file; packageId?;
+  frontend: "nazare" | "plain";
+  componentKind?: "snippet" | "section" | "block";  // decides the render scope
+  template: string;        // emitted Liquid, not the source
+  assets: PreviewAsset[];  // emitted stylesheets and behaviors
+  contract?: ArtifactContract;
+  controls: PreviewControl[];
+  issues: Diagnostic[];    // compile diagnostics, reported and not thrown
+};
+```
+
+**Declaration → controls.** Three sources, one shape:
+
+| Frontend | Declaration | Pass |
+| --- | --- | --- |
+| Nazare | `{% props %}`, via the contract | `controlsFromContract` |
+| Plain snippet | `{% doc %}` `@param` | `controlsFromDocParams` |
+| Plain section | `{% schema %}` settings | `controlsFromSchemaSource` |
+
+All three produce `PreviewControl { name, label, kind, required, options?,
+range?, defaultValue?, typeExpression }` — the argTypes equivalent, derived
+rather than written.
+
+`defaultValue` is the default the declaration states, and **absent means it
+states none**. That is a fact worth being able to tell: it is what `required`
+means, what the props table prints as "—", and what decides whether a story
+saying nothing about a prop renders with a value or with nil. The field used to
+hold "the default, or something shaped like the type if there is none", with a
+boolean beside it saying which — and one field meaning two things is how
+`class="… class"` reached the markup of every button in the registry. Inventing
+a value is `scaffold`'s job, because `scaffold` writes a file a person reads.
+
+**Story file → stories.** `parseStoryFile(json)` checks the file strictly and
+`storiesFor({ manifest, sidecar })` resolves which of the two sources applies,
+returning `[]` when neither declares anything — the signal that this component
+does not appear. Story names are unique within a file, which is what keeps story
+ids from colliding. `scaffoldStories(component)` is the draft generator, called
+by the scaffold runner and by nothing on the render path.
+
+**Stories → rendered.** `renderComponentStories(component, stories, options)`
+assigns each story its id, computes which props it `changed`, validates it
+against the declaration, merges its delta over the declared defaults with
+`storyProps`, and renders it in the scope the kind dictates. `stories` is
+required: there is no derived set to fall back on.
+
+```ts
+type RenderedStory = {
+  id: string;          // "button--outline"
+  story: PreviewStory; // { name, props (the delta), note?, fixtures? }
+  html: string;
+  changed: string[];
+  issues: StoryIssue[];
+  error?: string;      // a render that threw, reported in place
+};
+```
+
+**Rendered → documents → shell.** `storyDocuments()` returns one standalone page
+per story; `workbenchPage()` and `galleryPage()` return the shells that embed
+them. All three return strings.
+
+### Entry points
+
+| To do this | Call |
+| --- | --- |
+| Preview one file | `previewComponentFromSource` |
+| Take only the knobs, for an editor panel | `controlsFromContract`, `plainLiquidControls` |
+| Read a story file | `parseStoryFile`, `storiesFor` |
+| Draft one for an author to edit | `scaffoldStories` |
+| Render stories without a page | `renderComponentStories` |
+| Render a template yourself | `createPreviewEngine`, `renderPreview` |
+| Build a static site or serve a dev server | `storyDocuments`, `workbenchPage` |
+| Sweep the whole registry at once | `galleryPage` |
+| Check a story is well-formed | `validateStory` |
+| Show how to reproduce a story in a theme | `renderCall` |
+| Address a story in a URL, a file, a snapshot | `storyId`, `componentId`, `storyFileName` |
+| Reach the shared storefront data | `shopifyFixtures`, `resolveFixtures` |
+
+### Two boundaries
+
+**The compiler.** The preview uses four entry points and no internals:
+`buildNazareThemeWorkspace`, `buildPlainLiquid`, `parseNazareLiquid`,
+`collectPlainLiquidThemeFacts`. No theme session stands up to preview one file.
+
+**The browser.** A shell and a story frame are separate documents, and exchange
+exactly two messages, both named in `theme.ts`:
+
+- frame → shell: `nazare-preview:height`, because the shell cannot measure the
+  layout of a document it does not own.
+- shell → frame: `nazare-preview:theme`, because the frame cannot see the
+  shell's `data-theme`.
+- shell → frame: `nazare-preview:canvas` — background, outline, zoom, measure.
+  How a story is shown belongs to the document that renders it, and measuring
+  one means reading computed styles the shell has no access to.
+
+The rest of the state is in the URL — the story in the fragment, the viewport in
+the query — so a reload, a link, and a fresh tab all arrive at the same place.
+
+### The files
+
+```txt
+component.ts         source → PreviewComponent
+controls.ts          contract → controls
+plain-controls.ts    doc params / schema settings → controls
+render-call.ts       one story → the call that reproduces it in a theme
+story-file.ts        the story file format, parsed strictly
+stories.ts           declared cases → stories; delta over declared defaults
+story-validation.ts  story vs. declaration → issues
+engine.ts            liquidjs, plus the Shopify tags and filters it lacks
+render.ts            stories → html
+story-document.ts    one story → one standalone page
+story-id.ts          identity: component, story, filename
+workbench.ts         the shell to work in
+gallery.ts           the whole-registry catalogue
+fixtures.ts          shared storefront stand-in data
+panels.ts            per-component documentation, shared by both shells
+theme.ts, html.ts    shared tokens, frame messages, escaping
+```
+
+`cli-client/src/preview-server.ts` is the same build held in memory and repeated
+on change — it adds no compilation of its own. A file changes, the directory is
+read again, the pages are the same strings `build` would have written, and the
+shell reloads itself over an event stream. The whole page reloads rather than
+the frame alone, which the URL made cheap: story in the fragment, presentation
+in the query, panels in storage, so a reload lands exactly where you were.
+
+Invalidation is deliberately blunt — everything recompiles. The compiler models
+`{% render %}` edges and could say precisely which components a file affects,
+but that dependency map is a second source of truth to keep correct, and the
+whole rebuild costs a few hundred milliseconds at the size a theme reaches.
+A story file that is mid-edit keeps the last good render of its component, since
+a half-typed key should not take away the page you are editing against.
+
+Served, the workbench also **edits stories**: one input per declared prop,
+seeded from the story as it was written, with an explicit Save that writes the
+story file. Not live — the render happens in Node, so a value changed in the
+panel cannot repaint the canvas by itself. Save writes the file, the watcher
+rebuilds, and the page reloads with the real render. That is why the button
+says Save rather than the canvas following your keystrokes: the alternative is
+a canvas that quietly stops matching the controls above it.
+
+A fixture prop is shown as the reference it is, with no field pretending
+otherwise; the JSON tab is where one changes. What is written is the story's
+delta, with `{ "$file": "fixtures/product.json" }` left as a path rather than
+the three kilobytes it resolves to, which is why
+`PreviewStory` keeps `source` alongside its resolved props.
+
+**A field shows what renders, not what the story states.** A prop the story says
+nothing about shows the declaration's default, because that is what the canvas
+is drawing — and saving writes only what differs from it, so an untouched form
+writes nothing. Seeded from the delta alone, a field could not tell "unset" from
+"empty", and saving an untouched form wrote defaults into a story that had
+deliberately said nothing.
+
+**Editing repaints the canvas without writing anything.** The render is liquidjs
+in Node, so the page asks the server for it: the same render as the build, run
+against the props the panel holds, handed back as the document a build would
+have written. The file is untouched until Save, which is the point — you can
+look before you commit, and what you are looking at is real rather than an
+optimistic guess.
+
+Stories are **created and deleted where they are listed**, and the **JSON** tab
+sits with them, because the file is the story set rather than a property of one
+story. It saves verbatim — the author's formatting is theirs to keep — where the
+field editor round-trips through `JSON.stringify`. Deleting the last story is
+refused: a component with none does not appear at all, and that is a thing to do
+deliberately in the file, not by clicking the last × in a list. It goes back
+through `parseStoryFile` before it is written, so the editor cannot produce a
+file `preview check` would reject.
+
+
+
+`cli-client/src/preview-command.ts` is pure I/O around the above: it walks a
+directory, resolves each component's story file, and writes the pages. It is
+also where the theme-versus-package distinction lives — detected from what is in
+the directory, not asked for.
 
 ## What it is not
 
@@ -84,10 +563,17 @@ store — that still needs `shopify theme dev`.
 
 ```sh
 pnpm -s build
-node packages/preview/examples/build-gallery.mjs
+node packages/cli-client/dist/index.js preview build registry/components
 open .nazare-out/preview/index.html
 ```
 
-Renders every component in `registry/components/`. Compile diagnostics are
-listed per component rather than failing the page, and a story that throws
-reports its error in place.
+Renders every component in `registry/components/`, writing the workbench to
+`index.html`, the whole-registry catalogue to `all.html`, and one document per
+story under `stories/`. Compile diagnostics are listed per component rather than
+failing the page, and a story that throws reports its error in place — in its
+own document, so the rest of the page is unaffected.
+
+`nazare preview check` renders the same set with no pages written, and exits
+non-zero when a story throws or contradicts its declaration. That is the CI
+form: rename a prop and the stories still naming the old one fail here rather
+than rendering nil on a storefront.

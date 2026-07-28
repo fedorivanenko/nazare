@@ -18,6 +18,15 @@ import {
 
 export type ThemeGraphServerOptions = {
 	projectRoot: string;
+	/**
+	 * How long to wait for a path to stop changing before rebuilding it.
+	 *
+	 * An editor writing a file produces several events, and a caller that cares
+	 * how many notifications a burst of edits collapses into has to be able to
+	 * say what "a burst" means — a machine under load can spread three writes
+	 * over half a second, which is an eternity next to the default.
+	 */
+	watchDebounceMs?: number;
 };
 
 export async function serveThemeGraph(
@@ -87,6 +96,7 @@ export async function serveThemeGraph(
 					stopWatching = next;
 				},
 				(update) => writeNotification(output, update),
+				options.watchDebounceMs ?? DEFAULT_WATCH_DEBOUNCE_MS,
 			);
 			if (request.id !== undefined) {
 				writeResponse(output, request, { id: request.id, result });
@@ -133,6 +143,7 @@ async function handleRequest(
 	setBuildSession: (session: ThemeBuildSession) => void,
 	setWatcher: (stop: () => void) => void,
 	notify: (update: unknown) => void,
+	debounceMs: number,
 ): Promise<unknown> {
 	if (request.method === "ping") return {};
 	if (request.method === "notifications/initialized") return {};
@@ -164,6 +175,7 @@ async function handleRequest(
 				setBuildSession,
 				setWatcher,
 				notify,
+				debounceMs,
 			);
 			return {
 				content: [{ type: "text", text: JSON.stringify(result) }],
@@ -213,7 +225,14 @@ async function handleRequest(
 	}
 	if (request.method === "watch") {
 		setWatcher(
-			startWatcher(root, projectRoot, getSession, getBuildSession, notify),
+			startWatcher(
+				root,
+				projectRoot,
+				getSession,
+				getBuildSession,
+				notify,
+				debounceMs,
+			),
 		);
 		return { watching: true };
 	}
@@ -238,7 +257,8 @@ async function handleRequest(
 	throw new RpcError(-32601, `Method not found: ${request.method}`);
 }
 
-const WATCH_DEBOUNCE_MS = 40;
+/** Long enough to coalesce an editor's save, short enough to feel immediate. */
+const DEFAULT_WATCH_DEBOUNCE_MS = 40;
 
 function startWatcher(
 	root: string,
@@ -246,6 +266,7 @@ function startWatcher(
 	getSession: () => ThemeProgram,
 	getBuildSession: () => ThemeBuildSession,
 	notify: (update: unknown) => void,
+	debounceMs: number,
 ): () => void {
 	let closed = false;
 	let pending = Promise.resolve();
@@ -268,7 +289,7 @@ function startWatcher(
 							},
 						});
 					});
-			}, WATCH_DEBOUNCE_MS),
+			}, debounceMs),
 		);
 	};
 	const watchers = [

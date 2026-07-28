@@ -1,29 +1,74 @@
-// Stories. A component's contract already says what varies about it, so the
-// baseline set is derivable: one story at the defaults, then one per member of
-// each enum prop. Authors add hand-written stories for the cases a type cannot
-// express (an empty label, a deliberately invalid value), but they never have
-// to enumerate the obvious ones.
-import type { NazareManifest } from "@nazare/core";
+// Stories. A story is a named case a person chose to show, read from a story
+// file — never derived at render time. The preview does not invent cases: a
+// component appears in the workbench because somebody wrote stories for it, and
+// what those stories claim is checkable against what the Liquid declares.
+//
+// The derivation that used to be the fallback still exists, as `scaffoldStories`
+// — but it writes a file the author reads, edits, and commits, rather than an
+// assertion the tool makes on every render. When a guess is wrong there is now
+// something to fix.
+import type { NazareManifest, NazareManifestStory } from "@nazare/core";
 import type { PreviewComponent } from "./component.js";
-import { defaultProps, type PreviewControl } from "./controls.js";
+import { declaredDefaults, type PreviewControl } from "./controls.js";
 import { resolveFixtures, usesFixtures } from "./fixtures.js";
+import { parseStoryFile, type StoryDeclaration } from "./story-file.js";
 
 export type PreviewStory = {
 	name: string;
+	/**
+	 * What this case changes, not the whole prop set. Anything unstated falls
+	 * through to the default the declaration itself gives, so a story stays about
+	 * its delta — which is also what makes the workbench's grouping by changed
+	 * prop mean something. `null` is an explicit unset, distinct from absent.
+	 */
 	props: Record<string, unknown>;
+	/**
+	 * Props as authored, before `{ "$file": "fixtures/product.json" }` became
+	 * product data. Kept so an editor can write story file back without inlining
+	 * fixture contents where a readable path used to be.
+	 */
+	source?: Record<string, unknown>;
 	/** Shown under the story; why this case is worth looking at. */
 	note?: string;
 	/** True when the story's props drew on shared storefront stand-in data. */
 	fixtures?: boolean;
 };
 
+/**
+ * The props a story actually renders with: the declaration's defaults, with the
+ * story's own values over the top.
+ *
+ * Merging here rather than at authoring time is what lets a story be partial,
+ * and it is also load-bearing for correctness — emit does not materialize a
+ * snippet prop's default, so a value the story omits would otherwise arrive nil
+ * on render even though the component declares one.
+ *
+ * Only *declared* defaults merge. An optional prop with no default remains
+ * absent. Preview never injects a control placeholder into rendered props.
+ */
+export function storyProps(
+	story: PreviewStory,
+	controls: PreviewControl[],
+): Record<string, unknown> {
+	const props: Record<string, unknown> = {
+		...declaredDefaults(controls),
+		...story.props,
+	};
+	// An explicit null is the story saying "without this one" — the prop is
+	// absent on render, not the string "null".
+	for (const [name, value] of Object.entries(props)) {
+		if (value === null) delete props[name];
+	}
+	return props;
+}
+
 export function defaultStory(component: PreviewComponent): PreviewStory {
-	return { name: "default", props: defaultProps(component.controls) };
+	return { name: "default", props: declaredDefaults(component.controls) };
 }
 
 /** One story per member of every select control, holding the rest at default. */
 export function variantStories(component: PreviewComponent): PreviewStory[] {
-	const base = defaultProps(component.controls);
+	const base = declaredDefaults(component.controls);
 	const stories: PreviewStory[] = [];
 	for (const control of component.controls) {
 		if (!control.options || control.options.length < 2) continue;
@@ -32,47 +77,82 @@ export function variantStories(component: PreviewComponent): PreviewStory[] {
 			if (option === base[control.name]) continue;
 			stories.push({
 				name: `${control.name}: ${option}`,
-				props: { ...base, [control.name]: option },
+				props: { [control.name]: option },
 			});
 		}
 	}
 	return stories;
 }
 
-export function generatedStories(component: PreviewComponent): PreviewStory[] {
+/**
+ * A first draft of a story file, for `scaffold` to write: the defaults, then one
+ * case per enum member. Not a runtime fallback — nothing renders from this until
+ * an author has read it and committed the file.
+ */
+export function scaffoldStories(component: PreviewComponent): PreviewStory[] {
 	return [defaultStory(component), ...variantStories(component)];
 }
 
 /**
- * The stories a manifest declares, with fixture references resolved. Authored
- * stories replace the generated set rather than adding to it: an author who
- * writes them has said what is worth showing, and the derived permutations
- * would otherwise bury it.
+ * A declaration's stories, with fixture references resolved. Takes the loose
+ * shape so a hand-written `nazare.json` and a parsed sidecar both fit.
  */
-export function manifestStories(manifest: NazareManifest): PreviewStory[] {
-	return (manifest.preview?.stories ?? []).map((story) => ({
+export function declaredStories(
+	declaration: { stories?: NazareManifestStory[] } | undefined,
+	readFixture?: (path: string) => unknown,
+): PreviewStory[] {
+	return (declaration?.stories ?? []).map((story) => ({
 		name: story.name,
 		note: story.note,
-		props: resolveFixtures(story.props),
-		fixtures: usesFixtures(story.props),
+		props: resolveFixtures(story.props ?? {}, readFixture),
+		source: story.props ?? {},
+		fixtures: usesFixtures(story.props ?? {}),
 	}));
 }
 
-/** Authored stories when the manifest has any, else the derived baseline. */
-export function storiesFor(
-	component: PreviewComponent,
-	manifest?: NazareManifest,
-): PreviewStory[] {
-	const authored = manifest ? manifestStories(manifest) : [];
-	return authored.length > 0 ? authored : generatedStories(component);
+/** The stories a manifest declares. */
+export function manifestStories(manifest: NazareManifest): PreviewStory[] {
+	return declaredStories(manifest.preview);
 }
 
-/** Controls a story overrides, for showing which knob a case turned. */
+/**
+ * A component's stories, or none.
+ *
+ * None means the component does not appear: a story file is what publishes a
+ * template to the workbench, so a theme's 130 helper snippets stay out of the
+ * sidebar until somebody decides one is worth showing.
+ *
+ * A sidecar outranks the manifest: the file beside the template is the more
+ * local statement, and it is the only one a theme can write.
+ */
+export function storiesFor(sources: {
+	manifest?: NazareManifest;
+	sidecar?: StoryDeclaration;
+	/**
+	 * Reads the file a `{ "$file": "…" }` names, relative to the project. The
+	 * caller supplies it because this package reads nothing — and the reference
+	 * is a path rather than a name, so there is no registry to consult and the
+	 * answer to "what is this?" is a file you can open.
+	 */
+	readFixture?: (path: string) => unknown;
+}): PreviewStory[] {
+	const declaration =
+		sources.sidecar ??
+		(sources.manifest?.preview === undefined
+			? undefined
+			: parseStoryFile(
+					sources.manifest.preview,
+					`${sources.manifest.id} nazare.json preview`,
+				));
+	return declaredStories(declaration, sources.readFixture);
+}
+
+/** Props this story states, for showing which knob a case turned. */
 export function changedProps(
 	story: PreviewStory,
 	controls: PreviewControl[],
 ): string[] {
-	const base = defaultProps(controls);
+	const base = declaredDefaults(controls);
 	return Object.keys(story.props).filter(
 		(name) => story.props[name] !== base[name],
 	);

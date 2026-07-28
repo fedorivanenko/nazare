@@ -9,5 +9,26 @@
   },
   "files": [
     "announcement-bar.nz.liquid"
-  ]
+  ],
+  "preview": {
+    "stories": [
+      {
+        "name": "linked",
+        "props": { "link": "/collections/sale" },
+        "note": "Composes the link component, so this story also proves the import resolved."
+      },
+      {
+        "name": "sale",
+        "props": {
+          "text": "Winter sale — up to 40% off",
+          "link": "/collections/sale"
+        }
+      },
+      {
+        "name": "no link",
+        "props": { "link": "" },
+        "note": "A blank link takes the span branch: the text is not a dead anchor."
+      }
+    ]
+  }
 }

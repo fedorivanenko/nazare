@@ -7,5 +7,40 @@
   "dependencies": {},
   "files": [
     "button.nz.liquid"
-  ]
+  ],
+  "preview": {
+    "stories": [
+      {
+        "name": "solid",
+        "props": { "label": "Add to cart", "url": "/cart" }
+      },
+      {
+        "name": "outline",
+        "props": { "label": "Add to cart", "url": "/cart", "scheme": "outline" }
+      },
+      {
+        "name": "ghost",
+        "props": { "label": "Read more", "url": "/blogs/news", "scheme": "ghost" }
+      },
+      {
+        "name": "small",
+        "props": { "label": "Add", "url": "/cart", "size": "sm" }
+      },
+      {
+        "name": "submit",
+        "props": { "label": "Subscribe", "tag": "button", "type": "submit" },
+        "note": "A form button needs no url, and the tag decides which element is emitted."
+      },
+      {
+        "name": "inert",
+        "props": { "label": "Sold out", "tag": "span" },
+        "note": "A span carries the styling with none of the affordance."
+      },
+      {
+        "name": "no url",
+        "props": { "label": "Add to cart", "url": "" },
+        "note": "An anchor with nowhere to go renders nothing at all — a dead link is never emitted."
+      }
+    ]
+  }
 }

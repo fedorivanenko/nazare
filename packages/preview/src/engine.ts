@@ -86,6 +86,43 @@ export function createPreviewEngine(
 		},
 	});
 
+	// `{% form 'type' %}` is Shopify's form tag: on a storefront it emits a
+	// <form> with the right action and hidden fields. Themes reach for it
+	// constantly (localization, cart, contact), and without it every one of
+	// those templates fails to render at all. The body is what a workbench is
+	// looking at, so it renders; the action is not, so it does not exist.
+	engine.registerTag("form", {
+		parse(
+			token: { args?: string; markup?: string },
+			remaining: TopLevelToken[],
+		) {
+			const self = this as { formType?: string; body?: string };
+			self.formType = (token.args ?? token.markup ?? "")
+				.split(",")[0]
+				.trim()
+				.replace(/^['"]|['"]$/g, "");
+			const body: string[] = [];
+			while (remaining.length) {
+				const next = remaining.shift() as
+					| { name?: string; getText?: () => string }
+					| undefined;
+				if (!next || next.name === "endform") break;
+				body.push(next.getText?.() ?? "");
+			}
+			self.body = body.join("");
+		},
+		async render(context: unknown) {
+			const self = this as { formType?: string; body?: string };
+			const inner = await (
+				this as unknown as { liquid: Liquid }
+			).liquid.parseAndRender(
+				self.body ?? "",
+				(context as { getAll: () => Record<string, unknown> }).getAll(),
+			);
+			return `<form data-preview-form="${self.formType ?? "form"}">${inner}</form>`;
+		},
+	});
+
 	// `{% style %}` is Shopify's inline-CSS tag; liquidjs has no equivalent.
 	engine.registerTag("style", {
 		parse(_token: unknown, remaining: TopLevelToken[]) {
@@ -145,6 +182,13 @@ export function createPreviewEngine(
 	};
 	engine.registerFilter("img_url", imageSource);
 	engine.registerFilter("image_url", imageSource);
+	// `image_tag` ends the usual image pipeline. Without it liquidjs passes the
+	// URL through unchanged and the template prints it as text — which is how a
+	// missing filter looks in a preview: not an error, just a page of URL.
+	engine.registerFilter(
+		"image_tag",
+		(value: unknown) => `<img src="${imageSource(value)}" alt="">`,
+	);
 
 	return engine;
 }

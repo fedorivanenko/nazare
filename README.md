@@ -274,6 +274,19 @@ nazare inspect graph nazare/components/hero.nz.liquid
 nazare inspect dump nazare/components/hero.nz.liquid
 ```
 
+Components are also previewable, on their own, in a workbench — including plain
+`.liquid` in an existing theme, which needs no Nazare syntax at all:
+
+```sh
+nazare preview scaffold snippets/product-card.liquid  # draft its stories
+nazare preview build                                  # write the workbench
+nazare preview check                                  # the CI form
+```
+
+A component appears once it has stories, written in `<name>.stories.json` beside
+the template. See [`packages/preview`](packages/preview) for what the story file
+declares — and, deliberately, what it does not.
+
 ## 2. Registry
 
 Build from reusable components instead of starting from scratch.
@@ -625,20 +638,11 @@ nazare registry publish [dir]       publish a component folder (--pack writes lo
 nazare registry connect <name> <url>  save a project registry in `nazare.theme.json`
 nazare registry use <name>          select a saved project registry
 nazare registry list                list saved registries
-<<<<<<< HEAD
-nazare pack [dir]                   create a publishable registry payload
-nazare publish [dir]                publish a component folder
-nazare validate <file>              check one `.nz.liquid` file
-nazare schema <file>                print generated Shopify schema
-nazare graph <file>                 print component dependency graph
-nazare inspect theme [dir]          print whole-theme semantic graph JSON
-nazare graph-server [dir]           serve graph queries and file updates over stdio
-nazare ast <file>                   print parsed AST
-nazare ir <file>                    print compiler IR
-nazare artifact <file>              print full compiler artifact
-nazare dump <file>                  write debug JSON files into `.nazare-out`
-=======
+nazare preview <command>            serve, build, check, or scaffold the component workbench
+nazare source analyze [file]        print stable parser facts as JSON
 nazare inspect <view> <file>        compiler facts: ast, ir, graph, schema, artifact, dump
+nazare inspect theme [dir]          print whole-theme semantic graph
+nazare graph-server [dir]           serve graph queries and file updates over stdio
 ```
 
 `add`, `update`, and `publish` also answer at the top level, so `nazare add
@@ -649,7 +653,7 @@ so there is no `nazare push` or `nazare pull`:
 
 ```sh
 shopify theme push --path <outDir>
->>>>>>> origin/feat/cli-surface
+```
 ```
 
 Common options and environment variables:
@@ -659,23 +663,9 @@ Common options and environment variables:
 --version x.y.z                     add/update exact registry version
 --source-root <dir>                 add/update/build source root (else `nazare.theme.json` build.sourceRoot)
 --out-dir <dir>                     build output directory (else `nazare.theme.json` build.outDir)
-<<<<<<< HEAD
---pull                              build: fetch live theme data before building
-
-Graph server requests are newline-delimited JSON. Supported methods include
-`initialize`, `summary`, `node`, `dependencies`, `dependents`, `affectedPages`,
-`build`, `buildUpdate`, `updateFile`, `removeFile`, `watch`, `unwatch`, and
-`reload`. `watch` emits
-`graph/update` and `build/update` notifications with revisions and graph/output
-deltas on file changes.
-
---store <domain>                    build --pull: Shopify store to pull from
---theme <id|name>                   build --pull: theme to pull from
-=======
 --pull-data                         build: reconcile a live theme's merchant data first
 --store <domain>                    build --pull-data: Shopify store to pull from
 --theme <id|name>                   build --pull-data: theme to pull from
->>>>>>> origin/feat/cli-surface
 --json                              build: print the raw result as JSON
 NAZARE_REGISTRY                     one-command registry override, or `file:<dir>`
 NAZARE_TOKEN                        publish token

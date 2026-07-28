@@ -1,0 +1,25 @@
+{
+  "stories": [
+    {
+      "name": "on sale",
+      "props": {
+        "price": 2400,
+        "compare_at_price": 4000
+      },
+      "note": "Compare-at above the price, so the strikethrough shows."
+    },
+    {
+      "name": "full price",
+      "props": {
+        "price": 2400,
+        "compare_at_price": null
+      },
+      "note": "Explicitly unset, not omitted: the strikethrough is absent rather than empty."
+    },
+    {
+      "name": "free",
+      "props": { "price": 0, "compare_at_price": null },
+      "note": "Zero is a price, not a missing one — it must render as $0.00."
+    }
+  ]
+}

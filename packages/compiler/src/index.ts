@@ -279,6 +279,11 @@ export {
 	type ThemeInstancePassResult,
 	type ThemeInstanceRecord,
 } from "./theme-instance-pass.js";
+// A single plain-Liquid file's facts, without standing up a theme session:
+// `{% doc %}` @param declarations are the author's own statement of a
+// component's interface, and tooling outside the graph (the preview's controls)
+// needs them for one file at a time.
+export { collectPlainLiquidThemeFacts } from "./theme-liquid-facts.js";
 export {
 	collectThemeLocales,
 	createThemeLocalePass,

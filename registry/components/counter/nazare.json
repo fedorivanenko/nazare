@@ -11,5 +11,22 @@
     "counter.nz.liquid",
     "counter.ts",
     "format.ts"
-  ]
+  ],
+  "preview": {
+    "stories": [
+      {
+        "name": "default",
+        "note": "The buttons work in the frame: the island's behavior is loaded for real."
+      },
+      {
+        "name": "step of 5",
+        "props": { "step": 5, "start": 10 }
+      },
+      {
+        "name": "prefixed",
+        "props": { "prefix": "$", "start": 20 },
+        "note": "The prefix is applied by the behavior, not the template, so it appears only after hydration."
+      }
+    ]
+  }
 }

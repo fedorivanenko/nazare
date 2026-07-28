@@ -1,179 +1,98 @@
-// The static gallery: every component, every story, rendered to one HTML page.
+// The gallery shell: every component, every story, one page.
 //
 // The layout follows shadcn/ui's registry docs — sidebar, per-component
 // Preview/Code tabs, an install command with a copy button, a props table. That
 // is deliberate: Nazare's pitch is "shadcn/ui for Shopify", so the workbench
 // should read like the thing it is modelled on. Tabs are CSS-only (radio
-// inputs), so the page works with JavaScript disabled; the copy buttons and the
-// theme toggle are the only scripted parts and both degrade to inert controls.
-import type { Diagnostic } from "@nazare/core";
-import type { PreviewComponent } from "./component.js";
-import type { PreviewControl } from "./controls.js";
-import { createPreviewEngine, renderContext, renderPreview } from "./engine.js";
+// inputs), so the page works with JavaScript disabled; the copy buttons, the
+// theme toggle, and frame sizing are the only scripted parts, and each degrades
+// to an inert control.
+//
+// Stories render one of two ways. Inline is the single-file mode: one document,
+// no I/O, everything visible at once — and one shared cascade, so a component's
+// global selector can restyle its neighbour. Passing `storyBase` switches to
+// isolated frames, where each story is its own document (see story-document.ts)
+// and the shell only embeds it. The rendered model is the same either way.
+import { escapeHtml } from "./html.js";
 import {
-	changedProps,
-	generatedStories,
-	type PreviewStory,
-} from "./stories.js";
-
-export type RenderedStory = {
-	story: PreviewStory;
-	html: string;
-	/** Prop names this story changed from the component's defaults. */
-	changed: string[];
-	/** Set when rendering threw — a broken story is reported, not swallowed. */
-	error?: string;
-};
-
-export type RenderedComponent = {
-	component: PreviewComponent;
-	stories: RenderedStory[];
-};
-
-export type RenderStoriesOptions = {
-	/** Emitted snippets by name, so a story can render a composing component. */
-	snippets?: Record<string, string>;
-	assetBase?: string;
-};
-
-export async function renderComponentStories(
-	component: PreviewComponent,
-	stories: PreviewStory[] = generatedStories(component),
-	options: RenderStoriesOptions = {},
-): Promise<RenderedComponent> {
-	const engine = createPreviewEngine(options);
-	const rendered: RenderedStory[] = [];
-	for (const story of stories) {
-		const changed = changedProps(story, component.controls);
-		try {
-			rendered.push({
-				story,
-				changed,
-				html: await renderPreview(
-					engine,
-					component.template,
-					renderContext(story.props, component.componentKind, component.name),
-				),
-			});
-		} catch (error) {
-			rendered.push({
-				story,
-				changed,
-				html: "",
-				error: error instanceof Error ? error.message : String(error),
-			});
-		}
-	}
-	return { component, stories: rendered };
-}
-
-const escapeHtml = (value: string): string =>
-	value.replace(
-		/[&<>"]/g,
-		(character) =>
-			({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[character] ??
-			character,
-	);
-
-/** A DOM id for a component: its name is already unique per source folder. */
-const slug = (value: string): string =>
-	value
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-|-$/g, "");
-
-const formatValue = (value: unknown): string =>
-	value === undefined ? "—" : JSON.stringify(value);
+	renderCode,
+	renderControlsJson,
+	renderControlsTable,
+	renderInstall,
+	renderIssues,
+	renderKindLine,
+} from "./panels.js";
+import type { RenderedComponent, RenderedStory } from "./render.js";
+import { storyBody } from "./story-document.js";
+import { componentId, storyFileName } from "./story-id.js";
+import { FRAME_MESSAGE, TOKEN_STYLES } from "./theme.js";
 
 const formatProps = (props: Record<string, unknown>): string =>
 	Object.entries(props)
 		.map(([name, value]) => `${name}: ${JSON.stringify(value)}`)
 		.join(", ");
 
-function copyButton(text: string, label = "Copy"): string {
-	return `<button class="copy" type="button" data-copy="${escapeHtml(text)}" aria-label="${escapeHtml(label)}">${escapeHtml(label)}</button>`;
-}
-
-/** The props table, shadcn's docs shape: prop, type, default, required. */
-function renderControlsTable(controls: PreviewControl[]): string {
-	if (controls.length === 0) {
-		return '<p class="empty-note">No typed props — plain Liquid declares none, so its stories supply their own values.</p>';
+/**
+ * The stage: the story itself, inline or framed. A framed stage opens at a
+ * placeholder height and is resized by the frame's own measurement, so a story
+ * taller than the placeholder is not left clipped once it loads.
+ */
+function renderStage(rendered: RenderedStory, storyBase?: string): string {
+	if (storyBase === undefined) {
+		return `<div class="story-stage" id="${escapeHtml(rendered.id)}">${storyBody(rendered)}</div>`;
 	}
-	const rows = controls
-		.map(
-			(control) => `
-            <tr>
-              <td><code>${escapeHtml(control.name)}</code></td>
-              <td><span class="type">${escapeHtml(
-								control.options
-									? control.options.map((option) => `"${option}"`).join(" | ")
-									: control.typeExpression,
-							)}</span></td>
-              <td><code class="muted">${escapeHtml(formatValue(control.value))}</code></td>
-              <td>${control.required ? '<span class="badge badge--required">required</span>' : '<span class="muted">—</span>'}</td>
-            </tr>`,
-		)
-		.join("");
-	return `
-        <table class="props">
-          <thead><tr><th>Prop</th><th>Type</th><th>Default</th><th>Required</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>`;
+	const src = `${storyBase}${storyFileName(rendered.id)}`;
+	return `<iframe class="story-stage story-stage--frame" id="${escapeHtml(
+		rendered.id,
+	)}" src="${escapeHtml(src)}" title="${escapeHtml(
+		rendered.story.name,
+	)}" loading="lazy" data-story-frame="${escapeHtml(rendered.id)}"></iframe>`;
 }
 
-function renderIssues(issues: Diagnostic[]): string {
-	const reportable = issues.filter((issue) => issue.severity !== "info");
-	if (reportable.length === 0) return "";
-	return `<ul class="issues">${reportable
-		.map(
-			(issue) =>
-				`<li class="issue issue--${issue.severity}"><code>${escapeHtml(
-					issue.code,
-				)}</code> ${escapeHtml(issue.message)}</li>`,
-		)
-		.join("")}</ul>`;
-}
-
-function renderStory(rendered: RenderedStory): string {
-	const body = rendered.error
-		? `<span class="story-error">render failed: ${escapeHtml(rendered.error)}</span>`
-		: rendered.html || '<span class="story-empty">renders nothing</span>';
+function renderStory(rendered: RenderedStory, storyBase?: string): string {
+	const open =
+		storyBase === undefined
+			? ""
+			: ` <a class="story-open" href="${escapeHtml(
+					`${storyBase}${storyFileName(rendered.id)}`,
+				)}" target="_blank" rel="noreferrer" title="Open this story on its own">open</a>`;
 	return `
           <figure class="story">
-            <div class="story-stage">${body}</div>
+            ${renderStage(rendered, storyBase)}
             <figcaption class="story-caption">
               <span class="story-name">${escapeHtml(rendered.story.name)}${
 								rendered.story.fixtures
 									? ' <span class="badge badge--fixture" title="Rendered against shared stand-in data, not storefront data">fixture</span>'
 									: ""
-							}</span>
+							}${open}</span>
               ${rendered.story.note ? `<span class="story-note">${escapeHtml(rendered.story.note)}</span>` : ""}
               <code>${escapeHtml(formatProps(rendered.story.props))}</code>
+              ${
+								rendered.issues.length > 0
+									? `<ul class="story-issues">${rendered.issues
+											.map(
+												(issue) =>
+													`<li class="story-issue story-issue--${issue.severity}">${escapeHtml(issue.message)}</li>`,
+											)
+											.join("")}</ul>`
+									: ""
+							}
             </figcaption>
           </figure>`;
 }
 
-function renderComponent({ component, stories }: RenderedComponent): string {
-	const id = slug(component.name);
-	const kind = component.componentKind ?? "plain Liquid";
-	const install = component.packageId
-		? `nazare add ${component.packageId}`
-		: undefined;
+function renderComponent(
+	{ component, stories }: RenderedComponent,
+	storyBase?: string,
+): string {
+	const id = componentId(component.name);
 	return `
       <section class="component" id="${id}">
         <div class="component-head">
           <h2>${escapeHtml(component.name)}</h2>
-          <p class="component-sub">
-            <span class="badge">${escapeHtml(kind)}</span>
-            <span class="badge badge--muted">${escapeHtml(component.frontend)}</span>
-            <code class="muted">${escapeHtml(component.file)}</code>
-          </p>
+          ${renderKindLine(component)}
         </div>
-        ${
-					install
-						? `<div class="install"><code>${escapeHtml(install)}</code>${copyButton(install)}</div>`
-						: ""
-				}
+        ${renderInstall(component)}
         ${renderIssues(component.issues)}
         <div class="tabs">
           <input class="tab-input" type="radio" name="tabs-${id}" id="tab-${id}-preview" checked>
@@ -183,65 +102,20 @@ function renderComponent({ component, stories }: RenderedComponent): string {
             <label class="tab" for="tab-${id}-code">Code</label>
           </div>
           <div class="tab-panel tab-panel--preview">
-            <div class="stories">${stories.map(renderStory).join("")}</div>
+            <div class="stories">${stories
+							.map((rendered) => renderStory(rendered, storyBase))
+							.join("")}</div>
           </div>
           <div class="tab-panel tab-panel--code">
-            <div class="code">
-              ${copyButton(component.template, "Copy")}
-              <pre><code>${escapeHtml(component.template)}</code></pre>
-            </div>
+            ${renderCode(component)}
           </div>
         </div>
         ${renderControlsTable(component.controls)}
-        <script type="application/json" class="controls-json">${JSON.stringify(
-					component.controls,
-				).replace(/</g, "\\u003c")}</script>
+        ${renderControlsJson(component.controls)}
       </section>`;
 }
 
 const PAGE_STYLES = `
-  :root {
-    color-scheme: light;
-    --background: #ffffff;
-    --foreground: #09090b;
-    --card: #ffffff;
-    --muted: #f4f4f5;
-    --muted-foreground: #71717a;
-    --border: #e4e4e7;
-    --accent: #f4f4f5;
-    --code-bg: #fafafa;
-    --radius: 0.65rem;
-    /* Consumed by previewed components that theme off storefront tokens. */
-    --color-foreground: var(--foreground);
-    --color-background: var(--background);
-    --color-accent: #2563eb;
-    --color-accent-foreground: #ffffff;
-    --color-ring: #2563eb;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      color-scheme: dark;
-      --background: #09090b;
-      --foreground: #fafafa;
-      --card: #0c0c0f;
-      --muted: #18181b;
-      --muted-foreground: #a1a1aa;
-      --border: #27272a;
-      --accent: #18181b;
-      --code-bg: #0c0c0f;
-    }
-  }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --background: #09090b;
-    --foreground: #fafafa;
-    --card: #0c0c0f;
-    --muted: #18181b;
-    --muted-foreground: #a1a1aa;
-    --border: #27272a;
-    --accent: #18181b;
-    --code-bg: #0c0c0f;
-  }
   * { box-sizing: border-box; }
   body {
     margin: 0;
@@ -373,11 +247,18 @@ const PAGE_STYLES = `
     background:
       radial-gradient(circle at 1px 1px, var(--border) 1px, transparent 0) 0 0 / 16px 16px;
   }
+  /* A frame carries its own padding and background: it is a whole document. */
+  .story-stage--frame { display: block; width: 100%; height: 150px; padding: 0; }
   .story-caption { display: grid; gap: .15rem; font-size: .72rem; }
   .story-name { font-weight: 500; }
+  .story-open { color: var(--muted-foreground); font-weight: 400; text-decoration: none; border-bottom: 1px dotted var(--border); }
+  .story-open:hover { color: var(--foreground); }
   .story-note, .story-caption code { color: var(--muted-foreground); word-break: break-word; }
   .story-empty { color: var(--muted-foreground); font-style: italic; font-size: .78rem; }
   .story-error { color: #b91c1c; font-size: .78rem; }
+  .story-issues { list-style: none; margin: .2rem 0 0; padding: 0; display: grid; gap: .15rem; font-size: .68rem; }
+  .story-issue--warning { color: var(--muted-foreground); }
+  .story-issue--error { color: #b91c1c; }
   .code { position: relative; border: 1px solid var(--border); border-radius: var(--radius); background: var(--code-bg); }
   .code .copy { position: absolute; top: .6rem; right: .6rem; }
   .code pre { margin: 0; padding: 1rem 1.1rem; overflow-x: auto; font-size: .78rem; line-height: 1.55; }
@@ -405,12 +286,35 @@ const PAGE_STYLES = `
 
 const PAGE_SCRIPT = `
   const root = document.documentElement;
+  const frames = () => document.querySelectorAll('[data-story-frame]');
+  const currentTheme = () => root.getAttribute('data-theme')
+    || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  const tellFrame = (frame, theme) => {
+    frame.contentWindow?.postMessage({ type: ${JSON.stringify(FRAME_MESSAGE.theme)}, theme }, '*');
+  };
+
   const toggle = document.querySelector('[data-theme-toggle]');
   toggle?.addEventListener('click', () => {
-    const dark = root.getAttribute('data-theme') === 'dark'
-      || (!root.hasAttribute('data-theme') && matchMedia('(prefers-color-scheme: dark)').matches);
-    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    const theme = currentTheme() === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', theme);
+    // Each story frame is its own document and cannot see this attribute.
+    for (const frame of frames()) tellFrame(frame, theme);
   });
+
+  // A lazily loaded frame arrives after the theme may already have changed.
+  for (const frame of frames()) {
+    frame.addEventListener('load', () => tellFrame(frame, currentTheme()));
+  }
+
+  // A frame measures itself and reports back, because the shell cannot read the
+  // layout of a document it does not own.
+  addEventListener('message', (event) => {
+    if (event.data?.type !== ${JSON.stringify(FRAME_MESSAGE.height)}) return;
+    if (!Number.isFinite(event.data.height)) return;
+    const frame = document.querySelector('[data-story-frame="' + CSS.escape(String(event.data.id)) + '"]');
+    if (frame) frame.style.height = Math.max(150, event.data.height) + 'px';
+  });
+
   document.addEventListener('click', async (event) => {
     const button = event.target.closest('[data-copy]');
     if (!button) return;
@@ -419,9 +323,9 @@ const PAGE_SCRIPT = `
       const previous = button.textContent;
       button.textContent = 'Copied';
       setTimeout(() => { button.textContent = previous; }, 1200);
-    } catch {
-      // Clipboard access can be denied (file:// in some browsers); the command
-      // is selectable text either way, so there is nothing to recover.
+    } catch (error) {
+      button.textContent = 'Copy failed';
+      button.title = error instanceof Error ? error.message : String(error);
     }
   });
 `;
@@ -432,6 +336,13 @@ export type GalleryPageOptions = {
 	stylesheets?: string[];
 	/** Scripts to load as modules — emitted behaviors and the island runtime. */
 	scripts?: string[];
+	/**
+	 * Where the isolated story documents live, e.g. `./stories/`. Set it and
+	 * stories embed as frames instead of rendering into this document; leave it
+	 * off for the single-file page. The trailing slash is the caller's, so a
+	 * frontend can point at a server route (`/story/`) just as easily as a folder.
+	 */
+	storyBase?: string;
 };
 
 export function galleryPage(
@@ -448,7 +359,7 @@ export function galleryPage(
 	const nav = components
 		.map(
 			({ component }) =>
-				`<li><a href="#${slug(component.name)}">${escapeHtml(component.name)}</a></li>`,
+				`<li><a href="#${componentId(component.name)}">${escapeHtml(component.name)}</a></li>`,
 		)
 		.join("");
 	return `<!doctype html>
@@ -458,7 +369,7 @@ export function galleryPage(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 ${links}
-<style>${PAGE_STYLES}</style>
+<style>${TOKEN_STYLES}${PAGE_STYLES}</style>
 </head>
 <body>
   <header class="topbar">
@@ -482,7 +393,9 @@ ${links}
           which a real one will have.
         </p>
       </div>
-      ${components.map(renderComponent).join("")}
+      ${components
+				.map((component) => renderComponent(component, options.storyBase))
+				.join("")}
     </main>
   </div>
 ${scripts}

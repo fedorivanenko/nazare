@@ -6,7 +6,6 @@
 // compile — nothing here is component-specific.
 import type {
 	ArtifactContract,
-	ArtifactContractProp,
 	NumberConstraints,
 	SemanticType,
 } from "@nazare/core";
@@ -21,8 +20,20 @@ export type PreviewControl = {
 	options?: string[];
 	/** Present for number controls, straight from the type constraints. */
 	range?: NumberConstraints;
-	/** Initial value: the setting default when declared, else a type-shaped one. */
-	value: unknown;
+	/**
+	 * The default the declaration states, and nothing else. Absent means the
+	 * declaration states none — which is a fact worth being able to tell, since
+	 * it is what `required` means, what a props table should print as "—", and
+	 * what decides whether a story that says nothing about this prop renders
+	 * with a value or with nil.
+	 *
+	 * This field used to hold "the default, or a value shaped like the type if
+	 * there is none", with a boolean beside it saying which. One field meaning
+	 * two things is how `class="… class"` and a bare `attributes` reached the
+	 * markup of every button in the registry. Inventing a value is a job for
+	 * `scaffold`, which writes a file a person then reads.
+	 */
+	defaultValue?: unknown;
 	/** The authored type expression, shown as the control's tooltip/source. */
 	typeExpression: string;
 };
@@ -55,6 +66,8 @@ function controlKind(type: SemanticType): PreviewControl["kind"] {
 			return "boolean";
 		case "number":
 		case "number-literal":
+		// Money is minor units: a number to the viewer, currency on render.
+		case "money":
 			return "number";
 		case "color":
 			return "color";
@@ -67,39 +80,6 @@ function controlKind(type: SemanticType): PreviewControl["kind"] {
 	}
 }
 
-/**
- * A value to render with before the viewer touches anything. Declared setting
- * defaults win; otherwise the first enum member, or a value shaped like the
- * type — a story that renders nothing by default teaches nothing.
- */
-function initialValue(
-	prop: ArtifactContractProp,
-	type: SemanticType,
-	options: string[] | undefined,
-): unknown {
-	const declared = prop.typeInfo.defaultValue ?? prop.typeInfo.setting?.default;
-	if (declared !== undefined) return declared;
-	if (options) return options[0];
-	switch (type.kind) {
-		case "boolean":
-			return false;
-		case "number":
-			return type.constraints?.min ?? 0;
-		case "number-literal":
-			return type.value;
-		case "string-literal":
-			return type.value;
-		case "url":
-			return "#";
-		case "color":
-			return "#111111";
-		case "nil":
-			return undefined;
-		default:
-			return prop.name;
-	}
-}
-
 export function controlsFromContract(
 	contract: ArtifactContract,
 ): PreviewControl[] {
@@ -107,6 +87,7 @@ export function controlsFromContract(
 	for (const prop of contract.props) {
 		const type = withoutNil(prop.typeInfo.valueType);
 		const options = stringLiteralMembers(type);
+		const declared = prop.typeInfo.defaultValue;
 		controls.push({
 			name: prop.name,
 			label: prop.typeInfo.setting?.label ?? prop.name,
@@ -116,20 +97,30 @@ export function controlsFromContract(
 			...(type.kind === "number" && type.constraints
 				? { range: type.constraints }
 				: {}),
-			value: initialValue(prop, type, options),
+			// Only `.default(v)` and a setting's `default` are the declaration
+			// speaking. The first member of an enum is a guess like any other.
+			...(prop.hasDefault ? { defaultValue: declared } : {}),
 			typeExpression: prop.typeExpression,
 		});
 	}
 	return controls;
 }
 
-/** The props a story starts from: every control at its initial value. */
-export function defaultProps(
+/**
+ * The props the declaration itself supplies — what a partial story falls
+ * through to, and what it renders with when it says nothing.
+ *
+ * A prop the declaration gives no default for is absent here, so it arrives nil
+ * on render, exactly as it would on a storefront.
+ */
+export function declaredDefaults(
 	controls: PreviewControl[],
 ): Record<string, unknown> {
 	const props: Record<string, unknown> = {};
 	for (const control of controls) {
-		if (control.value !== undefined) props[control.name] = control.value;
+		if (control.defaultValue !== undefined) {
+			props[control.name] = control.defaultValue;
+		}
 	}
 	return props;
 }

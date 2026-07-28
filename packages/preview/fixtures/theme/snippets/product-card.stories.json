@@ -1,0 +1,14 @@
+{
+  "stories": [
+    {
+      "name": "default",
+      "props": { "product": { "$file": "fixtures/product.json" } },
+      "note": "The fixture product carries a compare-at price, so the composed price snippet strikes it through."
+    },
+    {
+      "name": "with badge",
+      "props": { "product": { "$file": "fixtures/product.json" }, "badge": "Sale" },
+      "note": "The ribbon is the only optional prop, and it overlaps the image."
+    }
+  ]
+}

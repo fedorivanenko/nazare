@@ -18,6 +18,7 @@
   "dependencies": {
     "@nazare/compiler": "workspace:^",
     "@nazare/core": "workspace:^",
+		"@nazare/preview": "workspace:^",
     "@nazare/registry": "workspace:^",
     "@nazare/source-cli": "workspace:^",
     "@nazare/theme": "workspace:^"

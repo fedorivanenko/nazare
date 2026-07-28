@@ -7,5 +7,17 @@
   "dependencies": {},
   "files": [
     "disclosure.nz.liquid"
-  ]
+  ],
+  "preview": {
+    "stories": [
+      {
+        "name": "default",
+        "note": "Closed on load; the trigger works in the frame."
+      },
+      {
+        "name": "shipping",
+        "props": { "label": "Shipping & returns" }
+      }
+    ]
+  }
 }

@@ -1,0 +1,17 @@
+{
+  "stories": [
+    {
+      "name": "default",
+      "note": "Three columns, the layout most collections ship with."
+    },
+    {
+      "name": "two up",
+      "props": { "columns": 2, "heading": "New in" }
+    },
+    {
+      "name": "single column",
+      "props": { "columns": 1 },
+      "note": "What the grid collapses to on the narrowest viewport."
+    }
+  ]
+}
