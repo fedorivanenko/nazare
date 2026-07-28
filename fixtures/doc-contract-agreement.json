@@ -13,11 +13,11 @@
 		"alkamind-nazare": {
 			"declared": 131,
 			"compared": 131,
-			"agree": 89,
-			"declaredOptionalButInferredRequired": 16,
-			"declaredRequiredButInferredOptional": 16,
-			"declaredRequiredButInferredUnknown": 5,
-			"other": 5
+			"agree": 84,
+			"declaredOptionalButInferredRequired": 25,
+			"declaredRequiredButInferredOptional": 15,
+			"declaredRequiredButInferredUnknown": 3,
+			"other": 4
 		}
 	}
 }

@@ -219,7 +219,7 @@ places to declare an interface means they eventually disagree.
 {
   "stories": [
     { "name": "default" },
-    { "name": "on sale", "props": { "product": { "$fixture": "product" } } },
+    { "name": "on sale", "props": { "product": { "$file": "fixtures/product.json" } } },
     { "name": "no badge", "props": { "badge": null },
       "note": "What the card looks like without the ribbon." }
   ]
@@ -237,13 +237,11 @@ it ships. That keeps a story about its delta, which is also what makes the
 workbench's grouping by changed prop mean anything. `null` is an explicit unset,
 distinct from absent — "what does this look like without the optional thing."
 
-Only *declared* defaults fall through. A control for an optional prop with no
-default still carries a type-shaped placeholder, so a panel has something to
-open on, but rendering with one would put the prop's own name into the markup —
-`class="… class"`, a bare `attributes`. A prop the declaration says nothing
-about arrives nil, exactly as it would on a storefront. `{% schema %}` states
-its defaults outright; `{% doc %}` has no syntax for one, so a plain snippet's
-story states every prop it wants rendered.
+Only *declared* defaults fall through. An optional prop with no default stays
+unset; preview never invents a value to make its control look populated. A prop
+the declaration says nothing about arrives nil, exactly as it would on a
+storefront. `{% schema %}` states defaults outright; `{% doc %}` has no syntax
+for one, so a plain snippet's story states every prop it wants rendered.
 
 **A story file is what publishes a component to the workbench.** No file, no
 sidebar entry. That is the whole discovery rule, and it is what keeps a real
@@ -274,8 +272,8 @@ because a story that quietly resolved to nothing would look plausible.
 **Objects only.** A fixture exists because JSON cannot reasonably hold the
 thing — a product with its images, variants and compare-at price — and because
 forty components should agree about the shop they belong to. A number is not
-that: `{ "$fixture": "price" }` was `2400` wearing a costume, longer to write
-than the number and a layer of indirection for a reader to unpick for nothing.
+that: an indirect price fixture would be `2400` wearing a costume, longer to
+write than the number and harder for a reader to understand.
 Scalars are literals, and you type them.
 
 **They are your files, and there is nowhere else to look.**
@@ -330,7 +328,7 @@ Liquid does not complain about a call that passes a prop the template never
 reads, or omits one it needs: the value is nil, the markup is missing, and the
 story looks plausible. So every story is checked against what the component
 declares — an undeclared prop (usually a typo), a value outside an enum, a
-number outside its range, a required prop nobody passed, a `$fixture` name that
+number outside its range, a required prop nobody passed, or a `$file` path that
 does not exist.
 
 Since the interface belongs to the Liquid and the story owns only values, a
@@ -514,8 +512,8 @@ a canvas that quietly stops matching the controls above it.
 
 A fixture prop is shown as the reference it is, with no field pretending
 otherwise; the JSON tab is where one changes. What is written is the story's
-delta, with `{ "$fixture": "product" }` left as the
-reference it is rather than the three kilobytes it resolves to, which is why
+delta, with `{ "$file": "fixtures/product.json" }` left as a path rather than
+the three kilobytes it resolves to, which is why
 `PreviewStory` keeps `source` alongside its resolved props.
 
 **A field shows what renders, not what the story states.** A prop the story says

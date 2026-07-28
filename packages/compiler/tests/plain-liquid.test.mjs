@@ -5,9 +5,9 @@ import {
 	compileArtifact,
 	compileNazareArtifact,
 	compilePlainLiquid,
-	parsePlainLiquid,
-	plainLiquidFrontend,
+	treeSitterPlainLiquidFrontend,
 } from "../dist/index.js";
+import { collectPlainLiquidThemeFacts } from "../dist/theme-liquid-facts.js";
 
 test("plain Liquid frontend parses schema, settings reads, and static dependencies", () => {
 	const source = `<section>
@@ -60,7 +60,7 @@ test("plain Liquid frontend reports authored schema setting drift", () => {
 });
 
 test("plain Liquid frontend keeps dynamic dependencies indexed without paths", () => {
-	const ast = parsePlainLiquid(
+	const { ast } = compilePlainLiquid(
 		"{% render snippet_name %}\n{% layout layout_name %}",
 		"templates/page.liquid",
 	);
@@ -113,6 +113,27 @@ test("plain Liquid frontend records failed parses without derived facts", () => 
 	);
 });
 
+test("plain Liquid fact scanning rejects malformed expressions", () => {
+	const result = collectPlainLiquidThemeFacts(
+		"snippets/broken-expression.liquid",
+		"{{ title | default: 'missing }}",
+	);
+
+	assert.deepEqual(result.facts, [
+		{
+			kind: "declaresSnippet",
+			path: "snippets/broken-expression.liquid",
+			name: "broken-expression",
+		},
+	]);
+	assert.ok(
+		result.issues.some((issue) => issue.code === "NAZARE_PARSE_LIQUID"),
+	);
+	assert.ok(
+		result.issues.some((issue) => issue.code === "PLAIN_LIQUID_FACTS_SKIPPED"),
+	);
+});
+
 test("plain Liquid liquid-only mode rejects malformed Liquid structure", () => {
 	const result = compilePlainLiquid(
 		"<div>{% if product %}<span>{{ section.settings.title }}</span>",
@@ -139,6 +160,41 @@ test("plain Liquid liquid-only mode ignores malformed HTML while validating Liqu
 	assert.equal(result.dependencies[0]?.name, "card");
 	assert.equal(
 		result.issues.some((issue) => issue.severity === "error"),
+		false,
+	);
+});
+
+test("Tree-sitter plain Liquid strict mode rejects malformed HTML", () => {
+	const source = `<div>{{ section.settings.title }}`;
+	const strict = compileArtifact({
+		source,
+		file: "sections/malformed-html.liquid",
+		frontendOptions: { parseMode: "strict" },
+	});
+	assert.equal(strict.frontendMetadata.factsCollected, false);
+	assert.ok(
+		strict.issues.some(
+			(issue) =>
+				issue.code === "TREE_SITTER_MISSING" ||
+				issue.code === "TREE_SITTER_ERROR",
+		),
+	);
+	assert.ok(
+		strict.issues.some((issue) => issue.code === "PLAIN_LIQUID_FACTS_SKIPPED"),
+	);
+
+	const liquidOnly = compileArtifact({
+		source,
+		file: "sections/malformed-html.liquid",
+		frontendOptions: { parseMode: "liquid-only" },
+	});
+	assert.equal(liquidOnly.frontendMetadata.factsCollected, true);
+	assert.equal(
+		liquidOnly.issues.some(
+			(issue) =>
+				issue.code === "TREE_SITTER_MISSING" ||
+				issue.code === "TREE_SITTER_ERROR",
+		),
 		false,
 	);
 });
@@ -226,24 +282,27 @@ test("plain Liquid settings scanner ignores string literals, non-expression text
 	);
 });
 
-test("compileArtifact selects the built-in plain Liquid frontend", () => {
+test("compileArtifact defaults to the Tree-sitter plain Liquid frontend", () => {
 	const compiled = compileArtifact({
 		source: "<div>{{ product.title }}</div>",
 		file: "snippets/product-title.liquid",
 	});
 
 	assert.equal(compiled.ok, true);
-	assert.equal(compiled.frontend, "plain-liquid");
+	assert.equal(compiled.frontend, "tree-sitter-plain-liquid");
 	assert.equal(compiled.contractProvenance, "none");
 	assert.equal(compiled.frontendSupport.explicitSchemaSyntax, true);
 });
 
-test("plainLiquidFrontend does not accept Nazare Liquid files", () => {
+test("Tree-sitter plain Liquid frontend does not accept Nazare Liquid files", () => {
 	assert.equal(
-		plainLiquidFrontend.accepts("components/card.nz.liquid", ""),
+		treeSitterPlainLiquidFrontend.accepts("components/card.nz.liquid", ""),
 		false,
 	);
-	assert.equal(plainLiquidFrontend.accepts("snippets/card.liquid", ""), true);
+	assert.equal(
+		treeSitterPlainLiquidFrontend.accepts("snippets/card.liquid", ""),
+		true,
+	);
 });
 
 test("plain Liquid frontend validates frontend options", () => {
@@ -253,11 +312,23 @@ test("plain Liquid frontend validates frontend options", () => {
 		frontendOptions: { parseMode: "loose" },
 	});
 
-	assert.equal(compiled.ok, true);
+	assert.equal(compiled.ok, false);
 	assert.equal(compiled.canEmit, false);
 	assert.ok(
 		compiled.issues.some(
 			(issue) => issue.code === "PLAIN_LIQUID_INVALID_FRONTEND_OPTION",
+		),
+	);
+
+	const unknown = compileArtifact({
+		source: "<div></div>",
+		file: "snippets/card.liquid",
+		frontendOptions: { parseMdoe: "strict" },
+	});
+	assert.equal(unknown.ok, false);
+	assert.ok(
+		unknown.issues.some(
+			(issue) => issue.code === "PLAIN_LIQUID_UNKNOWN_FRONTEND_OPTION",
 		),
 	);
 });
@@ -296,9 +367,9 @@ test("plain Liquid settings scanner handles range endpoints", () => {
 	);
 });
 
-test("plain Liquid liquid-only mode skips parsing sources with no Liquid syntax", () => {
-	// Generated page-builder chunks are megabytes of markup with no Liquid at
-	// all. Skipping the parse must produce exactly what parsing would have.
+test("plain Liquid liquid-only mode accepts sources with no Liquid syntax", () => {
+	// Generated page-builder chunks can contain no Liquid at all; masking still
+	// produces the same empty analysis result.
 	const generated = `<style>${".r-1dj3cc3{color:#000}".repeat(20_000)}</style><div class="r-1dj3cc3">text</div>`;
 	const result = compilePlainLiquid(generated, "snippets/generated.0.liquid", {
 		parseMode: "liquid-only",
@@ -314,9 +385,8 @@ test("plain Liquid liquid-only mode skips parsing sources with no Liquid syntax"
 	);
 });
 
-test("plain Liquid liquid-only mode still parses when Liquid survives masking", () => {
-	// Liquid inside a <style> body is masked away, but Liquid outside one is
-	// not: the skip must key off the masked source, not the raw source.
+test("plain Liquid liquid-only mode preserves Liquid outside masked bodies", () => {
+	// Liquid inside a <style> body is masked away, but Liquid outside one remains.
 	const source = `<style>{{ hidden.by.masking }}</style>{% render 'card' %}{{ section.settings.title }}`;
 	const result = compilePlainLiquid(source, "snippets/mixed.liquid", {
 		parseMode: "liquid-only",

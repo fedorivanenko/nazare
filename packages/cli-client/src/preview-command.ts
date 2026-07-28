@@ -84,13 +84,15 @@ export type PreviewCollection = {
 const errorText = (error: unknown): string =>
 	error instanceof Error ? error.message : String(error);
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+
 /**
  * What the page was built from: the directory, and the commit it was at.
  *
  * A built workbench outlives its checkout — deployed, linked, opened days later
- * — and "is this current?" otherwise has no answer on the page. Every call is
- * allowed to fail: a theme is often not in a repository at all, and a preview
- * is not the place to insist on one.
+ * — and "is this current?" otherwise has no answer on page. Missing metadata
+ * does not block preview, but its cause is returned explicitly.
  */
 export function previewSource(
 	dir: string,
@@ -105,15 +107,18 @@ export function previewSource(
 		}).trim();
 	};
 
-	// Two questions, and only the first is allowed to fail quietly: a theme
-	// often is not in a repository, and git often is not installed. Neither is
-	// a problem with the preview, so neither is worth a word.
+	// Revision metadata is optional, but failure is still visible. This keeps a
+	// non-repository usable without making "not a repository", missing git, and
+	// an unexpected git failure indistinguishable.
 	try {
 		if (run("rev-parse", "--is-inside-work-tree") !== "true") {
 			return { source: { path: label } };
 		}
-	} catch {
-		return { source: { path: label } };
+	} catch (error) {
+		return {
+			source: { path: label },
+			problem: `Unable to read git revision for ${dir}: ${errorText(error)}`,
+		};
 	}
 
 	// Inside a work tree, though, a failing git command is unexpected, and a
@@ -334,16 +339,30 @@ async function collectPackages(
 		if (raw === undefined) continue;
 		let manifest: NazareManifest;
 		try {
-			manifest = JSON.parse(raw) as NazareManifest;
+			const parsed: unknown = JSON.parse(raw);
+			if (!isRecord(parsed)) throw new Error("expected an object");
+			if (typeof parsed.id !== "string" || parsed.id.trim() === "") {
+				throw new Error('"id" must be a non-empty string');
+			}
+			if (typeof parsed.entry !== "string" || parsed.entry.trim() === "") {
+				throw new Error('"entry" must be a non-empty string');
+			}
+			if (
+				parsed.kind !== undefined &&
+				!["snippet", "section", "block", "function"].includes(
+					String(parsed.kind),
+				)
+			) {
+				throw new Error('"kind" must be snippet, section, block, or function');
+			}
+			manifest = parsed as NazareManifest;
 		} catch (error) {
-			collection.malformed.push(
-				`${folder}/nazare.json: invalid JSON: ${errorText(error)}`,
-			);
+			collection.malformed.push(`${folder}/nazare.json: ${errorText(error)}`);
 			collection.malformedComponents.push(folder);
 			continue;
 		}
 		// A function package (`cn`) has no template to preview.
-		if (!manifest.entry?.endsWith(".liquid")) continue;
+		if (!manifest.entry.endsWith(".liquid")) continue;
 
 		const file = `${folder}/${manifest.entry}`;
 		const source = await readIfPresent(join(dir, file));
@@ -354,7 +373,14 @@ async function collectPackages(
 			// A function package was already skipped, so the kind is a template one.
 			kind: manifest.kind as Exclude<NazareManifest["kind"], "function">,
 		});
-		const stories = storiesFor({ manifest, readFixture });
+		let stories: PreviewStory[];
+		try {
+			stories = storiesFor({ manifest, readFixture });
+		} catch (error) {
+			collection.malformed.push(errorText(error));
+			collection.malformedComponents.push(component.name);
+			stories = [];
+		}
 		const entryRecord = {
 			component,
 			stories,
@@ -437,12 +463,26 @@ export async function runPreviewBuild(
 	// A package's emitted stylesheets and behaviors are assets it produced; a
 	// theme's live in the theme, where asset_url already points.
 	if (collection.layout === "package") {
+		const assets = new Map<string, { contents: string; source: string }>();
 		for (const { component } of collection.previewed) {
 			for (const asset of component.assets) {
-				const name = asset.path.split("/").pop() as string;
-				await mkdir(join(outDir, "assets"), { recursive: true });
-				await writeFile(join(outDir, "assets", name), asset.contents);
+				const name = basename(asset.path);
+				const existing = assets.get(name);
+				if (existing && existing.contents !== asset.contents) {
+					throw new Error(
+						`Preview asset collision: ${existing.source} and ${component.file}:${asset.path} both emit assets/${name}`,
+					);
+				}
+				assets.set(name, {
+					contents: asset.contents,
+					source: `${component.file}:${asset.path}`,
+				});
 			}
+		}
+		if (assets.size > 0)
+			await mkdir(join(outDir, "assets"), { recursive: true });
+		for (const [name, asset] of assets) {
+			await writeFile(join(outDir, "assets", name), asset.contents);
 		}
 	} else if (existsSync(join(dir, "assets"))) {
 		await cp(join(dir, "assets"), join(outDir, "assets"), { recursive: true });

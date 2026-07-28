@@ -1,4 +1,3 @@
-import { parseNazareLiquid } from "./parser.js";
 import type {
 	BuildNazareThemeWorkspaceOptions,
 	ThemeAnalysisCache,
@@ -14,6 +13,7 @@ import {
 	type ThemeUpdateTelemetry,
 } from "./theme-session.js";
 import { buildNazareThemeWorkspace } from "./theme-workspace.js";
+import { projectTreeSitterNazareAst } from "./tree-sitter-nazare-projector.js";
 
 export type ThemeBuildUpdate = {
 	revision: number;
@@ -425,7 +425,7 @@ function buildRecomputationClosure(
 	);
 	const dependents = new Map<string, Set<string>>();
 	for (const file of components.values()) {
-		const ast = parseNazareLiquid(file.contents, file.path);
+		const ast = projectTreeSitterNazareAst(file.contents, file.path).ast;
 		for (const node of ast.nodes) {
 			if (node.type !== "NazareImport" && node.type !== "NazareAssetImport")
 				continue;

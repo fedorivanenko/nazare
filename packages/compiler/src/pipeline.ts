@@ -26,7 +26,7 @@ export type ProjectArtifactOptions = {
 export type ProjectIROptions = {
 	mode?: CompilerMode;
 	contracts?: ArtifactContract[];
-	issues?: Diagnostic[];
+	issues: Diagnostic[];
 	contractPath: string;
 };
 
@@ -65,7 +65,7 @@ export function projectIR(
 	const contracts = options.contracts ?? [];
 	const graph = artifactGraphFromIR(ir);
 	const issues = [
-		...markDiagnostics(options.issues ?? [], "parse"),
+		...diagnosticsWithRequiredPhases(options.issues),
 		...sharedIRIssues(ir, graph, contracts, options.mode),
 	];
 	const contract = contractFromIR(ir, options.contractPath, contracts);
@@ -86,12 +86,25 @@ function sharedIRIssues(
 	];
 }
 
+function diagnosticsWithRequiredPhases(
+	diagnostics: Diagnostic[],
+): Diagnostic[] {
+	for (const diagnostic of diagnostics) {
+		if (!diagnostic.phase) {
+			throw new Error(
+				`Frontend diagnostic ${diagnostic.code} is missing its compiler phase`,
+			);
+		}
+	}
+	return diagnostics;
+}
+
 export function markDiagnostics(
 	diagnostics: Diagnostic[],
 	phase: DiagnosticPhase,
 ): Diagnostic[] {
 	return diagnostics.map((diagnostic) => ({
 		...diagnostic,
-		phase: diagnostic.phase ?? phase,
+		phase,
 	}));
 }

@@ -560,7 +560,7 @@ for (const c of cases) {
 		if (c.emit) {
 			issues.push(...emitTheme(c.src, result, { name: "w", readFile }).issues);
 		}
-		const merged = { ...result, issues };
+		const merged = { ...result, source: c.src, issues };
 
 		if (c.check) {
 			c.check(merged);

@@ -63,6 +63,8 @@ import { componentKindFromIR } from "./symbols.js";
 
 export type CompilerMode = "loose" | "strict";
 
+export const DEFAULT_COMPILER_MODE: CompilerMode = "strict";
+
 export type CheckArtifactIROptions = {
 	/** strict keeps component-author guarantees; loose keeps only contract/build basics. */
 	mode?: CompilerMode;
@@ -122,7 +124,7 @@ export function checkArtifactIR(
 	contracts: ArtifactContract[] = [],
 	options: CheckArtifactIROptions = {},
 ): Diagnostic[] {
-	const mode = options.mode ?? "strict";
+	const mode = options.mode ?? DEFAULT_COMPILER_MODE;
 	return CHECK_RULES.filter((rule) => rule.modes.includes(mode)).flatMap(
 		(rule) => rule.run(ir, contracts, mode),
 	);

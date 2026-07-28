@@ -5,7 +5,7 @@ import {
 	buildNazareThemeWorkspace,
 	buildPlainLiquid,
 	collectPlainLiquidThemeFacts,
-	parseNazareLiquid,
+	projectTreeSitterNazareAst,
 } from "@nazare/compiler";
 import type { ArtifactContract, ComponentKind, Diagnostic } from "@nazare/core";
 import { controlsFromContract, type PreviewControl } from "./controls.js";
@@ -88,11 +88,17 @@ function splitEmitted(files: { path: string; contents: string }[]): {
 	assets: PreviewAsset[];
 } {
 	let template = "";
+	let templatePath: string | undefined;
 	const assets: PreviewAsset[] = [];
 	for (const file of files) {
 		if (file.path.endsWith(".liquid")) {
-			// One artifact emits one template; assets are everything else.
-			template ||= file.contents;
+			if (templatePath !== undefined) {
+				throw new Error(
+					`Preview expected one emitted template, but output contains both ${templatePath} and ${file.path}`,
+				);
+			}
+			templatePath = file.path;
+			template = file.contents;
 			continue;
 		}
 		assets.push(file);
@@ -190,7 +196,7 @@ function importClosure(
 		const path = pending.pop();
 		const contents = path === undefined ? undefined : files.get(path);
 		if (path === undefined || contents === undefined) continue;
-		for (const node of parseNazareLiquid(contents, path).nodes) {
+		for (const node of projectTreeSitterNazareAst(contents, path).ast.nodes) {
 			if (node.type !== "NazareImport" || files.has(node.path)) continue;
 			const imported = readFile(node.path);
 			if (imported === undefined) continue;

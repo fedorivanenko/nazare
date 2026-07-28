@@ -537,6 +537,12 @@ test("a sidecar declaration outranks the manifest", () => {
 
 	assert.ok(names.includes("from sidecar"));
 	assert.ok(!names.includes("from manifest"));
+
+	assert.deepEqual(
+		storiesFor({ manifest, sidecar: { stories: [] } }),
+		[],
+		"an explicit empty sidecar does not fall through to manifest stories",
+	);
 });
 
 test("Shopify's form tag renders its body instead of failing the story", async () => {

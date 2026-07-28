@@ -13,7 +13,6 @@ import type {
 	Id,
 	PropArgumentSyntaxNode,
 } from "@nazare/core";
-import { NodeTypes } from "@shopify/liquid-html-parser";
 import type { NazareAst } from "./ast.js";
 import { bundleScript, indent } from "./bundle.js";
 import {
@@ -79,7 +78,7 @@ class OverlappingEmitEditsError extends Error {
 }
 
 export function checkEmitPreconditions(
-	source: string,
+	_source: string,
 	compiled: CompiledComponent,
 	options: { name: string },
 ): Diagnostic[] {
@@ -89,7 +88,7 @@ export function checkEmitPreconditions(
 	const kind = componentKindFromIR(compiled.ir);
 
 	if (hasScript || kind === "block") {
-		const root = rootElement(source, compiled.ast);
+		const root = rootElement(compiled.ast);
 		if (!root) {
 			if (hasScript) issues.push(emitScriptWithoutRoot(options.name));
 		} else {
@@ -404,7 +403,7 @@ function emitLiquid(
 	// data-nz-component is only the island mount hook now — styles scope by
 	// class rewrite and need no root attribute.
 	if (hasScript || kind === "block") {
-		const root = rootElement(source, compiled.ast);
+		const root = rootElement(compiled.ast);
 		if (root) {
 			if (root.marker) {
 				edits.push({ ...root.marker, replacement: "" });
@@ -481,103 +480,18 @@ type RootElement = {
 };
 
 /** Explicit nz-root if present, otherwise the first top-level element. */
-function rootElement(source: string, ast: NazareAst): RootElement | undefined {
-	let first: RootElement | undefined;
-	let explicit: RootElement | undefined;
-	let count = 0;
-	let markerCount = 0;
-
-	for (const node of ast.liquidAst.children) {
-		if (!isHtmlElementLike(node)) continue;
-		count += 1;
-
-		const candidate = rootElementCandidate(source, node);
-		if (candidate.marker) markerCount += 1;
-		first ??= candidate;
-		if (candidate.marker && !explicit) explicit = candidate;
-	}
-
+function rootElement(ast: NazareAst): RootElement | undefined {
+	const first = ast.htmlRoots[0];
+	const explicit = ast.htmlRoots.find((root) => root.marker);
 	const selected = explicit ?? first;
 	if (!selected) return undefined;
 	return {
-		...selected,
-		markerCount,
-		// Explicit marker resolves the root intentionally; multiple top-level
-		// elements are no longer ambiguous for runtime stamping.
-		topLevelCount: explicit ? 1 : count,
+		tagEnd: selected.tagEnd,
+		tagName: selected.tagName,
+		topLevelCount: explicit ? 1 : ast.htmlRoots.length,
+		markerCount: ast.htmlRoots.filter((root) => root.marker).length,
+		marker: selected.marker,
 	};
-}
-
-function isHtmlElementLike(
-	node: NazareAst["liquidAst"]["children"][number],
-): boolean {
-	return (
-		node.type === NodeTypes.HtmlElement ||
-		node.type === NodeTypes.HtmlVoidElement ||
-		node.type === NodeTypes.HtmlSelfClosingElement
-	);
-}
-
-function rootElementCandidate(source: string, node: unknown): RootElement {
-	const tagEnd = (node as { blockStartPosition: { end: number } })
-		.blockStartPosition.end;
-	const name = (node as { name?: unknown }).name;
-	const tagName =
-		typeof name === "string"
-			? name
-			: Array.isArray(name) &&
-					typeof (name[0] as { value?: unknown })?.value === "string"
-				? String((name[0] as { value: string }).value)
-				: "unknown";
-	return {
-		tagEnd: source[tagEnd - 2] === "/" ? tagEnd - 2 : tagEnd - 1,
-		tagName,
-		topLevelCount: 0,
-		markerCount: 0,
-		marker: rootMarkerRange(source, node),
-	};
-}
-
-function rootMarkerRange(
-	source: string,
-	node: unknown,
-): { start: number; end: number } | undefined {
-	for (const attribute of (node as { attributes?: unknown[] }).attributes ??
-		[]) {
-		if (!isAttributeLike(attribute)) continue;
-		if (attributeName(attribute) !== "nz-root") continue;
-		let start = attribute.position.start;
-		while (start > 0 && /[ \t]/.test(source[start - 1])) start -= 1;
-		return { start, end: attribute.position.end };
-	}
-	return undefined;
-}
-
-function isAttributeLike(attribute: unknown): attribute is {
-	type: string;
-	name: { type: string; value?: unknown }[];
-	position: { start: number; end: number };
-} {
-	return (
-		typeof attribute === "object" &&
-		attribute !== null &&
-		"type" in attribute &&
-		"name" in attribute &&
-		"position" in attribute
-	);
-}
-
-function attributeName(attribute: {
-	name: { type: string; value?: unknown }[];
-}): string | undefined {
-	let text = "";
-	for (const part of attribute.name) {
-		if (part.type !== NodeTypes.TextNode || typeof part.value !== "string") {
-			return undefined;
-		}
-		text += part.value;
-	}
-	return text;
 }
 
 /** Descriptor telling the runtime how to parse each ref's data-* strings. */

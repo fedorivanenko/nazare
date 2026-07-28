@@ -12,9 +12,9 @@ import {
 	emitLiquidFile,
 	emitScriptFiles,
 	emitTheme,
-	nazareLiquidFrontend,
-	parseNazareLiquid,
+	projectTreeSitterNazareAst,
 	resolveAssetImports,
+	treeSitterNazareLiquidFrontend,
 } from "../dist/index.js";
 
 function buildWorkspaceFile(source, file, options = {}) {
@@ -32,15 +32,15 @@ function buildWorkspaceFile(source, file, options = {}) {
 	};
 }
 
-test("generic compileArtifact selects the Nazare Liquid frontend", () => {
-	const source = `{% props title: string %}<h1>{{ props.title }}</h1>`;
+test("generic compileArtifact defaults to the Tree-sitter Nazare frontend", () => {
+	const source = `{% props { title: string } %}<h1>{{ props.title }}</h1>`;
 	const compiled = compileArtifact({
 		source,
 		file: "component.nz.liquid",
 	});
 
 	assert.equal(compiled.ok, true);
-	assert.equal(compiled.frontend, "nazare-liquid");
+	assert.equal(compiled.frontend, "tree-sitter-nazare-liquid");
 	assert.equal(compiled.canEmit, true);
 	assert.equal(compiled.contract.path, "component.nz.liquid");
 	assert.equal(compiled.frontendSupport.explicitPropsSyntax, true);
@@ -71,16 +71,43 @@ test("compileArtifact reports unsupported input when no frontend matches", () =>
 	assert.equal("contract" in compiled, false);
 });
 
+test("Tree-sitter Nazare selection projects through the shared AST boundary", () => {
+	const source = `{% component snippet %}
+{% props { title: string.required() } %}
+<div ref="root" nz-root data-title="{{ props.title }}">{{ props.title }}</div>`;
+	const compiled = compileArtifact({ source, file: "component.nz.liquid" });
+
+	assert.equal(compiled.ok, true);
+	assert.equal(compiled.frontend, "tree-sitter-nazare-liquid");
+	assert.ok(compiled.ast);
+	assert.ok(compiled.ir);
+});
+
+test("Nazare frontend rejects every unsupported option", () => {
+	const compiled = compileArtifact({
+		source: "<div></div>",
+		file: "card.nz.liquid",
+		frontendOptions: { parseMode: "strict" },
+	});
+	assert.equal(compiled.ok, false);
+	assert.equal(compiled.canEmit, false);
+	assert.ok(
+		compiled.issues.some(
+			(issue) => issue.code === "NAZARE_LIQUID_UNKNOWN_FRONTEND_OPTION",
+		),
+	);
+});
+
 test("compileArtifact honors an explicit frontend", () => {
 	const source = `<div></div>`;
 	const compiled = compileArtifact({
 		source,
 		file: "component.liquid",
-		frontend: nazareLiquidFrontend,
+		frontend: treeSitterNazareLiquidFrontend,
 	});
 
 	assert.equal(compiled.ok, true);
-	assert.equal(compiled.frontend, "nazare-liquid");
+	assert.equal(compiled.frontend, "tree-sitter-nazare-liquid");
 	assert.ok(compiled.ast);
 });
 
@@ -249,9 +276,9 @@ test("check category APIs expose the strict check groups", () => {
 });
 
 test("checking dependencies is an explicit call, not a compile-time policy", async () => {
-	const { checkDependencies, parseNazareLiquid: parse } = await import(
-		"../dist/index.js"
-	);
+	const { checkDependencies, projectTreeSitterNazareAst: project } =
+		await import("../dist/index.js");
+	const parse = (source, file) => project(source, file).ast;
 	const source = `{% import Child from "./child.nz.liquid" %}\n{% render Child {} %}`;
 	const files = {
 		"child.nz.liquid": `{% props { title: string.requried() } %}<span>{{ props.title }}</span>`,
@@ -289,9 +316,9 @@ test("checking dependencies is an explicit call, not a compile-time policy", asy
 });
 
 test("dependency checking surfaces nested import graph failures", async () => {
-	const { checkDependencies, parseNazareLiquid: parse } = await import(
-		"../dist/index.js"
-	);
+	const { checkDependencies, projectTreeSitterNazareAst: project } =
+		await import("../dist/index.js");
+	const parse = (source, file) => project(source, file).ast;
 	const source = `{% import Child from "./child.nz.liquid" %}\n{% render Child {} %}`;
 	const files = {
 		"child.nz.liquid": `{% import Grandchild from "./missing.nz.liquid" %}\n<span>child</span>`,
@@ -309,9 +336,9 @@ test("dependency checking surfaces nested import graph failures", async () => {
 });
 
 test("dependency checking reports import cycles per requester", async () => {
-	const { checkDependencies, parseNazareLiquid: parse } = await import(
-		"../dist/index.js"
-	);
+	const { checkDependencies, projectTreeSitterNazareAst: project } =
+		await import("../dist/index.js");
+	const parse = (source, file) => project(source, file).ast;
 	const source = `{% import A from "./a.nz.liquid" %}\n{% import B from "./b.nz.liquid" %}`;
 	const files = {
 		"a.nz.liquid": `{% import B from "./b.nz.liquid" %}`,
@@ -331,9 +358,9 @@ test("dependency checking reports import cycles per requester", async () => {
 });
 
 test("dependency checking reuses parsed transitive imports", async () => {
-	const { checkDependencies, parseNazareLiquid: parse } = await import(
-		"../dist/index.js"
-	);
+	const { checkDependencies, projectTreeSitterNazareAst: project } =
+		await import("../dist/index.js");
+	const parse = (source, file) => project(source, file).ast;
 	const source = `{% import A from "./a.nz.liquid" %}\n{% import B from "./b.nz.liquid" %}`;
 	const files = {
 		"a.nz.liquid": `{% import C from "./c.nz.liquid" %}\n{% render C {} %}`,
@@ -362,7 +389,7 @@ test("dependency checking reuses parsed transitive imports", async () => {
 
 test("resolveAssetImports returns a resolved AST without mutating parse output", () => {
 	const source = `{% import behavior from "./behavior.ts" %}\n<div></div>`;
-	const ast = parseNazareLiquid(source, "component.nz.liquid");
+	const ast = projectTreeSitterNazareAst(source, "component.nz.liquid").ast;
 	const resolved = resolveAssetImports(
 		ast,
 		() => `export default island(() => {});`,

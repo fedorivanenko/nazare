@@ -94,7 +94,7 @@ test("Nazare props become declared inputs without leaking reserved bindings", ()
 		{
 			path: "components/card.nz.liquid",
 			contents: [
-				"{% props title: string.required() %}",
+				"{% props { title: string.required() } %}",
 				"{% stylesheet styles %}.card {}{% endstylesheet %}",
 				'<div class="{{ styles.card }}">{{ props.title }}</div>',
 			].join("\n"),

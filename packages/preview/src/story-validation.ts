@@ -123,11 +123,8 @@ export function validateStory(
 		}
 	}
 
-	// Required is checked against what the story itself states, not against the
-	// merged props: a control is only `required` when the declaration gives it no
-	// default, so the value it would otherwise merge in is the preview's
-	// type-shaped placeholder — a button whose label reads "label". An explicit
-	// null is the story declining to pass it.
+	// Required is checked against what story itself states. Required means
+	// declaration supplies no default; explicit null also declines to pass it.
 	for (const control of component.controls) {
 		if (!control.required) continue;
 		if (control.name in story.props && story.props[control.name] !== null) {

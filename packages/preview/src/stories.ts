@@ -11,7 +11,7 @@ import type { NazareManifest, NazareManifestStory } from "@nazare/core";
 import type { PreviewComponent } from "./component.js";
 import { declaredDefaults, type PreviewControl } from "./controls.js";
 import { resolveFixtures, usesFixtures } from "./fixtures.js";
-import type { StoryDeclaration } from "./story-file.js";
+import { parseStoryFile, type StoryDeclaration } from "./story-file.js";
 
 export type PreviewStory = {
 	name: string;
@@ -23,9 +23,9 @@ export type PreviewStory = {
 	 */
 	props: Record<string, unknown>;
 	/**
-	 * The props as authored, before `{ "$fixture": "product" }` became a product.
-	 * Kept so an editor can write the story file back without inlining three
-	 * kilobytes of stand-in data where a one-word reference used to be.
+	 * Props as authored, before `{ "$file": "fixtures/product.json" }` became
+	 * product data. Kept so an editor can write story file back without inlining
+	 * fixture contents where a readable path used to be.
 	 */
 	source?: Record<string, unknown>;
 	/** Shown under the story; why this case is worth looking at. */
@@ -43,11 +43,8 @@ export type PreviewStory = {
  * snippet prop's default, so a value the story omits would otherwise arrive nil
  * on render even though the component declares one.
  *
- * Only *declared* defaults merge. A control for an optional prop with no
- * default still carries a type-shaped placeholder so a panel has something to
- * open on, and rendering with that would put the prop's own name into the
- * markup. An undeclared prop a story does not state arrives nil, which is what
- * a storefront would do.
+ * Only *declared* defaults merge. An optional prop with no default remains
+ * absent. Preview never injects a control placeholder into rendered props.
  */
 export function storyProps(
 	story: PreviewStory,
@@ -139,9 +136,14 @@ export function storiesFor(sources: {
 	 */
 	readFixture?: (path: string) => unknown;
 }): PreviewStory[] {
-	const declaration = sources.sidecar?.stories?.length
-		? sources.sidecar
-		: sources.manifest?.preview;
+	const declaration =
+		sources.sidecar ??
+		(sources.manifest?.preview === undefined
+			? undefined
+			: parseStoryFile(
+					sources.manifest.preview,
+					`${sources.manifest.id} nazare.json preview`,
+				));
 	return declaredStories(declaration, sources.readFixture);
 }
 

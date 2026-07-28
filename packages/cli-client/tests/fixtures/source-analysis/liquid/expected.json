@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "file": "input.liquid",
+  "language": "liquid",
+  "authoritative": true,
+  "issues": [],
+  "embeddedRegions": [],
+  "syntax": {
+    "liquid": {
+      "authoritative": true,
+      "dependencies": [
+        {
+          "kind": "snippet",
+          "invocationKind": "render",
+          "name": "card",
+          "range": {
+            "start": 21,
+            "end": 62
+          }
+        }
+      ],
+      "settingsReads": [],
+      "blocks": [],
+      "conditionals": [],
+      "localBindings": [],
+      "renderArguments": [
+        {
+          "targetName": "card",
+          "argumentName": "title",
+          "valueExpression": "product.title",
+          "source": {
+            "root": "product",
+            "path": [
+              "title"
+            ],
+            "range": {
+              "start": 46,
+              "end": 59
+            }
+          },
+          "siteRange": {
+            "start": 21,
+            "end": 62
+          },
+          "range": {
+            "start": 39,
+            "end": 60
+          },
+          "implicit": false
+        }
+      ],
+      "assetReferences": [],
+      "localeReferences": [],
+      "docParams": [],
+      "reads": [
+        {
+          "root": "product",
+          "path": [
+            "title"
+          ],
+          "range": {
+            "start": 4,
+            "end": 17
+          },
+          "expression": "product.title",
+          "inCondition": false,
+          "inRenderArgument": false,
+          "local": false
+        },
+        {
+          "root": "product",
+          "path": [
+            "title"
+          ],
+          "range": {
+            "start": 46,
+            "end": 59
+          },
+          "expression": "product.title",
+          "inCondition": false,
+          "tag": "render",
+          "inRenderArgument": true,
+          "local": false
+        }
+      ],
+      "guards": [],
+      "schema": {
+        "body": "{\"name\":\"Card\",\"settings\":[{\"type\":\"text\",\"id\":\"heading\",\"label\":\"Heading\"}]}",
+        "bodyRange": {
+          "start": 75,
+          "end": 152
+        },
+        "range": {
+          "start": 63,
+          "end": 167
+        }
+      }
+    }
+  }
+}

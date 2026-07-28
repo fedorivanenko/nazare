@@ -17,7 +17,7 @@ import {
 	baseNameOf,
 	buildNazareThemeWorkspace,
 	importSpecifiers,
-	parseNazareLiquid,
+	projectTreeSitterNazareAst,
 	resolveImportPath,
 	themeSchemaFromIR,
 } from "@nazare/compiler";
@@ -1204,7 +1204,7 @@ function nazareImportClosure(
 		if (contents === undefined) continue;
 		visited.add(path);
 		if (path.endsWith(".nz.liquid")) {
-			const ast = parseNazareLiquid(contents, path);
+			const ast = projectTreeSitterNazareAst(contents, path).ast;
 			for (const node of ast.nodes) {
 				if (node.type === "NazareImport" || node.type === "NazareAssetImport") {
 					pending.push(node.path);

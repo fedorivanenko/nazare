@@ -14,7 +14,9 @@ type AuthoredSchemaJson = {
 	blocks?: { type?: string; settings?: { id?: string }[] }[];
 };
 
-export function checkVanillaSchema(ast: NazareAst): Diagnostic[] {
+export function checkVanillaSchema(
+	ast: Pick<NazareAst, "schema" | "settingsReads">,
+): Diagnostic[] {
 	if (!ast.schema) return [];
 
 	let parsed: AuthoredSchemaJson;

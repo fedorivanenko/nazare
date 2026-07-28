@@ -6,7 +6,6 @@
 // compile — nothing here is component-specific.
 import type {
 	ArtifactContract,
-	ArtifactContractProp,
 	NumberConstraints,
 	SemanticType,
 } from "@nazare/core";
@@ -88,8 +87,7 @@ export function controlsFromContract(
 	for (const prop of contract.props) {
 		const type = withoutNil(prop.typeInfo.valueType);
 		const options = stringLiteralMembers(type);
-		const declared =
-			prop.typeInfo.defaultValue ?? prop.typeInfo.setting?.default;
+		const declared = prop.typeInfo.defaultValue;
 		controls.push({
 			name: prop.name,
 			label: prop.typeInfo.setting?.label ?? prop.name,
@@ -101,7 +99,7 @@ export function controlsFromContract(
 				: {}),
 			// Only `.default(v)` and a setting's `default` are the declaration
 			// speaking. The first member of an enum is a guess like any other.
-			...(declared !== undefined ? { defaultValue: declared } : {}),
+			...(prop.hasDefault ? { defaultValue: declared } : {}),
 			typeExpression: prop.typeExpression,
 		});
 	}

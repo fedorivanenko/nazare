@@ -12,7 +12,9 @@
 			"registry/**",
 			"!**/dist",
 			"!**/.nazare-out",
-			"!**/*.json"
+			"!**/*.json",
+			"!packages/tree-sitter-*/bindings",
+			"!packages/tree-sitter-liquid/grammar.js"
 		]
 	},
 	"formatter": {

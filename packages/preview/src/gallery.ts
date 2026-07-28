@@ -323,9 +323,9 @@ const PAGE_SCRIPT = `
       const previous = button.textContent;
       button.textContent = 'Copied';
       setTimeout(() => { button.textContent = previous; }, 1200);
-    } catch {
-      // Clipboard access can be denied (file:// in some browsers); the command
-      // is selectable text either way, so there is nothing to recover.
+    } catch (error) {
+      button.textContent = 'Copy failed';
+      button.title = error instanceof Error ? error.message : String(error);
     }
   });
 `;

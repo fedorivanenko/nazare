@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import {
 	mkdir,
 	readFile,
@@ -19,11 +19,11 @@ import {
 	sep,
 } from "node:path";
 import { createInterface } from "node:readline/promises";
+import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 // Types only: erased at build, so naming the compiler here costs nothing at
 // runtime. Its values are loaded by the commands that need them — see below.
 import type {
-	checkComponentScripts,
 	compileNazareArtifact,
 	inspectNazareTheme,
 	ThemeAnalysisCache,
@@ -37,15 +37,7 @@ import {
 import { type CliOptions, parseCliOptions, printHelp } from "./options.js";
 import type { Output } from "./output.js";
 
-/**
- * The heavy halves of this CLI, loaded when a command reaches for one.
- *
- * Importing the compiler costs about ten seconds cold — eighty-seven modules —
- * and importing the preview brings liquidjs with it. Statically, every command
- * paid for both: `nazare --help` loaded a compiler to print a page of text, and
- * so did `registry list`. A dynamic import is the difference between a CLI that
- * starts and one that thinks first.
- */
+/** Heavy modules, loaded only by commands that use them. */
 const compiler = () => import("@nazare/compiler");
 const registry = () => import("@nazare/registry");
 
@@ -68,7 +60,7 @@ const INSPECT_VIEWS = new Set([
 /** Registry verbs common enough to also answer at the top level. */
 const REGISTRY_ALIASES = new Set(["add", "update", "publish"]);
 
-/** Workbench verbs. Serving one is a separate matter; these three do not. */
+/** Valid workbench verbs. */
 const PREVIEW_VERBS = new Set([
 	"serve",
 	"build",
@@ -77,7 +69,12 @@ const PREVIEW_VERBS = new Set([
 	"fixtures",
 ]);
 
-type MainOptions = { cwd?: string; env?: NodeJS.ProcessEnv; output?: Output };
+type MainOptions = {
+	cwd?: string;
+	env?: NodeJS.ProcessEnv;
+	output?: Output;
+	input?: Readable;
+};
 
 export async function main(
 	args = process.argv.slice(2),
@@ -86,6 +83,11 @@ export async function main(
 	const output = options.output ?? console;
 	const env = options.env ?? process.env;
 	const command = args[0];
+
+	if (command === "--version" || command === "version") {
+		output.log(readCliVersion());
+		return 0;
+	}
 
 	if (
 		!command ||
@@ -104,6 +106,15 @@ export async function main(
 		// sees is identified by its root-relative POSIX path, and readProjectFile
 		// is the compiler's entire filesystem.
 		const projectRoot = options.cwd ?? process.cwd();
+		if (command === "source") {
+			const { runSourceCommand } = await import("./source-command.js");
+			return await runSourceCommand(
+				projectRoot,
+				cliOptions,
+				output,
+				options.input ?? process.stdin,
+			);
+		}
 		const readProjectFile = (path: string): string | undefined => {
 			try {
 				return readFileSync(join(projectRoot, path), "utf8");
@@ -316,8 +327,16 @@ export async function main(
 	}
 }
 
-if (fileURLToPath(import.meta.url) === resolve(process.argv[1] ?? "")) {
+if (isCliEntrypoint(process.argv[1])) {
 	process.exit(await main());
+}
+
+function isCliEntrypoint(argument: string | undefined): boolean {
+	if (!argument) return false;
+	return (
+		realpathSync(fileURLToPath(import.meta.url)) ===
+		realpathSync(resolve(argument))
+	);
 }
 
 type ProjectManifest = {
@@ -1038,6 +1057,29 @@ function assertRegistryName(name: string): void {
 	throw new Error(
 		`Invalid registry name ${name}; use only letters, numbers, dot, underscore, and dash`,
 	);
+}
+
+function readCliVersion(): string {
+	for (const url of [
+		new URL("../../../VERSION", import.meta.url),
+		new URL("../package.json", import.meta.url),
+	]) {
+		try {
+			const value = readFileSync(fileURLToPath(url), "utf8").trim();
+			if (url.pathname.endsWith("package.json")) {
+				const packageMetadata = JSON.parse(value) as { version?: unknown };
+				if (typeof packageMetadata.version === "string") {
+					return packageMetadata.version;
+				}
+				throw new Error("CLI package version must be a string");
+			}
+			if (value.length > 0) return value;
+		} catch (error) {
+			if (isMissingFileError(error)) continue;
+			throw error;
+		}
+	}
+	throw new Error("Unable to determine Nazare CLI version");
 }
 
 function hasErrors(

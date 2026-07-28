@@ -24,7 +24,7 @@ The ecosystem offers many excellent tools, but each addresses only part of the p
 
 ## Quickstart
 
-Install the CLI first. The installer requires Node.js and `pnpm` (or Corepack, which can activate `pnpm`) and downloads the latest GitHub release artifact:
+Install the CLI first. The installer requires Node.js 20 or newer, selects the release artifact for the current OS and architecture, and verifies its SHA-256 checksum. Release artifacts include production dependencies; installation does not require pnpm, Python, node-gyp, or compiler tools:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh | sh
@@ -69,6 +69,42 @@ shopify theme dev --path /theme
 ```
 
 Nazare is designed for incremental adoption: start with existing Shopify Liquid files, add `.nz.liquid` components where stronger contracts help, then build everything into one normal Shopify theme.
+
+### Parser-only distribution
+
+Install only the source parser and its native grammars—without compiler, theme,
+or registry packages:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install-source.sh | sh
+nazare-source analyze sections/header.liquid
+```
+
+The full `nazare` installation exposes the same contract under
+`nazare source analyze`.
+
+Analyze authored Shopify Liquid without compiling it:
+
+```sh
+nazare-source analyze sections/header.liquid --format json
+cat sections/header.liquid | nazare-source analyze --stdin --language liquid
+```
+
+Use `--language nazare-liquid` for Nazare syntax. The default is `liquid`.
+Output is versioned JSON containing `authoritative`, parse issues, embedded
+regions, and syntax facts. Invalid syntax exits non-zero and fails closed: facts
+are not projected from a partial CST. This command is suitable for Shopify CLI
+wrappers and CI scripts. See [`docs/source-analysis-cli.md`](docs/source-analysis-cli.md)
+for the JSON contract, exit codes, and integration example.
+
+Pin a release or installation directory when needed:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/fedorivanenko/nazare/main/scripts/install.sh \
+  | NAZARE_VERSION=v0.1.0 NAZARE_HOME="$HOME/.nazare" sh
+```
+
+Uninstall by removing `$HOME/.nazare`, or the custom `NAZARE_HOME` directory.
 
 Nazare has three main parts:
 
@@ -602,20 +638,11 @@ nazare registry publish [dir]       publish a component folder (--pack writes lo
 nazare registry connect <name> <url>  save a project registry in `nazare.theme.json`
 nazare registry use <name>          select a saved project registry
 nazare registry list                list saved registries
-<<<<<<< HEAD
-nazare pack [dir]                   create a publishable registry payload
-nazare publish [dir]                publish a component folder
-nazare validate <file>              check one `.nz.liquid` file
-nazare schema <file>                print generated Shopify schema
-nazare graph <file>                 print component dependency graph
-nazare inspect theme [dir]          print whole-theme semantic graph JSON
-nazare graph-server [dir]           serve graph queries and file updates over stdio
-nazare ast <file>                   print parsed AST
-nazare ir <file>                    print compiler IR
-nazare artifact <file>              print full compiler artifact
-nazare dump <file>                  write debug JSON files into `.nazare-out`
-=======
+nazare preview <command>            serve, build, check, or scaffold the component workbench
+nazare source analyze [file]        print stable parser facts as JSON
 nazare inspect <view> <file>        compiler facts: ast, ir, graph, schema, artifact, dump
+nazare inspect theme [dir]          print whole-theme semantic graph
+nazare graph-server [dir]           serve graph queries and file updates over stdio
 ```
 
 `add`, `update`, and `publish` also answer at the top level, so `nazare add
@@ -626,7 +653,7 @@ so there is no `nazare push` or `nazare pull`:
 
 ```sh
 shopify theme push --path <outDir>
->>>>>>> origin/feat/cli-surface
+```
 ```
 
 Common options and environment variables:
@@ -636,23 +663,9 @@ Common options and environment variables:
 --version x.y.z                     add/update exact registry version
 --source-root <dir>                 add/update/build source root (else `nazare.theme.json` build.sourceRoot)
 --out-dir <dir>                     build output directory (else `nazare.theme.json` build.outDir)
-<<<<<<< HEAD
---pull                              build: fetch live theme data before building
-
-Graph server requests are newline-delimited JSON. Supported methods include
-`initialize`, `summary`, `node`, `dependencies`, `dependents`, `affectedPages`,
-`build`, `buildUpdate`, `updateFile`, `removeFile`, `watch`, `unwatch`, and
-`reload`. `watch` emits
-`graph/update` and `build/update` notifications with revisions and graph/output
-deltas on file changes.
-
---store <domain>                    build --pull: Shopify store to pull from
---theme <id|name>                   build --pull: theme to pull from
-=======
 --pull-data                         build: reconcile a live theme's merchant data first
 --store <domain>                    build --pull-data: Shopify store to pull from
 --theme <id|name>                   build --pull-data: theme to pull from
->>>>>>> origin/feat/cli-surface
 --json                              build: print the raw result as JSON
 NAZARE_REGISTRY                     one-command registry override, or `file:<dir>`
 NAZARE_TOKEN                        publish token

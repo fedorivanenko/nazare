@@ -6,6 +6,8 @@
     { "path": "packages/compiler" },
     { "path": "packages/core" },
     { "path": "packages/registry" },
+		{ "path": "packages/source" },
+		{ "path": "packages/source-cli" },
     { "path": "packages/preview" },
     { "path": "packages/theme" },
   ]

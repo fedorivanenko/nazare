@@ -1,0 +1,21 @@
+{
+  "name": "@nazare/source-cli",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "nazare-source": "dist/index.js"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nazare/source": "workspace:^"
+  }
+}

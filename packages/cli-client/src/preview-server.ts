@@ -15,7 +15,7 @@
 import { watch } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
-import { extname, join } from "node:path";
+import { basename, extname, join } from "node:path";
 import {
 	componentId,
 	galleryPage,
@@ -28,6 +28,7 @@ import {
 	storyDocuments,
 	workbenchPage,
 } from "@nazare/preview";
+import { isMissingFileError } from "./inspect-input.js";
 import type { CliOptions } from "./options.js";
 import type { Output } from "./output.js";
 import {
@@ -46,6 +47,17 @@ const DEBOUNCE_MS = 60;
 const EVENTS_PATH = "/__events";
 const SAVE_PATH = "/__save";
 const RENDER_PATH = "/__render";
+
+export function previewPort(value: string | undefined): number {
+	if (value === undefined) return DEFAULT_PORT;
+	const port = Number(value);
+	if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+		throw new Error(
+			`Invalid --port ${value}; expected an integer from 1 to 65535`,
+		);
+	}
+	return port;
+}
 
 const CONTENT_TYPES: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
@@ -109,10 +121,15 @@ async function buildState(
 	// itself and not only what a form can express.
 	const storyFiles: Record<string, { path: string; contents: string }> = {};
 	for (const entry of collection.compiled) {
-		const contents = await readFile(join(dir, entry.storyFile), "utf8").catch(
-			() => undefined,
-		);
-		if (contents === undefined) continue;
+		let contents: string;
+		try {
+			contents = await readFile(join(dir, entry.storyFile), "utf8");
+		} catch (error) {
+			if (isMissingFileError(error)) continue;
+			throw new Error(
+				`Unable to read ${entry.storyFile}: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
 		storyFiles[componentId(entry.component.name)] = {
 			path: entry.storyFile,
 			contents,
@@ -148,16 +165,26 @@ async function buildState(
 		pages.set(`/stories/${file.path}`, file.contents);
 	}
 
-	const assets = new Map<string, string>();
+	const assets = new Map<string, { contents: string; source: string }>();
 	for (const { component } of rendered) {
 		for (const asset of component.assets) {
-			assets.set(asset.path.split("/").pop() as string, asset.contents);
+			const name = basename(asset.path);
+			const existing = assets.get(name);
+			if (existing && existing.contents !== asset.contents) {
+				throw new Error(
+					`Preview asset collision: ${existing.source} and ${component.file}:${asset.path} both emit assets/${name}`,
+				);
+			}
+			assets.set(name, {
+				contents: asset.contents,
+				source: `${component.file}:${asset.path}`,
+			});
 		}
 	}
 
 	return {
 		pages,
-		assets,
+		assets: new Map([...assets].map(([name, asset]) => [name, asset.contents])),
 		collection,
 		rendered,
 		...(revision.problem ? { sourceProblem: revision.problem } : {}),
@@ -236,8 +263,12 @@ export async function saveStoryFile(
 		await writeFile(path, text.endsWith("\n") ? text : `${text}\n`);
 		return undefined;
 	}
-	const raw = await readFile(path, "utf8").catch(() => undefined);
-	if (raw === undefined) return `cannot read ${entry.storyFile}`;
+	let raw: string;
+	try {
+		raw = await readFile(path, "utf8");
+	} catch (error) {
+		return `cannot read ${entry.storyFile}: ${error instanceof Error ? error.message : String(error)}`;
+	}
 
 	let document: Record<string, unknown>;
 	try {
@@ -398,7 +429,7 @@ export async function runPreviewServe(
 	}
 
 	const clients = new Set<ServerResponse>();
-	const port = Number(cliOptions.port) || DEFAULT_PORT;
+	const port = previewPort(cliOptions.port);
 
 	const server = createServer(async (request, response) => {
 		const url = new URL(request.url ?? "/", `http://${request.headers.host}`);
@@ -487,6 +518,13 @@ export async function runPreviewServe(
 
 		if (path.startsWith("/assets/")) {
 			const name = path.slice("/assets/".length);
+			if (name.includes("/") || name.includes("\\") || name === "") {
+				response.writeHead(400, {
+					"content-type": "text/plain; charset=utf-8",
+				});
+				response.end(`Invalid asset path: ${path}`);
+				return;
+			}
 			const emitted = state?.assets.get(name);
 			if (emitted !== undefined) {
 				response.writeHead(200, {
@@ -505,8 +543,16 @@ export async function runPreviewServe(
 				});
 				response.end(contents);
 				return;
-			} catch {
-				// Falls through to the 404 below.
+			} catch (error) {
+				if (!isMissingFileError(error)) {
+					const message = `Unable to read asset ${name}: ${error instanceof Error ? error.message : String(error)}`;
+					output.error(message);
+					response.writeHead(500, {
+						"content-type": "text/plain; charset=utf-8",
+					});
+					response.end(message);
+					return;
+				}
 			}
 		}
 

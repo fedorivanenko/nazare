@@ -13,8 +13,6 @@
 import type { ThemeFact } from "@nazare/compiler";
 import type { PreviewControl } from "./controls.js";
 
-type DocParam = Extract<ThemeFact, { kind: "declaresDocParam" }>;
-
 /** `{string}`, `{number}`, `{boolean}` — Shopify's doc types, loosely written. */
 function kindFromDocType(type: string | undefined): PreviewControl["kind"] {
 	switch (type?.toLowerCase().replace(/\[\]$/, "")) {
@@ -99,29 +97,6 @@ function kindFromSettingType(type: string): PreviewControl["kind"] {
 	}
 }
 
-function settingValue(
-	setting: SchemaSetting,
-	kind: PreviewControl["kind"],
-	options: string[] | undefined,
-): unknown {
-	if (setting.default !== undefined) return setting.default;
-	if (options) return options[0];
-	switch (kind) {
-		case "boolean":
-			return false;
-		case "number":
-			return asNumber(setting.min) ?? 0;
-		case "color":
-			return "#111111";
-		case "url":
-			return "#";
-		default:
-			return typeof setting.label === "string"
-				? setting.label
-				: String(setting.id);
-	}
-}
-
 /**
  * A section's `{% schema %}` settings. This is what the theme editor would
  * show a merchant, so it is exactly the right control set — Shopify's own
@@ -151,9 +126,15 @@ export function controlsFromSchemaSource(source: string): PreviewControl[] {
 		const range =
 			type === "range"
 				? {
-						min: asNumber(entry.min) ?? 0,
-						max: asNumber(entry.max) ?? 100,
-						step: asNumber(entry.step) ?? 1,
+						...(asNumber(entry.min) !== undefined
+							? { min: asNumber(entry.min) }
+							: {}),
+						...(asNumber(entry.max) !== undefined
+							? { max: asNumber(entry.max) }
+							: {}),
+						...(asNumber(entry.step) !== undefined
+							? { step: asNumber(entry.step) }
+							: {}),
 					}
 				: undefined;
 		controls.push({
@@ -166,9 +147,7 @@ export function controlsFromSchemaSource(source: string): PreviewControl[] {
 			...(range ? { range } : {}),
 			// A schema states its defaults outright, and a setting without one is
 			// a setting the merchant has not filled in yet.
-			...(entry.default !== undefined
-				? { defaultValue: settingValue(entry, kind, options) }
-				: {}),
+			...(entry.default !== undefined ? { defaultValue: entry.default } : {}),
 			typeExpression: type,
 		});
 	}
@@ -185,6 +164,7 @@ export function plainLiquidControls(
 	facts: ThemeFact[],
 	schemaSource?: string,
 ): PreviewControl[] {
-	const fromSchema = schemaSource ? controlsFromSchemaSource(schemaSource) : [];
-	return fromSchema.length > 0 ? fromSchema : controlsFromDocParams(facts);
+	return schemaSource !== undefined
+		? controlsFromSchemaSource(schemaSource)
+		: controlsFromDocParams(facts);
 }

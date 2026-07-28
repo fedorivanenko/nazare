@@ -5,7 +5,6 @@ import { type EmitResult, emitTheme } from "./emit.js";
 // Generated from a digest of this package's source, so any change to fact
 // derivation invalidates persisted caches without anyone remembering to.
 import { THEME_FACT_CACHE_REVISION } from "./fact-cache-revision.js";
-import { parseNazareLiquid } from "./parser.js";
 import { markDiagnostics } from "./pipeline.js";
 import {
 	checkDependencies,
@@ -40,6 +39,7 @@ import { collectJsonThemeFacts } from "./theme-json-facts.js";
 import { collectPlainLiquidThemeFacts } from "./theme-liquid-facts.js";
 import { buildThemeSemanticModel } from "./theme-model.js";
 import { collectNazareThemeFacts } from "./theme-nazare-facts.js";
+import { projectTreeSitterNazareAst } from "./tree-sitter-nazare-projector.js";
 
 export const THEME_ANALYSIS_DEFAULTS = {
 	root: ".",
@@ -436,7 +436,7 @@ function fingerprintComponentSources(
 			closure.add(path);
 			const source = sources.get(path);
 			if (!source?.path.endsWith(".nz.liquid")) continue;
-			const ast = parseNazareLiquid(source.contents, source.path);
+			const ast = parseWorkspaceNazareAst(source.contents, source.path);
 			for (const node of ast.nodes) {
 				if (node.type !== "NazareImport" && node.type !== "NazareAssetImport")
 					continue;
@@ -517,7 +517,7 @@ function scopedNazareClosure(
 		visited.add(path);
 		const source = byPath.get(path);
 		if (source === undefined || !path.endsWith(".nz.liquid")) continue;
-		const ast = parseNazareLiquid(source, path);
+		const ast = parseWorkspaceNazareAst(source, path);
 		for (const node of ast.nodes) {
 			if (
 				node.type === "NazareImport" &&
@@ -630,6 +630,10 @@ function diagnosticKey(diagnostic: Diagnostic): string {
 		line: diagnostic.span?.start.line,
 		column: diagnostic.span?.start.column,
 	});
+}
+
+function parseWorkspaceNazareAst(source: string, path: string) {
+	return projectTreeSitterNazareAst(source, path).ast;
 }
 
 function hasErrors(issues: Diagnostic[]): boolean {

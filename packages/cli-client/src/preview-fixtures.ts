@@ -1,6 +1,6 @@
 // `nazare preview fixtures` — the stand-in data, as files the project owns.
 //
-//   nazare preview fixtures init [dir]              copy the built-in set in
+//   nazare preview fixtures init [dir]              copy starter files in
 //   nazare preview fixtures pull <handle> [dir]     fetch one from a store
 //
 // A fixture is shared because JSON cannot reasonably hold a product with its
@@ -72,11 +72,8 @@ async function writeFixture(
 }
 
 /**
- * Copies the built-in stand-ins into the project.
- *
- * Until this runs they are defaults living in this package, which is the part
- * nobody can read or diff. Afterwards they are ordinary JSON in the repository,
- * and the package's copies stop mattering.
+ * Copies starter stand-ins into project files. Stories resolve only explicit
+ * `$file` paths; package copies are scaffolding input, never runtime defaults.
  */
 export async function runFixturesInit(
 	projectRoot: string,
@@ -98,7 +95,7 @@ export async function runFixturesInit(
 	}
 	if (written === 0) return 1;
 	output.log(
-		`${written} fixture${written === 1 ? "" : "s"} — yours now; edit them, and a story's { "$fixture": "name" } reads these.`,
+		`${written} fixture${written === 1 ? "" : "s"} — yours now; reference one with { "$file": "fixtures/<name>.json" }.`,
 	);
 	return 0;
 }

@@ -33,15 +33,53 @@ jobs:
       # Runs the corpus theme committed to fixtures/. External themes named in
       # the manifest live on individual machines and are skipped here.
       - run: pnpm -s test:corpus
-      - name: package ephemeral PR artifact
+      - name: package ephemeral PR artifacts
         if: github.event_name == 'pull_request'
-        run: ./scripts/package-cli.sh "pr-${{ github.event.pull_request.number }}-${{ github.sha }}"
+        run: |
+          ./scripts/package-cli.sh "pr-${{ github.event.pull_request.number }}-${{ github.sha }}"
+          ./scripts/package-source-cli.sh "pr-${{ github.event.pull_request.number }}-${{ github.sha }}"
+      - name: switch to minimum supported Node.js
+        if: github.event_name == 'pull_request'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: smoke packaged CLIs and native grammars on minimum Node.js
+        if: github.event_name == 'pull_request'
+        run: |
+          ./scripts/smoke-packaged-cli.sh .release/nazare-cli-*.tar.gz
+          ./scripts/smoke-packaged-source-cli.sh .release/nazare-source-*.tar.gz
       - name: upload ephemeral PR artifact
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: nazare-cli-pr-${{ github.event.pull_request.number }}-${{ github.sha }}
-          path: .release/nazare-cli-pr-${{ github.event.pull_request.number }}-${{ github.sha }}.tar.gz
+          path: |
+            .release/*.tar.gz
+            .release/*.tar.gz.sha256
           retention-days: 14
       - name: dist is not committed
         run: test -z "$(git ls-files '*/dist/*')"
+
+  native-package-macos:
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -s build
+      - run: pnpm -s test:package
+      - name: switch to minimum supported Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: ./scripts/smoke-packaged-cli.sh .release/nazare-cli-*.tar.gz
+      - run: ./scripts/smoke-packaged-source-cli.sh .release/nazare-source-*.tar.gz
+      - run: ./scripts/smoke-installer.sh smoke cli
+      - run: ./scripts/smoke-installer.sh smoke source

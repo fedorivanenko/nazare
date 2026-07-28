@@ -12,8 +12,8 @@ export type NazareManifestStory = {
 	/**
 	 * The values this case changes, not the whole prop set. Omitted props fall
 	 * through to the defaults the component declares; `null` is an explicit
-	 * unset. A value of `{ "$fixture": "product" }` names shared storefront
-	 * stand-in data the preview owns, which JSON could not express.
+	 * unset. `{ "$file": "fixtures/product.json" }` reads shared storefront
+	 * data from a project-relative file; preview package owns no hidden fixture.
 	 */
 	props?: Record<string, unknown>;
 	/** Why this case is worth looking at. */

@@ -10,6 +10,7 @@
     { "path": "../compiler" },
     { "path": "../preview" },
     { "path": "../registry" },
+    { "path": "../source-cli" },
     { "path": "../theme" }
   ]
 }

@@ -372,6 +372,14 @@ test("a draft renders against props that are not on disk", async () => {
 	);
 });
 
+test("preview port defaults only when omitted and rejects invalid values", async () => {
+	const { previewPort } = await load();
+	assert.equal(previewPort(undefined), 4173);
+	assert.equal(previewPort("8080"), 8080);
+	assert.throws(() => previewPort("0"), /Invalid --port 0/);
+	assert.throws(() => previewPort("nope"), /Invalid --port nope/);
+});
+
 test("a directory with nothing to preview reports rather than serving", async () => {
 	await withTheme({ "notes.md": "# nothing here" }, async (dir) => {
 		const { previewServerState } = await load();

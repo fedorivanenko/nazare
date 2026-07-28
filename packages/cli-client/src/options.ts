@@ -2,6 +2,8 @@ import type { Output } from "./output.js";
 
 export type CliOptions = {
 	strictness?: "loose" | "strict";
+	language?: "liquid" | "nazare-liquid";
+	stdin?: boolean;
 	version?: string;
 	sourceRoot?: string;
 	outDir?: string;
@@ -47,6 +49,12 @@ export function parseCliOptions(args: string[]): CliOptions {
 		if (strictness) {
 			options.strictness = parseStrictness(strictness.value);
 			index += strictness.consumed - 1;
+			continue;
+		}
+		const language = readValueOption(args, index, "--language");
+		if (language) {
+			options.language = parseSourceLanguage(language.value);
+			index += language.consumed - 1;
 			continue;
 		}
 		const version = readValueOption(args, index, "--version");
@@ -97,6 +105,10 @@ export function parseCliOptions(args: string[]): CliOptions {
 			index += format.consumed - 1;
 			continue;
 		}
+		if (arg === "--stdin") {
+			options.stdin = true;
+			continue;
+		}
 		if (arg === "--pull-data") {
 			options.pullData = true;
 			continue;
@@ -122,6 +134,15 @@ export function parseCliOptions(args: string[]): CliOptions {
 	return options;
 }
 
+function parseSourceLanguage(
+	value: string | undefined,
+): "liquid" | "nazare-liquid" {
+	if (value === "liquid" || value === "nazare-liquid") return value;
+	throw new Error(
+		`Invalid --language ${value ?? "<missing>"}; expected liquid or nazare-liquid`,
+	);
+}
+
 function parseStrictness(value: string | undefined): "loose" | "strict" {
 	if (value === "loose" || value === "strict") return value;
 	throw new Error(
@@ -135,6 +156,7 @@ export function printHelp(output: Output = console): void {
   nazare build [source-root|file]    source root from arg or nazare.theme.json build.sourceRoot
   nazare check <file>                diagnostics only; non-zero exit on errors
   nazare preview <command>           the component workbench
+  nazare source analyze [file]       stable parser facts as JSON; accepts --stdin
   nazare registry <command>          install, author, and choose registries
   nazare inspect <view> <file>       compiler facts as JSON
   nazare inspect theme [dir]         semantic graph for a whole theme
@@ -176,6 +198,8 @@ Inspect views:
   ast, ir, graph, schema, artifact, dump
 
 Options:
+  --language liquid|nazare-liquid   source analyze grammar (default liquid)
+  --stdin                            source analyze: read UTF-8 source from stdin
   --strictness loose|strict
   --version x.y.z                    registry add/update/diff: exact version (default latest)
   --force                            registry update: overwrite local component edits
@@ -189,7 +213,7 @@ Options:
   --json                             build: print the raw result as JSON
   --port <number>                    preview serve: port to listen on (default 4173)
   --as <name>                        preview fixtures pull: fixture name (default product)
-  --format json|text|dot             inspect theme: JSON, human report, or Graphviz DOT
+  --format json|text|dot             source analyze requires JSON; inspect theme also supports text/dot
 
 Env:
   NAZARE_REGISTRY                    registry base URL, or file:<dir> for a local one

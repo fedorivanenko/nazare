@@ -795,8 +795,14 @@ const WORKBENCH_SCRIPT = `
   // blocked — and a preference that cannot be remembered is no reason for the
   // panel to stop opening.
   const remember = {
-    get(key) { try { return localStorage.getItem(key); } catch { return null; } },
-    set(key, value) { try { localStorage.setItem(key, value); } catch {} },
+    get(key) {
+      try { return localStorage.getItem(key); }
+      catch (error) { console.warn('Unable to read panel preference', error); return null; }
+    },
+    set(key, value) {
+      try { localStorage.setItem(key, value); }
+      catch (error) { console.warn('Unable to save panel preference', error); }
+    },
   };
   /**
    * A side panel. Two reasons it can be shut and they are not the same: the
@@ -1463,8 +1469,9 @@ const WORKBENCH_SCRIPT = `
       const previous = button.textContent;
       button.textContent = 'Copied';
       setTimeout(() => { button.textContent = previous; }, 1200);
-    } catch {
-      // Clipboard access can be denied; the command is selectable text anyway.
+    } catch (error) {
+      button.textContent = 'Copy failed';
+      button.title = error instanceof Error ? error.message : String(error);
     }
   });
 `;

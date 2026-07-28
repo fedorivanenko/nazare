@@ -330,7 +330,7 @@ test("a field shows what renders, and saving it back changes nothing", async () 
 		stories: [
 			{ name: "solid", props: { label: "Add" }, source: { label: "Add" } },
 		],
-		fetch: async (url, init) => {
+		fetch: async (_url, init) => {
 			sent = JSON.parse(init.body);
 			return { ok: true, text: async () => "saved" };
 		},
@@ -386,7 +386,7 @@ test("editing a control repaints the canvas without writing the story", async ()
 test("stories can be created and deleted where they are listed", async () => {
 	const sent = [];
 	const shell = await mountShell({
-		fetch: async (url, init) => {
+		fetch: async (_url, init) => {
 			sent.push(JSON.parse(init.body));
 			return { ok: true, text: async () => "saved" };
 		},

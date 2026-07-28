@@ -1,15 +1,13 @@
 // Shape of the parse pass's output: the handful of Nazare-specific nodes
 // (import / props / render / output expression) lifted out of a Liquid file,
-// alongside the untouched LiquidHTML AST. Anything Nazare doesn't model stays
-// opaque rather than being rejected — every valid Shopify theme should be at
-// least partially readable.
+// from canonical Tree-sitter syntax facts.
 import type {
 	ComponentKind,
 	Diagnostic,
 	PropTypeInfo,
 	SourceSpan,
 } from "@nazare/core";
-import type { DocumentNode } from "@shopify/liquid-html-parser";
+import type { LiquidSyntaxFacts } from "@nazare/source";
 
 /** @deprecated Use {@link Diagnostic} from @nazare/core. */
 export type ParseDiagnostic = Diagnostic;
@@ -182,9 +180,20 @@ export type AuthoredSchema = {
 	span: SourceSpan;
 };
 
+export type NazareHtmlRoot = {
+	tagEnd: number;
+	tagName: string;
+	marker?: { start: number; end: number };
+};
+
 export type NazareAst = {
 	file: string;
-	liquidAst: DocumentNode;
+	/** Canonical authored source; syntax projection never reads parser internals. */
+	source: string;
+	/** Tree-sitter-owned top-level HTML candidates. */
+	htmlRoots: NazareHtmlRoot[];
+	/** Canonical Liquid mechanics projected by Tree-sitter. */
+	liquidFacts: LiquidSyntaxFacts;
 	nodes: NazareNode[];
 	settingsReads: SettingsRead[];
 	schema?: AuthoredSchema;

@@ -4,6 +4,13 @@ set -eu
 repo="${NAZARE_REPO:-fedorivanenko/nazare}"
 version="${NAZARE_VERSION:-latest}"
 home_dir="${NAZARE_HOME:-$HOME/.nazare}"
+product="${NAZARE_PRODUCT:-cli}"
+
+case "$product" in
+	cli) artifact_name="nazare-cli"; executable="nazare" ;;
+	source) artifact_name="nazare-source"; executable="nazare-source" ;;
+	*) echo "unsupported Nazare product: $product" >&2; exit 1 ;;
+esac
 
 need() {
 	if ! command -v "$1" >/dev/null 2>&1; then
@@ -16,45 +23,83 @@ need curl
 need tar
 need node
 
-if ! command -v pnpm >/dev/null 2>&1; then
-	if command -v corepack >/dev/null 2>&1; then
-		corepack enable >/dev/null 2>&1 || true
-		corepack prepare pnpm@10.0.0 --activate >/dev/null 2>&1 || true
-	fi
+node_major="$(node -p 'Number(process.versions.node.split(".")[0])')"
+if [ "$node_major" -lt 20 ]; then
+	echo "Nazare requires Node.js 20 or newer; found $(node --version)" >&2
+	exit 1
 fi
-need pnpm
+
+case "$(uname -s)" in
+	Darwin) os="darwin" ;;
+	Linux) os="linux" ;;
+	*) echo "unsupported operating system: $(uname -s)" >&2; exit 1 ;;
+esac
+case "$(uname -m)" in
+	x86_64|amd64) arch="x64" ;;
+	arm64|aarch64) arch="arm64" ;;
+	*) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+target="$os-$arch"
 
 if [ "$version" = "latest" ]; then
-	version="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
+	# Include prereleases: this project distributes release candidates before a
+	# stable release adopts the current platform-specific artifact layout.
+	version="$(curl -fsSL "https://api.github.com/repos/$repo/releases?per_page=1" \
 		| sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' \
 		| head -1)"
 fi
-
 if [ -z "$version" ]; then
 	echo "could not resolve latest Nazare release" >&2
 	exit 1
 fi
 
-url="https://github.com/$repo/releases/download/$version/nazare-cli-$version.tar.gz"
+artifact="$artifact_name-$version-$target"
+asset="$artifact.tar.gz"
+download_base_url="${NAZARE_DOWNLOAD_BASE_URL:-https://github.com/$repo/releases/download/$version}"
+url="$download_base_url/$asset"
 versions_dir="$home_dir/versions"
 bin_dir="$home_dir/bin"
-install_dir="$versions_dir/nazare-cli-$version"
-
+install_dir="$versions_dir/$artifact"
 tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+trap 'rm -rf "$tmp"' EXIT INT TERM
 
 mkdir -p "$versions_dir" "$bin_dir"
+echo "downloading Nazare $version for $target"
+curl -fsSL "$url" -o "$tmp/$asset"
+curl -fsSL "$url.sha256" -o "$tmp/$asset.sha256"
 
-echo "downloading Nazare $version"
-curl -fsSL "$url" -o "$tmp/nazare.tar.gz"
-rm -rf "$install_dir"
-tar -xzf "$tmp/nazare.tar.gz" -C "$versions_dir"
+if command -v sha256sum >/dev/null 2>&1; then
+	(cd "$tmp" && sha256sum -c "$asset.sha256")
+elif command -v shasum >/dev/null 2>&1; then
+	(cd "$tmp" && shasum -a 256 -c "$asset.sha256")
+else
+	echo "missing required checksum command: sha256sum or shasum" >&2
+	exit 1
+fi
 
-(cd "$install_dir" && pnpm install --prod --frozen-lockfile)
-chmod +x "$install_dir/packages/cli-client/dist/index.js"
-ln -sfn "$install_dir/packages/cli-client/dist/index.js" "$bin_dir/nazare"
+tar -xzf "$tmp/$asset" -C "$tmp"
+staged="$tmp/$artifact"
+if [ ! -x "$staged/bin/$executable" ]; then
+	echo "release artifact does not contain bin/$executable" >&2
+	exit 1
+fi
+if [ "$(cat "$staged/VERSION")" != "$version" ]; then
+	echo "release artifact version does not match $version" >&2
+	exit 1
+fi
 
-echo "nazare installed: $bin_dir/nazare"
+if [ -e "$install_dir" ]; then
+	if [ ! -x "$install_dir/bin/$executable" ] || [ "$(cat "$install_dir/VERSION")" != "$version" ]; then
+		echo "existing installation is invalid; remove $install_dir and retry" >&2
+		exit 1
+	fi
+else
+	mv "$staged" "$install_dir"
+fi
+ln -sfn "$install_dir/bin/$executable" "$bin_dir/$executable"
+
+"$bin_dir/$executable" --version >/dev/null
+echo "$executable installed: $bin_dir/$executable"
 case ":$PATH:" in
 	*":$bin_dir:"*) ;;
 	*) echo "add to PATH: export PATH=\"$bin_dir:\$PATH\"" ;;

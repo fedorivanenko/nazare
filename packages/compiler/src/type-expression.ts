@@ -109,6 +109,11 @@ export function parseTypeExpression(source: string): ParsedTypeExpression {
 		defaultCall && isLiteral(defaultCall.arguments[0])
 			? defaultCall.arguments[0]
 			: undefined;
+	const settingHasDefault =
+		settingObject !== undefined && Object.hasOwn(settingObject, "default");
+	const declaredDefault = settingHasDefault
+		? settingObject.default
+		: defaultCallValue;
 
 	return {
 		ast,
@@ -117,12 +122,16 @@ export function parseTypeExpression(source: string): ParsedTypeExpression {
 			setting: settingCall
 				? {
 						label: stringValue(settingObject?.label),
-						default: settingObject?.default ?? defaultCallValue,
+						...(settingHasDefault || defaultCall
+							? { default: declaredDefault }
+							: {}),
 					}
 				: undefined,
 			// Recorded whether or not the prop is a setting: a snippet prop's
 			// `.default()` has no schema to land in, but tooling still needs it.
-			defaultValue: settingObject?.default ?? defaultCallValue,
+			...(settingHasDefault || defaultCall
+				? { defaultValue: declaredDefault }
+				: {}),
 		},
 		required: ast.calls.some((call) => call.name === "required"),
 		hasDefault:
