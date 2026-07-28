@@ -114,6 +114,14 @@ export function projectTreeSitterNazareAst(
 				};
 			})
 		: [];
+	const htmlElements = syntax.authoritative
+		? syntax.facts
+				.filter((fact) => fact.kind === "html-element")
+				.map((fact) => ({
+					tagName: fact.tagName.toLowerCase(),
+					span: spanFromOffsets(source, file, fact.range),
+				}))
+		: [];
 	const htmlRoots = syntax.authoritative
 		? syntax.facts
 				.filter((fact) => fact.kind === "html-root")
@@ -134,6 +142,7 @@ export function projectTreeSitterNazareAst(
 		ast: {
 			file,
 			source,
+			htmlElements,
 			htmlRoots,
 			liquidFacts: syntax.liquid,
 			markupFacts: markup,

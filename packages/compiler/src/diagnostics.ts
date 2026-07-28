@@ -27,6 +27,22 @@ export function parseInvalidRender(
 	};
 }
 
+export function inertSlotElement(
+	componentKind: "snippet" | "section" | "block",
+	span: SourceSpan,
+): Diagnostic {
+	const replacement =
+		componentKind === "section"
+			? "Use {% blocks %} where merchant-configured theme blocks should render"
+			: "Replace it with the explicit Liquid or HTML content this component renders";
+	return {
+		severity: "warning",
+		code: "NAZARE_INERT_HTML_ELEMENT",
+		message: `<slot> does not project caller content in Shopify's rendered theme DOM. ${replacement}`,
+		span,
+	};
+}
+
 export function invalidPropDefault(
 	propName: string,
 	nodeId: Id,

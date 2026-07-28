@@ -533,6 +533,42 @@ const cases = [
 		expect: "SCRIPT_MODULE_SYNTAX_UNSUPPORTED",
 	},
 	{
+		name: "slot elements warn with a section-specific replacement",
+		src: `{% component section %}\n<section><slot></slot></section>`,
+		check(result) {
+			const issue = result.issues.find(
+				(candidate) => candidate.code === "NAZARE_INERT_HTML_ELEMENT",
+			);
+			assert.equal(issue?.severity, "warning");
+			assert.equal(issue?.phase, "validate");
+			assert.match(issue?.message ?? "", /Use {% blocks %}/);
+			assert.equal(issue?.span?.start.line, 2);
+		},
+	},
+	{
+		name: "slot warnings do not suggest section-only syntax to snippets",
+		src: `<div><slot></slot></div>`,
+		check(result) {
+			const issue = result.issues.find(
+				(candidate) => candidate.code === "NAZARE_INERT_HTML_ELEMENT",
+			);
+			assert.match(issue?.message ?? "", /explicit Liquid or HTML content/);
+			assert.doesNotMatch(issue?.message ?? "", /{% blocks %}/);
+		},
+	},
+	{
+		name: "template and custom elements are not guessed to be inert",
+		src: `<template><span>Deferred</span></template>\n<product-card></product-card>`,
+		check(result) {
+			assert.equal(
+				result.issues.some(
+					(issue) => issue.code === "NAZARE_INERT_HTML_ELEMENT",
+				),
+				false,
+			);
+		},
+	},
+	{
 		name: "setting on a type with no editor input is an error",
 		src: `{% props { items: array(ShopifyProduct).setting({ label: "Items" }) } %}\n<div>{{ props.items }}</div>`,
 		expect: "CONSTRAINT_SETTING_TYPE_UNSUPPORTED",

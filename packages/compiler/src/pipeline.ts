@@ -15,7 +15,11 @@ import { checkVanillaSchema } from "./check-vanilla.js";
 import { artifactGraphFromIR } from "./graph.js";
 import { bindArtifactIR, contractFromIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
-import { validateArtifactGraph, validateArtifactIR } from "./validate.js";
+import {
+	validateArtifactGraph,
+	validateArtifactIR,
+	validateNazareAst,
+} from "./validate.js";
 
 export type ProjectArtifactOptions = {
 	mode?: CompilerMode;
@@ -50,6 +54,7 @@ export function projectArtifact(
 		...markDiagnostics(options.resolveIssues ?? [], "resolve"),
 		...markDiagnostics(ast.diagnostics, "parse"),
 		...markDiagnostics(checkVanillaSchema(ast), "check"),
+		...markDiagnostics(validateNazareAst(ast), "validate"),
 		...sharedIRIssues(ir, graph, contracts, options.mode),
 	];
 	const contract = contractFromIR(ir, ast.file, contracts);

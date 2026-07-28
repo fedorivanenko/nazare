@@ -12,7 +12,7 @@ Use this package to:
 - resolve local component/script/style imports;
 - derive component contracts;
 - check render sites against contracts;
-- validate refs, islands, data channels, CSS module reads, and script constraints;
+- validate refs, islands, data channels, CSS module reads, script constraints, and inert Nazare HTML such as `<slot>`;
 - inspect syntax / IR / graph output;
 - emit Shopify theme files.
 
