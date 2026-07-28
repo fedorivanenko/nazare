@@ -13,12 +13,8 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import {
-	analyzeNazareTheme,
-	inspectNazareTheme,
-	ThemeImpactIndex,
-	ThemeProgram,
-} from "../dist/index.js";
+import { inspectNazareTheme, ThemeProgram } from "../dist/index.js";
+import { assertProgramEqualsCold } from "./theme-equivalence.mjs";
 
 const corpusRoot = resolve(
 	dirname(fileURLToPath(import.meta.url)),
@@ -71,27 +67,6 @@ const options = {
 	},
 };
 
-function assertProgramEqualsCold(program, files) {
-	const cold = analyzeNazareTheme(files, options);
-	const coldGraph = inspectNazareTheme(files, options);
-	assert.deepEqual(program.getModel(), cold.ir);
-	assert.deepEqual(program.getFacts(), cold.facts);
-	assert.deepEqual(program.getGraph(), coldGraph);
-	const coldImpact = new ThemeImpactIndex(coldGraph);
-	for (const node of coldGraph.nodes) {
-		assert.deepEqual(
-			program.getDependencies(node.id),
-			coldImpact.getDependencies(node.id),
-			`dependencies diverged for ${node.id}`,
-		);
-		assert.deepEqual(
-			program.getAffectedPages(node.id),
-			coldImpact.getAffectedPages(node.id),
-			`affected pages diverged for ${node.id}`,
-		);
-	}
-}
-
 test("corpus fixture covers every theme file kind", () => {
 	const graph = inspectNazareTheme(corpusFiles(), options);
 	const kinds = new Set(graph.nodes.map((node) => node.kind));
@@ -117,7 +92,7 @@ test("corpus fixture covers every theme file kind", () => {
 
 test("batch and program agree on the corpus", () => {
 	const files = corpusFiles();
-	assertProgramEqualsCold(new ThemeProgram(files, options), files);
+	assertProgramEqualsCold(new ThemeProgram(files, options), files, options);
 });
 
 test("incremental edits converge on the cold corpus graph", () => {
@@ -134,19 +109,19 @@ test("incremental edits converge on the cold corpus graph", () => {
 	const afterEdit = files.map((file) =>
 		file.path === price.path ? editedPrice : file,
 	);
-	assertProgramEqualsCold(program, afterEdit);
+	assertProgramEqualsCold(program, afterEdit, options);
 
 	// Remove a section and converge again.
 	program.removeFile("sections/unused-promo.liquid");
 	const afterRemoval = afterEdit.filter(
 		(file) => file.path !== "sections/unused-promo.liquid",
 	);
-	assertProgramEqualsCold(program, afterRemoval);
+	assertProgramEqualsCold(program, afterRemoval, options);
 
 	// Restore both and land back on the original graph.
 	program.updateFile(price);
 	program.updateFile(
 		files.find((file) => file.path === "sections/unused-promo.liquid"),
 	);
-	assertProgramEqualsCold(program, files);
+	assertProgramEqualsCold(program, files, options);
 });
