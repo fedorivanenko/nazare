@@ -31,7 +31,18 @@ async function runServer(root, requests, projectRoot = root) {
 	return responses;
 }
 
-function startLiveServer(root) {
+/**
+ * How long the watcher coalesces events for, in the tests that care.
+ *
+ * A burst of edits only collapses into one notification if the burst finishes
+ * inside the window, and a machine under load can spread three awaited writes
+ * over half a second — measured, not guessed. The production default is 40ms,
+ * which is right for an editor and far too tight to assert against here, so
+ * these tests say the window they mean and leave several times the margin.
+ */
+const TEST_DEBOUNCE_MS = 2_000;
+
+function startLiveServer(root, { watchDebounceMs } = {}) {
 	const input = new PassThrough();
 	const messages = [];
 	let buffered = "";
@@ -44,7 +55,10 @@ function startLiveServer(root) {
 			callback();
 		},
 	});
-	const done = serveThemeGraph(root, input, output, { projectRoot: root });
+	const done = serveThemeGraph(root, input, output, {
+		projectRoot: root,
+		...(watchDebounceMs === undefined ? {} : { watchDebounceMs }),
+	});
 	return {
 		messages,
 		done,
@@ -66,6 +80,11 @@ async function waitFor(predicate, description, timeout = 5_000) {
 		await delay(10);
 	}
 }
+
+/** A watcher update naming exactly this path. */
+const hasPath = (path) => (message) =>
+	message.params.changedPaths?.length === 1 &&
+	message.params.changedPaths[0] === path;
 
 function delay(milliseconds) {
 	return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -259,7 +278,7 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 		const cardPath = join(root, "card.nz.liquid");
 		const badgePath = join(root, "badge.nz.liquid");
 		await writeFile(cardPath, "<span>Card</span>");
-		server = startLiveServer(root);
+		server = startLiveServer(root, { watchDebounceMs: TEST_DEBOUNCE_MS });
 		server.send({ id: 1, method: "watch" });
 		await waitFor(
 			() => server.messages.some((message) => message.id === 1),
@@ -270,8 +289,8 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 		await writeFile(cardPath, "<span>Second</span>");
 		await writeFile(cardPath, "<span>Final</span>");
 		await waitFor(
-			() => watcherUpdates(server.messages).length === 2,
-			"debounced edit notifications",
+			() => watcherUpdates(server.messages).some(hasPath("card.nz.liquid")),
+			"edit notification",
 		);
 		assert.deepEqual(
 			watcherUpdates(server.messages).map((message) => message.method),
@@ -292,22 +311,44 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 			watcherUpdates(server.messages).map((message) => message.params.revision),
 			[1, 1],
 		);
-		await delay(150);
-		assert.equal(watcherUpdates(server.messages).length, 2);
-
+		// Writing the same bytes changes nothing, so it should notify nothing.
+		//
+		// "Nothing happened" cannot be proved by sleeping — a slow machine just
+		// makes the sleep too short — so the next real change is the barrier
+		// instead: notifications are ordered, so once the one for badge has
+		// arrived, anything the no-op was going to send would already be here.
 		await writeFile(cardPath, "<span>Final</span>");
-		await delay(150);
-		assert.equal(watcherUpdates(server.messages).length, 2);
-
 		await writeFile(badgePath, "<strong>Badge</strong>");
+		// Waiting for a count would return the moment enough messages existed,
+		// with stragglers still in flight — so the barrier is a message only the
+		// later change can produce. The server notifies in order, so once badge's
+		// first update is here, everything the burst and the no-op were ever
+		// going to send is here too.
 		await waitFor(
-			() => watcherUpdates(server.messages).length === 4,
-			"add notifications",
+			() => watcherUpdates(server.messages).some(hasPath("badge.nz.liquid")),
+			"add notification",
+		);
+		assert.deepEqual(
+			watcherUpdates(server.messages).map(
+				(message) => message.params.changedPaths,
+			),
+			[
+				["card.nz.liquid"],
+				["card.nz.liquid"],
+				["badge.nz.liquid"],
+				["badge.nz.liquid"],
+			],
+			"the burst collapsed into one pair and the no-op sent none",
 		);
 		await unlink(badgePath);
+		// The delete is the third revision, which is what tells it apart from the
+		// add — both name the same path.
 		await waitFor(
-			() => watcherUpdates(server.messages).length === 6,
-			"delete notifications",
+			() =>
+				watcherUpdates(server.messages).some(
+					(message) => message.params.revision === 3,
+				),
+			"delete notification",
 		);
 		assert.deepEqual(
 			watcherUpdates(server.messages).map((message) => message.method),
