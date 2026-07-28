@@ -75,9 +75,9 @@ export type PropTypeInfo = {
 	/**
 	 * The declared default, from `.default(v)` or a setting's `default`.
 	 * `hasDefault` on the contract prop says a default exists; this says what it
-	 * is. Tooling off the schema path (preview controls, editor completions)
-	 * cannot recover the value otherwise — a snippet prop's `.default()` never
-	 * reaches a Shopify schema.
+	 * is. Tooling cannot recover a snippet prop's value from Shopify schema
+	 * because snippets have no schema; emit uses this value for its Liquid
+	 * default prologue.
 	 */
 	defaultValue?: unknown;
 };

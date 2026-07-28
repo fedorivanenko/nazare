@@ -13,26 +13,25 @@
 } %}
 
 {% comment %}
-  Props carry compile-time defaults, but the emitted snippet is called with bare
-  Liquid variables, so each variant is re-validated against its whitelist here.
-  An unset or unrecognized value falls back rather than emitting a dead class.
+  Nazare materializes defaults when arguments are nil. These enum guards handle
+  invalid values from ordinary Liquid callers that bypass Nazare's checker.
 {% endcomment %}
-{% assign button_scheme = "solid" %}
-{% if props.scheme == "outline" or props.scheme == "ghost" %}
-  {% assign button_scheme = props.scheme %}
-{% endif %}
-{% assign button_size = "md" %}
-{% if props.size == "sm" %}
-  {% assign button_size = "sm" %}
-{% endif %}
-{% assign button_tag = "a" %}
-{% if props.tag == "button" or props.tag == "span" %}
-  {% assign button_tag = props.tag %}
-{% endif %}
-{% assign button_type = "button" %}
-{% if props.type == "submit" or props.type == "reset" %}
-  {% assign button_type = props.type %}
-{% endif %}
+{% assign button_scheme = props.scheme %}
+{% unless button_scheme == "solid" or button_scheme == "outline" or button_scheme == "ghost" %}
+  {% assign button_scheme = "solid" %}
+{% endunless %}
+{% assign button_size = props.size %}
+{% unless button_size == "sm" or button_size == "md" %}
+  {% assign button_size = "md" %}
+{% endunless %}
+{% assign button_tag = props.tag %}
+{% unless button_tag == "a" or button_tag == "button" or button_tag == "span" %}
+  {% assign button_tag = "a" %}
+{% endunless %}
+{% assign button_type = props.type %}
+{% unless button_type == "button" or button_type == "submit" or button_type == "reset" %}
+  {% assign button_type = "button" %}
+{% endunless %}
 {% assign button_class = "nazare-button nazare-button--" | append: button_scheme | append: " nazare-button--" | append: button_size %}
 {% if props.class != blank %}
   {% assign button_class = button_class | append: " " | append: props.class %}

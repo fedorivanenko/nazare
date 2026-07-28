@@ -364,9 +364,8 @@ test("a story states its delta; the declaration supplies the rest", async () => 
 		{ name: "outline", props: { label: "Shop all", scheme: "outline" } },
 	]);
 
-	// `size` was never stated, so it renders at the default the type declares —
-	// which matters beyond convenience: emit does not materialize a snippet
-	// prop's default, so an unmerged omission would arrive nil.
+	// `size` was never stated, so the emitted snippet's default prologue
+	// materializes the value at the same boundary Shopify renders.
 	assert.ok(rendered.stories[0].html.includes("btn--outline"));
 	assert.ok(rendered.stories[0].html.includes(">Shop all<"));
 	assert.deepEqual(rendered.stories[0].changed, ["label", "scheme"]);
@@ -403,7 +402,7 @@ test("a placeholder is never merged into a render", async () => {
 	assert.ok(!/btn--solid class/.test(rendered.stories[0].html));
 });
 
-test("an explicit null unsets a prop the declaration gives a default", async () => {
+test("an explicit null omits a plain Liquid optional prop", async () => {
 	const component = previewComponentFromSource(
 		`{% doc %}
   @param {string} label - Button text
@@ -419,7 +418,7 @@ test("an explicit null unsets a prop the declaration gives a default", async () 
 	]);
 
 	assert.ok(rendered.stories[0].html.includes("<b>Sale</b>"));
-	// Absent, not the string "null" and not the declared default.
+	// Absent, not the string "null".
 	assert.ok(!rendered.stories[1].html.includes("<b>"));
 	assert.deepEqual(rendered.stories[1].issues, []);
 });
@@ -577,7 +576,6 @@ test("a scalar is a literal, and only storefront data is a fixture", async () =>
 					props: {
 						price: 2400,
 						compare_at_price: 4000,
-						show_compare_at: true,
 					},
 				},
 			],
@@ -601,11 +599,24 @@ test("a scalar is a literal, and only storefront data is a fixture", async () =>
 		"shop",
 	]);
 
-	const rendered = await renderComponentStories(component, [onSale]);
-	// Money is minor units, formatted by the preview's `money` filter.
+	const rendered = await renderComponentStories(component, [
+		onSale,
+		{
+			name: "comparison hidden",
+			props: {
+				price: 2400,
+				compare_at_price: 4000,
+				show_compare_at: false,
+			},
+		},
+	]);
+	// Money is minor units, formatted by the preview's `money` filter. The
+	// omitted show_compare_at prop receives its declared true default, while an
+	// explicit false survives the nil guard.
 	assert.ok(rendered.stories[0].html.includes("$24.00"));
-	assert.ok(rendered.stories[0].html.includes("<s"));
+	assert.match(rendered.stories[0].html, /<s(?:\s|>)/);
 	assert.ok(rendered.stories[0].html.includes("$40.00"));
+	assert.doesNotMatch(rendered.stories[1].html, /<s(?:\s|>)/);
 });
 
 test("a component with no authored stories does not appear", () => {

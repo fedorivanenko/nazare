@@ -129,6 +129,11 @@ Example input:
 </a>
 ```
 
+For snippets, `.default(value)` emits an explicit `nil`-guarded Liquid
+assignment. Explicit `false`, `0`, and blank values are preserved rather than
+treated as missing. Section and block setting defaults remain owned by Shopify
+schema.
+
 ```css
 /* components/hero.css */
 .root {

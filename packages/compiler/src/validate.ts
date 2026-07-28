@@ -12,10 +12,12 @@ import {
 	renderTargetResolutionCount,
 } from "./diagnostics.js";
 import { indexArtifactIR } from "./ir-index.js";
+import { analyzePropDefaults } from "./prop-defaults.js";
 
 export function validateArtifactIR(ir: ArtifactIR): Diagnostic[] {
 	const index = indexArtifactIR(ir);
 	return [
+		...analyzePropDefaults(ir).issues,
 		...validateRenderTargetResolutions(index),
 		...validateArgumentBindings(index),
 		...validatePropBindingTargets(ir, index),
