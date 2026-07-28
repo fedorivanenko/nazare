@@ -1,4 +1,5 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
+import { collectThemeBehavior } from "./theme-behavior.js";
 import { collectThemeCapabilitySignals } from "./theme-capability-signal-pass.js";
 import {
 	collectThemeDataFlowInputs,
@@ -233,6 +234,7 @@ export function buildThemeSemanticModel(
 	modelIssues.push(...metafields.issues);
 	const capabilities = inferCapabilities(dataAccesses, capabilitySignals);
 	const classifications = inferClassifications(capabilities, dataAccesses);
+	const behavior = collectThemeBehavior(facts);
 	const evidence = deriveThemeEvidenceRecords({
 		references,
 		sectionInstances,
@@ -255,7 +257,7 @@ export function buildThemeSemanticModel(
 	modelIssues.push(...settingResolution.issues, ...localeResolution.issues);
 
 	const model: ThemeSemanticModel = {
-		version: 2,
+		version: 3,
 		root: options.root ?? ".",
 		files: [...files.values()].sort((a, b) => a.path.localeCompare(b.path)),
 		declarations: dedupeById(declarations).sort((a, b) =>
@@ -317,7 +319,19 @@ export function buildThemeSemanticModel(
 		classifications: dedupeById(classifications).sort((a, b) =>
 			a.id.localeCompare(b.id),
 		),
-		evidence: dedupeById(evidence).sort((a, b) => a.id.localeCompare(b.id)),
+		behavior: behavior.records,
+		sourceAnalyses: behavior.sourceAnalyses,
+		evidence: dedupeById([
+			...evidence,
+			...behavior.evidence,
+			...localeTranslations.map((translation) => ({
+				id: translation.id,
+				kind: "localeTranslation" as const,
+				file: translation.path,
+				span: translation.span,
+				extractor: "theme-json-facts",
+			})),
+		]).sort((a, b) => a.id.localeCompare(b.id)),
 		issues: modelIssues,
 	};
 	assertThemeSemanticModel(model);

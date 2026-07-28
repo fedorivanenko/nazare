@@ -125,11 +125,19 @@ export function getThemeFileImpact(
 				node.targetKind === targetKind &&
 				node.name === undefined,
 		);
-	const uncertainty = hasDynamicReference
-		? [
-				`Theme contains a dynamic ${targetKind} reference that may resolve to ${path}`,
-			]
-		: [];
+	const sourceAnalysis = graph.nodes.find(
+		(node) => node.kind === "sourceAnalysis" && node.path === path,
+	);
+	const uncertainty = [
+		...(hasDynamicReference
+			? [
+					`Theme contains a dynamic ${targetKind} reference that may resolve to ${path}`,
+				]
+			: []),
+		...(sourceAnalysis?.kind === "sourceAnalysis"
+			? sourceAnalysis.uncertainty
+			: []),
+	];
 	return {
 		version: 1,
 		path,
@@ -165,9 +173,9 @@ function themeFileUsage(
 	) {
 		return "entry";
 	}
-	if (dependentCount > 0) return "used";
 	if (hasDynamicReference) return "unknown";
 	if (unused) return "unused";
+	if (dependentCount > 0) return "used";
 	return "unknown";
 }
 

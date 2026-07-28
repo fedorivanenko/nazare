@@ -1,6 +1,7 @@
 import type { Diagnostic } from "@nazare/core";
 import {
 	createDefaultSourceParserRegistry,
+	htmlMarkupFacts,
 	type NazareSyntaxFact,
 	nazareSyntaxFacts,
 	parseSourceDocument,
@@ -47,6 +48,7 @@ export function projectTreeSitterNazareAst(
 		source,
 	);
 	const syntax = nazareSyntaxFacts(document);
+	const markup = htmlMarkupFacts(document);
 	const problemDiagnostics = syntax.problems.map((problem) => {
 		const span = spanFromOffsets(source, file, problem.range);
 		switch (problem.kind) {
@@ -134,6 +136,7 @@ export function projectTreeSitterNazareAst(
 			source,
 			htmlRoots,
 			liquidFacts: syntax.liquid,
+			markupFacts: markup,
 			nodes: projected.nodes,
 			settingsReads,
 			schema,

@@ -132,6 +132,31 @@ export type SemanticThemeGraphNode =
 	  }
 	| {
 			id: string;
+			kind: "domHook";
+			hookKind: "class" | "id" | "attribute";
+			name: string;
+	  }
+	| { id: string; kind: "customProperty"; name: string }
+	| { id: string; kind: "customEvent"; name: string }
+	| { id: string; kind: "customElement"; name: string }
+	| {
+			id: string;
+			kind: "sourceAnalysis";
+			path: string;
+			language:
+				| "nazare-liquid"
+				| "liquid"
+				| "css"
+				| "javascript"
+				| "typescript"
+				| "json"
+				| "asset"
+				| "other";
+			completeness: "complete" | "partial" | "failed";
+			uncertainty: string[];
+	  }
+	| {
+			id: string;
 			kind: "classification";
 			label: string;
 			evidenceStrength: ThemeEvidenceStrength;
@@ -190,6 +215,12 @@ export type SemanticThemeGraphEdge = (
 			from: string;
 			to: string;
 			targetName?: string;
+	  }
+	| {
+			id: string;
+			kind: "definesLocaleTranslation";
+			from: string;
+			to: string;
 	  }
 	| {
 			id: string;
@@ -257,6 +288,31 @@ export type SemanticThemeGraphEdge = (
 	| { id: string; kind: "schemaFor"; from: string; to: string }
 	| { id: string; kind: "hasCapability"; from: string; to: string }
 	| { id: string; kind: "classifiedAs"; from: string; to: string }
+	| { id: string; kind: "emitsHook"; from: string; to: string }
+	| { id: string; kind: "selectsHook"; from: string; to: string }
+	| { id: string; kind: "queriesHook"; from: string; to: string }
+	| { id: string; kind: "mutatesHook"; from: string; to: string }
+	| { id: string; kind: "definesCustomProperty"; from: string; to: string }
+	| { id: string; kind: "readsCustomProperty"; from: string; to: string }
+	| { id: string; kind: "dispatchesEvent"; from: string; to: string }
+	| { id: string; kind: "listensForEvent"; from: string; to: string }
+	| { id: string; kind: "definesCustomElement"; from: string; to: string }
+	| { id: string; kind: "usesCustomElement"; from: string; to: string }
+	| { id: string; kind: "hasSourceAnalysis"; from: string; to: string }
+	| {
+			id: string;
+			kind: "dependsOnBehaviorContract";
+			from: string;
+			to: string;
+			subject: string;
+	  }
+	| {
+			id: string;
+			kind: "dependsOnDomHook";
+			from: string;
+			to: string;
+			hook: string;
+	  }
 	| { id: string; kind: "expectsInput"; from: string; to: string }
 	| {
 			id: string;

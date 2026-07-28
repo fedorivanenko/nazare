@@ -10,7 +10,7 @@ import {
 	normalizeThemePath,
 } from "./theme-file-classifier.js";
 
-const PERSISTED_THEME_ANALYSIS_CACHE_VERSION = 2;
+const PERSISTED_THEME_ANALYSIS_CACHE_VERSION = 3;
 
 /** @internal CLI inspect cache contains semantic facts only, never output-bearing build artifacts. */
 export function parsePersistedInspectFactCache(
@@ -88,6 +88,18 @@ function isThemeFact(value: unknown): value is ThemeFact {
 	switch (value.kind) {
 		case "file":
 			return isString(value.path) && isThemeFileKind(value.fileKind);
+		case "sourceAnalysis":
+			return (
+				isString(value.path) &&
+				isThemeSourceLanguage(value.language) &&
+				["complete", "partial", "failed"].includes(
+					String(value.completeness),
+				) &&
+				Array.isArray(value.uncertainty) &&
+				value.uncertainty.every(isString)
+			);
+		case "behavior":
+			return isThemeBehaviorFact(value);
 		case "declaresSection":
 		case "declaresSnippet":
 		case "declaresTemplate":
@@ -249,6 +261,48 @@ function isThemeFact(value: unknown): value is ThemeFact {
 		default:
 			return false;
 	}
+}
+
+function isThemeBehaviorFact(value: Record<string, unknown>): boolean {
+	if (
+		!isString(value.fromPath) ||
+		!isString(value.name) ||
+		!isString(value.extractor) ||
+		!isOptionalSpan(value.span)
+	) {
+		return false;
+	}
+	if (value.subjectKind === "domHook") {
+		return (
+			["class", "id", "attribute"].includes(String(value.hookKind)) &&
+			["emits", "selects", "queries", "mutates"].includes(
+				String(value.operation),
+			)
+		);
+	}
+	if (value.subjectKind === "customProperty") {
+		return ["defines", "reads"].includes(String(value.operation));
+	}
+	if (value.subjectKind === "customEvent") {
+		return ["dispatches", "listens"].includes(String(value.operation));
+	}
+	if (value.subjectKind === "customElement") {
+		return ["defines", "uses"].includes(String(value.operation));
+	}
+	return false;
+}
+
+function isThemeSourceLanguage(value: unknown): boolean {
+	return [
+		"nazare-liquid",
+		"liquid",
+		"css",
+		"javascript",
+		"typescript",
+		"json",
+		"asset",
+		"other",
+	].includes(String(value));
 }
 
 function isDiagnostic(value: unknown): value is Diagnostic {

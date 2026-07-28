@@ -288,7 +288,12 @@ function isOwnerDerivedNode(node: ThemeGraphNode): boolean {
 	return (
 		node.kind === "unresolved" ||
 		node.kind === "shopifyObject" ||
-		node.kind === "shopifyProperty"
+		node.kind === "shopifyProperty" ||
+		node.kind === "domHook" ||
+		node.kind === "customProperty" ||
+		node.kind === "customEvent" ||
+		node.kind === "customElement" ||
+		node.kind === "sourceAnalysis"
 	);
 }
 

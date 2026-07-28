@@ -131,7 +131,9 @@ Returns:
 
 ### `analyzeNazareTheme(files, options)` / `inspectNazareTheme(files, options)`
 
-Build deterministic whole-theme semantics from ordinary Shopify theme files and optional Nazare components. `analyzeNazareTheme()` returns canonical version 2 `ThemeSemanticModel` IR. `inspectNazareTheme()` projects that IR into stable version 2 graph nodes, edges, evidence, query views, and impact indexes.
+Build deterministic whole-theme semantics from ordinary Shopify theme files and optional Nazare components. `analyzeNazareTheme()` returns canonical version 3 `ThemeSemanticModel` IR. `inspectNazareTheme()` projects that IR into stable version 3 graph nodes, edges, evidence, query views, and impact indexes.
+
+Every included source passes through exactly one whole-theme `ThemeSourceFrontend`. Built-ins analyze Nazare Liquid, plain Liquid, Shopify JSON, CSS, JavaScript, and opaque assets. Ambiguous or unsupported ownership fails explicitly. Frontends emit file-owned Shopify semantic facts; the whole-theme linker alone resolves cross-file and cross-language relationships.
 
 Semantic output distinguishes:
 
@@ -141,7 +143,7 @@ Semantic output distinguishes:
 - capabilities/classifications, carrying categorical evidence strength and uncertainty;
 - unresolved dynamic or missing targets.
 
-Graph structure includes pages, templates, layouts, section groups, section and block instances, reusable theme blocks, render sites, render arguments, input satisfaction, Shopify data properties, settings, assets, locales, and optional Shopify metafield definitions. Render calls project explicitly as:
+Graph structure includes pages, templates, layouts, section groups, section and block instances, reusable theme blocks, render sites, render arguments, input satisfaction, Shopify data properties, settings, assets, locales, optional Shopify metafield definitions, DOM hooks, CSS custom properties, JavaScript events, and custom elements. Render calls project explicitly as:
 
 ```txt
 caller file → render site → target snippet
@@ -149,7 +151,9 @@ caller file → render site → target snippet
                                       → Shopify data or setting origin
 ```
 
-Theme analysis uses `liquid-only` parsing by default: HTML is masked to avoid branch-balancing false positives, while Liquid structure is validated strictly. A failed parse emits diagnostics and never fabricates skipped facts. Pass `.shopify/metafields.json` through `options.metafields` to join store definitions with theme reads; missing snapshots remain `unknown`, never proof of absence. Inspect output exposes consumed, unconsumed, broken, and page-impact queries. `getThemeFileImpact(graph, path)` projects direct dependencies, direct dependents, transitive affected pages, usage, diagnostics, and dynamic-reference uncertainty for one theme-relative file. Pass `.theme-check.yml` through `options.themeCheck` to validate and expose the configured ignore list. Shopify rule names are not assumed to match Inspect diagnostics.
+Theme analysis uses `liquid-only` parsing by default: HTML is masked to avoid branch-balancing false positives, while Liquid structure is validated strictly. Static HTML classes, ids, data attributes, and custom-element tags become markup contracts. PostCSS and `postcss-selector-parser` extract CSS selectors and custom-property definitions/reads. The TypeScript AST extracts literal JavaScript DOM queries, class mutations, dataset and `data-*` attribute reads/writes, event listeners/dispatches, custom-element definitions, and local static module imports/re-exports. Dynamic markup, selectors, dataset keys, attribute names, and imports produce explicit partial-analysis boundaries. A failed parse emits diagnostics and never fabricates skipped facts.
+
+Pass `.shopify/metafields.json` through `options.metafields` to join store definitions with theme reads; missing snapshots remain `unknown`, never proof of absence. Inspect output exposes consumed, unconsumed, broken, and page-impact queries. `getThemeFileImpact(graph, path)` projects direct dependencies, direct dependents, transitive affected pages, usage, diagnostics, and source-analysis uncertainty for one theme-relative file. Behavior dependencies do not broaden affected pages through globally loaded assets. Pass `.theme-check.yml` through `options.themeCheck` to validate and expose the configured ignore list. Shopify rule names are not assumed to match Inspect diagnostics.
 
 ### `buildNazareThemeWorkspace(files, options)`
 

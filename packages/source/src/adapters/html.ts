@@ -24,6 +24,97 @@ const voidElements = new Set([
 	"wbr",
 ]);
 
+export type HtmlMarkupHookFact = {
+	kind: "class" | "id" | "attribute" | "customElement";
+	name: string;
+	range: SourceRange;
+};
+
+export type HtmlMarkupUncertainty = {
+	kind: "class" | "id" | "attribute";
+	range: SourceRange;
+};
+
+export type HtmlMarkupFacts = {
+	hooks: HtmlMarkupHookFact[];
+	uncertainty: HtmlMarkupUncertainty[];
+};
+
+/** Static DOM contracts from HTML regions of a Liquid source document. */
+export function htmlMarkupFacts(document: SourceDocument): HtmlMarkupFacts {
+	const parser = new Parser();
+	parser.setLanguage(Html);
+	const tree = parseTreeText(parser, maskedHtmlSource(document));
+	const hooks: HtmlMarkupHookFact[] = [];
+	const uncertainty: HtmlMarkupUncertainty[] = [];
+	walk(tree.rootNode, (node) => {
+		if (node.type !== "start_tag" && node.type !== "self_closing_tag") return;
+		const tagNameNode = node.namedChildren.find(
+			(child) => child.type === "tag_name",
+		);
+		const tagName = tagNameNode?.text;
+		if (tagName?.includes("-") && tagNameNode) {
+			hooks.push({
+				kind: "customElement",
+				name: tagName.toLowerCase(),
+				range: nodeRange(tagNameNode),
+			});
+		}
+		for (const attribute of node.namedChildren.filter(
+			(child) => child.type === "attribute",
+		)) {
+			const nameNode = attribute.namedChildren.find(
+				(child) => child.type === "attribute_name",
+			);
+			const name = nameNode?.text.toLowerCase();
+			if (!name || !nameNode) continue;
+			const valueNode = attribute.namedChildren.find(
+				(child) =>
+					child.type === "quoted_attribute_value" ||
+					child.type === "attribute_value",
+			);
+			const rawValue = valueNode
+				? unquote(
+						document.source.slice(valueNode.startIndex, valueNode.endIndex),
+					)
+				: undefined;
+			const dynamic = rawValue ? containsLiquid(rawValue) : false;
+			if (name === "class" && rawValue !== undefined) {
+				for (const className of staticClassNames(rawValue)) {
+					hooks.push({
+						kind: "class",
+						name: className,
+						range: nodeRange(valueNode ?? attribute),
+					});
+				}
+				if (dynamic)
+					uncertainty.push({ kind: "class", range: nodeRange(attribute) });
+				continue;
+			}
+			if (name === "id" && rawValue !== undefined) {
+				if (dynamic) {
+					uncertainty.push({ kind: "id", range: nodeRange(attribute) });
+				} else if (rawValue.trim()) {
+					hooks.push({
+						kind: "id",
+						name: rawValue.trim(),
+						range: nodeRange(valueNode ?? attribute),
+					});
+				}
+				continue;
+			}
+			if (name.startsWith("data-")) {
+				hooks.push({
+					kind: "attribute",
+					name,
+					range: nodeRange(nameNode),
+				});
+			}
+		}
+	});
+	return { hooks, uncertainty };
+}
+
 /** Strict HTML diagnostics over Liquid template-content regions. */
 export function htmlSyntaxIssues(
 	document: SourceDocument,
@@ -76,6 +167,31 @@ function maskedHtmlSource(document: SourceDocument): string {
 		}
 	});
 	return masked.join("");
+}
+
+function containsLiquid(value: string): boolean {
+	return value.includes("{{") || value.includes("{%") || value.includes("{#");
+}
+
+function staticClassNames(value: string): string[] {
+	const marker = "\u0000";
+	const withoutLiquid = value.replace(
+		/({{[\s\S]*?}}|{%[\s\S]*?%}|{#[\s\S]*?#})/g,
+		marker,
+	);
+	return withoutLiquid
+		.split(/\s+/)
+		.filter((token) => token.length > 0 && !token.includes(marker));
+}
+
+function unquote(value: string): string {
+	if (
+		(value.startsWith('"') && value.endsWith('"')) ||
+		(value.startsWith("'") && value.endsWith("'"))
+	) {
+		return value.slice(1, -1);
+	}
+	return value;
 }
 
 function dedupeIssues(issues: SourceParseIssue[]): SourceParseIssue[] {

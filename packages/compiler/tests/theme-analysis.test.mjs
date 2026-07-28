@@ -7,6 +7,8 @@ import {
 	collectMetafieldReads,
 	inspectNazareTheme,
 	joinMetafieldReads,
+	parsePersistedInspectFactCache,
+	serializePersistedInspectFactCache,
 } from "../dist/index.js";
 
 const issues = (files) => analyzeNazareTheme(files).issues;
@@ -66,6 +68,38 @@ test("theme analysis cache reuses unchanged files and invalidates edits", () => 
 
 	analyzeNazareTheme([files[0]], { cache });
 	assert.equal(cache.entries["locales/en.json"], undefined);
+});
+
+test("persisted inspect cache validates behavior and source-analysis facts", () => {
+	const cache = { version: 1, entries: {} };
+	analyzeNazareTheme(
+		[
+			{ path: "assets/theme.css", contents: ".card {}" },
+			{
+				path: "assets/theme.js",
+				contents: 'document.querySelector(".card")',
+			},
+		],
+		{ cache },
+	);
+	const serialized = serializePersistedInspectFactCache(cache);
+	assert.equal(JSON.parse(serialized).version, 3);
+	assert.equal(
+		serializePersistedInspectFactCache(
+			parsePersistedInspectFactCache(JSON.parse(serialized)),
+		),
+		serialized,
+	);
+
+	const malformed = JSON.parse(serialized);
+	const behavior = malformed.entries["assets/theme.js"].facts.find(
+		(fact) => fact.kind === "behavior",
+	);
+	behavior.operation = "guesses";
+	assert.throws(
+		() => parsePersistedInspectFactCache(malformed),
+		/invalid cache entry for "assets\/theme.js"/,
+	);
 });
 
 test("theme cache fingerprints strictness", () => {

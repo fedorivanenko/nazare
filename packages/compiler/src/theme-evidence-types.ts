@@ -12,7 +12,9 @@ export type ThemeEvidenceRecord = {
 		| "templateConfig"
 		| "dependency"
 		| "docParam"
-		| "inputDeclaration";
+		| "inputDeclaration"
+		| "localeTranslation"
+		| "behavior";
 	file: string;
 	span?: SourceSpan;
 	extractor: string;
