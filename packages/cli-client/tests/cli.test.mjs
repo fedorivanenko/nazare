@@ -763,6 +763,55 @@ test("cli: a successful build prints the Shopify CLI handoff", async () => {
 	);
 });
 
+test("cli: inspect impact answers what a file can affect", async () => {
+	await withProject(
+		{
+			"templates/product.json": JSON.stringify({
+				sections: { main: { type: "main" } },
+			}),
+			"sections/main.liquid": "{% render 'card' %}",
+			"snippets/card.liquid": "{% render 'money' %}",
+			"snippets/money.liquid": "{{ amount }}",
+		},
+		async (cwd) => {
+			const text = await runCli(
+				cwd,
+				"inspect",
+				"impact",
+				"snippets/card.liquid",
+				".",
+			);
+			assert.equal(text.status, 0, text.stderr);
+			assert.deepEqual(text.stdout.trim().split("\n"), [
+				"Impact: snippets/card.liquid",
+				"Kind snippet · usage used · certainty complete",
+				"Dependencies (1):",
+				"- snippets/money.liquid",
+				"Dependents (1):",
+				"- sections/main.liquid",
+				"Affected pages (1):",
+				"- templates/product.json",
+				"Uncertainty: none",
+				"Issues: none",
+			]);
+
+			const json = await runCli(
+				cwd,
+				"inspect",
+				"impact",
+				"snippets/card.liquid",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(json.status, 0, json.stderr);
+			const impact = JSON.parse(json.stdout);
+			assert.equal(impact.version, 1);
+			assert.deepEqual(impact.affectedPages, ["templates/product.json"]);
+		},
+	);
+});
+
 test("cli: inspect can render a concise human report", async () => {
 	await withProject(
 		{
