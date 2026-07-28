@@ -358,6 +358,169 @@ test("a theme with no story files at all points at scaffold", async () => {
 	});
 });
 
+// Compiling is memoised between collects, because `serve` recompiles the whole
+// directory on every save and one component with a {% script %} block costs
+// more than all the others together. The only thing worth testing about a cache
+// is that it is never wrong: these edit a file and demand the new bytes back.
+const previewCommand = async () =>
+	await import(
+		pathToFileURL(resolve("packages/cli-client/dist/preview-command.js")).href
+	);
+
+test("an edited template recompiles rather than serving the last one", async () => {
+	await withProject(THEME, async (cwd) => {
+		const { collectPreview } = await previewCommand();
+
+		const before = await collectPreview(cwd);
+		assert.match(before.previewed[0].component.template, /class="price"/);
+
+		// Nothing changed, so nothing was compiled again — the same component, not
+		// an equal one. Without this the test below would pass on a cache that
+		// never hits, which is the other way to be wrong here.
+		const unchanged = await collectPreview(cwd);
+		assert.equal(
+			unchanged.previewed[0].component,
+			before.previewed[0].component,
+		);
+
+		await writeFile(
+			join(cwd, "snippets/price.liquid"),
+			PRICE.replace('class="price"', 'class="price price--loud"'),
+		);
+
+		const after = await collectPreview(cwd);
+		assert.match(after.previewed[0].component.template, /price--loud/);
+	});
+});
+
+test("a component recompiles when a component it imports changes", async () => {
+	await withProject(
+		{
+			"ui/badge/nazare.json": JSON.stringify({
+				id: "@acme/badge",
+				version: "0.1.0",
+				kind: "snippet",
+				entry: "badge.nz.liquid",
+				license: "MIT",
+				files: ["badge.nz.liquid"],
+			}),
+			"ui/badge/badge.nz.liquid": `{% component snippet %}
+
+{% props {
+  text: string.setting({ label: "Text", default: "New" }),
+} %}
+
+<span class="badge">{{ props.text }}</span>
+`,
+			"ui/card/nazare.json": JSON.stringify({
+				id: "@acme/card",
+				version: "0.1.0",
+				kind: "snippet",
+				entry: "card.nz.liquid",
+				license: "MIT",
+				files: ["card.nz.liquid"],
+				preview: { stories: [{ name: "default" }] },
+			}),
+			"ui/card/card.nz.liquid": `{% component snippet %}
+
+{% import Badge from "../badge/badge.nz.liquid" %}
+
+{% props {
+  title: string.setting({ label: "Title", default: "Card" }),
+} %}
+
+<article class="card">
+  <h3>{{ props.title }}</h3>
+  {% render Badge { text: "New" } %}
+</article>
+`,
+		},
+		async (cwd) => {
+			const { collectPreview, renderCollection } = await previewCommand();
+			const dir = join(cwd, "ui");
+
+			const before = await renderCollection(await collectPreview(dir));
+			const card = before.find((one) => one.component.name === "card");
+			assert.match(card.stories[0].html, /class="badge"/);
+
+			// card.nz.liquid itself is untouched; only the component it imports
+			// changed. The compile read that file, so the memo has to notice.
+			await writeFile(
+				join(cwd, "ui/badge/badge.nz.liquid"),
+				`{% component snippet %}
+
+{% props {
+  text: string.setting({ label: "Text", default: "New" }),
+} %}
+
+<span class="badge badge--pill">{{ props.text }}</span>
+`,
+			);
+
+			const after = await renderCollection(await collectPreview(dir));
+			const recompiled = after.find((one) => one.component.name === "card");
+			assert.match(recompiled.stories[0].html, /badge--pill/);
+		},
+	);
+});
+
+// Type-checking a {% script %} block means building a TypeScript program, which
+// is the most expensive thing a rebuild does. `serve --no-script-check` gives it
+// up on purpose; the point of the test is that it is a real trade, so both
+// halves are asserted — the diagnostic is there by default and gone when asked.
+const SCRIPTED = {
+	"ui/toggle/nazare.json": JSON.stringify({
+		id: "@acme/toggle",
+		version: "0.1.0",
+		kind: "snippet",
+		entry: "toggle.nz.liquid",
+		license: "MIT",
+		files: ["toggle.nz.liquid"],
+		preview: { stories: [{ name: "default" }] },
+	}),
+	"ui/toggle/toggle.nz.liquid": `{% component snippet %}
+
+{% props {
+  label: string.setting({ label: "Label", default: "Toggle" }),
+} %}
+
+<button ref="trigger">{{ props.label }}</button>
+
+{% script lang="ts" %}
+export default island(({ refs }) => {
+  const count: number = "not a number";
+  refs.trigger.addEventListener("click", () => console.log(count));
+});
+{% endscript %}
+`,
+};
+
+test("a script's type error is reported, and skipped when asked", async () => {
+	await withProject(SCRIPTED, async (cwd) => {
+		const { collectPreview } = await previewCommand();
+		const dir = join(cwd, "ui");
+
+		const checked = await collectPreview(dir);
+		assert.ok(
+			checked.compiled[0].component.issues.some((issue) =>
+				/not assignable to type 'number'/.test(issue.message),
+			),
+			"the type error is reported by default",
+		);
+
+		const unchecked = await collectPreview(dir, { checkScripts: false });
+		assert.equal(
+			unchecked.compiled[0].component.issues.some((issue) =>
+				/not assignable to type 'number'/.test(issue.message),
+			),
+			false,
+			"--no-script-check gives the diagnostic up",
+		);
+		// Given up, not broken: the component still compiles and still renders.
+		assert.match(unchecked.compiled[0].component.template, /<button/);
+	});
+});
+
 test("packages are detected by their manifests, not by a flag", async () => {
 	await withProject(
 		{

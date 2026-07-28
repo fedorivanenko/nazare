@@ -15,6 +15,18 @@ export type CheckComponentScriptsOptions = {
 	readFile?: (path: string) => string | undefined;
 };
 
+/**
+ * TypeScript's own lib files, parsed and bound once for the life of the process
+ * rather than once per component. `lib.dom.d.ts` is megabytes of declarations,
+ * and building its symbol table is most of what a program costs — measured at
+ * 600-1600ms per component with a script, against 25-30ms once these are shared.
+ *
+ * They are read from TypeScript's installation and cannot change underneath us,
+ * so there is nothing to invalidate. Project files are deliberately not cached
+ * here: they come from `readFile`, and they are the ones an author is editing.
+ */
+const libSourceFiles = new Map<string, ts.SourceFile>();
+
 export function checkComponentScripts(
 	ir: ArtifactIR,
 	options: CheckComponentScriptsOptions = {},
@@ -26,7 +38,6 @@ export function checkComponentScripts(
 		ir.syntax.find((node) => node.kind === "file")?.path ?? "";
 
 	const channel = dataChannelFromIR(ir);
-	const sourceFileCache = new Map<string, ts.SourceFile>();
 
 	for (const script of scripts) {
 		if (script.kind !== "script") continue;
@@ -44,7 +55,6 @@ export function checkComponentScripts(
 			scriptDir,
 			script.lang,
 			options.readFile,
-			sourceFileCache,
 		)) {
 			if (isRedundantUnknownRef(diagnostic)) continue;
 			issues.push(
@@ -105,7 +115,6 @@ function typescriptDiagnostics(
 	scriptDir: string,
 	language: "js" | "ts",
 	readFile: ((path: string) => string | undefined) | undefined,
-	sourceFileCache: Map<string, ts.SourceFile>,
 ): readonly ts.Diagnostic[] {
 	// Rooted at "/" — TS's program-level module resolution silently skips
 	// resolution for rootless containing files, so the project is mirrored
@@ -147,11 +156,13 @@ function typescriptDiagnostics(
 		if (contents !== undefined) {
 			return ts.createSourceFile(fileName, contents, languageVersion, true);
 		}
+		// Anything left is TypeScript's own: a lib file from its installation,
+		// shared across every program this process builds.
 		const cacheKey = `${fileName}\0${languageVersion}`;
-		const cached = sourceFileCache.get(cacheKey);
+		const cached = libSourceFiles.get(cacheKey);
 		if (cached) return cached;
 		const sourceFile = defaultGetSourceFile(fileName, languageVersion, ...rest);
-		if (sourceFile) sourceFileCache.set(cacheKey, sourceFile);
+		if (sourceFile) libSourceFiles.set(cacheKey, sourceFile);
 		return sourceFile;
 	};
 	host.fileExists = (fileName) =>

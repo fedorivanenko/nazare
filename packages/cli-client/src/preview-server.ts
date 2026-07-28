@@ -32,6 +32,7 @@ import { isMissingFileError } from "./inspect-input.js";
 import type { CliOptions } from "./options.js";
 import type { Output } from "./output.js";
 import {
+	type CollectOptions,
 	collectPreview,
 	fixtureReader,
 	type PreviewCollection,
@@ -92,8 +93,9 @@ async function buildState(
 	dir: string,
 	label: string,
 	previous?: ServerState,
+	collectOptions: CollectOptions = {},
 ): Promise<ServerState | undefined> {
-	const collection = await collectPreview(dir);
+	const collection = await collectPreview(dir, collectOptions);
 	if (!collection || collection === "missing") return undefined;
 	const fresh = await renderCollection(collection);
 
@@ -414,7 +416,11 @@ export async function runPreviewServe(
 	cliOptions: CliOptions,
 	output: Output,
 ): Promise<number> {
-	let state = await buildState(dir, label);
+	// Off only when asked for. The workbench lists a component's diagnostics, and
+	// script type errors are among the few it can show before a storefront runs.
+	const collectOptions: CollectOptions =
+		cliOptions.scriptCheck === false ? { checkScripts: false } : {};
+	let state = await buildState(dir, label, undefined, collectOptions);
 	if (!state) {
 		output.error(
 			`Nothing to preview in ${dir}. Expected a theme (snippets/, sections/, blocks/) or a directory of packages (folders with nazare.json).`,
@@ -585,7 +591,7 @@ export async function runPreviewServe(
 		rebuilding = rebuilding.then(async () => {
 			const started = Date.now();
 			try {
-				const next = await buildState(dir, label, state);
+				const next = await buildState(dir, label, state, collectOptions);
 				// A directory that stopped being previewable keeps the last good
 				// pages: an editor mid-rename is not a reason to serve nothing.
 				if (!next || next.rendered.length === 0) {
