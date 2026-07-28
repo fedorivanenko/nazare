@@ -49,6 +49,47 @@ test("build session tracks output ownership and retains unchanged snapshots", ()
 	assert.deepEqual(session.getBuild(), buildNazareThemeWorkspace(finalFiles));
 });
 
+test("incremental sessions canonicalize paths and reject unsafe or duplicate inputs", () => {
+	const source = "<span>A</span>";
+	const build = new ThemeBuildSession([
+		{ path: "./components/a.nz.liquid", contents: source },
+	]);
+	const update = build.updateFile({
+		path: "components/a.nz.liquid",
+		contents: "<span>B</span>",
+	});
+	assert.deepEqual(update.changedPaths, ["components/a.nz.liquid"]);
+	assert.deepEqual(build.getOwnedOutputPaths("./components/a.nz.liquid"), [
+		"snippets/a.liquid",
+	]);
+
+	const program = new ThemeProgram([
+		{ path: "./snippets/card.liquid", contents: "{{ title }}" },
+	]);
+	const graphUpdate = program.updateFile({
+		path: "snippets/card.liquid",
+		contents: "{{ heading }}",
+	});
+	assert.deepEqual(graphUpdate.changedPaths, ["snippets/card.liquid"]);
+
+	assert.throws(
+		() => build.updateFile({ path: "../escape.nz.liquid", contents: source }),
+		/Unsafe theme session path/,
+	);
+	assert.throws(
+		() => program.removeFile("../escape.liquid"),
+		/Unsafe theme program path/,
+	);
+	assert.throws(
+		() =>
+			new ThemeBuildSession([
+				{ path: "a.nz.liquid", contents: source },
+				{ path: "./a.nz.liquid", contents: source },
+			]),
+		/Duplicate theme session path/,
+	);
+});
+
 test("build session removes stale owned outputs and preserves retained outputs", () => {
 	const session = new ThemeBuildSession([
 		{ path: "a.nz.liquid", contents: "<span>A</span>" },

@@ -59,6 +59,22 @@ test("plain Liquid frontend reports authored schema setting drift", () => {
 	assert.equal(result.issues[0].phase, "check");
 });
 
+test("plain Liquid frontend reports malformed schema shapes without throwing", () => {
+	for (const schema of [
+		`{"settings":[null]}`,
+		`{"blocks":[null]}`,
+		`{"blocks":[{"type":"x","settings":[null]}]}`,
+	]) {
+		const result = compilePlainLiquid(
+			`{% schema %}${schema}{% endschema %}`,
+			"sections/main.liquid",
+		);
+		assert.equal(result.canEmit, false);
+		assert.equal(result.issues[0]?.code, "NAZARE_SCHEMA_INVALID_SHAPE");
+		assert.equal(result.issues[0]?.phase, "check");
+	}
+});
+
 test("plain Liquid frontend keeps dynamic dependencies indexed without paths", () => {
 	const { ast } = compilePlainLiquid(
 		"{% render snippet_name %}\n{% layout layout_name %}",

@@ -76,8 +76,8 @@ Selection order:
 
 1. explicit `frontend` option;
 2. caller-provided `frontends` whose `accepts(file, source)` returns true;
-3. built-in `nazareLiquidFrontend` for `.nz.liquid` files;
-4. built-in `plainLiquidFrontend` for plain `.liquid` files;
+3. built-in `treeSitterNazareLiquidFrontend` for `.nz.liquid` files;
+4. built-in `treeSitterPlainLiquidFrontend` for plain `.liquid` files;
 5. unsupported-input diagnostic.
 
 Returns a discriminated result:
@@ -94,12 +94,12 @@ Success adds:
 - optional `ast` — present for the built-in Nazare Liquid frontend;
 - `frontendMetadata` — frontend-owned metadata for typed wrappers and tooling.
 
-Frontend-specific options travel through `frontendOptions`. The built-in plain Liquid frontend accepts `{ parseMode: "strict" | "tolerant" }`.
+Frontend-specific options travel through `frontendOptions`. Built-in plain Liquid frontend accepts `{ parseMode: "strict" | "liquid-only" }`.
 
 Built-in frontend support:
 
-- `nazareLiquidFrontend` — `.nz.liquid` component frontend with explicit props/imports/behavior syntax;
-- `plainLiquidFrontend` — plain Shopify `.liquid` frontend for coexistence validation and dependency indexing.
+- `treeSitterNazareLiquidFrontend` — `.nz.liquid` component frontend with explicit props/imports/behavior syntax;
+- `treeSitterPlainLiquidFrontend` — plain Shopify `.liquid` frontend for coexistence validation and dependency indexing.
 
 ### `compilePlainLiquid(source, file)`
 
@@ -111,11 +111,11 @@ Use this for coexistence mode: legacy theme files stay plain Shopify Liquid, but
 
 Runs `compilePlainLiquid()` and emits the source unchanged at the same theme-relative path when no error diagnostics exist. Pass `{ emitOnError: true }` for explicit preview-style pass-through output.
 
-`compilePlainLiquid()` is a typed convenience wrapper around `compileArtifact({ frontend: plainLiquidFrontend })`, so it shares the same frontend selection/projection path rather than maintaining a parallel compiler flow.
+`compilePlainLiquid()` is a typed convenience wrapper around `compileArtifact({ frontend: treeSitterPlainLiquidFrontend })`, so it shares the same frontend selection/projection path rather than maintaining a parallel compiler flow.
 
 ### `compileNazareArtifact(source, file, options?)`
 
-Compiles one `.nz.liquid` artifact through `nazareLiquidFrontend` and returns structured compiler data. It does **not** emit files.
+Compiles one `.nz.liquid` artifact through `treeSitterNazareLiquidFrontend` and returns structured compiler data. It does **not** emit files.
 
 Returns:
 

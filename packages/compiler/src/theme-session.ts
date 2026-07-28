@@ -62,6 +62,10 @@ import type {
 	ThemeSemanticModel,
 } from "./theme-facts.js";
 import {
+	isUnsafeThemePath,
+	normalizeThemePath,
+} from "./theme-file-classifier.js";
+import {
 	themeGraphFromModel,
 	themeGraphFromRecords,
 	themeGraphRecordsFromModel,
@@ -226,7 +230,13 @@ export class ThemeProgram {
 		options: InspectNazareThemeOptions = {},
 	) {
 		this.options = { ...options, cache: this.cache, memo: this.memo };
-		for (const file of files) this.filesByPath.set(file.path, file);
+		for (const file of files) {
+			const normalized = normalizeProgramFile(file);
+			if (this.filesByPath.has(normalized.path)) {
+				throw new Error(`Duplicate theme program path ${normalized.path}`);
+			}
+			this.filesByPath.set(normalized.path, normalized);
+		}
 		const analysis = analyzeNazareTheme(this.files(), this.options);
 		this.factStore = new ThemeFactStore(analysis.facts);
 		this.factIndex = new ThemeFactIndex(analysis.facts);
@@ -293,29 +303,31 @@ export class ThemeProgram {
 	}
 
 	updateFile(file: ThemeInputFile): ThemeGraphUpdate {
-		const previous = this.filesByPath.get(file.path);
-		if (previous?.contents === file.contents) {
+		const normalized = normalizeProgramFile(file);
+		const previous = this.filesByPath.get(normalized.path);
+		if (previous?.contents === normalized.contents) {
 			return this.emptyUpdate([]);
 		}
-		this.filesByPath.set(file.path, file);
+		this.filesByPath.set(normalized.path, normalized);
 		try {
-			return this.rebuild([file.path], [file.path]);
+			return this.rebuild([normalized.path], [normalized.path]);
 		} catch (error) {
-			if (previous) this.filesByPath.set(file.path, previous);
-			else this.filesByPath.delete(file.path);
+			if (previous) this.filesByPath.set(normalized.path, previous);
+			else this.filesByPath.delete(normalized.path);
 			throw error;
 		}
 	}
 
 	removeFile(path: string): ThemeGraphUpdate {
-		const previous = this.filesByPath.get(path);
-		if (!previous || !this.filesByPath.delete(path)) {
+		const normalizedPath = normalizeProgramPath(path);
+		const previous = this.filesByPath.get(normalizedPath);
+		if (!previous || !this.filesByPath.delete(normalizedPath)) {
 			return this.emptyUpdate([]);
 		}
 		try {
-			return this.rebuild([path], [path]);
+			return this.rebuild([normalizedPath], [normalizedPath]);
 		} catch (error) {
-			this.filesByPath.set(path, previous);
+			this.filesByPath.set(normalizedPath, previous);
 			throw error;
 		}
 	}
@@ -1420,6 +1432,18 @@ function diffGraphs(
 		update.removedEdgeIds.length +
 		update.changedEdgeIds.length;
 	return update;
+}
+
+function normalizeProgramFile(file: ThemeInputFile): ThemeInputFile {
+	return { ...file, path: normalizeProgramPath(file.path) };
+}
+
+function normalizeProgramPath(path: string): string {
+	const normalized = normalizeThemePath(path);
+	if (isUnsafeThemePath(normalized)) {
+		throw new Error(`Unsafe theme program path ${path}`);
+	}
+	return normalized;
 }
 
 function telemetryNow(): number {

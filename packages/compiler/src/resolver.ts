@@ -223,14 +223,9 @@ export function resolveAssetImports(
 		return scriptNodeFromAsset(node.path, contents, node.localName, node.span);
 	});
 
-	const resolvedIssues = markDiagnostics(issues, "resolve");
 	return {
-		ast: {
-			...ast,
-			nodes,
-			diagnostics: [...ast.diagnostics, ...resolvedIssues],
-		},
-		issues: resolvedIssues,
+		ast: { ...ast, nodes },
+		issues: markDiagnostics(issues, "resolve"),
 	};
 }
 

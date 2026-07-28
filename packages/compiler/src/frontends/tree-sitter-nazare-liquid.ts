@@ -47,7 +47,7 @@ export const treeSitterNazareLiquidFrontend: CompilerFrontend = {
 			kind: "nazare-ast",
 			ast: assetResolution.ast,
 			contracts: contractResolution.contracts,
-			resolveIssues: contractResolution.issues,
+			resolveIssues: [...contractResolution.issues, ...assetResolution.issues],
 			notes: markDiagnostics(assetResolution.ast.notes, "parse"),
 			sourceForEmit: input.source,
 			frontendSupport: NAZARE_LIQUID_SUPPORT,
