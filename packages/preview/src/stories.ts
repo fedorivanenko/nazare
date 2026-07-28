@@ -17,9 +17,9 @@ export type PreviewStory = {
 	name: string;
 	/**
 	 * What this case changes, not the whole prop set. Anything unstated falls
-	 * through to the default the declaration itself gives, so a story stays about
-	 * its delta — which is also what makes the workbench's grouping by changed
-	 * prop mean something. `null` is an explicit unset, distinct from absent.
+	 * through to the runtime default the declaration itself gives, so a story
+	 * stays about its delta — which is also what makes the workbench's grouping
+	 * by changed prop mean something. `null` explicitly omits a render argument.
 	 */
 	props: Record<string, unknown>;
 	/**
@@ -35,27 +35,25 @@ export type PreviewStory = {
 };
 
 /**
- * The props a story actually renders with: the declaration's defaults, with the
- * story's own values over the top.
+ * Props supplied by preview's runtime boundary. Snippet defaults are absent
+ * here because emitted Liquid owns them. Section and block defaults merge here
+ * because Shopify normally materializes schema defaults before rendering, and
+ * preview must model that boundary explicitly.
  *
- * Merging here rather than at authoring time is what lets a story be partial,
- * and it is also load-bearing for correctness — emit does not materialize a
- * snippet prop's default, so a value the story omits would otherwise arrive nil
- * on render even though the component declares one.
- *
- * Only *declared* defaults merge. An optional prop with no default remains
- * absent. Preview never injects a control placeholder into rendered props.
+ * Optional props without defaults remain absent. Preview never injects control
+ * placeholders into rendered props.
  */
 export function storyProps(
 	story: PreviewStory,
 	controls: PreviewControl[],
+	componentKind: PreviewComponent["componentKind"],
 ): Record<string, unknown> {
 	const props: Record<string, unknown> = {
-		...declaredDefaults(controls),
+		...(componentKind === "snippet" ? {} : declaredDefaults(controls)),
 		...story.props,
 	};
-	// An explicit null is the story saying "without this one" — the prop is
-	// absent on render, not the string "null".
+	// Null means omit the argument. Emitted snippet defaults may then apply; this
+	// is distinct from passing the string "null".
 	for (const [name, value] of Object.entries(props)) {
 		if (value === null) delete props[name];
 	}

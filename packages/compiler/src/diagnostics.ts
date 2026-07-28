@@ -27,6 +27,21 @@ export function parseInvalidRender(
 	};
 }
 
+export function invalidPropDefault(
+	propName: string,
+	nodeId: Id,
+	detail: string,
+	span: SourceSpan | undefined,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "IR_PROP_DEFAULT_INVALID",
+		message: `Prop "${propName}" has an invalid default contract: ${detail}`,
+		nodeId,
+		span,
+	};
+}
+
 export function importBareSpecifier(
 	specifier: string,
 	span: SourceSpan,

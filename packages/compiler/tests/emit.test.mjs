@@ -9,7 +9,12 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { compileNazareArtifact, emitTheme } from "../dist/index.js";
+import {
+	compileNazareArtifact,
+	compilePlainLiquid,
+	emitTheme,
+	validateArtifactIR,
+} from "../dist/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..");
@@ -93,6 +98,76 @@ test("emit: multiple inline behaviors register in declaration order", () => {
 		"components/w/w.nz.liquid",
 		undefined,
 	);
+});
+
+test("emit: snippet defaults preserve false, zero, and quoted strings", () => {
+	const source = `{% props {
+  enabled: boolean.default(false),
+  count: number.default(0),
+  label: string.default("say \\"hi\\""),
+} %}
+<span>{{ props.enabled }} {{ props.count }} {{ props.label }}</span>`;
+	const compiled = compileNazareArtifact(source, "components/status.nz.liquid");
+	const emitted = emitTheme(source, compiled, { name: "status" });
+	assert.deepEqual(
+		emitted.issues.filter((issue) => issue.severity === "error"),
+		[],
+	);
+	const liquid = emitted.files.find(
+		(file) => file.path === "snippets/status.liquid",
+	)?.contents;
+	assert.ok(liquid);
+	assert.match(
+		liquid,
+		/{% if enabled == nil %}\n {2}{% assign enabled = false %}\n{% endif %}/,
+	);
+	assert.match(
+		liquid,
+		/{% if count == nil %}\n {2}{% assign count = 0 %}\n{% endif %}/,
+	);
+	assert.ok(
+		liquid.includes(
+			`{% assign label = "say " | append: '"' | append: "hi" | append: '"' %}`,
+		),
+	);
+	assert.equal(
+		compilePlainLiquid(liquid, "snippets/status.liquid").issues.some(
+			(issue) => issue.severity === "error",
+		),
+		false,
+	);
+});
+
+test("emit: section defaults remain owned by Shopify schema", () => {
+	const source = `{% component section %}
+{% props { enabled: boolean.setting({ label: "Enabled", default: false }) } %}
+<div>{{ props.enabled }}</div>`;
+	const compiled = compileNazareArtifact(source, "components/status.nz.liquid");
+	const emitted = emitTheme(source, compiled, { name: "status" });
+	const liquid = emitted.files.find(
+		(file) => file.path === "sections/status.liquid",
+	)?.contents;
+	assert.ok(liquid);
+	assert.equal(liquid.includes("{% if enabled == nil %}"), false);
+	assert.match(liquid, /"default": false/);
+});
+
+test("emit: malformed default contracts fail explicitly", () => {
+	const source = `{% props { enabled: boolean.default(false) } %}
+<span>{{ props.enabled }}</span>`;
+	const compiled = compileNazareArtifact(source, "components/status.nz.liquid");
+	const prop = compiled.ir.syntax.find(
+		(node) => node.kind === "prop-declaration" && node.name === "enabled",
+	);
+	assert.ok(prop);
+	delete prop.typeInfo.defaultValue;
+	assert.equal(
+		validateArtifactIR(compiled.ir)[0]?.code,
+		"IR_PROP_DEFAULT_INVALID",
+	);
+	const emitted = emitTheme(source, compiled, { name: "status" });
+	assert.deepEqual(emitted.files, []);
+	assert.equal(emitted.issues[0]?.code, "IR_PROP_DEFAULT_INVALID");
 });
 
 test("emit: a component with a script emits the shared runtime asset once", () => {

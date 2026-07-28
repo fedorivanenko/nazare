@@ -33,6 +33,10 @@ import {
 import { type HoistedSetting, resolveHoistedSettings } from "./hoist.js";
 import { baseNameOf, directoryOf } from "./paths.js";
 import { markDiagnostics } from "./pipeline.js";
+import {
+	analyzePropDefaults,
+	emitLiquidPropDefaultPrologue,
+} from "./prop-defaults.js";
 import { runtimeSource } from "./runtime.js";
 import { themeSchemaFromIR } from "./schema.js";
 import { hasDefaultExport } from "./script-scan.js";
@@ -86,6 +90,7 @@ export function checkEmitPreconditions(
 	const scripts = compiled.ir.syntax.filter((node) => node.kind === "script");
 	const hasScript = scripts.length > 0;
 	const kind = componentKindFromIR(compiled.ir);
+	issues.push(...analyzePropDefaults(compiled.ir).issues);
 
 	if (hasScript || kind === "block") {
 		const root = rootElement(compiled.ast);
@@ -423,11 +428,19 @@ function emitLiquid(
 
 	let liquid = applyEdits(source, edits);
 	liquid = `${liquid.replace(/\n{3,}/g, "\n\n").trim()}\n`;
+	const propDefaultPrologue =
+		kind === "snippet"
+			? emitLiquidPropDefaultPrologue(
+					analyzePropDefaults(compiled.ir).liquidDefaults,
+				)
+			: "";
 	liquid =
 		generatedHeader(
 			compiled.ast.file,
 			Array.from(hoistedBySiteId.values()).flat(),
-		) + liquid;
+		) +
+		propDefaultPrologue +
+		liquid;
 
 	if (hasStyle) {
 		liquid += `{{ '${options.name}.css' | asset_url | stylesheet_tag }}\n`;

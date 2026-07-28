@@ -50,8 +50,13 @@ export async function renderComponentStories(
 		const id = storyId(component.name, story.name);
 		const changed = changedProps(story, component.controls);
 		const issues = validateStory(component, story);
-		// The story states its delta; the declaration supplies the rest.
-		const props = storyProps(story, component.controls);
+		// Snippet defaults execute in emitted Liquid. Shopify schema owns section
+		// and block defaults, which storyProps models for preview.
+		const props = storyProps(
+			story,
+			component.controls,
+			component.componentKind,
+		);
 		try {
 			rendered.push({
 				id,
