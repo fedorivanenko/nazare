@@ -1,5 +1,5 @@
 import type { SourceSpan } from "@nazare/core";
-import type { LiquidSyntaxFacts } from "@nazare/source";
+import type { HtmlMarkupFacts, LiquidSyntaxFacts } from "@nazare/source";
 import { spanFromOffsets } from "./source.js";
 import { renderSiteKey, type ThemeFact } from "./theme-facts.js";
 import {
@@ -21,9 +21,43 @@ export function collectTreeSitterSourceThemeFacts(
 	path: string,
 	source: string,
 	liquid: LiquidSyntaxFacts,
-): { facts: ThemeFact[]; issues: [] } {
-	if (!liquid.authoritative) return { facts: [], issues: [] };
+	markup?: HtmlMarkupFacts,
+): {
+	facts: ThemeFact[];
+	issues: [];
+	uncertainty: Array<{ code: string; message: string; span?: SourceSpan }>;
+} {
+	if (!liquid.authoritative) return { facts: [], issues: [], uncertainty: [] };
 	const facts: ThemeFact[] = [];
+	const uncertainty = (markup?.uncertainty ?? []).map((boundary) => ({
+		code: "THEME_DYNAMIC_MARKUP_HOOK",
+		message: `Dynamic ${boundary.kind} markup prevents complete DOM hook analysis`,
+		span: spanFromOffsets(source, path, boundary.range),
+	}));
+	for (const hook of markup?.hooks ?? []) {
+		facts.push(
+			hook.kind === "customElement"
+				? {
+						kind: "behavior",
+						fromPath: path,
+						subjectKind: "customElement",
+						operation: "uses",
+						name: hook.name,
+						span: spanFromOffsets(source, path, hook.range),
+						extractor: "tree-sitter-html",
+					}
+				: {
+						kind: "behavior",
+						fromPath: path,
+						subjectKind: "domHook",
+						hookKind: hook.kind,
+						operation: "emits",
+						name: hook.name,
+						span: spanFromOffsets(source, path, hook.range),
+						extractor: "tree-sitter-html",
+					},
+		);
+	}
 	const span = (range: Range): SourceSpan =>
 		spanFromOffsets(source, path, range);
 	const branchBodies = [
@@ -286,7 +320,7 @@ export function collectTreeSitterSourceThemeFacts(
 			match = rule.pattern.exec(source);
 		}
 	}
-	return { facts, issues: [] };
+	return { facts, issues: [], uncertainty };
 }
 
 function booleanBindingsIn(

@@ -654,7 +654,7 @@ async function loadThemeInspection(
 	);
 	const metafields = await readMetafieldSnapshot(projectRoot);
 	const themeCheck = await readThemeCheckPolicy(projectRoot);
-	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v2.json");
+	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v3.json");
 	const { cache, discardedReason } = await readThemeAnalysisCache(cachePath);
 	if (discardedReason) {
 		output.error(

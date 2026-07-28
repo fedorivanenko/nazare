@@ -22,6 +22,7 @@ export type ThemeImpactIndexDelta = {
 export class ThemeImpactIndex {
 	private readonly dependentsByNode = new Map<string, Set<string>>();
 	private readonly dependenciesByNode = new Map<string, Set<string>>();
+	private readonly pageDependentsByNode = new Map<string, Set<string>>();
 	private readonly pagePathsByNode = new Map<string, string[]>();
 	private readonly nodeIdsByPath = new Map<string, Set<string>>();
 	private readonly pathByNodeId = new Map<string, string>();
@@ -36,6 +37,7 @@ export class ThemeImpactIndex {
 	replaceGraph(graph: InspectNazareThemeResult): void {
 		this.dependentsByNode.clear();
 		this.dependenciesByNode.clear();
+		this.pageDependentsByNode.clear();
 		this.pagePathsByNode.clear();
 		this.nodeIdsByPath.clear();
 		this.pathByNodeId.clear();
@@ -50,6 +52,7 @@ export class ThemeImpactIndex {
 		const fork = new ThemeImpactIndex();
 		copySetMap(this.dependentsByNode, fork.dependentsByNode);
 		copySetMap(this.dependenciesByNode, fork.dependenciesByNode);
+		copySetMap(this.pageDependentsByNode, fork.pageDependentsByNode);
 		copySetMap(this.nodeIdsByPath, fork.nodeIdsByPath);
 		for (const [key, value] of this.pagePathsByNode) {
 			fork.pagePathsByNode.set(key, [...value]);
@@ -130,6 +133,9 @@ export class ThemeImpactIndex {
 		this.edgesById.set(edge.id, edge);
 		addValue(this.dependenciesByNode, edge.from, edge.to);
 		addValue(this.dependentsByNode, edge.to, edge.from);
+		if (propagatesPageImpact(edge)) {
+			addValue(this.pageDependentsByNode, edge.to, edge.from);
+		}
 	}
 
 	private removeEdge(edge: ImpactEdge): void {
@@ -140,6 +146,9 @@ export class ThemeImpactIndex {
 		if (sameEndpointsRemain) return;
 		removeValue(this.dependenciesByNode, edge.from, edge.to);
 		removeValue(this.dependentsByNode, edge.to, edge.from);
+		if (propagatesPageImpact(edge)) {
+			removeValue(this.pageDependentsByNode, edge.to, edge.from);
+		}
 	}
 
 	private refreshSummary(): void {
@@ -204,7 +213,7 @@ export class ThemeImpactIndex {
 			visited.add(current);
 			for (const page of this.pagePathsByNode.get(current) ?? [])
 				pages.add(page);
-			for (const dependent of this.dependentsByNode.get(current) ?? [])
+			for (const dependent of this.pageDependentsByNode.get(current) ?? [])
 				pending.push(dependent);
 		}
 		return [...pages].sort();
@@ -216,12 +225,18 @@ function impactSummaryFromGraph(
 	pathByNodeId: Map<string, string>,
 ): ThemeImpactSummary {
 	const dependencies = new Map<string, Set<string>>();
+	const pageDependencies = new Map<string, Set<string>>();
 	const dependents = new Map<string, Set<string>>();
 	const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
-	const add = (from: string | undefined, to: string | undefined): void => {
+	const add = (
+		from: string | undefined,
+		to: string | undefined,
+		propagatesToPages = true,
+	): void => {
 		if (!from || !to || from === to) return;
 		addValue(dependencies, from, to);
 		addValue(dependents, to, from);
+		if (propagatesToPages) addValue(pageDependencies, from, to);
 	};
 	const referenceKinds = new Set([
 		"renders",
@@ -229,10 +244,16 @@ function impactSummaryFromGraph(
 		"containsSectionGroup",
 		"usesLayout",
 		"referencesAsset",
+		"dependsOnBehaviorContract",
+		"dependsOnDomHook",
 	]);
 	for (const edge of graph.edges) {
 		if (referenceKinds.has(edge.kind)) {
-			add(pathByNodeId.get(edge.from), pathByNodeId.get(edge.to));
+			add(
+				pathByNodeId.get(edge.from),
+				pathByNodeId.get(edge.to),
+				propagatesPageImpact(edge),
+			);
 			continue;
 		}
 		if (edge.kind === "instanceOf" || edge.kind === "instanceOfBlock") {
@@ -260,7 +281,7 @@ function impactSummaryFromGraph(
 			if (!path || visited.has(path)) continue;
 			visited.add(path);
 			addValue(affectedPages, path, page.path);
-			for (const dependency of dependencies.get(path) ?? []) {
+			for (const dependency of pageDependencies.get(path) ?? []) {
 				pending.push(dependency);
 			}
 		}
@@ -318,6 +339,13 @@ function impactSummaryFromGraph(
 			)
 			.sort((a, b) => a.localeCompare(b)),
 	};
+}
+
+function propagatesPageImpact(edge: ImpactEdge): boolean {
+	return (
+		edge.kind !== "dependsOnDomHook" &&
+		edge.kind !== "dependsOnBehaviorContract"
+	);
 }
 
 function addValue(

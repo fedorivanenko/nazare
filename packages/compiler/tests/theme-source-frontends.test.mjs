@@ -24,7 +24,13 @@ test("theme source registry assigns one frontend to every existing source family
 		],
 		["snippets/card.liquid", "<div></div>", "snippet", "liquid"],
 		["templates/index.json", '{"sections":{}}', "templateJson", "json"],
-		["assets/theme.css", ".card {}", "asset", "asset"],
+		["assets/theme.css", ".card {}", "asset", "css"],
+		[
+			"assets/theme.js",
+			'document.querySelector(".card")',
+			"asset",
+			"javascript",
+		],
 		["README.md", "theme", "other", "other"],
 	];
 

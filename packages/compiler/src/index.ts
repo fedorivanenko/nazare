@@ -233,6 +233,8 @@ export type {
 	ThemeAnalysis,
 	ThemeAnalysisCache,
 	ThemeAnalysisCacheEntry,
+	ThemeBehaviorFact,
+	ThemeBehaviorRecord,
 	ThemeBlockInstanceRecord,
 	ThemeBlockRecord,
 	ThemeBlockSettingRecord,
@@ -241,6 +243,7 @@ export type {
 	ThemeCapabilitySignalRecord,
 	ThemeClassificationRecord,
 	ThemeDataAccessRecord,
+	ThemeDomHookKind,
 	ThemeEvidenceRecord,
 	ThemeExpectedInputRecord,
 	ThemeFact,
@@ -260,6 +263,8 @@ export type {
 	ThemeSectionInstanceRecord,
 	ThemeSemanticModel,
 	ThemeSettingReadRecord,
+	ThemeSourceAnalysisRecord,
+	ThemeSourceLanguage,
 } from "./theme-facts.js";
 export { shareThemeGraphRecords } from "./theme-graph-output.js";
 export {
@@ -384,13 +389,14 @@ export type {
 	ThemeSourceFrontend,
 	ThemeSourceFrontendContext,
 	ThemeSourceInput,
-	ThemeSourceLanguage,
 	ThemeSourceUncertainty,
 } from "./theme-source-frontend.js";
 export {
 	analyzeThemeSource,
 	assetThemeSourceFrontend,
+	cssThemeSourceFrontend,
 	DEFAULT_THEME_SOURCE_FRONTENDS,
+	javaScriptThemeSourceFrontend,
 	jsonThemeSourceFrontend,
 	nazareLiquidThemeSourceFrontend,
 	opaqueThemeSourceFrontend,

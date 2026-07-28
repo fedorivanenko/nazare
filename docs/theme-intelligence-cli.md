@@ -28,7 +28,8 @@ The answer includes:
 - direct dependents;
 - transitively affected pages;
 - diagnostics authored in that file;
-- explicit uncertainty when dynamic Liquid prevents a complete answer.
+- styling and behavior consumers connected through static DOM hooks;
+- explicit uncertainty when dynamic Liquid or JavaScript prevents a complete answer.
 
 The default output is concise text. `--format json` emits a versioned projection
 for editor integrations and automation.
@@ -64,8 +65,15 @@ Issues: none
   source or maintain a second dependency model.
 - Dependencies and dependents are direct. Affected pages are transitive.
 - `unused` is emitted only for file kinds the impact index can prove unused.
-- Dynamic references produce `certainty: partial`; absence of a static edge is
-  never presented as proof of safety.
+- Dynamic references, markup hooks, and script selectors produce
+  `certainty: partial`; absence of a static edge is never presented as proof of
+  safety.
+- CSS and JavaScript are parsed by compiler frontends. Literal classes, ids,
+  data attributes, custom properties, events, and custom elements join through
+  the canonical theme model.
+- Behavior relationships can add direct file dependencies and dependents, but
+  do not broaden affected pages merely because a shared stylesheet or script is
+  loaded globally.
 - Missing metafield snapshots and other absent external state remain unknown.
 - Query execution writes only the existing analysis cache under `.nazare-out`.
 - Any analysis error keeps a non-zero process exit status while still printing
@@ -79,6 +87,8 @@ rendering. `graph-server` exposes the same projection as the `fileImpact` MCP
 tool without reimplementing it.
 
 This split keeps semantic truth in compiler and presentation in client.
+Whole-theme source frontends own local extraction; the linker alone owns
+cross-language relationships and impact.
 
 ## Extension path
 

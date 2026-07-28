@@ -843,7 +843,7 @@ test("cli: inspect discards a malformed cache and analyzes from source", async (
 	await withProject(
 		{
 			"snippets/card.liquid": "{{ product.title }}",
-			".nazare-out/inspect-cache-v2.json": "{invalid",
+			".nazare-out/inspect-cache-v3.json": "{invalid",
 		},
 		async (cwd) => {
 			const result = await runCli(
@@ -878,7 +878,7 @@ test("cli: inspect discards cache facts owned by another source", async () => {
 			"json",
 		);
 		assert.equal(first.status, 0, first.stderr);
-		const cachePath = join(cwd, ".nazare-out", "inspect-cache-v2.json");
+		const cachePath = join(cwd, ".nazare-out", "inspect-cache-v3.json");
 		const cache = JSON.parse(readFileSync(cachePath, "utf8"));
 		cache.entries["snippets/card.liquid"].facts = [
 			{ kind: "file", path: "snippets/other.liquid", fileKind: "snippet" },

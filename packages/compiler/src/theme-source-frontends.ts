@@ -1,4 +1,6 @@
 import type { Diagnostic } from "@nazare/core";
+import { analyzeThemeCss } from "./frontends/theme-css.js";
+import { analyzeThemeScript } from "./frontends/theme-script.js";
 import type { ThemeFact } from "./theme-facts.js";
 import {
 	themeAssetNameFromPath,
@@ -54,9 +56,41 @@ export const jsonThemeSourceFrontend: ThemeSourceFrontend = {
 	},
 };
 
+export const cssThemeSourceFrontend: ThemeSourceFrontend = {
+	name: "css-theme-source",
+	accepts: (input) => input.fileKind === "asset" && input.path.endsWith(".css"),
+	analyze(input) {
+		return analysis(
+			input,
+			this.name,
+			"css",
+			analyzeThemeCss(input.path, input.contents),
+		);
+	},
+};
+
+export const javaScriptThemeSourceFrontend: ThemeSourceFrontend = {
+	name: "javascript-theme-source",
+	accepts: (input) =>
+		input.fileKind === "asset" &&
+		(input.path.endsWith(".js") || input.path.endsWith(".mjs")),
+	analyze(input) {
+		return analysis(
+			input,
+			this.name,
+			"javascript",
+			analyzeThemeScript(input.path, input.contents, "javascript"),
+		);
+	},
+};
+
 export const assetThemeSourceFrontend: ThemeSourceFrontend = {
 	name: "asset-theme-source",
-	accepts: (input) => input.fileKind === "asset",
+	accepts: (input) =>
+		input.fileKind === "asset" &&
+		!input.path.endsWith(".css") &&
+		!input.path.endsWith(".js") &&
+		!input.path.endsWith(".mjs"),
 	analyze(input) {
 		return analysis(input, this.name, "asset", { facts: [], issues: [] });
 	},
@@ -77,6 +111,8 @@ export const DEFAULT_THEME_SOURCE_FRONTENDS: readonly ThemeSourceFrontend[] = [
 	nazareLiquidThemeSourceFrontend,
 	plainLiquidThemeSourceFrontend,
 	jsonThemeSourceFrontend,
+	cssThemeSourceFrontend,
+	javaScriptThemeSourceFrontend,
 	assetThemeSourceFrontend,
 	opaqueThemeSourceFrontend,
 ];
@@ -119,22 +155,40 @@ function analysis(
 		facts: ThemeFact[];
 		issues: Diagnostic[];
 		artifact?: ThemeSourceAnalysis["artifact"];
+		uncertainty?: ThemeSourceAnalysis["uncertainty"];
 	},
 ): ThemeSourceAnalysis {
-	const facts = [...baseFacts(input), ...result.facts];
-	const completeness = sourceCompleteness(result.issues);
+	const completeness = sourceCompleteness(
+		result.issues,
+		result.uncertainty ?? [],
+	);
+	const uncertainty =
+		completeness === "complete"
+			? []
+			: [
+					...(result.uncertainty ?? []),
+					...result.issues
+						.filter((issue) => issue.phase === "parse")
+						.map((issue) => ({ code: issue.code, message: issue.message })),
+				];
+	const facts: ThemeFact[] = [
+		...baseFacts(input),
+		...result.facts,
+		{
+			kind: "sourceAnalysis",
+			path: input.path,
+			language,
+			completeness,
+			uncertainty: uncertainty.map((boundary) => boundary.message),
+		},
+	];
 	return {
 		version: 1,
 		frontend,
 		path: input.path,
 		language,
 		completeness,
-		uncertainty:
-			completeness === "complete"
-				? []
-				: result.issues
-						.filter((issue) => issue.phase === "parse")
-						.map((issue) => ({ code: issue.code, message: issue.message })),
+		uncertainty,
 		facts,
 		issues: result.issues,
 		...(result.artifact ? { artifact: result.artifact } : {}),
@@ -178,10 +232,11 @@ function baseFacts(input: ThemeSourceInput): ThemeFact[] {
 
 function sourceCompleteness(
 	issues: Diagnostic[],
+	uncertainty: ThemeSourceAnalysis["uncertainty"],
 ): ThemeSourceAnalysis["completeness"] {
 	const parseIssues = issues.filter((issue) => issue.phase === "parse");
 	if (parseIssues.some((issue) => issue.severity === "error")) return "failed";
-	if (parseIssues.length > 0) return "partial";
+	if (parseIssues.length > 0 || uncertainty.length > 0) return "partial";
 	return "complete";
 }
 
@@ -197,7 +252,16 @@ function frontendFailure(
 		language: "other",
 		completeness: "failed",
 		uncertainty: [{ code, message }],
-		facts: baseFacts(input),
+		facts: [
+			...baseFacts(input),
+			{
+				kind: "sourceAnalysis",
+				path: input.path,
+				language: "other",
+				completeness: "failed",
+				uncertainty: [message],
+			},
+		],
 		issues: [
 			{
 				severity: "error",

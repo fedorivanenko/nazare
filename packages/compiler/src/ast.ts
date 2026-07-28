@@ -7,7 +7,7 @@ import type {
 	PropTypeInfo,
 	SourceSpan,
 } from "@nazare/core";
-import type { LiquidSyntaxFacts } from "@nazare/source";
+import type { HtmlMarkupFacts, LiquidSyntaxFacts } from "@nazare/source";
 
 /** @deprecated Use {@link Diagnostic} from @nazare/core. */
 export type ParseDiagnostic = Diagnostic;
@@ -194,6 +194,8 @@ export type NazareAst = {
 	htmlRoots: NazareHtmlRoot[];
 	/** Canonical Liquid mechanics projected by Tree-sitter. */
 	liquidFacts: LiquidSyntaxFacts;
+	/** Static DOM contracts and dynamic markup boundaries from HTML regions. */
+	markupFacts: HtmlMarkupFacts;
 	nodes: NazareNode[];
 	settingsReads: SettingsRead[];
 	schema?: AuthoredSchema;

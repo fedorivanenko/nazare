@@ -91,6 +91,23 @@ export function themeGraphFromModel(
 			fileKind: file.fileKind,
 		});
 	}
+	for (const sourceAnalysis of model.sourceAnalyses) {
+		if (!projects(sourceAnalysis.id)) continue;
+		pushNode({
+			id: sourceAnalysis.id,
+			kind: "sourceAnalysis",
+			path: sourceAnalysis.path,
+			language: sourceAnalysis.language,
+			completeness: sourceAnalysis.completeness,
+			uncertainty: sourceAnalysis.uncertainty,
+		});
+		pushEdge({
+			id: `edge:hasSourceAnalysis:${fileId(sourceAnalysis.path)}->${sourceAnalysis.id}`,
+			kind: "hasSourceAnalysis",
+			from: fileId(sourceAnalysis.path),
+			to: sourceAnalysis.id,
+		});
+	}
 	for (const declaration of model.declarations) {
 		if (!projects(declaration.id)) continue;
 		if (declaration.kind === "section") {
@@ -211,15 +228,26 @@ export function themeGraphFromModel(
 		});
 	}
 	const translationPathsByLocaleKeyId = new Map<string, string[]>();
+	const selectedTranslationKeyIds = new Set<string>();
 	for (const translation of model.localeTranslations) {
-		if (!projects(translation.id)) continue;
 		translationPathsByLocaleKeyId.set(translation.localeKeyId, [
 			...(translationPathsByLocaleKeyId.get(translation.localeKeyId) ?? []),
 			translation.path,
 		]);
+		if (projects(translation.id)) {
+			selectedTranslationKeyIds.add(translation.localeKeyId);
+			pushEdge({
+				id: `edge:definesLocaleTranslation:${translation.id}->${translation.localeKeyId}`,
+				kind: "definesLocaleTranslation",
+				from: fileId(translation.path),
+				to: translation.localeKeyId,
+				evidenceIds: [translation.id],
+			});
+		}
 	}
 	for (const localeKey of model.localeKeys) {
-		if (!projects(localeKey.id)) continue;
+		if (!projects(localeKey.id) && !selectedTranslationKeyIds.has(localeKey.id))
+			continue;
 		pushNode({
 			id: localeKey.id,
 			kind: "localeKey",
@@ -765,6 +793,120 @@ export function themeGraphFromModel(
 			to: classification.id,
 		});
 	}
+	for (const behavior of model.behavior) {
+		if (!projects(behavior.id)) continue;
+		const subjectId = behaviorSubjectId(behavior);
+		if (behavior.subjectKind === "domHook") {
+			pushNode({
+				id: subjectId,
+				kind: "domHook",
+				hookKind: behavior.hookKind,
+				name: behavior.name,
+			});
+		} else {
+			pushNode({
+				id: subjectId,
+				kind: behavior.subjectKind,
+				name: behavior.name,
+			});
+		}
+		pushEdge({
+			id: `edge:${behaviorEdgeKind(behavior)}:${behavior.id}->${subjectId}`,
+			kind: behaviorEdgeKind(behavior),
+			from: fileId(behavior.fromPath),
+			to: subjectId,
+			evidenceIds: [behavior.id],
+		});
+	}
+	const domBehaviorBySubject = new Map<
+		string,
+		Array<
+			Extract<
+				ThemeSemanticModel["behavior"][number],
+				{ subjectKind: "domHook" }
+			>
+		>
+	>();
+	for (const behavior of model.behavior) {
+		if (behavior.subjectKind !== "domHook") continue;
+		const subjectId = behaviorSubjectId(behavior);
+		domBehaviorBySubject.set(subjectId, [
+			...(domBehaviorBySubject.get(subjectId) ?? []),
+			behavior,
+		]);
+	}
+	for (const [subjectId, records] of domBehaviorBySubject) {
+		const providers = records.filter(
+			(record) =>
+				record.operation === "emits" || record.operation === "mutates",
+		);
+		const consumers = records.filter(
+			(record) =>
+				record.operation === "selects" || record.operation === "queries",
+		);
+		const consumersByPath = behaviorRecordsByPath(consumers);
+		const providersByPath = behaviorRecordsByPath(providers);
+		for (const [consumerPath, consumerRecords] of consumersByPath) {
+			for (const [providerPath, providerRecords] of providersByPath) {
+				const evidenceIds = [...consumerRecords, ...providerRecords].map(
+					(record) => record.id,
+				);
+				if (consumerPath === providerPath || !evidenceIds.some(projects))
+					continue;
+				pushEdge({
+					id: `edge:dependsOnDomHook:${encodeURIComponent(consumerPath)}->${encodeURIComponent(providerPath)}:${subjectId}`,
+					kind: "dependsOnDomHook",
+					from: fileId(consumerPath),
+					to: fileId(providerPath),
+					hook: subjectId,
+					evidenceIds,
+				});
+			}
+		}
+	}
+	const linkedBehaviorBySubject = new Map<
+		string,
+		ThemeSemanticModel["behavior"]
+	>();
+	for (const behavior of model.behavior) {
+		if (behavior.subjectKind === "domHook") continue;
+		const subjectId = behaviorSubjectId(behavior);
+		linkedBehaviorBySubject.set(subjectId, [
+			...(linkedBehaviorBySubject.get(subjectId) ?? []),
+			behavior,
+		]);
+	}
+	for (const [subjectId, records] of linkedBehaviorBySubject) {
+		const providers = records.filter(
+			(record) =>
+				record.operation === "defines" || record.operation === "dispatches",
+		);
+		const consumers = records.filter(
+			(record) =>
+				record.operation === "reads" ||
+				record.operation === "listens" ||
+				record.operation === "uses",
+		);
+		const consumersByPath = behaviorRecordsByPath(consumers);
+		const providersByPath = behaviorRecordsByPath(providers);
+		for (const [consumerPath, consumerRecords] of consumersByPath) {
+			for (const [providerPath, providerRecords] of providersByPath) {
+				const evidenceIds = [...consumerRecords, ...providerRecords].map(
+					(record) => record.id,
+				);
+				if (consumerPath === providerPath || !evidenceIds.some(projects))
+					continue;
+				pushEdge({
+					id: `edge:dependsOnBehaviorContract:${encodeURIComponent(consumerPath)}->${encodeURIComponent(providerPath)}:${subjectId}`,
+					kind: "dependsOnBehaviorContract",
+					from: fileId(consumerPath),
+					to: fileId(providerPath),
+					subject: subjectId,
+					evidenceIds,
+				});
+			}
+		}
+	}
 	for (const reference of model.references) {
 		if (!projects(reference.id)) continue;
 		const to = reference.resolvedDeclarationId ?? unresolvedNodeId(reference);
@@ -857,7 +999,7 @@ export function themeGraphFromRecords(
 		assertGraphIntegrity(sortedNodes, sortedEdges, views, model.evidence);
 	}
 	return {
-		version: 2,
+		version: 3,
 		root: model.root,
 		nodes: sortedNodes,
 		edges: sortedEdges,
@@ -868,6 +1010,66 @@ export function themeGraphFromRecords(
 		views,
 		issues: model.issues,
 	};
+}
+
+function behaviorRecordsByPath<
+	RecordValue extends ThemeSemanticModel["behavior"][number],
+>(records: RecordValue[]): Map<string, RecordValue[]> {
+	const byPath = new Map<string, RecordValue[]>();
+	for (const record of records) {
+		byPath.set(record.fromPath, [
+			...(byPath.get(record.fromPath) ?? []),
+			record,
+		]);
+	}
+	return byPath;
+}
+
+function behaviorSubjectId(
+	behavior: ThemeSemanticModel["behavior"][number],
+): string {
+	if (behavior.subjectKind === "domHook") {
+		return `dom-hook:${behavior.hookKind}:${encodeURIComponent(behavior.name)}`;
+	}
+	return `${behavior.subjectKind}:${encodeURIComponent(behavior.name)}`;
+}
+
+function behaviorEdgeKind(
+	behavior: ThemeSemanticModel["behavior"][number],
+):
+	| "emitsHook"
+	| "selectsHook"
+	| "queriesHook"
+	| "mutatesHook"
+	| "definesCustomProperty"
+	| "readsCustomProperty"
+	| "dispatchesEvent"
+	| "listensForEvent"
+	| "definesCustomElement"
+	| "usesCustomElement" {
+	if (behavior.subjectKind === "domHook") {
+		return (
+			{
+				emits: "emitsHook",
+				selects: "selectsHook",
+				queries: "queriesHook",
+				mutates: "mutatesHook",
+			} as const
+		)[behavior.operation];
+	}
+	if (behavior.subjectKind === "customProperty") {
+		return behavior.operation === "defines"
+			? "definesCustomProperty"
+			: "readsCustomProperty";
+	}
+	if (behavior.subjectKind === "customEvent") {
+		return behavior.operation === "dispatches"
+			? "dispatchesEvent"
+			: "listensForEvent";
+	}
+	return behavior.operation === "defines"
+		? "definesCustomElement"
+		: "usesCustomElement";
 }
 
 function metafieldQueries(model: ThemeSemanticModel) {

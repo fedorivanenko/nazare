@@ -1,14 +1,13 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
 import type { DependencyResolver, ReadFile } from "./resolver.js";
-import type { ThemeBuiltArtifact, ThemeFact } from "./theme-facts.js";
+import type {
+	ThemeBuiltArtifact,
+	ThemeFact,
+	ThemeSourceLanguage,
+} from "./theme-facts.js";
 import type { ThemeFileKind } from "./theme-file-classifier.js";
 
-export type ThemeSourceLanguage =
-	| "nazare-liquid"
-	| "liquid"
-	| "json"
-	| "asset"
-	| "other";
+export type { ThemeSourceLanguage } from "./theme-facts.js";
 
 export type ThemeSourceCompleteness = "complete" | "partial" | "failed";
 

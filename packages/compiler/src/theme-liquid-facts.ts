@@ -1,6 +1,7 @@
-import type { Diagnostic } from "@nazare/core";
+import type { Diagnostic, SourceSpan } from "@nazare/core";
 import {
 	createDefaultSourceParserRegistry,
+	htmlMarkupFacts,
 	htmlSyntaxIssues,
 	liquidSyntaxFacts,
 	parseSourceDocument,
@@ -25,7 +26,11 @@ export function collectPlainLiquidThemeFacts(
 	options: { parseMode: "strict" | "liquid-only" } = {
 		parseMode: "liquid-only",
 	},
-): { facts: ThemeFact[]; issues: Diagnostic[] } {
+): {
+	facts: ThemeFact[];
+	issues: Diagnostic[];
+	uncertainty: Array<{ code: string; message: string; span?: SourceSpan }>;
+} {
 	const parseMode = options.parseMode;
 	const document = parseSourceDocument(
 		createDefaultSourceParserRegistry(),
@@ -65,7 +70,7 @@ export function collectPlainLiquidThemeFacts(
 	if (path.startsWith("templates/") && path.endsWith(".liquid")) {
 		facts.push({ kind: "declaresTemplate", path, name });
 	}
-	if (!authoritative) return { facts, issues };
+	if (!authoritative) return { facts, issues, uncertainty: [] };
 
 	for (const dependency of syntax.dependencies) {
 		const at = spanFromOffsets(contents, path, dependency.range);
@@ -138,6 +143,7 @@ export function collectPlainLiquidThemeFacts(
 		path,
 		contents,
 		syntax,
+		htmlMarkupFacts(document),
 	);
 	facts.push(...sourceResult.facts);
 	issues.push(...sourceResult.issues);
@@ -156,7 +162,7 @@ export function collectPlainLiquidThemeFacts(
 		);
 		facts.push(...schemaFacts(path, schema, issues));
 	}
-	return { facts, issues };
+	return { facts, issues, uncertainty: sourceResult.uncertainty };
 }
 
 function schemaFacts(
