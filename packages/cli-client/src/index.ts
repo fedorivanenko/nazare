@@ -20,37 +20,34 @@ import {
 } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
-import {
+// Types only: erased at build, so naming the compiler here costs nothing at
+// runtime. Its values are loaded by the commands that need them — see below.
+import type {
 	checkComponentScripts,
 	compileNazareArtifact,
 	inspectNazareTheme,
-	parsePersistedInspectFactCache,
-	serializePersistedInspectFactCache,
-	summarizeThemeGraph,
-	type ThemeAnalysisCache,
-	themeGraphToDot,
-	themeSchemaFromIR,
+	ThemeAnalysisCache,
 } from "@nazare/compiler";
-import { registryFromEnv } from "@nazare/registry";
-import { runThemeBuild } from "./build-command.js";
-import { serveThemeGraph } from "./graph-server.js";
 import {
 	collectThemeInputFiles,
 	isMissingFileError,
 	readOptionalInspectArtifact,
 	validateInspectConfiguration,
 } from "./inspect-input.js";
-import { diffComponent, installComponent, updateAll } from "./install.js";
 import { type CliOptions, parseCliOptions, printHelp } from "./options.js";
 import type { Output } from "./output.js";
-import {
-	runPreviewBuild,
-	runPreviewCheck,
-	runPreviewScaffold,
-} from "./preview-command.js";
-import { runFixturesInit, runFixturesPull } from "./preview-fixtures.js";
-import { runPreviewServe } from "./preview-server.js";
-import { packComponent, publishComponent } from "./publish.js";
+
+/**
+ * The heavy halves of this CLI, loaded when a command reaches for one.
+ *
+ * Importing the compiler costs about ten seconds cold — eighty-seven modules —
+ * and importing the preview brings liquidjs with it. Statically, every command
+ * paid for both: `nazare --help` loaded a compiler to print a page of text, and
+ * so did `registry list`. A dynamic import is the difference between a CLI that
+ * starts and one that thinks first.
+ */
+const compiler = () => import("@nazare/compiler");
+const registry = () => import("@nazare/registry");
 
 const THEME_MANIFEST = "nazare.theme.json";
 
@@ -138,6 +135,7 @@ export async function main(
 					`${resolvedGraphRoot} resolves outside the project root ${projectRoot}`,
 				);
 			}
+			const { serveThemeGraph } = await import("./graph-server.js");
 			await serveThemeGraph(canonicalGraphRoot, process.stdin, process.stdout, {
 				projectRoot: canonicalProjectRoot,
 			});
@@ -145,6 +143,7 @@ export async function main(
 		}
 
 		if (command === "build") {
+			const { runThemeBuild } = await import("./build-command.js");
 			return await runThemeBuild(
 				projectRoot,
 				cliOptions.positionals[0],
@@ -221,9 +220,10 @@ export async function main(
 		// The file declares its own kind ({% component section %}); the CLI no
 		// longer reads nazare.json to compile — that stays registry-only.
 		const source = await readFile(resolvedFile, "utf8");
+		const { compileNazareArtifact: compileArtifact } = await compiler();
 		let compiled: ReturnType<typeof compileNazareArtifact> | undefined;
 		const compile = (): ReturnType<typeof compileNazareArtifact> => {
-			compiled ??= compileNazareArtifact(source, entryPath, {
+			compiled ??= compileArtifact(source, entryPath, {
 				readFile: readProjectFile,
 				strictness: cliOptions.strictness,
 			});
@@ -270,7 +270,9 @@ export async function main(
 			const result = compile();
 			const issues = [
 				...result.issues,
-				...checkComponentScripts(result.ir, { readFile: readProjectFile }),
+				...(await compiler()).checkComponentScripts(result.ir, {
+					readFile: readProjectFile,
+				}),
 			];
 			output.log(JSON.stringify({ issues, notes: result.notes }, null, 2));
 			return hasErrors(issues) ? 1 : 0;
@@ -284,7 +286,7 @@ export async function main(
 
 		if (view === "schema") {
 			const result = compile();
-			const schema = themeSchemaFromIR(result.ir, {
+			const schema = (await compiler()).themeSchemaFromIR(result.ir, {
 				name: artifactBaseName(entryPath),
 				contracts: result.contracts,
 			});
@@ -450,6 +452,9 @@ async function runPreview(
 		const into = (dir: string | undefined) =>
 			resolve(projectRoot, dir ?? manifest.build?.sourceRoot ?? ".");
 
+		const { runFixturesInit, runFixturesPull } = await import(
+			"./preview-fixtures.js"
+		);
 		if (action === "init") {
 			// nazare preview fixtures init [dir]
 			return await runFixturesInit(
@@ -486,6 +491,7 @@ async function runPreview(
 			output.error("Usage: nazare preview scaffold <file.liquid>");
 			return 1;
 		}
+		const { runPreviewScaffold } = await import("./preview-command.js");
 		return await runPreviewScaffold(projectRoot, target, cliOptions, output);
 	}
 
@@ -493,9 +499,13 @@ async function runPreview(
 	const root = rest[0] ?? manifest.build?.sourceRoot ?? ".";
 	const dir = resolve(projectRoot, root);
 
-	if (verb === "check") return await runPreviewCheck(dir, cliOptions, output);
+	if (verb === "check") {
+		const { runPreviewCheck } = await import("./preview-command.js");
+		return await runPreviewCheck(dir, cliOptions, output);
+	}
 	// Serving needs no output directory: the pages never touch a disk.
 	if (verb === "serve") {
+		const { runPreviewServe } = await import("./preview-server.js");
 		return await runPreviewServe(dir, root, cliOptions, output);
 	}
 
@@ -512,6 +522,7 @@ async function runPreview(
 	}
 	// The directory as the caller named it, for the header: "." and an absolute
 	// path describe the same place, and only one of them is worth reading.
+	const { runPreviewBuild } = await import("./preview-command.js");
 	return await runPreviewBuild(dir, resolve(projectRoot, outDir), output, root);
 }
 
@@ -561,7 +572,7 @@ async function runInspect(
 			`Discarded theme analysis cache ${cachePath} (${discardedReason}); analyzing from source.`,
 		);
 	}
-	const inspected = inspectNazareTheme(files, {
+	const inspected = (await compiler()).inspectNazareTheme(files, {
 		root:
 			relative(canonicalProjectRoot, canonicalRoot).split(sep).join("/") || ".",
 		strictness: cliOptions.strictness,
@@ -574,9 +585,9 @@ async function runInspect(
 	await writeThemeAnalysisCache(cachePath, cache);
 	output.log(
 		format === "text"
-			? renderInspectReport(inspected)
+			? await renderInspectReport(inspected)
 			: format === "dot"
-				? themeGraphToDot(inspected)
+				? (await compiler()).themeGraphToDot(inspected)
 				: JSON.stringify(inspected, null, 2),
 	);
 	return hasErrors(
@@ -586,10 +597,10 @@ async function runInspect(
 		: 0;
 }
 
-function renderInspectReport(
+async function renderInspectReport(
 	graph: ReturnType<typeof inspectNazareTheme>,
-): string {
-	const summary = summarizeThemeGraph(graph);
+): Promise<string> {
+	const summary = (await compiler()).summarizeThemeGraph(graph);
 	const lines = [
 		`Theme graph: ${summary.fileCount} files`,
 		`Pages ${summary.pageCount} · sections ${summary.sectionCount} · snippets ${summary.snippetCount} · components ${summary.componentCount}`,
@@ -662,7 +673,7 @@ async function readThemeAnalysisCache(
 		};
 	}
 	try {
-		return { cache: parsePersistedInspectFactCache(parsed) };
+		return { cache: (await compiler()).parsePersistedInspectFactCache(parsed) };
 	} catch (error) {
 		return { cache: empty, discardedReason: errorMessage(error) };
 	}
@@ -674,7 +685,10 @@ async function writeThemeAnalysisCache(
 ): Promise<void> {
 	const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
 	try {
-		await writeFile(temporaryPath, serializePersistedInspectFactCache(cache));
+		await writeFile(
+			temporaryPath,
+			(await compiler()).serializePersistedInspectFactCache(cache),
+		);
 		await rename(temporaryPath, path);
 	} catch (error) {
 		try {
@@ -701,7 +715,7 @@ async function writeDumpFiles(
 ): Promise<string[]> {
 	const outputDir = ".nazare-out";
 	const base = artifactBaseName(entryPath);
-	const schema = themeSchemaFromIR(result.ir, {
+	const schema = (await compiler()).themeSchemaFromIR(result.ir, {
 		name: base,
 		contracts: result.contracts,
 	});
@@ -743,6 +757,7 @@ async function runAdd(
 		output.error("Usage: nazare add <@scope/name> [--version x.y.z]");
 		return 1;
 	}
+	const { installComponent } = await import("./install.js");
 	const outcome = await installComponent(
 		id,
 		cliOptions.version ?? "latest",
@@ -763,6 +778,7 @@ async function runPack(
 	output: Output,
 	projectRoot: string,
 ): Promise<number> {
+	const { packComponent } = await import("./publish.js");
 	const { component, path } = await packComponent(
 		resolve(projectRoot, dir ?? "."),
 		join(projectRoot, ".nazare-out", "pack"),
@@ -787,6 +803,7 @@ async function runPublish(
 	env: NodeJS.ProcessEnv,
 	projectRoot: string,
 ): Promise<number> {
+	const { publishComponent } = await import("./publish.js");
 	const { component, result } = await publishComponent(
 		resolve(projectRoot, dir ?? "."),
 		{
@@ -827,6 +844,7 @@ async function runUpdate(
 		sourceRoot: await resolveSourceRoot(projectRoot, cliOptions),
 		force: cliOptions.force,
 	};
+	const { installComponent, updateAll } = await import("./install.js");
 	const outcome = id
 		? await installComponent(
 				id,
@@ -851,6 +869,7 @@ async function runDiff(
 		output.error("Usage: nazare diff <@scope/name> [--version x.y.z]");
 		return 1;
 	}
+	const { diffComponent } = await import("./install.js");
 	const diff = await diffComponent(id, cliOptions.version ?? "latest", {
 		client: await registryClientForProject(projectRoot, env),
 		projectRoot,
@@ -960,6 +979,7 @@ async function registryClientForProject(
 	projectRoot: string,
 	env: NodeJS.ProcessEnv,
 ) {
+	const { registryFromEnv } = await registry();
 	if (env.NAZARE_REGISTRY) {
 		return registryFromEnv({
 			...env,
