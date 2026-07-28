@@ -6,6 +6,7 @@ import {
 	deriveThemeEvidence,
 	getThemeAffectedPages,
 	getThemeDependencies,
+	getThemeFileImpact,
 	getThemeNode,
 	inspectNazareTheme,
 	shareThemeGraphRecords,
@@ -51,6 +52,46 @@ test("impact index propagates dependencies to pages", () => {
 		"templates/index.json",
 	]);
 	assert.deepEqual(index.toSummary(), graph.impact);
+});
+
+test("file impact query answers change risk and exposes dynamic uncertainty", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "templates/product.json",
+			contents: JSON.stringify({ sections: { main: { type: "main" } } }),
+		},
+		{
+			path: "sections/main.liquid",
+			contents: "{% render 'card' %}",
+		},
+		{
+			path: "snippets/card.liquid",
+			contents: "{% render 'money' %}",
+		},
+		{ path: "snippets/money.liquid", contents: "{{ amount }}" },
+	]);
+	assert.deepEqual(getThemeFileImpact(graph, "snippets/card.liquid"), {
+		version: 1,
+		path: "snippets/card.liquid",
+		fileKind: "snippet",
+		usage: "used",
+		certainty: "complete",
+		uncertainty: [],
+		dependencies: ["snippets/money.liquid"],
+		dependents: ["sections/main.liquid"],
+		affectedPages: ["templates/product.json"],
+		issues: [],
+	});
+	assert.equal(getThemeFileImpact(graph, "missing.liquid"), undefined);
+
+	const dynamic = inspectNazareTheme([
+		{ path: "sections/main.liquid", contents: "{% render snippet_name %}" },
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const uncertain = getThemeFileImpact(dynamic, "snippets/card.liquid");
+	assert.equal(uncertain?.usage, "unknown");
+	assert.equal(uncertain?.certainty, "partial");
+	assert.match(uncertain?.uncertainty[0] ?? "", /dynamic snippet reference/);
 });
 
 test("impact index applies graph edge and node deltas transactionally", () => {

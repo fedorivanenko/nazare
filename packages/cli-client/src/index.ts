@@ -27,6 +27,7 @@ import type {
 	compileNazareArtifact,
 	inspectNazareTheme,
 	ThemeAnalysisCache,
+	ThemeFileImpact,
 } from "@nazare/compiler";
 import {
 	collectThemeInputFiles,
@@ -36,6 +37,7 @@ import {
 } from "./inspect-input.js";
 import {
 	type CliOptions,
+	INSPECT_THEME_QUERIES,
 	INSPECT_VIEWS,
 	PREVIEW_VERBS,
 	parseCliOptions,
@@ -56,6 +58,7 @@ const THEME_MANIFEST = "nazare.theme.json";
  * with `build`.
  */
 const INSPECT_VIEW_SET = new Set<string>(INSPECT_VIEWS);
+const INSPECT_THEME_QUERY_SET = new Set<string>(INSPECT_THEME_QUERIES);
 
 /** Registry verbs common enough to also answer at the top level. */
 const REGISTRY_ALIASES = new Set(["add", "update", "publish"]);
@@ -180,6 +183,12 @@ export async function main(
 		// entry file, so it dispatches ahead of the per-file views below.
 		if (command === "inspect" && cliOptions.positionals[0] === "theme") {
 			return await runInspect(projectRoot, cliOptions, output);
+		}
+		if (
+			command === "inspect" &&
+			INSPECT_THEME_QUERY_SET.has(cliOptions.positionals[0] ?? "")
+		) {
+			return await runInspectThemeQuery(projectRoot, cliOptions, output);
 		}
 
 		// Everything registry-shaped lives under one namespace. `add`, `update`,
@@ -565,21 +574,79 @@ async function runInspect(
 		);
 		return 1;
 	}
+	const inspected = await loadThemeInspection(
+		projectRoot,
+		dirArg,
+		cliOptions,
+		output,
+	);
+	output.log(
+		format === "text"
+			? await renderInspectReport(inspected)
+			: format === "dot"
+				? (await compiler()).themeGraphToDot(inspected)
+				: JSON.stringify(inspected, null, 2),
+	);
+	return themeInspectionStatus(inspected);
+}
+
+async function runInspectThemeQuery(
+	projectRoot: string,
+	cliOptions: CliOptions,
+	output: Output,
+): Promise<number> {
+	const [query, path, dirArg, ...extra] = cliOptions.positionals;
+	if (query !== "impact" || !path || extra.length > 0) {
+		output.error(
+			"Usage: nazare inspect impact <theme-relative-file> [dir] --format text|json",
+		);
+		return 1;
+	}
+	const format = cliOptions.format ?? "text";
+	if (format !== "json" && format !== "text") {
+		output.error(`Unsupported impact format ${format}; expected text or json`);
+		return 1;
+	}
+	const inspected = await loadThemeInspection(
+		projectRoot,
+		dirArg,
+		cliOptions,
+		output,
+	);
+	const impact = (await compiler()).getThemeFileImpact(inspected, path);
+	if (!impact) {
+		output.error(
+			`Theme file ${path} was not found under inspected root ${inspected.root}`,
+		);
+		return 1;
+	}
+	output.log(
+		format === "json"
+			? JSON.stringify({ root: inspected.root, ...impact }, null, 2)
+			: renderThemeFileImpact(impact),
+	);
+	return themeInspectionStatus(inspected);
+}
+
+async function loadThemeInspection(
+	projectRoot: string,
+	dirArg: string | undefined,
+	cliOptions: CliOptions,
+	output: Output,
+): Promise<ReturnType<typeof inspectNazareTheme>> {
 	const manifest = await readProjectManifest(projectRoot);
 	const exclude = validateInspectConfiguration(manifest.inspect);
 	const inspectRoot = dirArg ?? manifest.build?.sourceRoot;
 	if (!inspectRoot) {
-		output.error(
-			'Usage: nazare inspect theme [dir] --format json (or set "build.sourceRoot" in nazare.theme.json)',
+		throw new Error(
+			'Inspect requires a theme directory argument or "build.sourceRoot" in nazare.theme.json',
 		);
-		return 1;
 	}
 	const root = resolve(projectRoot, inspectRoot);
 	const canonicalProjectRoot = await realpath(projectRoot);
 	const canonicalRoot = await realpath(root);
 	if (isOutsideRoot(canonicalProjectRoot, canonicalRoot)) {
-		output.error(`${root} resolves outside the project root ${projectRoot}`);
-		return 1;
+		throw new Error(`${root} resolves outside the project root ${projectRoot}`);
 	}
 	const files = await collectThemeInputFiles(
 		canonicalRoot,
@@ -605,18 +672,46 @@ async function runInspect(
 	});
 	await mkdir(join(projectRoot, ".nazare-out"), { recursive: true });
 	await writeThemeAnalysisCache(cachePath, cache);
-	output.log(
-		format === "text"
-			? await renderInspectReport(inspected)
-			: format === "dot"
-				? (await compiler()).themeGraphToDot(inspected)
-				: JSON.stringify(inspected, null, 2),
-	);
-	return hasErrors(
-		inspected.issues.filter((issue) => issue.severity === "error"),
-	)
-		? 1
-		: 0;
+	return inspected;
+}
+
+function themeInspectionStatus(
+	inspected: ReturnType<typeof inspectNazareTheme>,
+): number {
+	return inspected.issues.some((issue) => issue.severity === "error") ? 1 : 0;
+}
+
+function renderThemeFileImpact(impact: ThemeFileImpact): string {
+	const lines = [
+		`Impact: ${impact.path}`,
+		`Kind ${impact.fileKind} · usage ${impact.usage} · certainty ${impact.certainty}`,
+	];
+	appendInspectList(lines, "Dependencies", impact.dependencies);
+	appendInspectList(lines, "Dependents", impact.dependents);
+	appendInspectList(lines, "Affected pages", impact.affectedPages);
+	appendInspectList(lines, "Uncertainty", impact.uncertainty);
+	if (impact.issues.length === 0) {
+		lines.push("Issues: none");
+	} else {
+		lines.push(`Issues (${impact.issues.length}):`);
+		for (const issue of impact.issues) {
+			lines.push(`- [${issue.severity}] ${issue.code}: ${issue.message}`);
+		}
+	}
+	return lines.join("\n");
+}
+
+function appendInspectList(
+	lines: string[],
+	label: string,
+	values: string[],
+): void {
+	if (values.length === 0) {
+		lines.push(`${label}: none`);
+		return;
+	}
+	lines.push(`${label} (${values.length}):`);
+	for (const value of values) lines.push(`- ${value}`);
 }
 
 async function renderInspectReport(

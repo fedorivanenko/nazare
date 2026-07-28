@@ -149,7 +149,7 @@ caller file → render site → target snippet
                                       → Shopify data or setting origin
 ```
 
-Theme analysis uses `liquid-only` parsing by default: HTML is masked to avoid branch-balancing false positives, while Liquid structure is validated strictly. A failed parse emits diagnostics and never fabricates skipped facts. Pass `.shopify/metafields.json` through `options.metafields` to join store definitions with theme reads; missing snapshots remain `unknown`, never proof of absence. Inspect output exposes consumed, unconsumed, broken, and page-impact queries. Pass `.theme-check.yml` through `options.themeCheck` to validate and expose the configured ignore list. Shopify rule names are not assumed to match Inspect diagnostics.
+Theme analysis uses `liquid-only` parsing by default: HTML is masked to avoid branch-balancing false positives, while Liquid structure is validated strictly. A failed parse emits diagnostics and never fabricates skipped facts. Pass `.shopify/metafields.json` through `options.metafields` to join store definitions with theme reads; missing snapshots remain `unknown`, never proof of absence. Inspect output exposes consumed, unconsumed, broken, and page-impact queries. `getThemeFileImpact(graph, path)` projects direct dependencies, direct dependents, transitive affected pages, usage, diagnostics, and dynamic-reference uncertainty for one theme-relative file. Pass `.theme-check.yml` through `options.themeCheck` to validate and expose the configured ignore list. Shopify rule names are not assumed to match Inspect diagnostics.
 
 ### `buildNazareThemeWorkspace(files, options)`
 

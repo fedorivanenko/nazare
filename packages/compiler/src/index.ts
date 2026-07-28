@@ -335,8 +335,10 @@ export {
 	getThemeDependents,
 	getThemeEdgesFrom,
 	getThemeEdgesTo,
+	getThemeFileImpact,
 	getThemeNode,
 	summarizeThemeGraph,
+	type ThemeFileImpact,
 	type ThemeGraphSummary,
 	themeGraphToDot,
 } from "./theme-queries.js";

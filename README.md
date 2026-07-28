@@ -272,7 +272,14 @@ nazare check nazare/components/hero.nz.liquid
 nazare inspect schema nazare/components/hero.nz.liquid
 nazare inspect graph nazare/components/hero.nz.liquid
 nazare inspect dump nazare/components/hero.nz.liquid
+nazare inspect impact snippets/product-card.liquid nazare
 ```
+
+`inspect impact` answers the maintenance question Shopify CLI cannot: which
+files this theme file directly depends on, which files use it, and which pages
+can change transitively. It also reports whether usage is proven, unused, or
+unknown because dynamic Liquid makes the result partial. See
+[`docs/theme-intelligence-cli.md`](docs/theme-intelligence-cli.md).
 
 Components are also previewable, on their own, in a workbench — including plain
 `.liquid` in an existing theme, which needs no Nazare syntax at all:

@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import {
+	getThemeFileImpact,
 	getThemeNode,
 	summarizeThemeGraph,
 	ThemeBuildSession,
@@ -242,6 +243,11 @@ async function handleRequest(
 	}
 	const graph = session.getGraph();
 	if (request.method === "summary") return summarizeThemeGraph(graph);
+	if (request.method === "fileImpact") {
+		return (
+			getThemeFileImpact(graph, requiredString(request.params, "path")) ?? null
+		);
+	}
 	if (
 		["node", "dependencies", "dependents", "affectedPages"].includes(
 			request.method,
@@ -481,7 +487,8 @@ function validateToolArguments(
 	name: string,
 	args: Record<string, unknown> | undefined,
 ): void {
-	const allowedKeys = name === "summary" ? [] : ["nodeId"];
+	const allowedKeys =
+		name === "summary" ? [] : name === "fileImpact" ? ["path"] : ["nodeId"];
 	const unknownKeys = Object.keys(args ?? {}).filter(
 		(key) => !allowedKeys.includes(key),
 	);
@@ -525,6 +532,12 @@ function graphTools(): {
 		required: ["nodeId"],
 		additionalProperties: false,
 	};
+	const path = {
+		type: "object",
+		properties: { path: { type: "string" } },
+		required: ["path"],
+		additionalProperties: false,
+	};
 	return [
 		{
 			name: "summary",
@@ -546,6 +559,12 @@ function graphTools(): {
 			name: "affectedPages",
 			description: "Get affected pages.",
 			inputSchema: nodeId,
+		},
+		{
+			name: "fileImpact",
+			description:
+				"Explain one theme file's usage, dependencies, dependents, affected pages, diagnostics, and uncertainty.",
+			inputSchema: path,
 		},
 	];
 }
