@@ -1,3 +1,4 @@
+import { posix } from "node:path";
 import type { Diagnostic } from "@nazare/core";
 import selectorParser from "postcss-selector-parser";
 import ts from "typescript";
@@ -45,6 +46,16 @@ export function analyzeThemeScript(
 	const facts: ThemeFact[] = [];
 	const uncertainty: ThemeSourceUncertainty[] = [];
 	const visit = (node: ts.Node): void => {
+		if (ts.isImportDeclaration(node)) {
+			analyzeModuleSpecifier(node.moduleSpecifier);
+		} else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
+			analyzeModuleSpecifier(node.moduleSpecifier);
+		} else if (
+			ts.isPropertyAccessExpression(node) ||
+			ts.isElementAccessExpression(node)
+		) {
+			analyzeDatasetAccess(node);
+		}
 		if (ts.isCallExpression(node)) analyzeCall(node);
 		ts.forEachChild(node, visit);
 	};
@@ -52,6 +63,19 @@ export function analyzeThemeScript(
 	return { facts, issues, uncertainty };
 
 	function analyzeCall(call: ts.CallExpression): void {
+		if (call.expression.kind === ts.SyntaxKind.ImportKeyword) {
+			const specifier = call.arguments[0];
+			if (staticString(specifier) === undefined) {
+				pushUncertainty(
+					"THEME_DYNAMIC_SCRIPT_IMPORT",
+					"Dynamic import path prevents complete module dependency analysis",
+					call,
+				);
+			} else if (specifier) {
+				analyzeModuleSpecifier(specifier);
+			}
+			return;
+		}
 		const access = ts.isPropertyAccessExpression(call.expression)
 			? call.expression
 			: undefined;
@@ -89,6 +113,34 @@ export function analyzeThemeScript(
 					phase: "check",
 					span: nodeSpan(call),
 				});
+			}
+			return;
+		}
+		if (
+			[
+				"getAttribute",
+				"hasAttribute",
+				"setAttribute",
+				"removeAttribute",
+				"toggleAttribute",
+			].includes(method)
+		) {
+			const attribute = staticString(call.arguments[0]);
+			if (attribute === undefined) {
+				pushUncertainty(
+					"THEME_DYNAMIC_ATTRIBUTE_ACCESS",
+					`Dynamic ${method} attribute prevents complete DOM hook analysis`,
+					call,
+				);
+			} else if (attribute.toLowerCase().startsWith("data-")) {
+				pushDom(
+					"attribute",
+					attribute.toLowerCase(),
+					method === "getAttribute" || method === "hasAttribute"
+						? "queries"
+						: "mutates",
+					call,
+				);
 			}
 			return;
 		}
@@ -143,6 +195,49 @@ export function analyzeThemeScript(
 		) {
 			pushCustomElement(staticString(call.arguments[0]), call);
 		}
+	}
+
+	function analyzeDatasetAccess(
+		access: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+	): void {
+		const target = access.expression;
+		if (
+			!ts.isPropertyAccessExpression(target) ||
+			target.name.text !== "dataset"
+		) {
+			return;
+		}
+		const key = ts.isPropertyAccessExpression(access)
+			? access.name.text
+			: staticString(access.argumentExpression);
+		if (key === undefined) {
+			pushUncertainty(
+				"THEME_DYNAMIC_DATASET_ACCESS",
+				"Dynamic dataset key prevents complete DOM hook analysis",
+				access,
+			);
+			return;
+		}
+		pushDom(
+			"attribute",
+			datasetAttributeName(key),
+			isWriteAccess(access) ? "mutates" : "queries",
+			access,
+		);
+	}
+
+	function analyzeModuleSpecifier(specifier: ts.Expression): void {
+		const moduleName = staticString(specifier);
+		if (moduleName === undefined) return;
+		const targetPath = localModulePath(path, moduleName);
+		if (!targetPath) return;
+		facts.push({
+			kind: "referencesAsset",
+			fromPath: path,
+			targetName: targetPath,
+			static: true,
+			span: nodeSpan(specifier),
+		});
 	}
 
 	function pushDom(
@@ -225,4 +320,41 @@ function staticString(node: ts.Expression | undefined): string | undefined {
 		return node.text;
 	}
 	return undefined;
+}
+
+function datasetAttributeName(key: string): string {
+	return `data-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
+}
+
+function isWriteAccess(node: ts.Node): boolean {
+	const parent = node.parent;
+	if (
+		ts.isBinaryExpression(parent) &&
+		parent.left === node &&
+		parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+		parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+	) {
+		return true;
+	}
+	if (ts.isDeleteExpression(parent)) return true;
+	return (
+		(ts.isPrefixUnaryExpression(parent) ||
+			ts.isPostfixUnaryExpression(parent)) &&
+		(parent.operator === ts.SyntaxKind.PlusPlusToken ||
+			parent.operator === ts.SyntaxKind.MinusMinusToken)
+	);
+}
+
+function localModulePath(
+	fromPath: string,
+	moduleName: string,
+): string | undefined {
+	const withoutQuery = moduleName.split(/[?#]/, 1)[0];
+	if (!withoutQuery) return undefined;
+	const target = moduleName.startsWith("/assets/")
+		? withoutQuery.slice(1)
+		: moduleName.startsWith(".")
+			? posix.normalize(posix.join(posix.dirname(fromPath), withoutQuery))
+			: undefined;
+	return target?.startsWith("assets/") ? target : undefined;
 }

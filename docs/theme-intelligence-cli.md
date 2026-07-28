@@ -69,8 +69,8 @@ Issues: none
   `certainty: partial`; absence of a static edge is never presented as proof of
   safety.
 - CSS and JavaScript are parsed by compiler frontends. Literal classes, ids,
-  data attributes, custom properties, events, and custom elements join through
-  the canonical theme model.
+  data attributes, dataset access, local script modules, custom properties,
+  events, and custom elements join through the canonical theme model.
 - Behavior relationships can add direct file dependencies and dependents, but
   do not broaden affected pages merely because a shared stylesheet or script is
   loaded globally.

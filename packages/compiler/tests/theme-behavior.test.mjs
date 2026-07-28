@@ -25,11 +25,19 @@ const files = [
 	},
 	{
 		path: "assets/theme.js",
-		contents: `const card = document.querySelector(".card[data-product-id]");
+		contents: `import { mountCart } from "./cart.js";
+const card = document.querySelector(".card[data-product-id]");
+const productId = card?.dataset.productId;
+card.dataset.state = "ready";
 card?.classList.add("is-active");
 document.addEventListener("card:ready", () => {});
 document.dispatchEvent(new CustomEvent("card:ready"));
-customElements.define("product-card", class extends HTMLElement {});`,
+customElements.define("product-card", class extends HTMLElement {});
+mountCart(productId);`,
+	},
+	{
+		path: "assets/cart.js",
+		contents: "export const mountCart = () => {};",
 	},
 ];
 
@@ -69,6 +77,23 @@ test("theme compiler links Liquid, CSS, and JavaScript behavior", () => {
 			kind,
 		);
 	}
+
+	const scriptImpact = getThemeFileImpact(graph, "assets/theme.js");
+	assert.ok(scriptImpact.dependencies.includes("assets/cart.js"));
+	assert.ok(
+		graph.edges.some(
+			(edge) =>
+				edge.kind === "queriesHook" &&
+				edge.to === "dom-hook:attribute:data-product-id",
+		),
+	);
+	assert.ok(
+		graph.edges.some(
+			(edge) =>
+				edge.kind === "mutatesHook" &&
+				edge.to === "dom-hook:attribute:data-state",
+		),
+	);
 
 	const impact = getThemeFileImpact(graph, "snippets/card.liquid");
 	assert.deepEqual(impact.dependents, [
@@ -133,17 +158,23 @@ test("dynamic markup and script selectors expose explicit uncertainty", () => {
 	const script = analyzeThemeSource(
 		{
 			path: "assets/theme.js",
-			contents: "document.querySelector(selector);",
+			contents:
+				"document.querySelector(selector); element.dataset[key]; import(modulePath);",
 			fileKind: "asset",
 		},
 		context,
 	);
 	assert.equal(script.completeness, "partial");
-	assert.ok(
-		script.uncertainty.some(
-			(boundary) => boundary.code === "THEME_DYNAMIC_SCRIPT_SELECTOR",
-		),
-	);
+	for (const code of [
+		"THEME_DYNAMIC_SCRIPT_SELECTOR",
+		"THEME_DYNAMIC_DATASET_ACCESS",
+		"THEME_DYNAMIC_SCRIPT_IMPORT",
+	]) {
+		assert.ok(
+			script.uncertainty.some((boundary) => boundary.code === code),
+			code,
+		);
+	}
 });
 
 test("malformed CSS and JavaScript fail their source frontends", () => {
@@ -160,6 +191,22 @@ test("malformed CSS and JavaScript fail their source frontends", () => {
 	);
 	assert.equal(script.completeness, "failed");
 	assert.equal(script.issues[0].code, "THEME_SCRIPT_PARSE_ERROR");
+});
+
+test("missing static JavaScript module imports resolve as missing assets", () => {
+	const graph = inspectNazareTheme([
+		{
+			path: "assets/theme.js",
+			contents: 'import "./missing.js";',
+		},
+	]);
+	assert.ok(
+		graph.issues.some(
+			(issue) =>
+				issue.code === "THEME_UNRESOLVED_REFERENCE" &&
+				issue.span?.file === "assets/theme.js",
+		),
+	);
 });
 
 test("behavior graph updates converge with a cold theme compile", () => {

@@ -251,7 +251,7 @@ Because `Hero` imports `Button`, `styles`, and `hero`, the compiler knows the ex
 
 Nazare can also work with plain Liquid. Existing `.liquid` snippets, sections, blocks, layouts, and templates can stay valid Shopify files while Nazare parses and validates them, checks schema and Liquid structure, reports diagnostics, tracks dependencies, and emits them into the final theme alongside `.nz.liquid` components.
 
-Internally, component compilation and whole-theme analysis use explicit frontend boundaries. Whole-theme frontends parse Nazare Liquid, plain Liquid, Shopify JSON, CSS, and JavaScript into file-owned semantic facts. The linker then connects Liquid markup to stylesheet selectors, script DOM queries and mutations, CSS custom properties, events, and custom elements. Ambiguous, unsupported, failed, and dynamically partial analysis remains explicit; frontends never fabricate empty semantic facts.
+Internally, component compilation and whole-theme analysis use explicit frontend boundaries. Whole-theme frontends parse Nazare Liquid, plain Liquid, Shopify JSON, CSS, and JavaScript into file-owned semantic facts. The linker then connects Liquid markup to stylesheet selectors, script DOM queries, dataset reads and mutations, CSS custom properties, events, custom elements, and static JavaScript module imports. Ambiguous, unsupported, failed, and dynamically partial analysis remains explicit; frontends never fabricate empty semantic facts.
 
 Example diagnostic:
 
