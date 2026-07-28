@@ -1,13 +1,9 @@
-import assert from "node:assert/strict";
 import test from "node:test";
+import { ThemeBuildSession, ThemeProgram } from "../dist/index.js";
 import {
-	analyzeNazareTheme,
-	buildNazareThemeWorkspace,
-	inspectNazareTheme,
-	ThemeBuildSession,
-	ThemeImpactIndex,
-	ThemeProgram,
-} from "../dist/index.js";
+	assertBuildEqualsCold,
+	assertProgramEqualsCold,
+} from "./theme-equivalence.mjs";
 
 function replaceFile(files, file) {
 	return [
@@ -18,35 +14,6 @@ function replaceFile(files, file) {
 
 function removeFile(files, path) {
 	return files.filter((file) => file.path !== path);
-}
-
-function assertProgramEqualsCold(program, files, options = {}) {
-	const coldAnalysis = analyzeNazareTheme(files, options);
-	const coldGraph = inspectNazareTheme(files, options);
-	assert.deepEqual(program.getModel(), coldAnalysis.ir);
-	assert.deepEqual(program.getFacts(), coldAnalysis.facts);
-	assert.deepEqual(program.getGraph(), coldGraph);
-	assert.deepEqual(program.getGraph().evidence, coldGraph.evidence);
-	assert.deepEqual(program.getModel().issues, coldAnalysis.ir.issues);
-	const coldImpact = new ThemeImpactIndex(coldGraph);
-	for (const node of coldGraph.nodes) {
-		assert.deepEqual(
-			program.getDependencies(node.id),
-			coldImpact.getDependencies(node.id),
-		);
-		assert.deepEqual(
-			program.getDependents(node.id),
-			coldImpact.getDependents(node.id),
-		);
-		assert.deepEqual(
-			program.getAffectedPages(node.id),
-			coldImpact.getAffectedPages(node.id),
-		);
-	}
-}
-
-function assertBuildEqualsCold(session, files) {
-	assert.deepEqual(session.getBuild(), buildNazareThemeWorkspace(files));
 }
 
 test("file replay matrix equals cold semantic, graph, query, and output rebuilds", () => {

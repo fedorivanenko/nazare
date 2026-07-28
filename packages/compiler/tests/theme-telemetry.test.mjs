@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { performance } from "node:perf_hooks";
 import test from "node:test";
 import {
 	buildNazareThemeWorkspace,
@@ -38,24 +37,18 @@ function assertTelemetryShape(telemetry) {
 	}
 }
 
-test("cold, no-op, edit, dependency, and snapshot benchmark matrix records telemetry", () => {
+test("no-op, edit, dependency, and snapshot updates report deterministic work", () => {
 	const files = fixture();
-	const coldStarted = performance.now();
 	const cold = buildNazareThemeWorkspace(files);
-	const coldElapsedMs = performance.now() - coldStarted;
 	assert.ok(cold.artifacts.length > 0);
-	assert.ok(coldElapsedMs > 0);
 
 	const program = new ThemeProgram(files);
-	const noOpStarted = performance.now();
 	const noOp = program.updateFile(files[0]);
-	const noOpElapsedMs = performance.now() - noOpStarted;
 	assertTelemetryShape(noOp.telemetry);
 	assert.equal(noOp.telemetry.filesParsed, 0);
 	assert.equal(noOp.telemetry.passKeysProcessed, 0);
 	assert.equal(noOp.telemetry.semanticRecordsReplaced, 0);
 	assert.equal(noOp.telemetry.graphRecordsReplaced, 0);
-	assert.ok(noOpElapsedMs < coldElapsedMs);
 
 	const plainEdit = program.updateFile({
 		path: "sections/product.liquid",

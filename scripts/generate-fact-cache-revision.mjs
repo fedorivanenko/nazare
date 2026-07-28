@@ -1,98 +1,56 @@
 #!/usr/bin/env node
-// Derives the theme fact-cache revision from the compiler's own source, so the
-// cache invalidates itself whenever fact derivation changes.
-//
-// The revision used to be a hand-maintained string. Forgetting to bump it does
-// not fail loudly: the CLI serves facts built by the previous compiler, and a
-// correct change looks like it did nothing on any theme with a warm cache.
-// That happened twice in one afternoon, which is the whole argument for this
-// file existing.
-//
-// Every .ts file under compiler/source src plus both grammar sources and external
-// scanners is hashed, not a curated fact-module list. The cost
-// of that breadth is a cold re-analysis after unrelated compiler edits; the
-// cost of getting it wrong the other way is silently stale output.
-//
-// Usage:
-//   node scripts/generate-fact-cache-revision.mjs [--check]
-import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+// Generates cache identity from every compiler/source adapter and grammar input.
+// Build runs this before TypeScript compilation, making stale cache identity
+// impossible in emitted packages. Use --check when generation must be read-only.
+import {
+	readFileSync,
+	renameSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	computeRepositoryFactCacheRevision,
+	generatedFactCacheRevisionPath,
+	renderFactCacheRevisionModule,
+} from "./fact-cache-revision.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const sourceRoot = join(repositoryRoot, "packages/compiler/src");
-const generatedPath = join(sourceRoot, "fact-cache-revision.ts");
-const revisionRoots = [
-	sourceRoot,
-	join(repositoryRoot, "packages/source/src"),
-];
-const grammarFiles = [
-	join(repositoryRoot, "packages/tree-sitter-liquid/grammar.js"),
-	join(repositoryRoot, "packages/tree-sitter-liquid/src/scanner.c"),
-	join(repositoryRoot, "packages/tree-sitter-nazare-liquid/grammar.js"),
-	join(repositoryRoot, "packages/tree-sitter-nazare-liquid/src/scanner.c"),
-];
-const checkOnly = process.argv.includes("--check");
-
-const revision = computeRevision();
-const contents = renderModule(revision);
+const generatedPath = generatedFactCacheRevisionPath(repositoryRoot);
+const revision = computeRepositoryFactCacheRevision(repositoryRoot);
+const expected = renderFactCacheRevisionModule(revision);
 const existing = readIfPresent(generatedPath);
-
-if (existing === contents) {
-	if (!checkOnly) console.log(`Fact cache revision up to date (${revision}).`);
-	process.exit(0);
+const arguments_ = process.argv.slice(2);
+if (arguments_.some((argument) => argument !== "--check")) {
+	const unknown = arguments_.find((argument) => argument !== "--check");
+	throw new Error(`Unknown argument ${unknown}`);
 }
-if (checkOnly) {
+if (arguments_.filter((argument) => argument === "--check").length > 1) {
+	throw new Error("Duplicate --check argument");
+}
+const checkOnly = arguments_[0] === "--check";
+
+if (existing === expected) {
+	if (!checkOnly) console.log(`Fact cache revision up to date (${revision}).`);
+} else if (checkOnly) {
 	console.error(
 		`Fact cache revision is stale. Expected ${revision}.\nRun \`pnpm -s build\` and commit ${relative(repositoryRoot, generatedPath)}.`,
 	);
-	process.exit(1);
+	process.exitCode = 1;
+} else {
+	writeAtomically(generatedPath, expected);
+	console.log(`Fact cache revision updated to ${revision}.`);
 }
-writeFileSync(generatedPath, contents);
-console.log(`Fact cache revision updated to ${revision}.`);
 
-function computeRevision() {
-	const hash = createHash("sha256");
-	// Sorted, path-tagged, and length-prefixed so the digest depends only on
-	// file contents and names, never on directory iteration order.
-	for (const file of [...revisionRoots.flatMap(sourceFiles), ...grammarFiles].sort()) {
-		const source = readFileSync(file, "utf8");
-		hash.update(`${relative(repositoryRoot, file).split(sep).join("/")}\0`);
-		hash.update(`${source.length}\0${source}\0`);
+function writeAtomically(path, contents) {
+	const temporaryPath = `${path}.${process.pid}.tmp`;
+	try {
+		writeFileSync(temporaryPath, contents);
+		renameSync(temporaryPath, path);
+	} finally {
+		rmSync(temporaryPath, { force: true });
 	}
-	return `theme-facts-${hash.digest("hex").slice(0, 16)}`;
-}
-
-function sourceFiles(directory) {
-	const files = [];
-	for (const entry of readdirSync(directory)) {
-		const path = join(directory, entry);
-		if (statSync(path).isDirectory()) {
-			files.push(...sourceFiles(path));
-			continue;
-		}
-		// The generated module cannot contribute to the hash that produces it.
-		if (path === generatedPath) continue;
-		if (
-			entry.endsWith(".ts") ||
-			entry === "grammar.js" ||
-			entry === "scanner.c"
-		) {
-			files.push(path);
-		}
-	}
-	return files;
-}
-
-function renderModule(value) {
-	return [
-		"// Generated by scripts/generate-fact-cache-revision.mjs. Do not edit.",
-		"// Digest of compiler/source adapters and grammar sources, so fact changes",
-		"// invalidates every persisted theme fact cache.",
-		`export const THEME_FACT_CACHE_REVISION = "${value}";`,
-		"",
-	].join("\n");
 }
 
 function readIfPresent(path) {
