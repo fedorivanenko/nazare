@@ -75,6 +75,19 @@ test("printing help loads neither the compiler nor the preview", async () => {
 	assert.equal(loadsPreview(specifiers), false);
 });
 
+test("subcommand help loads neither the compiler nor the preview", async () => {
+	for (const args of [
+		["preview", "--help"],
+		["preview", "serve", "-h"],
+		["inspect", "--help"],
+		["help", "inspect"],
+	]) {
+		const specifiers = await specifiersLoadedBy(args);
+		assert.equal(loadsCompiler(specifiers), false, args.join(" "));
+		assert.equal(loadsPreview(specifiers), false, args.join(" "));
+	}
+});
+
 test("an unknown command does not load them either", async () => {
 	// It prints help and exits, so it should cost what help costs.
 	const specifiers = await specifiersLoadedBy(["wat"]);

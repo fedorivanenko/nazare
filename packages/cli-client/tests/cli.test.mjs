@@ -78,6 +78,21 @@ test("cli: reports its development package version", {
 	assert.equal(out.stdout.trim(), "0.0.0");
 });
 
+test("cli: preview and inspect expose focused help", {
+	smoke: true,
+}, async () => {
+	for (const { args, usage } of [
+		{ args: ["preview", "--help"], usage: "Usage: nazare preview" },
+		{ args: ["preview", "serve", "-h"], usage: "Usage: nazare preview" },
+		{ args: ["inspect", "--help"], usage: "nazare inspect <ast|ir|graph" },
+		{ args: ["help", "inspect"], usage: "nazare inspect <ast|ir|graph" },
+	]) {
+		const out = await runCli(process.cwd(), ...args);
+		assert.equal(out.status, 0, `${args.join(" ")}\n${out.stderr}`);
+		assert.ok(out.stderr.includes(usage), out.stderr);
+	}
+});
+
 test("cli: source analyze emits authoritative plain-Liquid facts", {
 	smoke: true,
 }, async () => {
