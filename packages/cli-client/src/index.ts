@@ -34,7 +34,14 @@ import {
 	readOptionalInspectArtifact,
 	validateInspectConfiguration,
 } from "./inspect-input.js";
-import { type CliOptions, parseCliOptions, printHelp } from "./options.js";
+import {
+	type CliOptions,
+	INSPECT_VIEWS,
+	PREVIEW_VERBS,
+	parseCliOptions,
+	printCommandHelp,
+	printHelp,
+} from "./options.js";
 import type { Output } from "./output.js";
 
 /** Heavy modules, loaded only by commands that use them. */
@@ -48,26 +55,12 @@ const THEME_MANIFEST = "nazare.theme.json";
  * verbs, so they sit under `inspect` instead of competing for the top level
  * with `build`.
  */
-const INSPECT_VIEWS = new Set([
-	"ast",
-	"ir",
-	"graph",
-	"schema",
-	"artifact",
-	"dump",
-]);
+const INSPECT_VIEW_SET = new Set<string>(INSPECT_VIEWS);
 
 /** Registry verbs common enough to also answer at the top level. */
 const REGISTRY_ALIASES = new Set(["add", "update", "publish"]);
 
-/** Valid workbench verbs. */
-const PREVIEW_VERBS = new Set([
-	"serve",
-	"build",
-	"check",
-	"scaffold",
-	"fixtures",
-]);
+const PREVIEW_VERB_SET = new Set<string>(PREVIEW_VERBS);
 
 type MainOptions = {
 	cwd?: string;
@@ -89,18 +82,27 @@ export async function main(
 		return 0;
 	}
 
-	if (
-		!command ||
-		command === "help" ||
-		command === "--help" ||
-		command === "-h"
-	) {
+	if (!command || command === "--help" || command === "-h") {
 		printHelp(output);
 		return 0;
+	}
+	if (command === "help") {
+		const topic = args[1];
+		if (!topic) {
+			printHelp(output);
+			return 0;
+		}
+		if (printCommandHelp(topic, output)) return 0;
+		output.error(`Unknown help topic ${topic}`);
+		return 1;
 	}
 
 	try {
 		const cliOptions = parseCliOptions(args.slice(1));
+		if (cliOptions.help) {
+			if (!printCommandHelp(command, output)) printHelp(output);
+			return 0;
+		}
 
 		// The project root is the working directory: every file the compiler
 		// sees is identified by its root-relative POSIX path, and readProjectFile
@@ -209,7 +211,7 @@ export async function main(
 			command === "inspect"
 				? cliOptions.positionals[1]
 				: cliOptions.positionals[0];
-		if (command === "inspect" && (!view || !INSPECT_VIEWS.has(view))) {
+		if (command === "inspect" && (!view || !INSPECT_VIEW_SET.has(view))) {
 			output.error(
 				`Usage: nazare inspect <${[...INSPECT_VIEWS].join("|")}> <file>, or nazare inspect theme [dir]`,
 			);
@@ -277,6 +279,7 @@ export async function main(
 			return hasErrors(result.issues) ? 1 : 0;
 		}
 
+		// `check` is the top-level command's internal projection, not an inspect view.
 		if (view === "check") {
 			const result = compile();
 			const issues = [
@@ -455,7 +458,7 @@ async function runPreview(
 	output: Output,
 ): Promise<number> {
 	const [verb, ...rest] = cliOptions.positionals;
-	if (!verb || !PREVIEW_VERBS.has(verb)) {
+	if (!verb || !PREVIEW_VERB_SET.has(verb)) {
 		output.error(
 			`Usage: nazare preview <${[...PREVIEW_VERBS].join("|")}>. See nazare help.`,
 		);

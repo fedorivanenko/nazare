@@ -1,6 +1,24 @@
 import type { Output } from "./output.js";
 
+export const INSPECT_VIEWS = [
+	"ast",
+	"ir",
+	"graph",
+	"schema",
+	"artifact",
+	"dump",
+] as const;
+
+export const PREVIEW_VERBS = [
+	"serve",
+	"build",
+	"check",
+	"scaffold",
+	"fixtures",
+] as const;
+
 export type CliOptions = {
+	help?: boolean;
 	strictness?: "loose" | "strict";
 	language?: "liquid" | "nazare-liquid";
 	stdin?: boolean;
@@ -105,6 +123,10 @@ export function parseCliOptions(args: string[]): CliOptions {
 			index += format.consumed - 1;
 			continue;
 		}
+		if (arg === "--help" || arg === "-h") {
+			options.help = true;
+			continue;
+		}
 		if (arg === "--stdin") {
 			options.stdin = true;
 			continue;
@@ -195,7 +217,7 @@ Registry:
   \`nazare add @scope/name\` is \`nazare registry add @scope/name\`.
 
 Inspect views:
-  ast, ir, graph, schema, artifact, dump
+  ${INSPECT_VIEWS.join(", ")}
 
 Options:
   --language liquid|nazare-liquid   source analyze grammar (default liquid)
@@ -221,4 +243,47 @@ Env:
 
 Nazare builds a theme directory; the Shopify CLI moves it to and from a store
 (\`shopify theme push --path <outDir>\`), which is why there is no push or pull.`);
+}
+
+export function printCommandHelp(
+	command: string,
+	output: Output = console,
+): boolean {
+	if (command === "preview") {
+		output.error(`Usage: nazare preview <${PREVIEW_VERBS.join("|")}> [options]
+
+Commands:
+  serve [dir]              serve workbench and rebuild on changes
+  build [dir]              write static workbench to preview.outDir or --out-dir
+  check [dir]              render every story; fail on invalid or broken stories
+  scaffold <file>          draft a sibling <name>.stories.json
+  fixtures init [dir]      copy starter storefront fixtures into project
+  fixtures pull <handle>   pull product fixture; requires --store [--as name]
+
+Options:
+  --port <number>          serve port (default 4173)
+  --out-dir <dir>          static build output directory
+  --store <domain>         Shopify store for fixture pull
+  --as <name>              pulled fixture name (default product)
+  --help, -h               show this help`);
+		return true;
+	}
+	if (command === "inspect") {
+		output.error(`Usage:
+  nazare inspect <${INSPECT_VIEWS.join("|")}> <file>
+  nazare inspect theme [dir] [--format json|text|dot]
+
+Views:
+  ast, ir, graph, schema   inspect one compiler projection
+  artifact                print complete compiled artifact
+  dump                    write compiler projections to dump files
+  theme                   inspect whole-theme semantic graph
+
+Options:
+  --strictness loose|strict
+  --format json|text|dot   theme output format (default json)
+  --help, -h               show this help`);
+		return true;
+	}
+	return false;
 }
