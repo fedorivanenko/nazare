@@ -161,7 +161,7 @@ export default island(({ root, refs }) => {
 {% component section %}
 {% import Button from "./button.nz.liquid" %}
 {% import styles from "./hero.css" %}
-{% import hero from "./hero.ts" %}
+{% import hero from "./hero.js" %}
 
 {% props {
   heading: string.setting({ label: "Heading", default: "New arrivals" }),
@@ -352,7 +352,7 @@ Publish your own component:
   "version": "1.0.0",
   "entry": "button.nz.liquid",
   "license": "MIT",
-  "files": ["button.nz.liquid", "button.css", "button.ts"],
+  "files": ["button.nz.liquid", "button.css", "button.js"],
   "dependencies": {}
 }
 ```
@@ -687,7 +687,7 @@ NAZARE_TOKEN                        publish token
 
 ## JavaScript islands
 
-Nazare does not require React, Vue, Svelte, or any other framework. A component can import a small TypeScript or JavaScript island, and that island mounts only where the component is rendered. If you want a framework, mount it inside the island.
+Nazare does not require React, Vue, Svelte, or any other framework. A component can import a small JavaScript island, and that island mounts only where the component is rendered. If you want a framework, mount it inside the island.
 
 ```ts
 export default island(({ root }) => {

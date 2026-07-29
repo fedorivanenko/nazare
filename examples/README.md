@@ -12,7 +12,7 @@ sources/  ──publish──▶  registry/  ──nazare add──▶  theme/  
 The component source you publish into a registry. Each folder is one publishable
 unit with a `nazare.json` and its files:
 
-- `counter/` — a section with settings, a JS island (`counter.ts` + `format.ts`),
+- `counter/` — a section with settings, a JS island (`counter.js` + `format.js`),
   and a scoped stylesheet.
 - `cn/` — a tiny function `counter` depends on.
 

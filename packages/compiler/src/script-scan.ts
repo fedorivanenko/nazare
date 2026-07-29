@@ -1,9 +1,7 @@
-// AST-based scanning of behavior scripts. refs.<name> and data.<ref>.<prop>
-// accesses are real property-access expressions — occurrences in comments,
-// strings, or unrelated identifiers do not count. Parse-only (no type
-// checking), so this stays in the fast compile path. Shadowing a context
-// name with a local variable called refs/data is not scope-analyzed; don't.
-import ts from "typescript";
+// AST-based scanning of JavaScript behavior scripts. Parse-only: component
+// scripts currently support JavaScript, not TypeScript or type checking.
+import type { Program } from "acorn";
+import { type JavaScriptNode, walkJavaScript } from "./javascript-ast.js";
 
 export type ScannedRefAccess = {
 	name: string;
@@ -29,81 +27,90 @@ export type ReservedContextShadow = {
 	end: number;
 };
 
-export function scanScript(source: string): ScriptScan {
-	const sourceFile = parse(source);
+export function scanScript(program: Program): ScriptScan {
 	const refAccesses: ScannedRefAccess[] = [];
 	const dataAccesses: ScannedDataAccess[] = [];
 
-	const visit = (node: ts.Node): void => {
-		if (ts.isPropertyAccessExpression(node)) {
-			const base = node.expression;
-			if (ts.isIdentifier(base) && base.text === "refs") {
-				refAccesses.push({
-					name: node.name.text,
-					start: node.getStart(sourceFile),
-					end: node.getEnd(),
-				});
-			}
-			if (
-				ts.isPropertyAccessExpression(base) &&
-				ts.isIdentifier(base.expression) &&
-				base.expression.text === "data"
-			) {
-				dataAccesses.push({
-					ref: base.name.text,
-					property: node.name.text,
-					start: node.getStart(sourceFile),
-					end: node.getEnd(),
-				});
-			}
+	walkJavaScript(program, (node) => {
+		if (node.type !== "MemberExpression" || node.computed) return;
+		const object = asNode(node.object);
+		const property = identifierName(node.property);
+		if (!object || !property) return;
+		if (identifierName(object) === "refs") {
+			refAccesses.push({ name: property, start: node.start, end: node.end });
 		}
-		ts.forEachChild(node, visit);
-	};
-	visit(sourceFile);
+		if (object.type !== "MemberExpression" || object.computed) return;
+		const base = asNode(object.object);
+		const ref = identifierName(object.property);
+		if (identifierName(base) === "data" && ref) {
+			dataAccesses.push({ ref, property, start: node.start, end: node.end });
+		}
+	});
 
 	return { refAccesses, dataAccesses };
 }
 
 export function findReservedContextShadows(
-	source: string,
+	program: Program,
 ): ReservedContextShadow[] {
-	const sourceFile = parse(source);
 	const shadows: ReservedContextShadow[] = [];
-
-	const recordBindingName = (name: ts.BindingName): void => {
-		if (ts.isIdentifier(name)) {
-			if (name.text === "refs" || name.text === "data") {
-				shadows.push({
-					name: name.text,
-					start: name.getStart(sourceFile),
-					end: name.getEnd(),
-				});
-			}
+	const recordBinding = (node: JavaScriptNode | undefined): void => {
+		if (!node) return;
+		const name = identifierName(node);
+		if (name === "refs" || name === "data") {
+			shadows.push({ name, start: node.start, end: node.end });
 			return;
 		}
-		for (const element of name.elements) {
-			if (ts.isBindingElement(element)) recordBindingName(element.name);
+		if (node.type === "ObjectPattern" || node.type === "ArrayPattern") {
+			for (const child of array(
+				node.type === "ObjectPattern" ? node.properties : node.elements,
+			)) {
+				const pattern = asNode(child);
+				if (!pattern) continue;
+				recordBinding(
+					pattern.type === "Property" ? asNode(pattern.value) : pattern,
+				);
+			}
 		}
+		if (node.type === "AssignmentPattern") recordBinding(asNode(node.left));
+		if (node.type === "RestElement") recordBinding(asNode(node.argument));
 	};
 
-	const visit = (node: ts.Node): void => {
-		if (ts.isVariableDeclaration(node)) recordBindingName(node.name);
-		if (ts.isFunctionDeclaration(node) && node.name)
-			recordBindingName(node.name);
-		ts.forEachChild(node, visit);
-	};
-	visit(sourceFile);
-
+	walkJavaScript(program, (node) => {
+		if (node.type === "VariableDeclarator") recordBinding(asNode(node.id));
+		if (
+			node.type === "FunctionDeclaration" ||
+			node.type === "FunctionExpression" ||
+			node.type === "ArrowFunctionExpression"
+		) {
+			recordBinding(asNode(node.id));
+		}
+	});
 	return shadows;
 }
 
-export function hasDefaultExport(source: string): boolean {
-	return parse(source).statements.some(
-		(statement) =>
-			ts.isExportAssignment(statement) && !statement.isExportEquals,
+export function hasDefaultExport(program: Program): boolean {
+	return array(program.body).some(
+		(statement) => asNode(statement)?.type === "ExportDefaultDeclaration",
 	);
 }
 
-function parse(source: string): ts.SourceFile {
-	return ts.createSourceFile("script.ts", source, ts.ScriptTarget.ES2018, true);
+function identifierName(value: unknown): string | undefined {
+	const node = asNode(value);
+	return node?.type === "Identifier" && typeof node.name === "string"
+		? node.name
+		: undefined;
+}
+
+function asNode(value: unknown): JavaScriptNode | undefined {
+	return value && typeof value === "object" && "type" in value
+		? (value as JavaScriptNode)
+		: undefined;
+}
+
+function array(value: unknown): unknown[] {
+	if (!Array.isArray(value)) {
+		throw new Error("JavaScript AST expected a child-node array");
+	}
+	return value;
 }

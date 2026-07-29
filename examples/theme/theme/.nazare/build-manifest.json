@@ -6,7 +6,7 @@
       "source": "src/components/counter/counter.nz.liquid"
     },
     "assets/counter.js": {
-      "hash": "sha256-b03daf6e48a90d7f220fffc9e60066874ce4a5a065a4cee3f34ceb1829b4000b",
+      "hash": "sha256-c1e86fb353d37125eca1372e8411665ed00636c342a93b11c62f1758205f28e6",
       "source": "src/components/counter/counter.nz.liquid"
     },
     "assets/nazare-runtime.js": {

@@ -21,7 +21,10 @@ import {
 	parseInvalidStylesheetBinding,
 	parseLiquidCrash,
 	parseUnclosedRawBlock,
+	scriptJavaScriptParseError,
+	scriptTypeScriptUnsupported,
 } from "./diagnostics.js";
+import { parseJavaScript } from "./javascript-ast.js";
 import {
 	parseNazareImportTag,
 	parsePassedProps,
@@ -278,7 +281,27 @@ function projectFacts(
 				});
 				break;
 			case "script": {
-				const scan = scanScript(fact.body);
+				const parsed =
+					fact.language === "javascript"
+						? parseJavaScript(fact.body)
+						: undefined;
+				if (fact.language === "typescript") {
+					semanticDiagnostics.push(scriptTypeScriptUnsupported(span));
+				} else if (parsed && !parsed.ok) {
+					semanticDiagnostics.push(
+						scriptJavaScriptParseError(
+							parsed.error.message,
+							spanFromOffsets(source, file, {
+								start: fact.bodyRange.start + parsed.error.start,
+								end: fact.bodyRange.start + parsed.error.end,
+							}),
+						),
+					);
+				}
+				const scan =
+					parsed?.ok === true
+						? scanScript(parsed.program)
+						: { refAccesses: [], dataAccesses: [] };
 				nodes.push({
 					type: "NazareScript",
 					lang: fact.language === "javascript" ? "js" : "ts",

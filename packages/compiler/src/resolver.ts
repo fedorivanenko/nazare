@@ -9,10 +9,16 @@ import type {
 	NazareStyleNode,
 } from "./ast.js";
 import type { CompilerMode } from "./check.js";
-import { importCycle, importNotFound } from "./diagnostics.js";
+import {
+	importCycle,
+	importNotFound,
+	scriptJavaScriptParseError,
+} from "./diagnostics.js";
+import { parseJavaScript } from "./javascript-ast.js";
 import { markDiagnostics, projectArtifact } from "./pipeline.js";
 import type { ReadFile } from "./read-file.js";
-import { scanDataAccesses, scanRefAccesses } from "./script-accesses.js";
+import { scanScript } from "./script-scan.js";
+import { spanFromOffsets } from "./source.js";
 import { bindArtifactIR, contractFromIR } from "./symbols.js";
 import { syntaxFromAst } from "./syntax.js";
 import { projectTreeSitterNazareAst } from "./tree-sitter-nazare-projector.js";
@@ -220,7 +226,14 @@ export function resolveAssetImports(
 			return styleNodeFromAsset(node.path, contents, node.localName, node.span);
 		}
 
-		return scriptNodeFromAsset(node.path, contents, node.localName, node.span);
+		const script = scriptNodeFromAsset(
+			node.path,
+			contents,
+			node.localName,
+			node.span,
+		);
+		issues.push(...script.issues);
+		return script.node;
 	});
 
 	return {
@@ -249,16 +262,37 @@ function scriptNodeFromAsset(
 	contents: string,
 	bindingName: string,
 	span: SourceSpan,
-): NazareScriptNode {
+): { node: NazareScriptNode; issues: Diagnostic[] } {
+	const parsed = parseJavaScript(contents);
+	const scan = parsed.ok
+		? scanScript(parsed.program)
+		: { refAccesses: [], dataAccesses: [] };
 	return {
-		type: "NazareScript",
-		lang: path.endsWith(".ts") ? "ts" : "js",
-		source: contents,
-		refAccesses: scanRefAccesses(contents, path),
-		dataAccesses: scanDataAccesses(contents, path),
-		bindingName,
-		span,
-		bodySpan: wholeFileSpan(path, contents),
+		node: {
+			type: "NazareScript",
+			lang: "js",
+			source: contents,
+			refAccesses: scan.refAccesses.map((access) => ({
+				name: access.name,
+				span: spanFromOffsets(contents, path, access),
+			})),
+			dataAccesses: scan.dataAccesses.map((access) => ({
+				ref: access.ref,
+				property: access.property,
+				span: spanFromOffsets(contents, path, access),
+			})),
+			bindingName,
+			span,
+			bodySpan: wholeFileSpan(path, contents),
+		},
+		issues: parsed.ok
+			? []
+			: [
+					scriptJavaScriptParseError(
+						parsed.error.message,
+						spanFromOffsets(contents, path, parsed.error),
+					),
+				],
 	};
 }
 

@@ -1,15 +1,5 @@
-export type ClassDictionary = Record<string, boolean | null | undefined>;
-export type ClassArray = ClassValue[];
-export type ClassValue =
-	| string
-	| false
-	| null
-	| undefined
-	| ClassDictionary
-	| ClassArray;
-
-export function cn(...values: ClassValue[]): string {
-	const classes: string[] = [];
+export function cn(...values) {
+	const classes = [];
 
 	for (const value of values) {
 		if (!value) continue;

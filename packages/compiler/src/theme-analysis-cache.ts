@@ -401,7 +401,6 @@ function isThemeSourceLanguage(value: unknown): boolean {
 		"liquid",
 		"css",
 		"javascript",
-		"typescript",
 		"json",
 		"asset",
 		"other",

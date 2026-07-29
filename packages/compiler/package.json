@@ -22,8 +22,9 @@
 	"dependencies": {
 		"@nazare/core": "workspace:^",
 		"@nazare/source": "workspace:^",
+		"acorn": "^8.15.0",
+		"acorn-walk": "^8.3.4",
 		"postcss": "^8.5.17",
-		"postcss-selector-parser": "^7.1.4",
-		"typescript": "^5.5.0"
+		"postcss-selector-parser": "^7.1.4"
 	}
 }

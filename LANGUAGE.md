@@ -23,7 +23,7 @@ Rules:
 
 ```liquid
 {% import Name from "./component.nz.liquid" %}
-{% import behavior from "./behavior.ts" %}
+{% import behavior from "./behavior.js" %}
 {% import styles from "./styles.css" %}
 ```
 
@@ -146,7 +146,7 @@ Markup refs expose DOM elements to behavior scripts:
   <button ref="button">+</button>
 </div>
 
-{% script lang="ts" %}
+{% script lang="js" %}
 export default island(({ root, refs, data }) => {
   refs.button?.addEventListener("click", () => {
     console.log(data.root.count);
@@ -157,21 +157,21 @@ export default island(({ root, refs, data }) => {
 
 Rules:
 
-- script blocks default to TypeScript; use `lang="js"` or `lang="ts"` to select explicitly; other language values are errors;
+- script blocks use JavaScript and default to `lang="js"`; TypeScript is not supported;
 - `ref="name"` values must be static identifiers;
 - refs must be unique in `strict` mode;
 - `refs.name` must refer to a declared ref in `strict` mode;
 - `data.<ref>.<property>` must match a `data-*` binding on that ref in `strict` mode;
 - scripts must have a default export for runtime registration;
-- TypeScript script checking provides an `island(...)` helper type, but the fast compile pass does not prove that the default export is specifically an `island(...)` call;
-- relative `.ts`/`.js` imports inside behavior scripts are bundled at emit time; bare package imports are not allowed.
+- JavaScript syntax is checked, but Nazare does not type-check scripts;
+- relative `.js` imports inside behavior scripts are bundled at emit time; bare package imports are not allowed.
 
 ## Islands
 
 A behavior imported by name can be mounted on a subtree:
 
 ```liquid
-{% import carousel from "./carousel.ts" %}
+{% import carousel from "./carousel.js" %}
 <section island="carousel">...</section>
 ```
 

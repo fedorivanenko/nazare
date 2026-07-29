@@ -2,13 +2,13 @@
   "id": "@nazare/cn",
   "version": "0.1.0",
   "kind": "function",
-  "entry": "cn.ts",
+  "entry": "cn.js",
   "license": "MIT",
   "exports": [
     "cn"
   ],
   "dependencies": {},
   "files": [
-    "cn.ts"
+    "cn.js"
   ]
 }

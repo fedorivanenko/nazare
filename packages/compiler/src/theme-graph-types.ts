@@ -148,7 +148,6 @@ export type SemanticThemeGraphNode =
 				| "liquid"
 				| "css"
 				| "javascript"
-				| "typescript"
 				| "json"
 				| "asset"
 				| "other";

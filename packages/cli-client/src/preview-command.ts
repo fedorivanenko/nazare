@@ -122,9 +122,7 @@ function compileComponent(
 		readFile: (path: string) => string | undefined;
 	},
 ): PreviewComponent {
-	const key = `${dir}\0${file}\0${options.packageId ?? ""}\0${
-		options.kind ?? ""
-	}\0${options.checkScripts === false ? "unchecked" : "checked"}`;
+	const key = `${dir}\0${file}\0${options.packageId ?? ""}\0${options.kind ?? ""}`;
 	const cached = compiledComponents.get(key);
 	if (
 		cached &&
@@ -320,18 +318,10 @@ export async function detectLayout(
 	return undefined;
 }
 
-/**
- * What a collect is allowed to skip. Only script checking so far, and it is off
- * the default path: a preview that stops reporting type errors should be a
- * thing someone asked for.
- */
-export type CollectOptions = { checkScripts?: boolean };
-
 /** A theme: the directory a file sits in is what the file is. */
 async function collectTheme(
 	dir: string,
 	readFixture: (path: string) => unknown,
-	collectOptions: CollectOptions,
 ): Promise<PreviewCollection> {
 	const collection: PreviewCollection = {
 		layout: "theme",
@@ -353,7 +343,6 @@ async function collectTheme(
 			if (source === undefined) continue;
 			const component = compileComponent(dir, source, file, {
 				readFile: readThemeFile,
-				...collectOptions,
 			});
 
 			// card.liquid → card.stories.json, beside the template.
@@ -391,7 +380,6 @@ async function collectTheme(
 async function collectPackages(
 	dir: string,
 	readFixture: (path: string) => unknown,
-	collectOptions: CollectOptions,
 ): Promise<PreviewCollection> {
 	const collection: PreviewCollection = {
 		layout: "package",
@@ -445,7 +433,6 @@ async function collectPackages(
 			packageId: manifest.id,
 			// A function package was already skipped, so the kind is a template one.
 			kind: manifest.kind as Exclude<NazareManifest["kind"], "function">,
-			...collectOptions,
 		});
 		let stories: PreviewStory[];
 		try {
@@ -471,7 +458,6 @@ async function collectPackages(
 /** Everything in `dir`, compiled, with its stories resolved. */
 export async function collectPreview(
 	dir: string,
-	collectOptions: CollectOptions = {},
 ): Promise<PreviewCollection | "missing" | undefined> {
 	const layout = await detectLayout(dir);
 	if (layout === "missing") return "missing";
@@ -479,8 +465,8 @@ export async function collectPreview(
 	const fixtures = fixtureReader(dir);
 	const collection =
 		layout === "theme"
-			? await collectTheme(dir, fixtures.read, collectOptions)
-			: await collectPackages(dir, fixtures.read, collectOptions);
+			? await collectTheme(dir, fixtures.read)
+			: await collectPackages(dir, fixtures.read);
 	// Reported after the walk, because that is when every story has been read and
 	// every path it named has been tried.
 	for (const [path, why] of fixtures.problems) {
@@ -525,9 +511,8 @@ export async function runPreviewBuild(
 	outDir: string,
 	output: Output,
 	label = dir,
-	collectOptions: CollectOptions = {},
 ): Promise<number> {
-	const collection = await collectPreview(dir, collectOptions);
+	const collection = await collectPreview(dir);
 	if (!collection || collection === "missing") {
 		return missingLayout(dir, output, collection === "missing");
 	}

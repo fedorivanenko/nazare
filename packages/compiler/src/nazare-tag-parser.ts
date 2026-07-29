@@ -56,7 +56,7 @@ export function parseNazareImportTag(
 		return { type: "NazareImport", localName, path, span };
 	}
 
-	if (/\.(ts|js|css)$/.test(specifier)) {
+	if (/\.(js|css)$/.test(specifier)) {
 		if (/^[A-Z]/.test(localName)) {
 			diagnostics.push(importBindingCase(localName, span));
 			return undefined;
