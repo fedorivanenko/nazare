@@ -132,6 +132,17 @@ test("impact index applies graph edge and node deltas transactionally", () => {
 			.includes("snippets/tile.liquid"),
 		true,
 	);
+	const changedNodeGraph = structuredClone(second);
+	const tileFile = changedNodeGraph.nodes.find(
+		(node) => node.id === "file:snippets/tile.liquid",
+	);
+	assert.ok(tileFile && "path" in tileFile);
+	tileFile.path = "snippets/renamed-tile.liquid";
+	staged.applyGraph(changedNodeGraph);
+	assert.deepEqual(
+		staged.toSummary(),
+		new ThemeImpactIndex(changedNodeGraph).toSummary(),
+	);
 	assert.equal(
 		staged
 			.getDependencies("sections/main.liquid")

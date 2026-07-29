@@ -7,6 +7,21 @@ import type {
 type ImpactGraph = Pick<InspectNazareThemeResult, "nodes" | "edges">;
 type ImpactNode = InspectNazareThemeResult["nodes"][number];
 type ImpactEdge = InspectNazareThemeResult["edges"][number];
+type SummaryContribution = {
+	readonly fromPath: string;
+	readonly toPath: string;
+	readonly propagatesToPages: boolean;
+};
+
+const SUMMARY_REFERENCE_EDGE_KINDS = new Set<ImpactEdge["kind"]>([
+	"renders",
+	"templateContainsSection",
+	"containsSectionGroup",
+	"usesLayout",
+	"referencesAsset",
+	"dependsOnBehaviorContract",
+	"dependsOnDomHook",
+]);
 
 export type ThemeImpactIndexDelta = {
 	addedNodeIds: string[];
@@ -24,6 +39,15 @@ export class ThemeImpactIndex {
 	private readonly dependentsByNode = new Map<string, Set<string>>();
 	private readonly dependenciesByNode = new Map<string, Set<string>>();
 	private readonly pageDependentsByNode = new Map<string, Set<string>>();
+	private readonly summaryDependenciesByPath = new Map<string, Set<string>>();
+	private readonly summaryDependentsByPath = new Map<string, Set<string>>();
+	private readonly pageDependenciesByPath = new Map<string, Set<string>>();
+	private readonly summaryContributionByEdgeId = new Map<
+		string,
+		SummaryContribution
+	>();
+	private readonly summaryEdgeCounts = new Map<string, number>();
+	private readonly summaryPageEdgeCounts = new Map<string, number>();
 	private readonly pagePathsByNode = new Map<string, string[]>();
 	private readonly nodeIdsByPath = new Map<string, Set<string>>();
 	private readonly pathByNodeId = new Map<string, string>();
@@ -33,6 +57,7 @@ export class ThemeImpactIndex {
 	private readonly pageEdgeCountsByEndpoints = new Map<string, number>();
 	private summary: ThemeImpactSummary = emptyImpactSummary();
 	private publishedSummary: ThemeImpactSummary | undefined;
+	private dynamicSnippetReferenceCount = 0;
 
 	constructor(graph?: InspectNazareThemeResult) {
 		if (graph) this.replaceGraph(graph);
@@ -43,6 +68,12 @@ export class ThemeImpactIndex {
 		this.dependentsByNode.clear();
 		this.dependenciesByNode.clear();
 		this.pageDependentsByNode.clear();
+		this.summaryDependenciesByPath.clear();
+		this.summaryDependentsByPath.clear();
+		this.pageDependenciesByPath.clear();
+		this.summaryContributionByEdgeId.clear();
+		this.summaryEdgeCounts.clear();
+		this.summaryPageEdgeCounts.clear();
 		this.pagePathsByNode.clear();
 		this.nodeIdsByPath.clear();
 		this.pathByNodeId.clear();
@@ -50,6 +81,7 @@ export class ThemeImpactIndex {
 		this.edgesById.clear();
 		this.edgeCountsByEndpoints.clear();
 		this.pageEdgeCountsByEndpoints.clear();
+		this.dynamicSnippetReferenceCount = 0;
 		for (const node of graph.nodes) this.addNode(node);
 		for (const edge of graph.edges) this.addEdge(edge);
 		this.refreshSummary();
@@ -60,6 +92,12 @@ export class ThemeImpactIndex {
 		copySetMap(this.dependentsByNode, fork.dependentsByNode);
 		copySetMap(this.dependenciesByNode, fork.dependenciesByNode);
 		copySetMap(this.pageDependentsByNode, fork.pageDependentsByNode);
+		copySetMap(this.summaryDependenciesByPath, fork.summaryDependenciesByPath);
+		copySetMap(this.summaryDependentsByPath, fork.summaryDependentsByPath);
+		copySetMap(this.pageDependenciesByPath, fork.pageDependenciesByPath);
+		copyMap(this.summaryContributionByEdgeId, fork.summaryContributionByEdgeId);
+		copyMap(this.summaryEdgeCounts, fork.summaryEdgeCounts);
+		copyMap(this.summaryPageEdgeCounts, fork.summaryPageEdgeCounts);
 		copySetMap(this.nodeIdsByPath, fork.nodeIdsByPath);
 		for (const [key, value] of this.pagePathsByNode) {
 			fork.pagePathsByNode.set(key, [...value]);
@@ -77,6 +115,7 @@ export class ThemeImpactIndex {
 		}
 		fork.summary = this.summary;
 		fork.publishedSummary = this.publishedSummary;
+		fork.dynamicSnippetReferenceCount = this.dynamicSnippetReferenceCount;
 		return fork;
 	}
 
@@ -87,6 +126,24 @@ export class ThemeImpactIndex {
 		const nextEdges = new Map(graph.edges.map((edge) => [edge.id, edge]));
 		const nodeDelta = recordDelta(this.nodesById, nextNodes);
 		const edgeDelta = recordDelta(this.edgesById, nextEdges);
+		const changedOrRemovedNodeIds = new Set([
+			...nodeDelta.changed,
+			...nodeDelta.removed,
+		]);
+		const summaryEdgesToRefresh = [...this.edgesById.values()].filter(
+			(edge) => {
+				const next = nextEdges.get(edge.id);
+				return (
+					next !== undefined &&
+					sameRecord(edge, next) &&
+					(changedOrRemovedNodeIds.has(edge.from) ||
+						changedOrRemovedNodeIds.has(edge.to))
+				);
+			},
+		);
+		for (const edge of summaryEdgesToRefresh) {
+			this.removeSummaryContribution(edge.id);
+		}
 		for (const [id, edge] of this.edgesById) {
 			const next = nextEdges.get(id);
 			if (!next || !sameRecord(edge, next)) this.removeEdge(edge);
@@ -98,6 +155,11 @@ export class ThemeImpactIndex {
 		for (const [id, node] of nextNodes) {
 			const previous = this.nodesById.get(id);
 			if (!previous || !sameRecord(previous, node)) this.addNode(node);
+		}
+		for (const edge of summaryEdgesToRefresh) {
+			if (nextNodes.has(edge.from) && nextNodes.has(edge.to)) {
+				this.addSummaryContribution(edge);
+			}
 		}
 		for (const [id, edge] of nextEdges) {
 			const previous = this.edgesById.get(id);
@@ -146,6 +208,8 @@ export class ThemeImpactIndex {
 
 	private addEdge(edge: ImpactEdge): void {
 		this.edgesById.set(edge.id, edge);
+		if (isDynamicSnippetReference(edge)) this.dynamicSnippetReferenceCount += 1;
+		this.addSummaryContribution(edge);
 		const endpointKey = edgeEndpointKey(edge.from, edge.to);
 		if (incrementCount(this.edgeCountsByEndpoints, endpointKey) === 1) {
 			addValue(this.dependenciesByNode, edge.from, edge.to);
@@ -160,7 +224,14 @@ export class ThemeImpactIndex {
 	}
 
 	private removeEdge(edge: ImpactEdge): void {
+		this.removeSummaryContribution(edge.id);
 		this.edgesById.delete(edge.id);
+		if (isDynamicSnippetReference(edge)) {
+			if (this.dynamicSnippetReferenceCount < 1) {
+				throw new Error("Dynamic snippet reference count underflow");
+			}
+			this.dynamicSnippetReferenceCount -= 1;
+		}
 		const endpointKey = edgeEndpointKey(edge.from, edge.to);
 		if (decrementCount(this.edgeCountsByEndpoints, endpointKey) === 0) {
 			removeValue(this.dependenciesByNode, edge.from, edge.to);
@@ -174,13 +245,78 @@ export class ThemeImpactIndex {
 		}
 	}
 
-	private refreshSummary(): void {
-		const next = impactSummaryFromGraph(
-			{
-				nodes: [...this.nodesById.values()],
-				edges: [...this.edgesById.values()],
-			},
+	private addSummaryContribution(edge: ImpactEdge): void {
+		if (this.summaryContributionByEdgeId.has(edge.id)) {
+			throw new Error(`Impact summary already contains edge ${edge.id}`);
+		}
+		const contribution = summaryContribution(
+			edge,
+			this.nodesById,
 			this.pathByNodeId,
+		);
+		if (!contribution) return;
+		this.summaryContributionByEdgeId.set(edge.id, contribution);
+		const key = edgeEndpointKey(contribution.fromPath, contribution.toPath);
+		if (incrementCount(this.summaryEdgeCounts, key) === 1) {
+			addValue(
+				this.summaryDependenciesByPath,
+				contribution.fromPath,
+				contribution.toPath,
+			);
+			addValue(
+				this.summaryDependentsByPath,
+				contribution.toPath,
+				contribution.fromPath,
+			);
+		}
+		if (
+			contribution.propagatesToPages &&
+			incrementCount(this.summaryPageEdgeCounts, key) === 1
+		) {
+			addValue(
+				this.pageDependenciesByPath,
+				contribution.fromPath,
+				contribution.toPath,
+			);
+		}
+	}
+
+	private removeSummaryContribution(edgeId: string): void {
+		const contribution = this.summaryContributionByEdgeId.get(edgeId);
+		if (!contribution) return;
+		this.summaryContributionByEdgeId.delete(edgeId);
+		const key = edgeEndpointKey(contribution.fromPath, contribution.toPath);
+		if (decrementCount(this.summaryEdgeCounts, key) === 0) {
+			removeValue(
+				this.summaryDependenciesByPath,
+				contribution.fromPath,
+				contribution.toPath,
+			);
+			removeValue(
+				this.summaryDependentsByPath,
+				contribution.toPath,
+				contribution.fromPath,
+			);
+		}
+		if (
+			contribution.propagatesToPages &&
+			decrementCount(this.summaryPageEdgeCounts, key) === 0
+		) {
+			removeValue(
+				this.pageDependenciesByPath,
+				contribution.fromPath,
+				contribution.toPath,
+			);
+		}
+	}
+
+	private refreshSummary(): void {
+		const next = impactSummaryFromIndexes(
+			this.nodesById.values(),
+			this.summaryDependenciesByPath,
+			this.summaryDependentsByPath,
+			this.pageDependenciesByPath,
+			this.dynamicSnippetReferenceCount > 0,
 		);
 		this.summary = shareImpactSummary(this.summary, next);
 		this.publishedSummary = undefined;
@@ -267,65 +403,21 @@ function validateImpactGraph(graph: ImpactGraph): void {
 	}
 }
 
-function impactSummaryFromGraph(
-	graph: ImpactGraph,
-	pathByNodeId: Map<string, string>,
+function impactSummaryFromIndexes(
+	nodes: Iterable<ImpactNode>,
+	dependencies: Map<string, Set<string>>,
+	dependents: Map<string, Set<string>>,
+	pageDependencies: Map<string, Set<string>>,
+	hasDynamicSnippetReference: boolean,
 ): ThemeImpactSummary {
-	const dependencies = new Map<string, Set<string>>();
-	const pageDependencies = new Map<string, Set<string>>();
-	const dependents = new Map<string, Set<string>>();
-	const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
-	const add = (
-		from: string | undefined,
-		to: string | undefined,
-		propagatesToPages = true,
-	): void => {
-		if (!from || !to || from === to) return;
-		addValue(dependencies, from, to);
-		addValue(dependents, to, from);
-		if (propagatesToPages) addValue(pageDependencies, from, to);
-	};
-	const referenceKinds = new Set([
-		"renders",
-		"templateContainsSection",
-		"containsSectionGroup",
-		"usesLayout",
-		"referencesAsset",
-		"dependsOnBehaviorContract",
-		"dependsOnDomHook",
-	]);
-	for (const edge of graph.edges) {
-		if (referenceKinds.has(edge.kind)) {
-			add(
-				pathByNodeId.get(edge.from),
-				pathByNodeId.get(edge.to),
-				propagatesPageImpact(edge),
-			);
-			continue;
-		}
-		if (edge.kind === "instanceOf" || edge.kind === "instanceOfBlock") {
-			const instance = nodeById.get(edge.from);
-			const from =
-				instance && "templatePath" in instance
-					? instance.templatePath
-					: instance && "ownerPath" in instance
-						? instance.ownerPath
-						: undefined;
-			add(from, pathByNodeId.get(edge.to));
-			continue;
-		}
-		if (edge.kind === "resolvesMetafieldDefinition") {
-			const read = nodeById.get(edge.from);
-			add(read && "fromPath" in read ? read.fromPath : undefined, edge.to);
-		}
-	}
+	const nodeList = [...nodes];
 	const affectedPages = new Map<string, Set<string>>();
-	for (const page of graph.nodes.filter((node) => node.kind === "page")) {
+	for (const page of nodeList.filter((node) => node.kind === "page")) {
 		const visited = new Set<string>();
 		const pending = [page.path];
 		while (pending.length > 0) {
 			const path = pending.pop();
-			if (!path || visited.has(path)) continue;
+			if (path === undefined || visited.has(path)) continue;
 			visited.add(path);
 			addValue(affectedPages, path, page.path);
 			for (const dependency of pageDependencies.get(path) ?? []) {
@@ -334,10 +426,10 @@ function impactSummaryFromGraph(
 		}
 	}
 	const declaredFiles = new Set(
-		graph.nodes.filter((node) => node.kind === "file").map((node) => node.path),
+		nodeList.filter((node) => node.kind === "file").map((node) => node.path),
 	);
 	const entryFiles = new Set(
-		graph.nodes.flatMap((node) => {
+		nodeList.flatMap((node) => {
 			if (node.kind === "page") return [node.path];
 			if (
 				(node.kind === "layout" || node.kind === "locale") &&
@@ -354,12 +446,8 @@ function impactSummaryFromGraph(
 			return [];
 		}),
 	);
-	const hasDynamicSnippetReference = graph.edges.some(
-		(edge) =>
-			edge.kind === "renders" && !("targetName" in edge && edge.targetName),
-	);
 	const unusedCandidates = new Set(
-		graph.nodes.flatMap((node) => {
+		nodeList.flatMap((node) => {
 			if (
 				!("path" in node) ||
 				!(
@@ -390,6 +478,42 @@ function impactSummaryFromGraph(
 			)
 			.sort((a, b) => a.localeCompare(b)),
 	};
+}
+
+function summaryContribution(
+	edge: ImpactEdge,
+	nodesById: Map<string, ImpactNode>,
+	pathByNodeId: Map<string, string>,
+): SummaryContribution | undefined {
+	let fromPath: string | undefined;
+	let toPath: string | undefined;
+	if (SUMMARY_REFERENCE_EDGE_KINDS.has(edge.kind)) {
+		fromPath = pathByNodeId.get(edge.from);
+		toPath = pathByNodeId.get(edge.to);
+	} else if (edge.kind === "instanceOf" || edge.kind === "instanceOfBlock") {
+		const instance = nodesById.get(edge.from);
+		fromPath =
+			instance && "templatePath" in instance
+				? instance.templatePath
+				: instance && "ownerPath" in instance
+					? instance.ownerPath
+					: undefined;
+		toPath = pathByNodeId.get(edge.to);
+	} else if (edge.kind === "resolvesMetafieldDefinition") {
+		const read = nodesById.get(edge.from);
+		fromPath = read && "fromPath" in read ? read.fromPath : undefined;
+		toPath = edge.to;
+	}
+	if (!fromPath || !toPath || fromPath === toPath) return undefined;
+	return {
+		fromPath,
+		toPath,
+		propagatesToPages: propagatesPageImpact(edge),
+	};
+}
+
+function isDynamicSnippetReference(edge: ImpactEdge): boolean {
+	return edge.kind === "renders" && !("targetName" in edge && edge.targetName);
 }
 
 function propagatesPageImpact(edge: ImpactEdge): boolean {
@@ -438,6 +562,13 @@ function removeValue(
 	const values = map.get(key);
 	values?.delete(value);
 	if (values?.size === 0) map.delete(key);
+}
+
+function copyMap<Key, Value>(
+	source: Map<Key, Value>,
+	target: Map<Key, Value>,
+): void {
+	for (const [key, value] of source) target.set(key, value);
 }
 
 function copySetMap(
