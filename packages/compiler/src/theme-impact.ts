@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeImpactSummary, ThemeSemanticModel } from "./theme-facts.js";
 
 export function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
@@ -164,17 +165,17 @@ export function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
 				(path) =>
 					unusedCandidates.has(path) && !structurallyReferencedFiles.has(path),
 			)
-			.sort((a, b) => a.localeCompare(b)),
+			.sort((a, b) => compareCanonicalStrings(a, b)),
 	};
 }
 
 function sortedRecord(map: Map<string, Set<string>>): Record<string, string[]> {
 	return Object.fromEntries(
 		[...map.entries()]
-			.sort(([a], [b]) => a.localeCompare(b))
+			.sort(([a], [b]) => compareCanonicalStrings(a, b))
 			.map(([key, values]) => [
 				key,
-				[...values].sort((a, b) => a.localeCompare(b)),
+				[...values].sort((a, b) => compareCanonicalStrings(a, b)),
 			]),
 	);
 }

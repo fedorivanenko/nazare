@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type {
 	BuildNazareThemeWorkspaceOptions,
 	ThemeAnalysisCache,
@@ -82,14 +83,14 @@ class ThemeBuildState {
 		return [
 			...(this.outputPathsBySourcePath.get(normalizeThemePath(sourcePath)) ??
 				[]),
-		].sort((a, b) => a.localeCompare(b));
+		].sort((a, b) => compareCanonicalStrings(a, b));
 	}
 
 	getOutputOwners(outputPath: string): string[] {
 		return [
 			...(this.sourcePathsByOutputPath.get(normalizeThemePath(outputPath)) ??
 				[]),
-		].sort((a, b) => a.localeCompare(b));
+		].sort((a, b) => compareCanonicalStrings(a, b));
 	}
 
 	updateFile(file: ThemeInputFile): ThemeBuildUpdate {
@@ -223,7 +224,7 @@ class ThemeBuildState {
 
 	private files(): ThemeInputFile[] {
 		return [...this.filesByPath.values()].sort((a, b) =>
-			a.path.localeCompare(b.path),
+			compareCanonicalStrings(a.path, b.path),
 		);
 	}
 }
@@ -301,7 +302,7 @@ function mergeSelectiveBuild(
 		artifactsByPath.set(artifact.path, artifact);
 	}
 	let artifacts = [...artifactsByPath.values()].sort((a, b) =>
-		a.path.localeCompare(b.path),
+		compareCanonicalStrings(a.path, b.path),
 	);
 	const previousSemanticIssueKeys = new Set(
 		previous.analysis.ir.issues.map((issue) => JSON.stringify(issue)),
@@ -358,10 +359,12 @@ function mergeSelectiveBuild(
 
 function canonicalSemanticModel(model: ThemeSemanticModel): ThemeSemanticModel {
 	const byId = <T extends { id: string }>(records: T[]): T[] =>
-		[...records].sort((a, b) => a.id.localeCompare(b.id));
+		[...records].sort((a, b) => compareCanonicalStrings(a.id, b.id));
 	return {
 		...model,
-		files: [...model.files].sort((a, b) => a.path.localeCompare(b.path)),
+		files: [...model.files].sort((a, b) =>
+			compareCanonicalStrings(a.path, b.path),
+		),
 		declarations: byId(model.declarations),
 		references: byId(model.references),
 		schemas: byId(model.schemas),
@@ -488,7 +491,7 @@ class ThemeImportGraph {
 				if (!visited.has(dependent)) pending.push(dependent);
 			}
 		}
-		return [...visited].sort((a, b) => a.localeCompare(b));
+		return [...visited].sort((a, b) => compareCanonicalStrings(a, b));
 	}
 }
 

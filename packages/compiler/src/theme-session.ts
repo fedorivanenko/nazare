@@ -1,4 +1,5 @@
 import type { Diagnostic } from "@nazare/core";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import { collectThemeBehavior } from "./theme-behavior.js";
 import {
 	createThemeCapabilityPass,
@@ -460,7 +461,7 @@ export class ThemeProgram {
 						evidence.kind === "behavior" ||
 						evidence.kind === "localeTranslation",
 				),
-			].sort((a, b) => a.id.localeCompare(b.id)),
+			].sort((a, b) => compareCanonicalStrings(a.id, b.id)),
 			issues: ownedIssues,
 			themeCheck: {
 				path: themeCheckPolicy.path,
@@ -650,7 +651,7 @@ export class ThemeProgram {
 
 	private files(): ThemeInputFile[] {
 		return [...this.filesByPath.values()].sort((a, b) =>
-			a.path.localeCompare(b.path),
+			compareCanonicalStrings(a.path, b.path),
 		);
 	}
 }
@@ -864,7 +865,7 @@ function runCollectionPasses(
 	};
 	const execution = scheduler.execute(
 		[...new Set(changedPaths)]
-			.sort((a, b) => a.localeCompare(b))
+			.sort((a, b) => compareCanonicalStrings(a, b))
 			.map((path): PassChange => ({ kind: "factsChanged", path }))
 			.concat(additionalChanges),
 		context,
@@ -1188,7 +1189,7 @@ function modelWithCollectedRecords(
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
 	for (const path of [...declarationsBySource.keys()].sort((a, b) =>
-		a.localeCompare(b),
+		compareCanonicalStrings(a, b),
 	)) {
 		const result = declarationsBySource.get(path);
 		if (!result) continue;
@@ -1196,26 +1197,26 @@ function modelWithCollectedRecords(
 		declarations.push(...result.declarations);
 	}
 	const references = [...resolvedReferencesById.values()].sort((a, b) =>
-		a.id.localeCompare(b.id),
+		compareCanonicalStrings(a.id, b.id),
 	);
 	const schemaSettings = [...schemaSettingsBySource.keys()]
-		.sort((a, b) => a.localeCompare(b))
+		.sort((a, b) => compareCanonicalStrings(a, b))
 		.map((path) => schemaSettingsBySource.get(path))
 		.filter((result): result is ThemeSchemaSettingPassResult =>
 			Boolean(result),
 		);
 
 	const instances = [...instancesBySource.keys()]
-		.sort((a, b) => a.localeCompare(b))
+		.sort((a, b) => compareCanonicalStrings(a, b))
 		.map((path) => instancesBySource.get(path))
 		.filter((result): result is ThemeInstancePassResult => Boolean(result));
 	const locales = [...localesBySource.keys()]
-		.sort((a, b) => a.localeCompare(b))
+		.sort((a, b) => compareCanonicalStrings(a, b))
 		.map((path) => localesBySource.get(path))
 		.filter((result): result is ThemeLocalePassResult => Boolean(result));
 
 	const dataFlowInputs = [...dataFlowInputsBySource.keys()]
-		.sort((a, b) => a.localeCompare(b))
+		.sort((a, b) => compareCanonicalStrings(a, b))
 		.map((path) => dataFlowInputsBySource.get(path))
 		.filter((result): result is ThemeDataFlowInputPassResult =>
 			Boolean(result),
@@ -1326,7 +1327,7 @@ function uniqueById<RecordValue extends { id: string }>(
 ): RecordValue[] {
 	return [
 		...new Map(records.map((record) => [record.id, record])).values(),
-	].sort((a, b) => a.id.localeCompare(b.id));
+	].sort((a, b) => compareCanonicalStrings(a.id, b.id));
 }
 
 function diffGraphs(
@@ -1559,7 +1560,7 @@ function invalidationClosure(
 			if (!visited.has(dependent)) pending.push(dependent);
 		}
 	}
-	return [...visited].sort((a, b) => a.localeCompare(b));
+	return [...visited].sort((a, b) => compareCanonicalStrings(a, b));
 }
 
 function affectedPages(
@@ -1570,7 +1571,7 @@ function affectedPages(
 	for (const id of invalidationClosure(graph, changedPaths)) {
 		for (const page of graph.impact.affectedPages[id] ?? []) pages.add(page);
 	}
-	return [...pages].sort((a, b) => a.localeCompare(b));
+	return [...pages].sort((a, b) => compareCanonicalStrings(a, b));
 }
 
 function addedIds<T>(
@@ -1579,7 +1580,7 @@ function addedIds<T>(
 ): string[] {
 	return [...current.keys()]
 		.filter((id) => !previous.has(id))
-		.sort((a, b) => a.localeCompare(b));
+		.sort((a, b) => compareCanonicalStrings(a, b));
 }
 
 function changedIds<T>(
@@ -1595,5 +1596,5 @@ function changedIds<T>(
 			);
 		})
 		.map(([id]) => id)
-		.sort((a, b) => a.localeCompare(b));
+		.sort((a, b) => compareCanonicalStrings(a, b));
 }

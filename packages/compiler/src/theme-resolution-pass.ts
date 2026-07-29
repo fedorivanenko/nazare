@@ -1,4 +1,5 @@
 import type { Diagnostic } from "@nazare/core";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeDiagnosticStore } from "./theme-diagnostic-store.js";
 import type { ThemeDeclaration, ThemeReference } from "./theme-facts.js";
 import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
@@ -52,7 +53,9 @@ export function createThemeResolutionPass(): IncrementalPass<
 
 			const records: ThemeReference[] = [];
 			const changes: PassChange[] = [];
-			for (const id of [...referenceIds].sort((a, b) => a.localeCompare(b))) {
+			for (const id of [...referenceIds].sort((a, b) =>
+				compareCanonicalStrings(a, b),
+			)) {
 				const reference = context.referencesById.get(id);
 				if (!reference) {
 					context.resolvedReferencesById.delete(id);

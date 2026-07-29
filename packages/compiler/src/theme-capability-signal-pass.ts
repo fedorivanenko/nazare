@@ -1,4 +1,5 @@
 import type { SourceSpan } from "@nazare/core";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeFactStore } from "./theme-fact-store.js";
 import type { ThemeCapabilitySignalRecord } from "./theme-facts.js";
 import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
@@ -23,7 +24,7 @@ export function collectThemeCapabilitySignals(
 			span: fact.span,
 		});
 	}
-	return signals.sort((a, b) => a.id.localeCompare(b.id));
+	return signals.sort((a, b) => compareCanonicalStrings(a.id, b.id));
 }
 
 export function createThemeCapabilitySignalPass(): IncrementalPass<

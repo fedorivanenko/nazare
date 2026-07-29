@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeFactStore } from "./theme-fact-store.js";
 import type {
 	ThemeFact,
@@ -53,7 +54,9 @@ export function createThemeLocalePass(): IncrementalPass<
 		run(paths, context) {
 			const records: ThemeLocaleRecord[] = [];
 			const changes: PassChange[] = [];
-			for (const path of [...paths].sort((a, b) => a.localeCompare(b))) {
+			for (const path of [...paths].sort((a, b) =>
+				compareCanonicalStrings(a, b),
+			)) {
 				const next = collectThemeLocales(
 					context.facts.getFile(path),
 					context.localeIds,

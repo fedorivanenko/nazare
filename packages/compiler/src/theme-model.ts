@@ -1,4 +1,5 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import { collectThemeBehavior } from "./theme-behavior.js";
 import { collectThemeCapabilitySignals } from "./theme-capability-signal-pass.js";
 import {
@@ -82,7 +83,7 @@ function collectScheduledDeclarationAndReferenceRecords(facts: ThemeFact[]): {
 	const files = new Map<string, ThemeFileRecord>();
 	const declarations: ThemeDeclaration[] = [];
 	for (const path of [...context.resultsBySource.keys()].sort((a, b) =>
-		a.localeCompare(b),
+		compareCanonicalStrings(a, b),
 	)) {
 		const result = context.resultsBySource.get(path);
 		if (!result) continue;
@@ -90,7 +91,7 @@ function collectScheduledDeclarationAndReferenceRecords(facts: ThemeFact[]): {
 		declarations.push(...result.declarations);
 	}
 	const references = [...context.referencesBySource.keys()]
-		.sort((a, b) => a.localeCompare(b))
+		.sort((a, b) => compareCanonicalStrings(a, b))
 		.flatMap((path) => context.referencesBySource.get(path) ?? []);
 	return { files, declarations, references };
 }
@@ -259,36 +260,48 @@ export function buildThemeSemanticModel(
 	const model: ThemeSemanticModel = {
 		version: 3,
 		root: options.root ?? ".",
-		files: [...files.values()].sort((a, b) => a.path.localeCompare(b.path)),
-		declarations: dedupeById(declarations).sort((a, b) =>
-			a.id.localeCompare(b.id),
+		files: [...files.values()].sort((a, b) =>
+			compareCanonicalStrings(a.path, b.path),
 		),
-		references: references.sort((a, b) => a.id.localeCompare(b.id)),
-		schemas: dedupeById(schemas).sort((a, b) => a.id.localeCompare(b.id)),
-		settings: dedupeById(settings).sort((a, b) => a.id.localeCompare(b.id)),
-		blocks: dedupeById(blocks).sort((a, b) => a.id.localeCompare(b.id)),
+		declarations: dedupeById(declarations).sort((a, b) =>
+			compareCanonicalStrings(a.id, b.id),
+		),
+		references: references.sort((a, b) => compareCanonicalStrings(a.id, b.id)),
+		schemas: dedupeById(schemas).sort((a, b) =>
+			compareCanonicalStrings(a.id, b.id),
+		),
+		settings: dedupeById(settings).sort((a, b) =>
+			compareCanonicalStrings(a.id, b.id),
+		),
+		blocks: dedupeById(blocks).sort((a, b) =>
+			compareCanonicalStrings(a.id, b.id),
+		),
 		blockSettings: dedupeById(blockSettings).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
 		sectionInstances: dedupeById(sectionInstances).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
 		blockInstances: dedupeById(blockInstances).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
-		pages: dedupeById(pages).sort((a, b) => a.id.localeCompare(b.id)),
-		localeKeys: dedupeById(localeKeys).sort((a, b) => a.id.localeCompare(b.id)),
+		pages: dedupeById(pages).sort((a, b) =>
+			compareCanonicalStrings(a.id, b.id),
+		),
+		localeKeys: dedupeById(localeKeys).sort((a, b) =>
+			compareCanonicalStrings(a.id, b.id),
+		),
 		localeTranslations: dedupeById(localeTranslations).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
 		localeReferences: dedupeById(localeReferences).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
 		settingReads: dedupeById(settingReads).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
 		dataAccesses: dedupeById(dataAccesses).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
 		metafieldDefinitions: metafields.definitions,
 		metafieldReads: metafields.reads,
@@ -299,25 +312,25 @@ export function buildThemeSemanticModel(
 		},
 		themeCheck: UNCONFIGURED_THEME_CHECK,
 		variableReads: dedupeById(variableReads).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
 		renderArguments: dedupeById(renderArguments).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
 		expectedInputs: dedupeById(expectedInputs).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
 		renderSites: dedupeById(renderSites).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
 		capabilitySignals: dedupeById(capabilitySignals).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
 		capabilities: dedupeById(capabilities).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
 		classifications: dedupeById(classifications).sort((a, b) =>
-			a.id.localeCompare(b.id),
+			compareCanonicalStrings(a.id, b.id),
 		),
 		behavior: behavior.records,
 		sourceAnalyses: behavior.sourceAnalyses,
@@ -331,7 +344,7 @@ export function buildThemeSemanticModel(
 				span: translation.span,
 				extractor: "theme-json-facts",
 			})),
-		]).sort((a, b) => a.id.localeCompare(b.id)),
+		]).sort((a, b) => compareCanonicalStrings(a.id, b.id)),
 		issues: modelIssues,
 	};
 	assertThemeSemanticModel(model);
@@ -464,7 +477,7 @@ function assertUnique(values: string[], label: string): void {
 
 function assertUniqueSorted(values: string[], label: string): void {
 	assertUnique(values, label);
-	const sorted = [...values].sort((a, b) => a.localeCompare(b));
+	const sorted = [...values].sort((a, b) => compareCanonicalStrings(a, b));
 	if (values.some((value, index) => value !== sorted[index])) {
 		throw new Error(`${label} must be sorted`);
 	}
@@ -566,7 +579,9 @@ export function deriveThemeInputDiagnostics(
 	}
 	for (const [targetName, sets] of argumentNamesByTarget) {
 		const signatures = new Set(
-			sets.map((set) => [...set].sort((a, b) => a.localeCompare(b)).join(",")),
+			sets.map((set) =>
+				[...set].sort((a, b) => compareCanonicalStrings(a, b)).join(","),
+			),
 		);
 		if (signatures.size <= 1) continue;
 		issues.push({

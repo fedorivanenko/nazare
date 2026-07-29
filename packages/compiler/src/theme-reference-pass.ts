@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeFactStore } from "./theme-fact-store.js";
 import type { ThemeFact, ThemeReference } from "./theme-facts.js";
 import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
@@ -29,7 +30,9 @@ export function createThemeReferencePass(): IncrementalPass<
 		run(paths, context) {
 			const records: ThemeReference[] = [];
 			const changedIds = new Set<string>();
-			for (const path of [...paths].sort((a, b) => a.localeCompare(b))) {
+			for (const path of [...paths].sort((a, b) =>
+				compareCanonicalStrings(a, b),
+			)) {
 				const previous = context.referencesBySource.get(path) ?? [];
 				const next = collectThemeReferences(
 					context.facts.getFile(path),
@@ -50,7 +53,7 @@ export function createThemeReferencePass(): IncrementalPass<
 			return {
 				records,
 				changes: [...changedIds]
-					.sort((a, b) => a.localeCompare(b))
+					.sort((a, b) => compareCanonicalStrings(a, b))
 					.map((id): PassChange => ({ kind: "referenceChanged", id })),
 			};
 		},

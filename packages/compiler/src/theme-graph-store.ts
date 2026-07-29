@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type {
 	InspectNazareThemeResult,
 	ThemeSemanticModel,
@@ -149,10 +150,10 @@ export class ThemeGraphStore {
 		this.graph = {
 			...graph,
 			nodes: [...this.nodesById.values()].sort((a, b) =>
-				a.id.localeCompare(b.id),
+				compareCanonicalStrings(a.id, b.id),
 			),
 			edges: [...this.edgesById.values()].sort((a, b) =>
-				a.id.localeCompare(b.id),
+				compareCanonicalStrings(a.id, b.id),
 			),
 			evidence: graph.evidence.map((record) => {
 				const previous = previousEvidenceById.get(record.id);

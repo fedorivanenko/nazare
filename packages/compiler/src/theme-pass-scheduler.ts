@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 export const THEME_PASS_ORDER = [
 	"source",
 	"facts",
@@ -289,7 +290,7 @@ function comparePasses<Context>(
 ): number {
 	return (
 		stageIndex(a.pass.stage) - stageIndex(b.pass.stage) ||
-		a.pass.name.localeCompare(b.pass.name)
+		compareCanonicalStrings(a.pass.name, b.pass.name)
 	);
 }
 
@@ -312,7 +313,7 @@ function newChanges(
 		seen.add(key);
 		added.push({ change, key });
 	}
-	added.sort((left, right) => compareAscii(left.key, right.key));
+	added.sort((left, right) => compareCanonicalStrings(left.key, right.key));
 	return added.map(({ change }) => change);
 }
 
@@ -354,10 +355,6 @@ function changeKey(change: PassChange): string {
 
 function assertNever(value: never): never {
 	throw new Error(`Unsupported theme pass change ${JSON.stringify(value)}`);
-}
-
-function compareAscii(left: string, right: string): number {
-	return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function convergenceError(

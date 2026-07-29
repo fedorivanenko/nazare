@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 import type { ThemeFactStore } from "./theme-fact-store.js";
 import type {
@@ -37,7 +38,9 @@ export type ThemeDataFlowFixedPointContext = {
 export function dataFlowGroupKey(
 	paths: readonly string[],
 ): ThemeDataFlowGroupKey {
-	return JSON.stringify([...paths].sort((a, b) => a.localeCompare(b)));
+	return JSON.stringify(
+		[...paths].sort((a, b) => compareCanonicalStrings(a, b)),
+	);
 }
 
 export function createThemeDataFlowFixedPointPass(): FixedPointPass<
@@ -74,7 +77,9 @@ export function createThemeDataFlowFixedPointPass(): FixedPointPass<
 			);
 		},
 		step(pending, context) {
-			const ordered = [...pending].sort((a, b) => a.localeCompare(b));
+			const ordered = [...pending].sort((a, b) =>
+				compareCanonicalStrings(a, b),
+			);
 			const current = ordered[0];
 			if (!current)
 				return { records: [], changes: [], pending: new Set(), work: 1 };
@@ -267,7 +272,9 @@ export function createThemeDataFlowInputPass(): IncrementalPass<
 		run(paths, context) {
 			const records: ThemeDataFlowInputRecord[] = [];
 			const changes: PassChange[] = [];
-			for (const path of [...paths].sort((a, b) => a.localeCompare(b))) {
+			for (const path of [...paths].sort((a, b) =>
+				compareCanonicalStrings(a, b),
+			)) {
 				const next = collectThemeDataFlowInputs(
 					context.facts.getFile(path),
 					context.dataFlowIds,

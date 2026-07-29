@@ -1,4 +1,5 @@
 import type { Diagnostic } from "@nazare/core";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import { analyzeThemeCss } from "./frontends/theme-css.js";
 import { analyzeThemeScript } from "./frontends/theme-script.js";
 import type { ThemeFact } from "./theme-facts.js";
@@ -136,7 +137,7 @@ export function analyzeThemeSource(
 			"THEME_SOURCE_FRONTEND_AMBIGUOUS",
 			`Multiple theme source frontends accept ${input.path}: ${matches
 				.map((frontend) => frontend.name)
-				.sort((a, b) => a.localeCompare(b))
+				.sort((a, b) => compareCanonicalStrings(a, b))
 				.join(", ")}`,
 		);
 	}

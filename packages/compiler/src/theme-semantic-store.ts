@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeSemanticModel } from "./theme-facts.js";
 
 const NON_RECORD_MODEL_KEYS = new Set<keyof ThemeSemanticModel>([
@@ -137,7 +138,7 @@ function canonicalizeSemanticModel(
 		const value = model[key];
 		if (!Array.isArray(value) || !value.every(identified)) continue;
 		const sorted = [...value].sort((a, b) =>
-			identified(a) && identified(b) ? a.id.localeCompare(b.id) : 0,
+			identified(a) && identified(b) ? compareCanonicalStrings(a.id, b.id) : 0,
 		);
 		const unchanged = sorted.every((record, index) => record === value[index]);
 		if (!unchanged) (canonical[key] as unknown[]) = sorted;

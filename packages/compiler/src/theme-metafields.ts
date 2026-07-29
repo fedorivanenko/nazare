@@ -1,4 +1,5 @@
 import type { Diagnostic } from "@nazare/core";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeMetafieldSnapshot } from "./theme-external-types.js";
 import type { ThemeDataAccessRecord } from "./theme-facts.js";
 
@@ -100,7 +101,9 @@ export function collectMetafieldDefinitions(
 		}
 	}
 	return {
-		definitions: definitions.sort((a, b) => a.id.localeCompare(b.id)),
+		definitions: definitions.sort((a, b) =>
+			compareCanonicalStrings(a.id, b.id),
+		),
 		issues: [],
 		state: snapshot ? "present" : "unknown",
 		path,
@@ -123,7 +126,9 @@ export function collectMetafieldReads(
 		};
 		readsById.set(read.id, read);
 	}
-	return [...readsById.values()].sort((a, b) => a.id.localeCompare(b.id));
+	return [...readsById.values()].sort((a, b) =>
+		compareCanonicalStrings(a.id, b.id),
+	);
 }
 
 export function joinMetafieldReads(

@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type {
 	ThemeMetafieldDefinitionRecord,
 	ThemeMetafieldReadRecord,
@@ -39,7 +40,7 @@ export class ThemeMetafieldIndex {
 		return [...(this.readIdsByDefinition.get(definitionId) ?? [])]
 			.map((id) => this.reads.get(id))
 			.filter((read): read is ThemeMetafieldReadRecord => read !== undefined)
-			.sort((a, b) => a.id.localeCompare(b.id));
+			.sort((a, b) => compareCanonicalStrings(a.id, b.id));
 	}
 
 	getAffectedSources(definitionId: string): string[] {

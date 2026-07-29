@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeDeclaration, ThemeFact } from "./theme-facts.js";
 
 export class ThemeRenderDependencyIndex {
@@ -72,7 +73,7 @@ export class ThemeRenderDependencyIndex {
 			groups.set(group.join("\0"), group);
 		}
 		return [...groups.values()].sort((a, b) =>
-			a.join("\0").localeCompare(b.join("\0")),
+			compareCanonicalStrings(a.join("\0"), b.join("\0")),
 		);
 	}
 }
@@ -127,7 +128,9 @@ function stronglyConnectedComponents(
 	for (const node of [...nodes].sort()) {
 		if (!indexes.has(node)) visit(node);
 	}
-	return groups.sort((a, b) => a.join("\0").localeCompare(b.join("\0")));
+	return groups.sort((a, b) =>
+		compareCanonicalStrings(a.join("\0"), b.join("\0")),
+	);
 }
 
 function add(map: Map<string, Set<string>>, key: string, value: string): void {
@@ -137,5 +140,5 @@ function add(map: Map<string, Set<string>>, key: string, value: string): void {
 }
 
 function sorted(values: Set<string> | undefined): string[] {
-	return [...(values ?? [])].sort((a, b) => a.localeCompare(b));
+	return [...(values ?? [])].sort((a, b) => compareCanonicalStrings(a, b));
 }

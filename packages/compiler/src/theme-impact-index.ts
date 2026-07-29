@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type {
 	InspectNazareThemeResult,
 	ThemeImpactSummary,
@@ -476,7 +477,7 @@ function impactSummaryFromIndexes(
 				(path) =>
 					unusedCandidates.has(path) && !structurallyReferencedFiles.has(path),
 			)
-			.sort((a, b) => a.localeCompare(b)),
+			.sort((a, b) => compareCanonicalStrings(a, b)),
 	};
 }
 
@@ -635,7 +636,7 @@ function shareRecord(
 function sortedRecord(map: Map<string, Set<string>>): Record<string, string[]> {
 	return Object.fromEntries(
 		[...map]
-			.sort(([a], [b]) => a.localeCompare(b))
+			.sort(([a], [b]) => compareCanonicalStrings(a, b))
 			.map(([key, values]) => [key, [...values].sort()]),
 	);
 }

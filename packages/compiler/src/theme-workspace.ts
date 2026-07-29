@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Diagnostic } from "@nazare/core";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import { type EmitResult, emitTheme } from "./emit.js";
 // Generated from a digest of this package's source, so any change to fact
 // derivation invalidates persisted caches without anyone remembering to.
@@ -551,7 +552,7 @@ function normalizeInputFiles(files: ThemeInputFile[]): {
 	return {
 		files: [...byPath.entries()]
 			.map(([path, contents]) => ({ path, contents }))
-			.sort((a, b) => a.path.localeCompare(b.path)),
+			.sort((a, b) => compareCanonicalStrings(a.path, b.path)),
 		byPath,
 		issues,
 	};

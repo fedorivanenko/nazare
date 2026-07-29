@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import {
 	strongerThemeEvidence,
 	type ThemeEvidenceStrength,
@@ -226,7 +227,7 @@ export function inferClassifications(
 				label: rule.label,
 				evidenceStrength: rule.evidenceStrength,
 				evidenceIds: [...new Set(evidenceIds)].sort((a, b) =>
-					a.localeCompare(b),
+					compareCanonicalStrings(a, b),
 				),
 				uncertainty: rule.uncertainty,
 			});

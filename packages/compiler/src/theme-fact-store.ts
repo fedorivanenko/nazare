@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeFact } from "./theme-facts.js";
 
 /** Mutable per-file fact buckets used by incremental workspace sessions. */
@@ -40,7 +41,7 @@ export class ThemeFactStore {
 
 	files(): string[] {
 		this.cachedFiles ??= [...this.buckets.keys()].sort((a, b) =>
-			a.localeCompare(b),
+			compareCanonicalStrings(a, b),
 		);
 		return [...this.cachedFiles];
 	}

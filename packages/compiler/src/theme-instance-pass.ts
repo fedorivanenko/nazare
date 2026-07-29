@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeFactStore } from "./theme-fact-store.js";
 import type {
 	ThemeBlockInstanceRecord,
@@ -49,7 +50,9 @@ export function createThemeInstancePass(): IncrementalPass<
 		run(paths, context) {
 			const records: ThemeInstanceRecord[] = [];
 			const changes: PassChange[] = [];
-			for (const path of [...paths].sort((a, b) => a.localeCompare(b))) {
+			for (const path of [...paths].sort((a, b) =>
+				compareCanonicalStrings(a, b),
+			)) {
 				const next = collectThemeInstances(
 					context.facts.getFile(path),
 					context.instanceIds,
