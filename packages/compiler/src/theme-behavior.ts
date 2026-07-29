@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type {
 	ThemeBehaviorFact,
 	ThemeBehaviorRecord,
@@ -23,7 +24,7 @@ export function collectThemeBehavior(
 			const { kind: _kind, ...record } = fact;
 			return { ...record, id: themeBehaviorId(fact) };
 		})
-		.sort((a, b) => a.id.localeCompare(b.id));
+		.sort((a, b) => compareCanonicalStrings(a.id, b.id));
 	const sourceAnalyses = facts
 		.filter(
 			(fact): fact is Extract<ThemeFact, { kind: "sourceAnalysis" }> =>
@@ -36,7 +37,7 @@ export function collectThemeBehavior(
 			completeness: fact.completeness,
 			uncertainty: fact.uncertainty,
 		}))
-		.sort((a, b) => a.id.localeCompare(b.id));
+		.sort((a, b) => compareCanonicalStrings(a.id, b.id));
 	return {
 		records,
 		sourceAnalyses,

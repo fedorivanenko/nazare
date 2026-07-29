@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeMetafieldSnapshot } from "./theme-external-types.js";
 import type { ThemeDataAccessRecord } from "./theme-facts.js";
 import {
@@ -98,7 +99,7 @@ export function createThemeMetafieldPass(): IncrementalPass<
 						: read,
 				);
 			}
-			reads.sort((a, b) => a.id.localeCompare(b.id));
+			reads.sort((a, b) => compareCanonicalStrings(a.id, b.id));
 			const issues = metafieldIssues(
 				collection,
 				reads,

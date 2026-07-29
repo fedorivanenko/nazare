@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type {
 	InspectNazareThemeResult,
 	SemanticThemeGraphEdge,
@@ -254,7 +255,7 @@ export function themeGraphFromModel(
 			key: localeKey.key,
 			translationPaths: [
 				...new Set(translationPathsByLocaleKeyId.get(localeKey.id) ?? []),
-			].sort((a, b) => a.localeCompare(b)),
+			].sort((a, b) => compareCanonicalStrings(a, b)),
 		});
 	}
 	for (const localeReference of model.localeReferences) {
@@ -992,8 +993,12 @@ export function themeGraphFromRecords(
 	edges: SemanticThemeGraphEdge[],
 	options: { impact?: ThemeImpactSummary; validate?: boolean } = {},
 ): InspectNazareThemeResult {
-	const sortedNodes = [...nodes].sort((a, b) => a.id.localeCompare(b.id));
-	const sortedEdges = [...edges].sort((a, b) => a.id.localeCompare(b.id));
+	const sortedNodes = [...nodes].sort((a, b) =>
+		compareCanonicalStrings(a.id, b.id),
+	);
+	const sortedEdges = [...edges].sort((a, b) =>
+		compareCanonicalStrings(a.id, b.id),
+	);
 	const views = graphViews(sortedNodes, sortedEdges);
 	if (options.validate !== false) {
 		assertGraphIntegrity(sortedNodes, sortedEdges, views, model.evidence);
@@ -1175,10 +1180,12 @@ function graphViews(
 			selectedNodeIds.add(edge.to);
 		}
 		return {
-			nodeIds: [...selectedNodeIds].sort((a, b) => a.localeCompare(b)),
+			nodeIds: [...selectedNodeIds].sort((a, b) =>
+				compareCanonicalStrings(a, b),
+			),
 			edgeIds: selectedEdges
 				.map((edge) => edge.id)
-				.sort((a, b) => a.localeCompare(b)),
+				.sort((a, b) => compareCanonicalStrings(a, b)),
 		};
 	};
 	return {

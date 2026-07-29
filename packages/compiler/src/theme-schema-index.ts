@@ -1,4 +1,5 @@
 import type { Diagnostic } from "@nazare/core";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type {
 	ThemeBlockInstanceRecord,
 	ThemeBlockRecord,
@@ -83,7 +84,7 @@ export class ThemeSchemaIndex {
 		return [
 			...(this.blockSettingsByOwnerAndId.get(`${ownerPath}:${settingId}`) ??
 				[]),
-		].sort((a, b) => a.id.localeCompare(b.id));
+		].sort((a, b) => compareCanonicalStrings(a.id, b.id));
 	}
 
 	getLocaleKey(key: string): ThemeLocaleKeyRecord | undefined {

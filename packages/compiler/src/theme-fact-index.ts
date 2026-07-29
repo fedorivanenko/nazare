@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import { themeFactSourcePath } from "./theme-fact-store.js";
 import type { ThemeFact } from "./theme-facts.js";
 
@@ -162,7 +163,7 @@ function remove(
 function mapToRecord(map: Map<string, Set<string>>): Record<string, string[]> {
 	return Object.fromEntries(
 		[...map.entries()]
-			.sort(([a], [b]) => a.localeCompare(b))
+			.sort(([a], [b]) => compareCanonicalStrings(a, b))
 			.map(([key, values]) => [key, [...values].sort()]),
 	);
 }

@@ -1,4 +1,5 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type {
 	ThemeDataAccessRecord,
 	ThemeDeclaration,
@@ -125,7 +126,7 @@ export function deriveThemeExpectedInputs(
 					...existing.propertyPaths,
 					...(propertyPath ? [propertyPath] : []),
 				]),
-			].sort((a, b) => a.localeCompare(b));
+			].sort((a, b) => compareCanonicalStrings(a, b));
 			existing.evidenceIds = [
 				...new Set([...existing.evidenceIds, evidenceId]),
 			];
