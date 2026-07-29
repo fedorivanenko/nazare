@@ -18,6 +18,9 @@ import {
 } from "./check-doc-contract-agreement.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+const compareCanonicalStrings = (left, right) =>
+	left < right ? -1 : left > right ? 1 : 0;
 const manifestPath = join(
 	repositoryRoot,
 	"fixtures/theme-graph-corpus.json",
@@ -272,7 +275,7 @@ function uniqueIndex(records, label) {
 function assertCanonicalOrder(records, label) {
 	for (let index = 1; index < records.length; index += 1) {
 		assert(
-			records[index - 1].id.localeCompare(records[index].id) <= 0,
+			compareCanonicalStrings(records[index - 1].id, records[index].id) <= 0,
 			`${label} are not canonically ordered at ${records[index].id}`,
 		);
 	}
