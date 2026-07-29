@@ -58,6 +58,30 @@ test("fake registry rejects malformed publish payloads", async () => {
 		);
 		assert.equal(badPath.ok, false);
 		assert.equal(badPath.code, "MALFORMED_COMPONENT");
+
+		const fileDirectoryCollision = await registry.publish(
+			component(
+				"@nazare/link",
+				"1.0.0",
+				{},
+				{ "nazare.json/schema.json": "{}" },
+			),
+			"t",
+		);
+		assert.equal(fileDirectoryCollision.ok, false);
+		assert.equal(fileDirectoryCollision.code, "MALFORMED_COMPONENT");
+
+		const platformPathCollision = await registry.publish(
+			component(
+				"@nazare/link",
+				"1.0.0",
+				{},
+				{ "scripts/main.js": "a", "scripts\\main.js": "b" },
+			),
+			"t",
+		);
+		assert.equal(platformPathCollision.ok, false);
+		assert.equal(platformPathCollision.code, "MALFORMED_COMPONENT");
 	});
 });
 

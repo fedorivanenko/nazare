@@ -18,6 +18,7 @@ const THEME_MANIFEST = "nazare.theme.json";
 
 export const INSTALL_DEFAULTS = Object.freeze({
 	fetchConcurrency: 8,
+	ioConcurrency: 16,
 });
 
 /** add keeps an already-installed copy; update overwrites it after hash guards. */
@@ -29,7 +30,10 @@ export type InstallOptions = {
 	sourceRoot: string;
 	/** Overwrite/delete local edits during update. Intended for explicit --force. */
 	force?: boolean;
+	/** Maximum simultaneous registry requests. */
 	fetchConcurrency?: number;
+	/** Maximum simultaneous filesystem reads, directory creates, deletes, or writes. */
+	ioConcurrency?: number;
 };
 
 export type InstallOutcome = {
@@ -72,9 +76,9 @@ export async function installComponent(
 	const { client, projectRoot, sourceRoot } = options;
 	const fetchConcurrency =
 		options.fetchConcurrency ?? INSTALL_DEFAULTS.fetchConcurrency;
-	if (!Number.isSafeInteger(fetchConcurrency) || fetchConcurrency < 1) {
-		throw new Error("fetchConcurrency must be a positive safe integer");
-	}
+	assertPositiveConcurrency("fetchConcurrency", fetchConcurrency);
+	const ioConcurrency = options.ioConcurrency ?? INSTALL_DEFAULTS.ioConcurrency;
+	assertPositiveConcurrency("ioConcurrency", ioConcurrency);
 	const manifest = await readThemeManifest(projectRoot);
 	const installedRecord = { ...(manifest.installed ?? {}) };
 	const installedFiles = cloneInstalledFiles(manifest.installedFiles ?? {});
@@ -155,21 +159,36 @@ export async function installComponent(
 		installedFiles,
 		options,
 		options.force === true,
+		ioConcurrency,
 	);
 
 	const written: string[] = [];
 	for (const component of toWrite.values()) {
 		const folder = componentFolderName(component.id);
 		const nextHashes: Record<string, string> = {};
-		for (const relativePath of staleInstalledPaths(component, installedFiles)) {
-			await rm(join(projectRoot, sourceRoot, folder, relativePath), {
-				force: true,
-			});
-		}
-		for (const [relativePath, contents] of Object.entries(component.files)) {
-			const outputPath = join(projectRoot, sourceRoot, folder, relativePath);
-			await mkdir(dirname(outputPath), { recursive: true });
-			await writeFile(outputPath, contents);
+		await mapConcurrent(
+			staleInstalledPaths(component, installedFiles),
+			ioConcurrency,
+			(relativePath) =>
+				rm(join(projectRoot, sourceRoot, folder, relativePath), {
+					force: true,
+				}),
+		);
+		const files = Object.entries(component.files);
+		const directories = [
+			...new Set(
+				files.map(([relativePath]) =>
+					dirname(join(projectRoot, sourceRoot, folder, relativePath)),
+				),
+			),
+		];
+		await mapConcurrent(directories, ioConcurrency, (directory) =>
+			mkdir(directory, { recursive: true }),
+		);
+		await mapConcurrent(files, ioConcurrency, ([relativePath, contents]) =>
+			writeFile(join(projectRoot, sourceRoot, folder, relativePath), contents),
+		);
+		for (const [relativePath, contents] of files) {
 			written.push(join(sourceRoot, folder, relativePath));
 			nextHashes[relativePath] = sha256(contents);
 		}
@@ -221,6 +240,8 @@ export async function diffComponent(
 	version: string,
 	options: InstallOptions,
 ): Promise<ComponentDiff> {
+	const ioConcurrency = options.ioConcurrency ?? INSTALL_DEFAULTS.ioConcurrency;
+	assertPositiveConcurrency("ioConcurrency", ioConcurrency);
 	const manifest = await readThemeManifest(options.projectRoot);
 	const component = await options.client.fetchComponent(id, version);
 	if (!component)
@@ -234,26 +255,26 @@ export async function diffComponent(
 
 	const previous = manifest.installedFiles?.[id] ?? {};
 	const folder = componentFolderName(id);
-	const entries: ComponentDiffEntry[] = [];
-	const allPaths = new Set([
-		...Object.keys(previous),
-		...Object.keys(component.files),
-	]);
-	for (const path of [...allPaths].sort()) {
-		const nextHash =
-			component.files[path] === undefined
-				? undefined
-				: sha256(component.files[path]);
-		const previousHash = previous[path];
-		const diskHash = await fileHash(
-			join(options.projectRoot, options.sourceRoot, folder, path),
-		);
-		entries.push({
-			path,
-			change: diffChange(previousHash, nextHash),
-			local: localState(previousHash, diskHash),
-		});
-	}
+	const allPaths = [
+		...new Set([...Object.keys(previous), ...Object.keys(component.files)]),
+	].sort();
+	const entries = await mapConcurrent(
+		allPaths,
+		ioConcurrency,
+		async (path): Promise<ComponentDiffEntry> => {
+			const contents = component.files[path];
+			const nextHash = contents === undefined ? undefined : sha256(contents);
+			const previousHash = previous[path];
+			const diskHash = await fileHash(
+				join(options.projectRoot, options.sourceRoot, folder, path),
+			);
+			return {
+				path,
+				change: diffChange(previousHash, nextHash),
+				local: localState(previousHash, diskHash),
+			};
+		},
+	);
 	return {
 		id,
 		fromVersion: manifest.installed?.[id],
@@ -291,51 +312,60 @@ async function assertInstallWritesAreSafe(
 	installedFiles: Record<string, Record<string, string>>,
 	options: InstallOptions,
 	force: boolean,
+	ioConcurrency: number,
 ): Promise<void> {
 	if (force) return;
-	const errors: string[] = [];
+	type SafetyCheck = {
+		fullPath: string;
+		displayPath: string;
+		previousHash: string | undefined;
+		operation: "overwrite" | "delete";
+	};
+	const checks: SafetyCheck[] = [];
 	for (const component of toWrite.values()) {
 		const folder = componentFolderName(component.id);
 		const previous = installedFiles[component.id] ?? {};
-		for (const [relativePath, contents] of Object.entries(component.files)) {
-			const full = join(
-				options.projectRoot,
-				options.sourceRoot,
-				folder,
-				relativePath,
-			);
-			const diskHash = await fileHash(full);
-			const previousHash = previous[relativePath];
-			if (diskHash === undefined) continue;
-			if (previousHash === undefined) {
-				errors.push(
-					`${join(options.sourceRoot, folder, relativePath)} exists but is not tracked by Nazare; refusing to overwrite`,
-				);
-				continue;
-			}
-			if (diskHash !== previousHash) {
-				errors.push(
-					`${join(options.sourceRoot, folder, relativePath)} has local edits; refusing to overwrite`,
-				);
-				continue;
-			}
-			void contents;
+		for (const relativePath of Object.keys(component.files)) {
+			checks.push({
+				fullPath: join(
+					options.projectRoot,
+					options.sourceRoot,
+					folder,
+					relativePath,
+				),
+				displayPath: join(options.sourceRoot, folder, relativePath),
+				previousHash: previous[relativePath],
+				operation: "overwrite",
+			});
 		}
 		for (const relativePath of staleInstalledPaths(component, installedFiles)) {
-			const full = join(
-				options.projectRoot,
-				options.sourceRoot,
-				folder,
-				relativePath,
-			);
-			const diskHash = await fileHash(full);
-			if (diskHash !== undefined && diskHash !== previous[relativePath]) {
-				errors.push(
-					`${join(options.sourceRoot, folder, relativePath)} has local edits; refusing to delete`,
-				);
-			}
+			checks.push({
+				fullPath: join(
+					options.projectRoot,
+					options.sourceRoot,
+					folder,
+					relativePath,
+				),
+				displayPath: join(options.sourceRoot, folder, relativePath),
+				previousHash: previous[relativePath],
+				operation: "delete",
+			});
 		}
 	}
+	const results = await mapConcurrent(
+		checks,
+		ioConcurrency,
+		async (check): Promise<string | undefined> => {
+			const diskHash = await fileHash(check.fullPath);
+			if (diskHash === undefined) return undefined;
+			if (check.previousHash === undefined) {
+				return `${check.displayPath} exists but is not tracked by Nazare; refusing to overwrite`;
+			}
+			if (diskHash === check.previousHash) return undefined;
+			return `${check.displayPath} has local edits; refusing to ${check.operation}`;
+		},
+	);
+	const errors = results.filter((error) => error !== undefined);
 	if (errors.length > 0) {
 		throw new Error(
 			`Refuse update: local registry component edits detected.\n${errors.join("\n")}\nUse \`nazare diff @scope/name\` to inspect or \`nazare update --force @scope/name\` to overwrite.`,
@@ -404,28 +434,56 @@ function sha256(contents: string): string {
 	return `sha256-${createHash("sha256").update(contents).digest("hex")}`;
 }
 
+function assertPositiveConcurrency(name: string, value: number): void {
+	if (!Number.isSafeInteger(value) || value < 1) {
+		throw new Error(`${name} must be a positive safe integer`);
+	}
+}
+
 async function mapConcurrent<Input, Output>(
 	items: Input[],
 	concurrency: number,
 	operation: (item: Input) => Promise<Output>,
 ): Promise<Output[]> {
 	const results = new Array<Output>(items.length);
+	const failures: { index: number; error: unknown }[] = [];
 	let nextIndex = 0;
+	let failed = false;
 	const workerCount = Math.min(concurrency, items.length);
 	await Promise.all(
 		Array.from({ length: workerCount }, async () => {
-			while (true) {
+			while (!failed) {
 				const index = nextIndex;
 				nextIndex += 1;
 				if (index >= items.length) return;
 				const item = items[index];
 				if (item === undefined) {
-					throw new Error(`Concurrent install queue is missing item ${index}`);
+					failures.push({
+						index,
+						error: new Error(
+							`Concurrent install queue is missing item ${index}`,
+						),
+					});
+					failed = true;
+					return;
 				}
-				results[index] = await operation(item);
+				try {
+					results[index] = await operation(item);
+				} catch (error) {
+					failures.push({ index, error });
+					failed = true;
+					return;
+				}
 			}
 		}),
 	);
+	if (failures.length > 0) {
+		failures.sort((left, right) => left.index - right.index);
+		const failure = failures[0];
+		if (!failure)
+			throw new Error("Concurrent install failure was not recorded");
+		throw failure.error;
+	}
 	return results;
 }
 
