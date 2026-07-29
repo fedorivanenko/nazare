@@ -1,4 +1,5 @@
 import type Parser from "tree-sitter";
+import { walkNamedNodes } from "./tree-sitter-walk.js";
 import {
 	DEFAULT_NAZARE_SCRIPT_LANGUAGE,
 	type EmbeddedRegion,
@@ -18,7 +19,7 @@ export function collectEmbeddedRegions(
 	const regions: EmbeddedRegion[] = [];
 	const representedOpenings = new Set<number>();
 
-	walk(tree.rootNode, (node) => {
+	walkNamedNodes(tree.rootNode, (node) => {
 		if (
 			node.type !== "nazare_script_statement" &&
 			node.type !== "stylesheet_statement"
@@ -94,7 +95,7 @@ function pairedBlockBoundaries(
 		openCloser < openStart ||
 		closeStart <= openCloser ||
 		closeCloser < closeStart ||
-		!closingTagPattern(kind).test(source.slice(closeStart, closeCloser + 2))
+		!hasClosingTagAt(source, closeStart, closeCloser + 2, kind)
 	) {
 		throw new Error(
 			`Cannot locate ${kind} boundaries in authoritative ${node.type}`,
@@ -130,23 +131,39 @@ function languageOfUnclosedBlock(
 	return match[2] === "ts" ? "typescript" : "javascript";
 }
 
+const CLOSING_TAG_PATTERNS: Record<BlockKind, RegExp> = {
+	script: /\{%-?\s*endscript\s*-?%}/g,
+	stylesheet: /\{%-?\s*endstylesheet\s*-?%}/g,
+};
+
 function hasClosingTag(
 	source: string,
 	start: number,
 	kind: BlockKind,
 ): boolean {
-	return closingTagPattern(kind).test(source.slice(start));
+	return findClosingTag(source, start, kind) !== null;
 }
 
-function closingTagPattern(kind: BlockKind): RegExp {
-	const name = kind === "script" ? "endscript" : "endstylesheet";
-	return new RegExp(`\\{%-?\\s*${name}\\s*-?%}`);
+function hasClosingTagAt(
+	source: string,
+	start: number,
+	end: number,
+	kind: BlockKind,
+): boolean {
+	const match = findClosingTag(source, start, kind);
+	return (
+		match !== null &&
+		match.index === start &&
+		match.index + match[0].length === end
+	);
 }
 
-function walk(
-	node: Parser.SyntaxNode,
-	visit: (node: Parser.SyntaxNode) => void,
-): void {
-	visit(node);
-	for (const child of node.namedChildren) walk(child, visit);
+function findClosingTag(
+	source: string,
+	start: number,
+	kind: BlockKind,
+): RegExpExecArray | null {
+	const pattern = CLOSING_TAG_PATTERNS[kind];
+	pattern.lastIndex = start;
+	return pattern.exec(source);
 }

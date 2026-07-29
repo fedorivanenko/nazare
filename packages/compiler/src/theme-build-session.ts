@@ -393,18 +393,17 @@ function shareUnchangedOutputSnapshots(
 	previous: ThemeBuildResult,
 	current: ThemeBuildResult,
 ): ThemeBuildResult {
-	const outputKey = (file: ThemeEmittedFile): string =>
-		JSON.stringify([file.path, file.contents]);
-	const previousFilesByKey = new Map(
-		previous.emitted.files.map((file) => [outputKey(file), file]),
+	const previousFilesByPath = new Map(
+		previous.emitted.files.map((file) => [file.path, file]),
 	);
-	const sharedFilesByKey = new Map<string, ThemeEmittedFile>();
+	const sharedFilesByPath = new Map<string, ThemeEmittedFile>();
 	const shareFile = (file: ThemeEmittedFile): ThemeEmittedFile => {
-		const key = outputKey(file);
-		const alreadyShared = sharedFilesByKey.get(key);
-		if (alreadyShared) return alreadyShared;
-		const shared = previousFilesByKey.get(key) ?? file;
-		sharedFilesByKey.set(key, shared);
+		const alreadyShared = sharedFilesByPath.get(file.path);
+		if (alreadyShared?.contents === file.contents) return alreadyShared;
+		const previousFile = previousFilesByPath.get(file.path);
+		const shared =
+			previousFile?.contents === file.contents ? previousFile : file;
+		sharedFilesByPath.set(file.path, shared);
 		return shared;
 	};
 	const artifacts = current.artifacts.map((artifact) => {

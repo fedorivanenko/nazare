@@ -54,10 +54,16 @@ export function scanRegionReferences(
 	region: LiquidRegion,
 	styleBindings: ReadonlySet<string>,
 ): RawReference[] {
+	const patternsByBinding = new Map(
+		[...styleBindings].map((binding) => [
+			binding,
+			styleBindingPatterns(binding),
+		]),
+	);
 	// A {{ }} whose entire expression is one style read prints the class name,
 	// so the whole tag becomes the bare literal.
 	if (region.kind === "output") {
-		const whole = wholeStyleOutput(region.inner.trim(), styleBindings);
+		const whole = wholeStyleOutput(region.inner.trim(), patternsByBinding);
 		if (whole) {
 			return [
 				{
@@ -83,8 +89,8 @@ export function scanRegionReferences(
 			end: region.innerOffset + match.index + match[0].length,
 		});
 	}
-	for (const binding of styleBindings) {
-		for (const match of matchStyleTokens(region.inner, binding)) {
+	for (const [binding, patterns] of patternsByBinding) {
+		for (const match of matchStyleTokens(region.inner, patterns)) {
 			references.push({
 				target: "style",
 				binding,
@@ -101,16 +107,12 @@ export function scanRegionReferences(
 /** Returns the class read when `expression` is exactly `binding.x`/`binding["x"]`. */
 function wholeStyleOutput(
 	expression: string,
-	styleBindings: ReadonlySet<string>,
+	patternsByBinding: Map<string, StyleBindingPatterns>,
 ): { binding: string; name: string } | undefined {
-	for (const binding of styleBindings) {
-		const dot = expression.match(
-			new RegExp(`^${escapeRegExp(binding)}\\.([A-Za-z_$][\\w$]*)$`),
-		);
+	for (const [binding, patterns] of patternsByBinding) {
+		const dot = expression.match(patterns.wholeDot);
 		if (dot) return { binding, name: dot[1] };
-		const bracket = expression.match(
-			new RegExp(`^${escapeRegExp(binding)}\\[\\s*["']([^"']+)["']\\s*\\]$`),
-		);
+		const bracket = expression.match(patterns.wholeBracket);
 		if (bracket) return { binding, name: bracket[1] };
 	}
 	return undefined;
@@ -118,23 +120,40 @@ function wholeStyleOutput(
 
 type StyleTokenMatch = { name: string; start: number; end: number };
 
-/** Style reads in expression position: `binding.x` and `binding["kebab-x"]`. */
-function matchStyleTokens(text: string, binding: string): StyleTokenMatch[] {
-	const matches: StyleTokenMatch[] = [];
+type StyleBindingPatterns = {
+	wholeDot: RegExp;
+	wholeBracket: RegExp;
+	tokenDot: RegExp;
+	tokenBracket: RegExp;
+};
+
+function styleBindingPatterns(binding: string): StyleBindingPatterns {
 	const escaped = escapeRegExp(binding);
-	const dot = new RegExp(`\\b${escaped}\\.([A-Za-z_$][\\w$]*)`, "g");
-	const bracket = new RegExp(
-		`\\b${escaped}\\[\\s*["']([^"']+)["']\\s*\\]`,
-		"g",
-	);
-	for (const match of text.matchAll(dot)) {
+	return {
+		wholeDot: new RegExp(`^${escaped}\\.([A-Za-z_$][\\w$]*)$`),
+		wholeBracket: new RegExp(`^${escaped}\\[\\s*["']([^"']+)["']\\s*\\]$`),
+		tokenDot: new RegExp(`\\b${escaped}\\.([A-Za-z_$][\\w$]*)`, "g"),
+		tokenBracket: new RegExp(
+			`\\b${escaped}\\[\\s*["']([^"']+)["']\\s*\\]`,
+			"g",
+		),
+	};
+}
+
+/** Style reads in expression position: `binding.x` and `binding["kebab-x"]`. */
+function matchStyleTokens(
+	text: string,
+	patterns: StyleBindingPatterns,
+): StyleTokenMatch[] {
+	const matches: StyleTokenMatch[] = [];
+	for (const match of text.matchAll(patterns.tokenDot)) {
 		matches.push({
 			name: match[1],
 			start: match.index,
 			end: match.index + match[0].length,
 		});
 	}
-	for (const match of text.matchAll(bracket)) {
+	for (const match of text.matchAll(patterns.tokenBracket)) {
 		matches.push({
 			name: match[1],
 			start: match.index,

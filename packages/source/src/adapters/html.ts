@@ -1,6 +1,7 @@
 import Parser from "tree-sitter";
 import Html from "tree-sitter-html";
 import { parseTreeText } from "../parser-input.js";
+import { walkNamedNodes as walk } from "../tree-sitter-walk.js";
 import type {
 	SourceDocument,
 	SourceParseIssue,
@@ -206,12 +207,4 @@ function dedupeIssues(issues: SourceParseIssue[]): SourceParseIssue[] {
 
 function nodeRange(node: Parser.SyntaxNode): SourceRange {
 	return { start: node.startIndex, end: node.endIndex };
-}
-
-function walk(
-	node: Parser.SyntaxNode,
-	visit: (node: Parser.SyntaxNode) => void,
-): void {
-	visit(node);
-	for (const child of node.namedChildren) walk(child, visit);
 }

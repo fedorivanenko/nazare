@@ -297,13 +297,5 @@ function scriptNodeFromAsset(
 }
 
 function wholeFileSpan(file: string, source: string): SourceSpan {
-	const lines = source.split("\n");
-	return {
-		file,
-		start: { line: 1, column: 1 },
-		end: {
-			line: lines.length,
-			column: (lines.at(-1)?.length ?? 0) + 1,
-		},
-	};
+	return spanFromOffsets(source, file, { start: 0, end: source.length });
 }

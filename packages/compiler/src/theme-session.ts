@@ -947,7 +947,9 @@ function replaceOwnedDiagnostics(
 	const byOwner = new Map<string, Diagnostic[]>();
 	for (const issue of issues) {
 		const owner = issue.span?.file ?? `global:${issue.code}`;
-		byOwner.set(owner, [...(byOwner.get(owner) ?? []), issue]);
+		const bucket = byOwner.get(owner);
+		if (bucket) bucket.push(issue);
+		else byOwner.set(owner, [issue]);
 	}
 	for (const [owner, ownedIssues] of byOwner) {
 		store.replace({ pass, owner }, ownedIssues);
@@ -959,7 +961,9 @@ function evidenceRecordsBySource(
 ): Map<string, ThemeEvidenceRecord[]> {
 	const bySource = new Map<string, ThemeEvidenceRecord[]>();
 	for (const record of records) {
-		bySource.set(record.file, [...(bySource.get(record.file) ?? []), record]);
+		const bucket = bySource.get(record.file);
+		if (bucket) bucket.push(record);
+		else bySource.set(record.file, [record]);
 	}
 	return bySource;
 }
@@ -1049,7 +1053,9 @@ function dataAccessesBySource(
 		accesses.set(path, [...result.dataAccesses]);
 	}
 	for (const [path, result] of state.derivedDataFlow) {
-		accesses.set(path, [...(accesses.get(path) ?? []), ...result.dataAccesses]);
+		const bucket = accesses.get(path);
+		if (bucket) bucket.push(...result.dataAccesses);
+		else accesses.set(path, [...result.dataAccesses]);
 	}
 	return accesses;
 }

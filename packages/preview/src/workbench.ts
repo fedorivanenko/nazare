@@ -203,7 +203,9 @@ function substories({ component, stories }: RenderedComponent): string {
 		// where the prop has more than one story to gather.
 		const prop = rendered.changed.length === 1 ? rendered.changed[0] : "";
 		const group = (varied.get(prop) ?? 0) > 1 ? prop : "";
-		groups.set(group, [...(groups.get(group) ?? []), rendered]);
+		const stories = groups.get(group);
+		if (stories) stories.push(rendered);
+		else groups.set(group, [rendered]);
 	}
 	// A story's state belongs on the story, not only on the component that holds
 	// it: this is where you choose which one to look at.
