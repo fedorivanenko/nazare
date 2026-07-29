@@ -121,12 +121,27 @@ test("impact index applies graph edge and node deltas transactionally", () => {
 	assert.equal(delta.unusedFileCount, 1);
 	assert.equal(staged.getUnusedFileCount(), 1);
 	assert.deepEqual(committed.toSummary(), first.impact);
-	assert.deepEqual(staged.toSummary(), second.impact);
+	const stagedSummary = staged.toSummary();
+	assert.deepEqual(stagedSummary, second.impact);
+	assert.strictEqual(staged.toSummary(), stagedSummary);
+	assert.equal(Object.isFrozen(stagedSummary), true);
+	assert.equal(Object.isFrozen(stagedSummary.affectedPages), true);
 	assert.equal(
 		staged
 			.getDependencies("sections/main.liquid")
 			.includes("snippets/tile.liquid"),
 		true,
+	);
+	const changedNodeGraph = structuredClone(second);
+	const tileFile = changedNodeGraph.nodes.find(
+		(node) => node.id === "file:snippets/tile.liquid",
+	);
+	assert.ok(tileFile && "path" in tileFile);
+	tileFile.path = "snippets/renamed-tile.liquid";
+	staged.applyGraph(changedNodeGraph);
+	assert.deepEqual(
+		staged.toSummary(),
+		new ThemeImpactIndex(changedNodeGraph).toSummary(),
 	);
 	assert.equal(
 		staged
@@ -229,6 +244,10 @@ test("graph store applies stable-ID records transactionally", () => {
 	const card = committed.getNode(cardId);
 	const staged = committed.fork();
 	const delta = staged.applyGraph(second);
+	assert.throws(
+		() => staged.getOwnedNodeIds(cardId),
+		/ownership is unavailable; call replaceOwnership\(\)/,
+	);
 	assert.strictEqual(staged.getNode(cardId), card);
 	const viewStore = committed.fork();
 	const configurationView = viewStore.getGraph().views.configuration;
@@ -290,7 +309,26 @@ test("graph store applies stable-ID records transactionally", () => {
 	);
 
 	const validationStore = new ThemeGraphStore(first);
+	validationStore.replaceOwnership(firstModel);
+	const previousOwnedNodeIds = validationStore.getOwnedNodeIds(cardId);
+	const malformedModel = structuredClone(firstModel);
+	malformedModel.files[0].id = "";
+	assert.throws(
+		() => validationStore.replaceOwnership(malformedModel),
+		/record without an id/,
+	);
+	assert.deepEqual(
+		validationStore.getOwnedNodeIds(cardId),
+		previousOwnedNodeIds,
+	);
 	const previousGraph = validationStore.getGraph();
+	const duplicateNode = structuredClone(first);
+	duplicateNode.nodes.push(structuredClone(duplicateNode.nodes[0]));
+	assert.throws(
+		() => validationStore.applyGraph(duplicateNode),
+		/Duplicate graph node id/,
+	);
+	assert.strictEqual(validationStore.getGraph(), previousGraph);
 	const missingEndpoint = structuredClone(first);
 	missingEndpoint.edges[0].to = "missing:node";
 	assert.throws(
@@ -303,6 +341,13 @@ test("graph store applies stable-ID records transactionally", () => {
 	assert.throws(
 		() => validationStore.applyGraph(missingEvidence),
 		/missing evidence missing:evidence/,
+	);
+	assert.strictEqual(validationStore.getGraph(), previousGraph);
+	const malformedEvidence = structuredClone(first);
+	malformedEvidence.edges[0].evidenceIds = "not-an-array";
+	assert.throws(
+		() => validationStore.applyGraph(malformedEvidence),
+		/evidenceIds must be an array/,
 	);
 	assert.strictEqual(validationStore.getGraph(), previousGraph);
 });
@@ -349,6 +394,19 @@ test("semantic transaction shares unchanged identified records", () => {
 	);
 });
 
+test("semantic store rejects malformed record collections", () => {
+	const model = structuredClone(
+		analyzeNazareTheme([
+			{ path: "sections/main.liquid", contents: "<section>Main</section>" },
+		]).ir,
+	);
+	model.files[0].id = "";
+	assert.throws(
+		() => new ThemeSemanticStore(model),
+		/contains a record without an id/,
+	);
+});
+
 test("semantic transaction detects changed records sharing evidence IDs", () => {
 	const files = [
 		{ path: "sections/main.liquid", contents: "{% render 'button' %}" },
@@ -392,6 +450,16 @@ test("fact index replaces declarations and dependents transactionally", () => {
 	]);
 	index.replaceFileFacts("sections/main.liquid", []);
 	assert.deepEqual(index.getDependents("snippet:card"), []);
+	assert.throws(
+		() =>
+			index.replaceFileFacts("sections/main.liquid", [
+				{ kind: "file", path: "wrong.liquid", fileKind: "other" },
+			]),
+		/Cannot index fact for wrong.liquid/,
+	);
+	assert.deepEqual(index.getDeclarations("snippet:card"), [
+		"snippets/card.liquid",
+	]);
 });
 
 test("fact store replaces only one source bucket", () => {
@@ -413,6 +481,14 @@ test("fact store replaces only one source bucket", () => {
 	assert.deepEqual(store.files(), ["a.liquid", "b.liquid"]);
 	assert.equal(store.getFile("a.liquid").length, 1);
 	assert.equal(store.all().length, 2);
+	assert.throws(
+		() =>
+			store.replaceFile("a.liquid", [
+				{ kind: "file", path: "wrong.liquid", fileKind: "other" },
+			]),
+		/Cannot store fact for wrong.liquid/,
+	);
+	assert.equal(store.getFile("a.liquid").length, 1);
 });
 
 test("build session reports emitted output deltas", () => {
@@ -838,6 +914,21 @@ test("ThemeProgram stores canonical semantic diagnostics by pass and owner", () 
 			.getModel()
 			.issues.filter((issue) => issue.code === owned[0].diagnostic.code),
 		[owned[0].diagnostic],
+	);
+});
+
+test("ThemeProgram rejects invalid incremental validation intervals", () => {
+	const files = [{ path: "snippets/card.liquid", contents: "Card" }];
+	assert.throws(
+		() => new ThemeProgram(files, { incrementalValidationInterval: -1 }),
+		/non-negative safe integer/,
+	);
+	assert.throws(
+		() =>
+			new ThemeProgram(files, {
+				incrementalValidationInterval: Number.POSITIVE_INFINITY,
+			}),
+		/non-negative safe integer/,
 	);
 });
 
@@ -1508,10 +1599,10 @@ test("workspace strictly checks plain Liquid and component scripts before emit",
 		{
 			path: "invalid.nz.liquid",
 			contents:
-				'<div ref="panel"></div>{% script lang="ts" %}export default island(({ refs }) => { refs.panel.disabled = true; });{% endscript %}',
+				'<div ref="panel"></div>{% script lang="ts" %}export default island(({ refs }) => refs.panel.remove());{% endscript %}',
 		},
 	]);
-	assert.equal(hasIssue(scripts, "SCRIPT_TYPE_ERROR"), true);
+	assert.equal(hasIssue(scripts, "SCRIPT_TYPESCRIPT_UNSUPPORTED"), true);
 	assert.deepEqual(scripts.emitted.files, []);
 });
 
@@ -1523,7 +1614,7 @@ test("workspace rejects malformed JavaScript and direct require calls", () => {
 				'<div></div>{% script lang="js" %}export default island(({ root }) => { root.remove( ; });{% endscript %}',
 		},
 	]);
-	assert.equal(hasIssue(malformed, "SCRIPT_TYPE_ERROR"), true);
+	assert.equal(hasIssue(malformed, "SCRIPT_JAVASCRIPT_PARSE_ERROR"), true);
 	assert.deepEqual(malformed.emitted.files, []);
 
 	const requireCall = buildNazareThemeWorkspace([

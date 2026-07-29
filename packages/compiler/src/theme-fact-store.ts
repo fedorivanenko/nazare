@@ -1,20 +1,38 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeFact } from "./theme-facts.js";
 
 /** Mutable per-file fact buckets used by incremental workspace sessions. */
 export class ThemeFactStore {
 	private readonly buckets = new Map<string, ThemeFact[]>();
+	private cachedFiles: string[] | undefined;
+	private cachedFacts: ThemeFact[] | undefined;
 
 	constructor(facts: ThemeFact[] = []) {
-		this.add(facts);
+		for (const fact of facts) {
+			const path = themeFactSourcePath(fact);
+			const bucket = this.buckets.get(path);
+			if (bucket) bucket.push(fact);
+			else this.buckets.set(path, [fact]);
+		}
 	}
 
 	replaceFile(path: string, facts: ThemeFact[]): void {
-		this.buckets.delete(path);
-		this.add(facts);
+		for (const fact of facts) {
+			const factPath = themeFactSourcePath(fact);
+			if (factPath !== path) {
+				throw new Error(
+					`Cannot store fact for ${factPath} in source bucket ${path}`,
+				);
+			}
+		}
+		if (facts.length === 0) this.buckets.delete(path);
+		else this.buckets.set(path, [...facts]);
+		this.invalidateCaches();
 	}
 
 	removeFile(path: string): void {
-		this.buckets.delete(path);
+		if (!this.buckets.delete(path)) return;
+		this.invalidateCaches();
 	}
 
 	getFile(path: string): ThemeFact[] {
@@ -22,20 +40,26 @@ export class ThemeFactStore {
 	}
 
 	files(): string[] {
-		return [...this.buckets.keys()].sort((a, b) => a.localeCompare(b));
+		this.cachedFiles ??= [...this.buckets.keys()].sort((a, b) =>
+			compareCanonicalStrings(a, b),
+		);
+		return [...this.cachedFiles];
 	}
 
 	all(): ThemeFact[] {
-		return this.files().flatMap((path) => this.buckets.get(path) ?? []);
+		this.cachedFacts ??= this.files().flatMap((path) => {
+			const bucket = this.buckets.get(path);
+			if (!bucket) {
+				throw new Error(`Fact file index references missing bucket ${path}`);
+			}
+			return bucket;
+		});
+		return [...this.cachedFacts];
 	}
 
-	private add(facts: ThemeFact[]): void {
-		for (const fact of facts) {
-			const path = themeFactSourcePath(fact);
-			const bucket = this.buckets.get(path) ?? [];
-			bucket.push(fact);
-			this.buckets.set(path, bucket);
-		}
+	private invalidateCaches(): void {
+		this.cachedFiles = undefined;
+		this.cachedFacts = undefined;
 	}
 }
 

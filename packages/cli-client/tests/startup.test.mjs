@@ -136,6 +136,31 @@ test("a warm impact query loads cache projection without compiler frontends", as
 	}
 });
 
+test("cold JavaScript theme inspection never loads TypeScript", async () => {
+	const project = mkdtempSync(join(tmpdir(), "nazare-js-inspect-"));
+	try {
+		await mkdir(join(project, "assets"), { recursive: true });
+		await writeFile(
+			join(project, "assets", "theme.js"),
+			'document.querySelector(".product");',
+		);
+		const specifiers = await specifiersLoadedBy(
+			["inspect", "impact", "assets/theme.js", ".", "--format", "json"],
+			project,
+		);
+		assert.equal(loadsCompiler(specifiers), true);
+		assert.equal(
+			specifiers.some(
+				(specifier) =>
+					specifier === "typescript" || specifier.includes("/typescript/"),
+			),
+			false,
+		);
+	} finally {
+		await rm(project, { recursive: true, force: true });
+	}
+});
+
 test("a command that needs the compiler still loads it", async () => {
 	// The other half of the claim: lazy means later, not never.
 	const specifiers = await specifiersLoadedBy([

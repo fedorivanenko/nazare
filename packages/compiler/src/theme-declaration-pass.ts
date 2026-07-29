@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeFactStore } from "./theme-fact-store.js";
 import type {
 	ThemeDeclaration,
@@ -38,7 +39,9 @@ export function createThemeDeclarationPass(): IncrementalPass<
 		run(paths, context) {
 			const records: ThemeDeclarationPassRecord[] = [];
 			const changedKeys = new Set<string>();
-			for (const path of [...paths].sort((a, b) => a.localeCompare(b))) {
+			for (const path of [...paths].sort((a, b) =>
+				compareCanonicalStrings(a, b),
+			)) {
 				const previous = context.resultsBySource.get(path);
 				const next = collectThemeDeclarations(
 					context.facts.getFile(path),
@@ -70,7 +73,7 @@ export function createThemeDeclarationPass(): IncrementalPass<
 			return {
 				records,
 				changes: [...changedKeys]
-					.sort((a, b) => a.localeCompare(b))
+					.sort((a, b) => compareCanonicalStrings(a, b))
 					.map((key): PassChange => ({ kind: "declarationChanged", key })),
 			};
 		},
@@ -144,7 +147,7 @@ function addDeclarationToIndex(
 	declaration: ThemeDeclaration,
 ): void {
 	if (!index) return;
-	const declarations = index.get(key) ?? new Map<string, ThemeDeclaration>();
+	const declarations = new Map(index.get(key));
 	declarations.set(declaration.id, declaration);
 	index.set(key, declarations);
 }
@@ -154,10 +157,12 @@ function removeDeclarationFromIndex(
 	key: string,
 	id: string,
 ): void {
-	const declarations = index?.get(key);
-	if (!declarations) return;
+	const current = index?.get(key);
+	if (!index || !current) return;
+	const declarations = new Map(current);
 	declarations.delete(id);
-	if (declarations.size === 0) index?.delete(key);
+	if (declarations.size === 0) index.delete(key);
+	else index.set(key, declarations);
 }
 
 function record(

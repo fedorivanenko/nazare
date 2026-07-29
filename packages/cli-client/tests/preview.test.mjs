@@ -464,10 +464,6 @@ test("a component recompiles when a component it imports changes", async () => {
 	);
 });
 
-// Type-checking a {% script %} block means building a TypeScript program, which
-// is the most expensive thing a rebuild does. `serve --no-script-check` gives it
-// up on purpose; the point of the test is that it is a real trade, so both
-// halves are asserted — the diagnostic is there by default and gone when asked.
 const SCRIPTED = {
 	"ui/toggle/nazare.json": JSON.stringify({
 		id: "@acme/toggle",
@@ -486,38 +482,28 @@ const SCRIPTED = {
 
 <button ref="trigger">{{ props.label }}</button>
 
-{% script lang="ts" %}
+{% script lang="js" %}
 export default island(({ refs }) => {
-  const count: number = "not a number";
+  const count = "not a number";
   refs.trigger.addEventListener("click", () => console.log(count));
 });
 {% endscript %}
 `,
 };
 
-test("a script's type error is reported, and skipped when asked", async () => {
+test("JavaScript scripts do not require a type checker", async () => {
 	await withProject(SCRIPTED, async (cwd) => {
 		const { collectPreview } = await previewCommand();
 		const dir = join(cwd, "ui");
 
-		const checked = await collectPreview(dir);
-		assert.ok(
-			checked.compiled[0].component.issues.some((issue) =>
-				/not assignable to type 'number'/.test(issue.message),
-			),
-			"the type error is reported by default",
-		);
-
-		const unchecked = await collectPreview(dir, { checkScripts: false });
+		const preview = await collectPreview(dir);
 		assert.equal(
-			unchecked.compiled[0].component.issues.some((issue) =>
-				/not assignable to type 'number'/.test(issue.message),
+			preview.compiled[0].component.issues.some((issue) =>
+				issue.code.startsWith("SCRIPT_"),
 			),
 			false,
-			"--no-script-check gives the diagnostic up",
 		);
-		// Given up, not broken: the component still compiles and still renders.
-		assert.match(unchecked.compiled[0].component.template, /<button/);
+		assert.match(preview.compiled[0].component.template, /<button/);
 	});
 });
 

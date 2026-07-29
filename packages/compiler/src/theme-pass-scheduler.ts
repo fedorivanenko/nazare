@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 export const THEME_PASS_ORDER = [
 	"source",
 	"facts",
@@ -166,6 +167,7 @@ export class ThemePassScheduler<Context> {
 		context: Context,
 	): ThemeSchedulerResult {
 		const changes = deduplicateChanges(initialChanges);
+		const changeKeys = new Set(changes.map(changeKey));
 		const records: unknown[] = [];
 		const trace: ThemePassTrace[] = [];
 		for (const registration of this.passes) {
@@ -175,7 +177,7 @@ export class ThemePassScheduler<Context> {
 				if (keys.size === 0) continue;
 				const delta = registration.pass.run(keys, context);
 				records.push(...delta.records);
-				changes.push(...newChanges(changes, delta.changes));
+				changes.push(...newChanges(changeKeys, delta.changes));
 				trace.push({
 					pass: registration.pass.name,
 					stage: registration.pass.stage,
@@ -221,7 +223,7 @@ export class ThemePassScheduler<Context> {
 				}
 				records.push(...step.records);
 				recordCount += step.records.length;
-				changes.push(...newChanges(changes, step.changes));
+				changes.push(...newChanges(changeKeys, step.changes));
 				pending = step.pending;
 			}
 			trace.push({
@@ -288,7 +290,7 @@ function comparePasses<Context>(
 ): number {
 	return (
 		stageIndex(a.pass.stage) - stageIndex(b.pass.stage) ||
-		a.pass.name.localeCompare(b.pass.name)
+		compareCanonicalStrings(a.pass.name, b.pass.name)
 	);
 }
 
@@ -297,26 +299,62 @@ function stageIndex(stage: ThemePassStage): number {
 }
 
 function deduplicateChanges(changes: readonly PassChange[]): PassChange[] {
-	return newChanges([], changes);
+	return newChanges(new Set<string>(), changes);
 }
 
 function newChanges(
-	existing: readonly PassChange[],
+	seen: Set<string>,
 	incoming: readonly PassChange[],
 ): PassChange[] {
-	const seen = new Set(existing.map(changeKey));
-	const result: PassChange[] = [];
+	const added: Array<{ change: PassChange; key: string }> = [];
 	for (const change of incoming) {
 		const key = changeKey(change);
 		if (seen.has(key)) continue;
 		seen.add(key);
-		result.push(change);
+		added.push({ change, key });
 	}
-	return result.sort((a, b) => changeKey(a).localeCompare(changeKey(b)));
+	added.sort((left, right) => compareCanonicalStrings(left.key, right.key));
+	return added.map(({ change }) => change);
 }
 
 function changeKey(change: PassChange): string {
-	return JSON.stringify(change, Object.keys(change).sort());
+	switch (change.kind) {
+		case "sourceChanged":
+		case "factsChanged":
+			return JSON.stringify([change.kind, change.path]);
+		case "declarationChanged":
+			return JSON.stringify([change.kind, change.key]);
+		case "referenceChanged":
+		case "resolutionChanged":
+		case "settingChanged":
+		case "metafieldDefinitionChanged":
+		case "metafieldReadChanged":
+			return JSON.stringify([change.kind, change.id]);
+		case "dataFlowChanged":
+			return JSON.stringify([
+				change.kind,
+				change.sourcePath,
+				change.targetName,
+			]);
+		case "capabilitySignalChanged":
+		case "capabilityChanged":
+		case "classificationChanged":
+			return JSON.stringify([change.kind, change.id, change.sourcePath]);
+		case "metafieldSnapshotChanged":
+			return JSON.stringify([change.kind, change.state, change.changedKeys]);
+		case "themeCheckPolicyChanged":
+			return JSON.stringify([change.kind]);
+		case "exclusionPolicyChanged":
+			return JSON.stringify([change.kind, change.changedPatterns]);
+		case "diagnosticsChanged":
+			return JSON.stringify([change.kind, change.pass, change.owner]);
+		default:
+			return assertNever(change);
+	}
+}
+
+function assertNever(value: never): never {
+	throw new Error(`Unsupported theme pass change ${JSON.stringify(value)}`);
 }
 
 function convergenceError(

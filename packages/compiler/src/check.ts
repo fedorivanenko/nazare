@@ -16,6 +16,7 @@ import type {
 	SourceSpan,
 } from "@nazare/core";
 import { isAssignable, literalValueViolation } from "./assignability.js";
+import { parseComponentScript } from "./component-script.js";
 import { cssClassTokens } from "./css-modules.js";
 import {
 	dataChannelFromIR,
@@ -251,11 +252,38 @@ function checkSettingProjections(index: ArtifactIRIndex): Diagnostic[] {
 }
 
 export function checkScriptConstraints(ir: ArtifactIR): Diagnostic[] {
-	const index = indexArtifactIR(ir);
-	return [
-		...checkScriptReservedContexts(index),
-		...checkScriptModuleSyntax(index),
-	];
+	const issues: Diagnostic[] = [];
+	for (const script of ir.syntax) {
+		if (script.kind !== "script") continue;
+		const parsed = parseComponentScript(script);
+		if (!parsed.ok) {
+			issues.push(parsed.issue);
+			continue;
+		}
+		for (const shadow of findReservedContextShadows(parsed.program)) {
+			issues.push(
+				scriptReservedContextShadowed(
+					shadow.name,
+					script.id,
+					spanWithinBody(script.source, script.bodySpan, shadow),
+				),
+			);
+		}
+		for (const finding of findUnsupportedModuleSyntax(
+			script.source,
+			parsed.program,
+		)) {
+			issues.push(
+				scriptModuleSyntaxUnsupported(
+					finding.text,
+					script.id,
+					spanWithinBody(script.source, script.bodySpan, finding) ??
+						script.span,
+				),
+			);
+		}
+	}
+	return issues;
 }
 
 export function checkStyleConstraints(ir: ArtifactIR): Diagnostic[] {
@@ -323,39 +351,6 @@ function checkStyleBindings(index: ArtifactIRIndex): Diagnostic[] {
 				definition.span,
 			),
 		);
-	}
-
-	return issues;
-}
-
-function checkScriptReservedContexts(index: ArtifactIRIndex): Diagnostic[] {
-	const issues: Diagnostic[] = [];
-
-	for (const script of index.nodesOfKind("script")) {
-		for (const shadow of findReservedContextShadows(script.source)) {
-			issues.push(
-				scriptReservedContextShadowed(
-					shadow.name,
-					script.id,
-					spanWithinBody(script.source, script.bodySpan, shadow),
-				),
-			);
-		}
-	}
-
-	return issues;
-}
-
-/** Module syntax in behavior scripts that nothing downstream can handle. */
-function checkScriptModuleSyntax(index: ArtifactIRIndex): Diagnostic[] {
-	const issues: Diagnostic[] = [];
-
-	for (const script of index.nodesOfKind("script")) {
-		for (const found of findUnsupportedModuleSyntax(script.source)) {
-			const span =
-				spanWithinBody(script.source, script.bodySpan, found) ?? script.span;
-			issues.push(scriptModuleSyntaxUnsupported(found.text, script.id, span));
-		}
 	}
 
 	return issues;

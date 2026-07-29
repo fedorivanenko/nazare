@@ -81,11 +81,11 @@ for (const entry of readdirSync(componentsDir, { withFileTypes: true })) {
 // Synthetic cases for output shapes the examples don't exercise.
 test("emit: island placement scopes the behavior to a subtree", () => {
 	const files = {
-		"components/w/behavior.ts": `export default island(({ root }) => {\n  root.dataset.ready = "true";\n});\n`,
+		"components/w/behavior.js": `export default island(({ root }) => {\n  root.dataset.ready = "true";\n});\n`,
 	};
 	snapshotEmit(
 		"island-placement",
-		`{% import behavior from "./behavior.ts" %}\n<div ref="root">\n  <section island="behavior"><button ref="go">+</button></section>\n</div>`,
+		`{% import behavior from "./behavior.js" %}\n<div ref="root">\n  <section island="behavior"><button ref="go">+</button></section>\n</div>`,
 		"components/w/w.nz.liquid",
 		(path) => files[path],
 	);

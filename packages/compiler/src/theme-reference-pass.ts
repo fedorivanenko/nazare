@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeFactStore } from "./theme-fact-store.js";
 import type { ThemeFact, ThemeReference } from "./theme-facts.js";
 import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
@@ -29,7 +30,9 @@ export function createThemeReferencePass(): IncrementalPass<
 		run(paths, context) {
 			const records: ThemeReference[] = [];
 			const changedIds = new Set<string>();
-			for (const path of [...paths].sort((a, b) => a.localeCompare(b))) {
+			for (const path of [...paths].sort((a, b) =>
+				compareCanonicalStrings(a, b),
+			)) {
 				const previous = context.referencesBySource.get(path) ?? [];
 				const next = collectThemeReferences(
 					context.facts.getFile(path),
@@ -50,7 +53,7 @@ export function createThemeReferencePass(): IncrementalPass<
 			return {
 				records,
 				changes: [...changedIds]
-					.sort((a, b) => a.localeCompare(b))
+					.sort((a, b) => compareCanonicalStrings(a, b))
 					.map((id): PassChange => ({ kind: "referenceChanged", id })),
 			};
 		},
@@ -77,11 +80,10 @@ function addReferenceToIndexes(
 ): void {
 	context.referencesById?.set(reference.id, reference);
 	for (const key of referenceTargetKeys(reference)) {
-		const references =
-			context.referencesByTargetKey?.get(key) ??
-			new Map<string, ThemeReference>();
+		if (!context.referencesByTargetKey) continue;
+		const references = new Map(context.referencesByTargetKey.get(key));
 		references.set(reference.id, reference);
-		context.referencesByTargetKey?.set(key, references);
+		context.referencesByTargetKey.set(key, references);
 	}
 }
 
@@ -91,10 +93,12 @@ function removeReferenceFromIndexes(
 ): void {
 	context.referencesById?.delete(reference.id);
 	for (const key of referenceTargetKeys(reference)) {
-		const references = context.referencesByTargetKey?.get(key);
-		if (!references) continue;
+		const current = context.referencesByTargetKey?.get(key);
+		if (!context.referencesByTargetKey || !current) continue;
+		const references = new Map(current);
 		references.delete(reference.id);
-		if (references.size === 0) context.referencesByTargetKey?.delete(key);
+		if (references.size === 0) context.referencesByTargetKey.delete(key);
+		else context.referencesByTargetKey.set(key, references);
 	}
 }
 

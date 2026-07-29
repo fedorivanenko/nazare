@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeFactStore } from "./theme-fact-store.js";
 import type {
 	ThemeBlockRecord,
@@ -49,7 +50,9 @@ export function createThemeSchemaSettingPass(): IncrementalPass<
 		run(paths, context) {
 			const records: ThemeSchemaSettingRecord[] = [];
 			const changedIds = new Set<string>();
-			for (const path of [...paths].sort((a, b) => a.localeCompare(b))) {
+			for (const path of [...paths].sort((a, b) =>
+				compareCanonicalStrings(a, b),
+			)) {
 				const previous = context.schemaSettingResultsBySource.get(path);
 				const next = collectThemeSchemaSettings(
 					context.facts.getFile(path),
@@ -68,7 +71,7 @@ export function createThemeSchemaSettingPass(): IncrementalPass<
 			return {
 				records,
 				changes: [...changedIds]
-					.sort((a, b) => a.localeCompare(b))
+					.sort((a, b) => compareCanonicalStrings(a, b))
 					.map((id): PassChange => ({ kind: "settingChanged", id })),
 			};
 		},

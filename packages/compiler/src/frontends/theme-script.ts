@@ -1,7 +1,11 @@
 import { posix } from "node:path";
 import type { Diagnostic } from "@nazare/core";
 import selectorParser from "postcss-selector-parser";
-import ts from "typescript";
+import {
+	type JavaScriptNode,
+	parseJavaScript,
+	walkJavaScript,
+} from "../javascript-ast.js";
 import { spanFromOffsets } from "../source.js";
 import type { ThemeFact } from "../theme-facts.js";
 import type { ThemeSourceUncertainty } from "../theme-source-frontend.js";
@@ -15,78 +19,67 @@ export type ThemeScriptAnalysis = {
 export function analyzeThemeScript(
 	path: string,
 	source: string,
-	language: "javascript" | "typescript",
 ): ThemeScriptAnalysis {
-	const sourceFile = ts.createSourceFile(
-		path,
-		source,
-		ts.ScriptTarget.Latest,
-		true,
-		language === "typescript" ? ts.ScriptKind.TS : ts.ScriptKind.JS,
-	);
-	const parseDiagnostics = (
-		sourceFile as ts.SourceFile & {
-			parseDiagnostics: readonly ts.DiagnosticWithLocation[];
-		}
-	).parseDiagnostics;
-	const issues = parseDiagnostics.map(
-		(diagnostic): Diagnostic => ({
-			severity: "error",
-			code: "THEME_SCRIPT_PARSE_ERROR",
-			message: `Invalid ${language === "typescript" ? "TypeScript" : "JavaScript"} in ${path}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`,
-			phase: "parse",
-			span: spanFromOffsets(source, path, {
-				start: diagnostic.start,
-				end: diagnostic.start + diagnostic.length,
-			}),
-		}),
-	);
-	if (issues.length > 0) return { facts: [], issues, uncertainty: [] };
+	const parsed = parseJavaScript(source);
+	if (!parsed.ok) {
+		return {
+			facts: [],
+			uncertainty: [],
+			issues: [
+				{
+					severity: "error",
+					code: "THEME_SCRIPT_PARSE_ERROR",
+					message: `Invalid JavaScript in ${path}: ${parsed.error.message}`,
+					phase: "parse",
+					span: spanFromOffsets(source, path, {
+						start: parsed.error.start,
+						end: parsed.error.end,
+					}),
+				},
+			],
+		};
+	}
+	const program = parsed.program;
 
 	const facts: ThemeFact[] = [];
+	const issues: Diagnostic[] = [];
 	const uncertainty: ThemeSourceUncertainty[] = [];
-	const visit = (node: ts.Node): void => {
-		if (ts.isImportDeclaration(node)) {
-			analyzeModuleSpecifier(node.moduleSpecifier);
-		} else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
-			analyzeModuleSpecifier(node.moduleSpecifier);
-		} else if (
-			ts.isPropertyAccessExpression(node) ||
-			ts.isElementAccessExpression(node)
+	walkJavaScript(program, (node, parent) => {
+		if (
+			(node.type === "ImportDeclaration" ||
+				node.type === "ExportNamedDeclaration" ||
+				node.type === "ExportAllDeclaration") &&
+			node.source
 		) {
-			analyzeDatasetAccess(node);
+			analyzeModuleSpecifier(asNode(node.source));
 		}
-		if (ts.isCallExpression(node)) analyzeCall(node);
-		ts.forEachChild(node, visit);
-	};
-	visit(sourceFile);
-	return { facts, issues, uncertainty };
-
-	function analyzeCall(call: ts.CallExpression): void {
-		if (call.expression.kind === ts.SyntaxKind.ImportKeyword) {
-			const specifier = call.arguments[0];
+		if (node.type === "ImportExpression") {
+			const specifier = asNode(node.source);
 			if (staticString(specifier) === undefined) {
 				pushUncertainty(
 					"THEME_DYNAMIC_SCRIPT_IMPORT",
 					"Dynamic import path prevents complete module dependency analysis",
-					call,
+					node,
 				);
-			} else if (specifier) {
-				analyzeModuleSpecifier(specifier);
-			}
-			return;
+			} else analyzeModuleSpecifier(specifier);
 		}
-		const access = ts.isPropertyAccessExpression(call.expression)
-			? call.expression
-			: undefined;
-		if (!access) return;
-		const method = access.name.text;
+		if (node.type === "MemberExpression") analyzeDatasetAccess(node, parent);
+		if (node.type === "CallExpression") analyzeCall(node);
+	});
+	return { facts, issues, uncertainty };
+
+	function analyzeCall(call: JavaScriptNode): void {
+		const callee = asNode(call.callee);
+		if (!callee || callee.type !== "MemberExpression") return;
+		const method = memberName(callee);
+		if (!method) return;
+		const args = nodes(call.arguments);
 		if (
 			["querySelector", "querySelectorAll", "matches", "closest"].includes(
 				method,
 			)
 		) {
-			const selector = staticString(call.arguments[0]);
+			const selector = staticString(args[0]);
 			if (selector === undefined) {
 				pushUncertainty(
 					"THEME_DYNAMIC_SCRIPT_SELECTOR",
@@ -125,7 +118,7 @@ export function analyzeThemeScript(
 				"toggleAttribute",
 			].includes(method)
 		) {
-			const attribute = staticString(call.arguments[0]);
+			const attribute = staticString(args[0]);
 			if (attribute === undefined) {
 				pushUncertainty(
 					"THEME_DYNAMIC_ATTRIBUTE_ACCESS",
@@ -145,24 +138,23 @@ export function analyzeThemeScript(
 			return;
 		}
 		if (method === "getElementById") {
-			const id = staticString(call.arguments[0]);
+			const id = staticString(args[0]);
 			if (id === undefined) {
 				pushUncertainty(
 					"THEME_DYNAMIC_ELEMENT_ID",
 					"Dynamic getElementById argument prevents complete DOM hook analysis",
 					call,
 				);
-			} else {
-				pushDom("id", id, "queries", call);
-			}
+			} else pushDom("id", id, "queries", call);
 			return;
 		}
+		const target = asNode(callee.object);
 		if (
 			["add", "remove", "toggle", "replace"].includes(method) &&
-			ts.isPropertyAccessExpression(access.expression) &&
-			access.expression.name.text === "classList"
+			target?.type === "MemberExpression" &&
+			memberName(target) === "classList"
 		) {
-			for (const argument of call.arguments) {
+			for (const argument of args) {
 				const className = staticString(argument);
 				if (className === undefined) {
 					pushUncertainty(
@@ -170,46 +162,36 @@ export function analyzeThemeScript(
 						`Dynamic classList.${method} argument prevents complete DOM hook analysis`,
 						argument,
 					);
-				} else {
-					pushDom("class", className, "mutates", argument);
-				}
+				} else pushDom("class", className, "mutates", argument);
 			}
 			return;
 		}
 		if (method === "addEventListener") {
-			pushEvent("listens", staticString(call.arguments[0]), call);
+			pushEvent("listens", staticString(args[0]), call);
 			return;
 		}
 		if (method === "dispatchEvent") {
-			const argument = call.arguments[0];
+			const argument = args[0];
 			const eventName =
-				argument && ts.isNewExpression(argument)
-					? staticString(argument.arguments?.[0])
+				argument?.type === "NewExpression"
+					? staticString(nodes(argument.arguments)[0])
 					: undefined;
 			pushEvent("dispatches", eventName, call);
 			return;
 		}
-		if (
-			method === "define" &&
-			access.expression.getText(sourceFile) === "customElements"
-		) {
-			pushCustomElement(staticString(call.arguments[0]), call);
+		if (method === "define" && identifierName(target) === "customElements") {
+			pushCustomElement(staticString(args[0]), call);
 		}
 	}
 
 	function analyzeDatasetAccess(
-		access: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+		access: JavaScriptNode,
+		parent: JavaScriptNode | undefined,
 	): void {
-		const target = access.expression;
-		if (
-			!ts.isPropertyAccessExpression(target) ||
-			target.name.text !== "dataset"
-		) {
+		const target = asNode(access.object);
+		if (target?.type !== "MemberExpression" || memberName(target) !== "dataset")
 			return;
-		}
-		const key = ts.isPropertyAccessExpression(access)
-			? access.name.text
-			: staticString(access.argumentExpression);
+		const key = memberName(access);
 		if (key === undefined) {
 			pushUncertainty(
 				"THEME_DYNAMIC_DATASET_ACCESS",
@@ -221,12 +203,13 @@ export function analyzeThemeScript(
 		pushDom(
 			"attribute",
 			datasetAttributeName(key),
-			isWriteAccess(access) ? "mutates" : "queries",
+			isWriteAccess(access, parent) ? "mutates" : "queries",
 			access,
 		);
 	}
 
-	function analyzeModuleSpecifier(specifier: ts.Expression): void {
+	function analyzeModuleSpecifier(specifier: JavaScriptNode | undefined): void {
+		if (!specifier) return;
 		const moduleName = staticString(specifier);
 		if (moduleName === undefined) return;
 		const targetPath = localModulePath(path, moduleName);
@@ -244,7 +227,7 @@ export function analyzeThemeScript(
 		hookKind: "class" | "id" | "attribute",
 		name: string,
 		operation: "queries" | "mutates",
-		node: ts.Node,
+		node: JavaScriptNode,
 	): void {
 		facts.push({
 			kind: "behavior",
@@ -254,14 +237,14 @@ export function analyzeThemeScript(
 			operation,
 			name,
 			span: nodeSpan(node),
-			extractor: "typescript-ast",
+			extractor: "javascript-ast",
 		});
 	}
 
 	function pushEvent(
 		operation: "dispatches" | "listens",
 		name: string | undefined,
-		node: ts.Node,
+		node: JavaScriptNode,
 	): void {
 		if (name === undefined) {
 			pushUncertainty(
@@ -278,11 +261,14 @@ export function analyzeThemeScript(
 			operation,
 			name,
 			span: nodeSpan(node),
-			extractor: "typescript-ast",
+			extractor: "javascript-ast",
 		});
 	}
 
-	function pushCustomElement(name: string | undefined, node: ts.Node): void {
+	function pushCustomElement(
+		name: string | undefined,
+		node: JavaScriptNode,
+	): void {
 		if (name === undefined) {
 			pushUncertainty(
 				"THEME_DYNAMIC_CUSTOM_ELEMENT_NAME",
@@ -298,51 +284,82 @@ export function analyzeThemeScript(
 			operation: "defines",
 			name,
 			span: nodeSpan(node),
-			extractor: "typescript-ast",
+			extractor: "javascript-ast",
 		});
 	}
 
-	function pushUncertainty(code: string, message: string, node: ts.Node): void {
+	function pushUncertainty(
+		code: string,
+		message: string,
+		node: JavaScriptNode,
+	): void {
 		uncertainty.push({ code, message, span: nodeSpan(node) });
 	}
 
-	function nodeSpan(node: ts.Node) {
-		return spanFromOffsets(source, path, {
-			start: node.getStart(sourceFile),
-			end: node.getEnd(),
-		});
+	function nodeSpan(node: JavaScriptNode) {
+		return spanFromOffsets(source, path, { start: node.start, end: node.end });
 	}
 }
 
-function staticString(node: ts.Expression | undefined): string | undefined {
+function staticString(node: JavaScriptNode | undefined): string | undefined {
 	if (!node) return undefined;
-	if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-		return node.text;
+	if (node.type === "Literal" && typeof node.value === "string")
+		return node.value;
+	if (node.type === "TemplateLiteral" && nodes(node.expressions).length === 0) {
+		const quasi = nodes(node.quasis)[0];
+		const cooked = quasi?.value;
+		if (
+			cooked &&
+			typeof cooked === "object" &&
+			"cooked" in cooked &&
+			typeof cooked.cooked === "string"
+		)
+			return cooked.cooked;
 	}
 	return undefined;
+}
+
+function memberName(node: JavaScriptNode): string | undefined {
+	if (node.type !== "MemberExpression") return undefined;
+	return node.computed
+		? staticString(asNode(node.property))
+		: identifierName(node.property);
+}
+
+function identifierName(value: unknown): string | undefined {
+	const node = asNode(value);
+	return node?.type === "Identifier" && typeof node.name === "string"
+		? node.name
+		: undefined;
+}
+
+function asNode(value: unknown): JavaScriptNode | undefined {
+	return value && typeof value === "object" && "type" in value
+		? (value as JavaScriptNode)
+		: undefined;
+}
+
+function nodes(value: unknown): JavaScriptNode[] {
+	if (!Array.isArray(value)) {
+		throw new Error("JavaScript AST expected a child-node array");
+	}
+	return value.map(asNode).filter((node): node is JavaScriptNode => !!node);
 }
 
 function datasetAttributeName(key: string): string {
 	return `data-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
 }
 
-function isWriteAccess(node: ts.Node): boolean {
-	const parent = node.parent;
-	if (
-		ts.isBinaryExpression(parent) &&
-		parent.left === node &&
-		parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
-		parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment
-	) {
+function isWriteAccess(
+	node: JavaScriptNode,
+	parent: JavaScriptNode | undefined,
+): boolean {
+	if (!parent) return false;
+	if (parent.type === "AssignmentExpression" && asNode(parent.left) === node)
 		return true;
-	}
-	if (ts.isDeleteExpression(parent)) return true;
-	return (
-		(ts.isPrefixUnaryExpression(parent) ||
-			ts.isPostfixUnaryExpression(parent)) &&
-		(parent.operator === ts.SyntaxKind.PlusPlusToken ||
-			parent.operator === ts.SyntaxKind.MinusMinusToken)
-	);
+	if (parent.type === "UpdateExpression" && asNode(parent.argument) === node)
+		return true;
+	return parent.type === "UnaryExpression" && parent.operator === "delete";
 }
 
 function localModulePath(

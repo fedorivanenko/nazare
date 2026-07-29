@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import { themeFactSourcePath } from "./theme-fact-store.js";
 import type { ThemeFact } from "./theme-facts.js";
 
@@ -9,6 +10,7 @@ export type ThemeFactIndexSnapshot = {
 export class ThemeFactIndex {
 	private readonly declarationsByKey = new Map<string, Set<string>>();
 	private readonly dependentsByKey = new Map<string, Set<string>>();
+	private readonly declarationKeysByPath = new Map<string, Set<string>>();
 	private readonly entriesByFile = new Map<
 		string,
 		Array<{ declaration?: string; dependency?: string }>
@@ -22,12 +24,13 @@ export class ThemeFactIndex {
 			bucket.push(fact);
 			byFile.set(path, bucket);
 		}
-		for (const bucket of byFile.values()) this.addFileFacts(bucket);
+		for (const [path, bucket] of byFile) this.addFileFacts(path, bucket);
 	}
 
 	replaceFileFacts(path: string, facts: ThemeFact[]): void {
+		assertFactPaths(path, facts);
 		this.removeFileFacts(path);
-		this.addFileFacts(facts);
+		this.addFileFacts(path, facts);
 	}
 
 	getDeclarations(key: string): string[] {
@@ -43,7 +46,9 @@ export class ThemeFactIndex {
 		const pending = [...paths];
 		while (pending.length > 0) {
 			const path = pending.pop();
-			if (!path) continue;
+			if (path === undefined) {
+				throw new Error("Fact dependency queue unexpectedly became empty");
+			}
 			for (const dependent of this.dependentsForPath(path)) {
 				if (result.has(dependent)) continue;
 				result.add(dependent);
@@ -55,8 +60,7 @@ export class ThemeFactIndex {
 
 	private dependentsForPath(path: string): string[] {
 		const result = new Set<string>(this.getDependents(path));
-		for (const [key, declarations] of this.declarationsByKey) {
-			if (!declarations.has(path)) continue;
+		for (const key of this.declarationKeysByPath.get(path) ?? []) {
 			for (const dependent of this.getDependents(key)) result.add(dependent);
 		}
 		return [...result];
@@ -69,29 +73,52 @@ export class ThemeFactIndex {
 		};
 	}
 
-	private addFileFacts(facts: ThemeFact[]): void {
+	private addFileFacts(path: string, facts: ThemeFact[]): void {
 		if (facts.length === 0) return;
-		const path = themeFactSourcePath(facts[0]);
-		const entries: Array<{ declaration?: string; dependency?: string }> = [];
+		const declarationKeys = new Set<string>();
+		const dependencyKeys = new Set<string>();
+		assertFactPaths(path, facts);
 		for (const fact of facts) {
 			const declaration = declarationKey(fact);
 			const dependency = dependencyKey(fact);
-			entries.push({ declaration, dependency });
-			if (declaration) add(this.declarationsByKey, declaration, path);
-			if (dependency) add(this.dependentsByKey, dependency, path);
+			if (declaration) declarationKeys.add(declaration);
+			if (dependency) dependencyKeys.add(dependency);
 		}
-		this.entriesByFile.set(path, entries);
+		for (const declaration of declarationKeys) {
+			add(this.declarationsByKey, declaration, path);
+			add(this.declarationKeysByPath, path, declaration);
+		}
+		for (const dependency of dependencyKeys) {
+			add(this.dependentsByKey, dependency, path);
+		}
+		this.entriesByFile.set(path, [
+			...[...declarationKeys].map((declaration) => ({ declaration })),
+			...[...dependencyKeys].map((dependency) => ({ dependency })),
+		]);
 	}
 
 	private removeFileFacts(path: string): void {
 		const entries = this.entriesByFile.get(path) ?? [];
 		for (const entry of entries) {
-			if (entry.declaration)
+			if (entry.declaration) {
 				remove(this.declarationsByKey, entry.declaration, path);
+				remove(this.declarationKeysByPath, path, entry.declaration);
+			}
 			if (entry.dependency)
 				remove(this.dependentsByKey, entry.dependency, path);
 		}
 		this.entriesByFile.delete(path);
+	}
+}
+
+function assertFactPaths(path: string, facts: ThemeFact[]): void {
+	for (const fact of facts) {
+		const factPath = themeFactSourcePath(fact);
+		if (factPath !== path) {
+			throw new Error(
+				`Cannot index fact for ${factPath} in source bucket ${path}`,
+			);
+		}
 	}
 }
 
@@ -136,7 +163,7 @@ function remove(
 function mapToRecord(map: Map<string, Set<string>>): Record<string, string[]> {
 	return Object.fromEntries(
 		[...map.entries()]
-			.sort(([a], [b]) => a.localeCompare(b))
+			.sort(([a], [b]) => compareCanonicalStrings(a, b))
 			.map(([key, values]) => [key, [...values].sort()]),
 	);
 }

@@ -296,12 +296,7 @@ export async function main(
 		// `check` is the top-level command's internal projection, not an inspect view.
 		if (view === "check") {
 			const result = compile();
-			const issues = [
-				...result.issues,
-				...(await compiler()).checkComponentScripts(result.ir, {
-					readFile: readProjectFile,
-				}),
-			];
+			const issues = result.issues;
 			output.log(JSON.stringify({ issues, notes: result.notes }, null, 2));
 			return hasErrors(issues) ? 1 : 0;
 		}

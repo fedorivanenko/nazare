@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type {
 	ThemeCapabilityRecord,
 	ThemeClassificationRecord,
@@ -19,7 +20,7 @@ export function deriveThemeClassifications(
 ): ThemeClassificationRecord[] {
 	return inferClassifications(capabilities, dataAccesses)
 		.filter((record) => record.path === path)
-		.sort((a, b) => a.id.localeCompare(b.id));
+		.sort((a, b) => compareCanonicalStrings(a.id, b.id));
 }
 
 export function createThemeClassificationPass(): IncrementalPass<

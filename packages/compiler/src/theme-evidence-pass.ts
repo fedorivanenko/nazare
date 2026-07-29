@@ -1,3 +1,4 @@
+import { compareCanonicalStrings } from "./canonical-order.js";
 import {
 	declaredInputEvidenceId,
 	docParamEvidenceId,
@@ -83,7 +84,9 @@ export function createThemeEvidencePass(): IncrementalPass<
 		run(paths, context) {
 			const records: ThemeEvidenceRecord[] = [];
 			const changes: PassChange[] = [];
-			for (const path of [...paths].sort((a, b) => a.localeCompare(b))) {
+			for (const path of [...paths].sort((a, b) =>
+				compareCanonicalStrings(a, b),
+			)) {
 				const next = deriveThemeEvidenceRecords(
 					context.evidenceInputsForSource(path),
 				);
@@ -209,5 +212,5 @@ export function deriveThemeEvidenceRecords(
 			span: signal.span,
 			extractor: "theme-source-facts",
 		})),
-	].sort((a, b) => a.id.localeCompare(b.id));
+	].sort((a, b) => compareCanonicalStrings(a.id, b.id));
 }

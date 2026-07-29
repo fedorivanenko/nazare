@@ -19,15 +19,15 @@ function build(source, file, readFile) {
 
 test("runtime: a bundled relative module graph executes", () => {
 	const files = {
-		"components/w/w.ts": `import { clamp } from "./utils.ts";\nexport default island(({ refs }) => {\n  refs.root.dataset.value = String(clamp(150, 0, 100));\n});\n`,
-		"components/w/utils.ts": `export function clamp(v: number, lo: number, hi: number): number {\n  return Math.max(lo, Math.min(v, hi));\n}\n`,
+		"components/w/w.js": `import { clamp } from "./utils.js";\nexport default island(({ refs }) => {\n  refs.root.dataset.value = String(clamp(150, 0, 100));\n});\n`,
+		"components/w/utils.js": `export function clamp(v, lo, hi) {\n  return Math.max(lo, Math.min(v, hi));\n}\n`,
 	};
 	const { script } = build(
-		`{% import w from "./w.ts" %}\n<div ref="root"></div>`,
+		`{% import w from "./w.js" %}\n<div ref="root"></div>`,
 		"components/w/w.nz.liquid",
 		(p) => files[p],
 	);
-	assert.ok(!script.includes('from "./utils.ts"'), "imports inlined");
+	assert.ok(!script.includes('from "./utils.js"'), "imports inlined");
 
 	const element = {
 		dataset: {},
@@ -49,11 +49,11 @@ test("runtime: a bundled relative module graph executes", () => {
 });
 
 test("runtime: a sibling-directory import resolves and executes", () => {
-	const cn = `export function cn(...values: (string | Record<string, boolean>)[]): string {\n  const out: string[] = [];\n  for (const v of values) {\n    if (!v) continue;\n    if (typeof v === "string") { out.push(v); continue; }\n    for (const [k, on] of Object.entries(v)) if (on) out.push(k);\n  }\n  return out.join(" ");\n}\n`;
+	const cn = `export function cn(...values) {\n  const out = [];\n  for (const v of values) {\n    if (!v) continue;\n    if (typeof v === "string") { out.push(v); continue; }\n    for (const [k, on] of Object.entries(v)) if (on) out.push(k);\n  }\n  return out.join(" ");\n}\n`;
 	const { script } = build(
-		`<div ref="root"></div>\n{% script lang="ts" %}\nimport { cn } from "../cn/cn.ts";\nexport default island(({ root }) => { root.className = cn("a", { b: true, c: false }); });\n{% endscript %}`,
+		`<div ref="root"></div>\n{% script lang="js" %}\nimport { cn } from "../cn/cn.js";\nexport default island(({ root }) => { root.className = cn("a", { b: true, c: false }); });\n{% endscript %}`,
 		"components/w/w.nz.liquid",
-		(p) => (p === "components/cn/cn.ts" ? cn : undefined),
+		(p) => (p === "components/cn/cn.js" ? cn : undefined),
 	);
 	const element = { className: "", getAttribute: () => null };
 	const registered = [];
@@ -69,12 +69,38 @@ test("runtime: a sibling-directory import resolves and executes", () => {
 	assert.equal(element.className, "a b");
 });
 
+test("runtime: authored names cannot collide with generated module bindings", () => {
+	const files = {
+		"components/w/value.js": `export const value = "ready";`,
+	};
+	const { script } = build(
+		`<div ref="root"></div>\n{% script %}\nimport { value } from "./value.js";\nconst __nazareExports = "authored";\nconst __nazareRequire = "authored";\nconst __nazareModules = "authored";\nconst __nazareModuleCache = "authored";\nconst __nazareLoadModule = "authored";\nexport default island(({ root }) => { root.dataset.value = value + __nazareExports + __nazareRequire + __nazareModules + __nazareModuleCache + __nazareLoadModule; });\n{% endscript %}`,
+		"components/w/w.nz.liquid",
+		(path) => files[path],
+	);
+	const element = { dataset: {}, getAttribute: () => null };
+	const registered = [];
+	vm.runInNewContext(script, {
+		window: {
+			Nazare: {
+				island: (setup) => setup,
+				register: (_name, _placement, setup) => registered.push(setup),
+			},
+		},
+	});
+	registered[0]({ root: element, refs: {}, data: {} });
+	assert.equal(
+		element.dataset.value,
+		"readyauthoredauthoredauthoredauthoredauthored",
+	);
+});
+
 test("runtime: a placed island mounts on its subtree, not the component root", () => {
 	const files = {
-		"components/w/behavior.ts": `export default island(({ root }) => { root.dataset.mounted = "true"; });\n`,
+		"components/w/behavior.js": `export default island(({ root }) => { root.dataset.mounted = "true"; });\n`,
 	};
 	const { runtime, script } = build(
-		`{% import behavior from "./behavior.ts" %}\n<div ref="root">\n  <section island="behavior"></section>\n</div>`,
+		`{% import behavior from "./behavior.js" %}\n<div ref="root">\n  <section island="behavior"></section>\n</div>`,
 		"components/w/w.nz.liquid",
 		(p) => files[p],
 	);

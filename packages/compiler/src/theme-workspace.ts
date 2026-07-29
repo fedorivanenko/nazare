@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
 import type { Diagnostic } from "@nazare/core";
-import { checkComponentScripts } from "./check-script.js";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import { type EmitResult, emitTheme } from "./emit.js";
 // Generated from a digest of this package's source, so any change to fact
 // derivation invalidates persisted caches without anyone remembering to.
 import { THEME_FACT_CACHE_REVISION } from "./fact-cache-revision.js";
-import { markDiagnostics } from "./pipeline.js";
 import {
 	checkDependencies,
 	createDependencyResolver,
@@ -22,6 +21,7 @@ import type {
 	InspectNazareThemeOptions,
 	InspectNazareThemeResult,
 	ThemeAnalysis,
+	ThemeAnalysisMemo,
 	ThemeBuildResult,
 	ThemeFact,
 	ThemeInputFile,
@@ -103,12 +103,13 @@ export function buildNazareThemeWorkspace(
 	// One resolver for every artifact's dependency check: the workspace's
 	// components import each other, so the parse/contract caches are shared.
 	const dependencyResolver = createDependencyResolver(readFile);
-	let selected = buildScopeArtifacts(
+	const selected = buildScopeArtifacts(
 		analysis.artifacts,
 		buildOptions.scope,
 		scopePaths,
 	);
 	const allIssues: Diagnostic[] = [...analysis.issues];
+	const diagnosticKeys = new Set(allIssues.map(diagnosticKey));
 	const emitted: EmitResult = { files: [], issues: [] };
 	const emittedContentsByPath = new Map<string, string>();
 	let hasOutputCollision = false;
@@ -119,31 +120,8 @@ export function buildNazareThemeWorkspace(
 			resolver: dependencyResolver,
 		});
 		dependencyIssuesByPath.set(artifact.path, dependencyIssues);
-		pushUniqueDiagnostics(allIssues, dependencyIssues);
+		pushUniqueDiagnostics(allIssues, diagnosticKeys, dependencyIssues);
 	}
-
-	const scriptErrorPaths = new Set<string>();
-	if (buildOptions.checkScripts !== false) {
-		for (const artifact of analysis.artifacts) {
-			const scriptIssues = markDiagnostics(
-				checkComponentScripts(artifact.ir, { readFile }),
-				"check",
-			);
-			if (hasErrors(scriptIssues)) scriptErrorPaths.add(artifact.path);
-			pushUniqueDiagnostics(allIssues, scriptIssues);
-		}
-	}
-	const checkedAnalysisArtifacts = analysis.artifacts.map((artifact) =>
-		scriptErrorPaths.has(artifact.path)
-			? { ...artifact, canEmit: false }
-			: artifact,
-	);
-	selected = selected.map(
-		(artifact) =>
-			checkedAnalysisArtifacts.find(
-				(candidate) => candidate.path === artifact.path,
-			) ?? artifact,
-	);
 
 	const workspaceCanEmit =
 		!hasErrors(allIssues) || buildOptions.emitOnError === true;
@@ -182,11 +160,13 @@ export function buildNazareThemeWorkspace(
 			}
 			if (existing !== file.contents) {
 				hasOutputCollision = true;
-				pushUniqueDiagnostics(allIssues, [outputCollisionIssue(outputPath)]);
+				pushUniqueDiagnostics(allIssues, diagnosticKeys, [
+					outputCollisionIssue(outputPath),
+				]);
 			}
 		}
 		emitted.issues.push(...result.issues);
-		pushUniqueDiagnostics(allIssues, result.issues);
+		pushUniqueDiagnostics(allIssues, diagnosticKeys, result.issues);
 		return {
 			...artifact,
 			canEmit: artifact.canEmit && !hasErrors(result.issues),
@@ -209,7 +189,7 @@ export function buildNazareThemeWorkspace(
 	);
 	const resultAnalysis: ThemeAnalysis = {
 		...analysis,
-		artifacts: checkedAnalysisArtifacts.map(
+		artifacts: analysis.artifacts.map(
 			(artifact) => artifactByPath.get(artifact.path) ?? artifact,
 		),
 	};
@@ -239,7 +219,11 @@ function analyzeNormalizedThemeFiles(
 	const dependencyResolver: DependencyResolver =
 		createDependencyResolver(readFile);
 	const cache = options.cache?.version === 1 ? options.cache : undefined;
-	const componentDependencyFingerprints = fingerprintComponentSources(files);
+	const componentDependencyFingerprints = fingerprintComponentSources(
+		files,
+		dependencyResolver,
+		options.memo,
+	);
 	if (cache) {
 		const currentPaths = new Set(files.map((file) => file.path));
 		for (const path of Object.keys(cache.entries)) {
@@ -365,26 +349,53 @@ function themeFileFingerprint(
 
 function fingerprintComponentSources(
 	files: ThemeInputFile[],
+	dependencyResolver: DependencyResolver,
+	memo: ThemeAnalysisMemo | undefined,
 ): Map<string, string> {
 	const sources = new Map(files.map((file) => [file.path, file]));
-	const components = files.filter(
-		(file) => classifyThemeFile(file.path) === "nazareComponent",
-	);
+	const componentSources = memo?.componentSources ?? new Map();
+	const currentPaths = new Set(sources.keys());
+	for (const path of componentSources.keys()) {
+		if (!currentPaths.has(path)) componentSources.delete(path);
+	}
+	for (const file of files) {
+		const cached = componentSources.get(file.path);
+		if (cached?.contents === file.contents) continue;
+		const imports: string[] = [];
+		if (classifyThemeFile(file.path) === "nazareComponent") {
+			const ast = dependencyResolver.loadAst(file.path);
+			if (!ast) {
+				throw new Error(
+					`Dependency resolver could not parse known source ${file.path}`,
+				);
+			}
+			for (const node of ast.nodes) {
+				if (node.type === "NazareImport" || node.type === "NazareAssetImport") {
+					imports.push(normalizeThemePath(node.path));
+				}
+			}
+		}
+		componentSources.set(file.path, {
+			contents: file.contents,
+			contentHash: createHash("sha256").update(file.contents).digest("hex"),
+			imports: [...new Set(imports)].sort(),
+		});
+	}
+	if (memo) memo.componentSources = componentSources;
 	const fingerprints = new Map<string, string>();
-	for (const file of components) {
+	for (const file of files) {
+		if (classifyThemeFile(file.path) !== "nazareComponent") continue;
 		const closure = new Set<string>();
 		const pending = [file.path];
 		while (pending.length > 0) {
 			const path = pending.pop();
 			if (path === undefined || closure.has(path)) continue;
 			closure.add(path);
-			const source = sources.get(path);
-			if (!source?.path.endsWith(".nz.liquid")) continue;
-			const ast = parseWorkspaceNazareAst(source.contents, source.path);
-			for (const node of ast.nodes) {
-				if (node.type !== "NazareImport" && node.type !== "NazareAssetImport")
-					continue;
-				const target = normalizeThemePath(node.path);
+			const source = componentSources.get(path);
+			if (!source) {
+				throw new Error(`Missing component source fingerprint for ${path}`);
+			}
+			for (const target of source.imports) {
 				if (sources.has(target)) pending.push(target);
 			}
 		}
@@ -392,7 +403,13 @@ function fingerprintComponentSources(
 			file.path,
 			[...closure]
 				.sort()
-				.map((path) => `${path}\0${sources.get(path)?.contents ?? ""}`)
+				.map((path) => {
+					const source = componentSources.get(path);
+					if (!source) {
+						throw new Error(`Missing component source fingerprint for ${path}`);
+					}
+					return `${path}\0${source.contentHash}`;
+				})
 				.join("\0"),
 		);
 	}
@@ -463,12 +480,11 @@ function scopedNazareClosure(
 		if (source === undefined || !path.endsWith(".nz.liquid")) continue;
 		const ast = parseWorkspaceNazareAst(source, path);
 		for (const node of ast.nodes) {
-			if (
-				node.type === "NazareImport" &&
-				byPath.has(normalizeThemePath(node.path))
-			) {
-				pending.push(normalizeThemePath(node.path));
+			if (node.type !== "NazareImport" && node.type !== "NazareAssetImport") {
+				continue;
 			}
+			const target = normalizeThemePath(node.path);
+			if (byPath.has(target)) pending.push(target);
 		}
 	}
 	return visited;
@@ -536,7 +552,7 @@ function normalizeInputFiles(files: ThemeInputFile[]): {
 	return {
 		files: [...byPath.entries()]
 			.map(([path, contents]) => ({ path, contents }))
-			.sort((a, b) => a.path.localeCompare(b.path)),
+			.sort((a, b) => compareCanonicalStrings(a.path, b.path)),
 		byPath,
 		issues,
 	};
@@ -553,9 +569,9 @@ function outputCollisionIssue(path: string): Diagnostic {
 
 function pushUniqueDiagnostics(
 	target: Diagnostic[],
+	seen: Set<string>,
 	diagnostics: Diagnostic[],
 ): void {
-	const seen = new Set(target.map(diagnosticKey));
 	for (const diagnostic of diagnostics) {
 		const key = diagnosticKey(diagnostic);
 		if (seen.has(key)) continue;

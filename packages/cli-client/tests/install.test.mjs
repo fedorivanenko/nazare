@@ -66,6 +66,86 @@ test("add fetches a component and its transitive deps as siblings", async () => 
 	);
 });
 
+test("add fetches each dependency frontier concurrently", async () => {
+	const fetchDelayMs = 10;
+	const projectRoot = mkdtempSync(join(tmpdir(), "nazare-proj-"));
+	const components = new Map([
+		[
+			"@nazare/root",
+			component("@nazare/root", "1.0.0", {
+				"@nazare/left": "1.0.0",
+				"@nazare/right": "1.0.0",
+			}),
+		],
+		["@nazare/left", component("@nazare/left", "1.0.0")],
+		["@nazare/right", component("@nazare/right", "1.0.0")],
+	]);
+	let active = 0;
+	let maximumActive = 0;
+	const client = {
+		async fetchComponent(id) {
+			active += 1;
+			maximumActive = Math.max(maximumActive, active);
+			await new Promise((resolve) => setTimeout(resolve, fetchDelayMs));
+			active -= 1;
+			return components.get(id);
+		},
+	};
+	try {
+		await installComponent("@nazare/root", "1.0.0", "add", {
+			client,
+			projectRoot,
+			sourceRoot: "nazare",
+			fetchConcurrency: 2,
+		});
+		assert.equal(maximumActive, 2);
+	} finally {
+		await rm(projectRoot, { recursive: true, force: true });
+	}
+});
+
+test("add waits for in-flight frontier fetches before reporting a failure", async () => {
+	const fetchDelayMs = 10;
+	const root = component("@nazare/root", "1.0.0", {
+		"@nazare/fails": "1.0.0",
+		"@nazare/settles": "1.0.0",
+	});
+	let settled = false;
+	const client = {
+		async fetchComponent(id) {
+			if (id === "@nazare/root") return root;
+			if (id === "@nazare/fails") throw new Error("registry unavailable");
+			await new Promise((resolve) => setTimeout(resolve, fetchDelayMs));
+			settled = true;
+			return component("@nazare/settles", "1.0.0");
+		},
+	};
+	await assert.rejects(
+		installComponent("@nazare/root", "1.0.0", "add", {
+			client,
+			projectRoot: "/unused",
+			sourceRoot: "nazare",
+			fetchConcurrency: 2,
+		}),
+		/registry unavailable/,
+	);
+	assert.equal(settled, true);
+});
+
+for (const concurrencyOption of ["fetchConcurrency", "ioConcurrency"]) {
+	test(`add rejects invalid ${concurrencyOption} before registry or disk work`, async () => {
+		await assert.rejects(
+			installComponent("@nazare/root", "1.0.0", "add", {
+				client: { fetchComponent: async () => undefined },
+				projectRoot: "/unused",
+				sourceRoot: "nazare",
+				[concurrencyOption]: 0,
+			}),
+			new RegExp(`${concurrencyOption} must be a positive safe integer`),
+		);
+	});
+}
+
 test("re-adding an installed component at the same version is a no-op", async () => {
 	await withProject(
 		[component("@nazare/link", "0.1.0")],

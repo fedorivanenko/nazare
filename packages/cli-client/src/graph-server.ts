@@ -148,10 +148,10 @@ async function handleRequest(
 ): Promise<unknown> {
 	if (request.method === "ping") return {};
 	if (request.method === "notifications/initialized") return {};
-	if (request.method === "tools/list") return { tools: graphTools() };
+	if (request.method === "tools/list") return { tools: GRAPH_TOOLS };
 	if (request.method === "tools/call") {
 		const name = requiredString(request.params, "name");
-		if (!graphTools().some((tool) => tool.name === name)) {
+		if (!GRAPH_TOOL_NAMES.has(name)) {
 			throw new RpcError(-32602, `Unknown tool: ${name}`);
 		}
 		const args = request.params?.arguments;
@@ -568,6 +568,9 @@ function graphTools(): {
 		},
 	];
 }
+
+const GRAPH_TOOLS = Object.freeze(graphTools());
+const GRAPH_TOOL_NAMES = new Set(GRAPH_TOOLS.map(({ name }) => name));
 
 function writeNotification(output: Writable, notification: unknown): void {
 	output.write(

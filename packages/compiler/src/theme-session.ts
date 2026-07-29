@@ -1,4 +1,5 @@
 import type { Diagnostic } from "@nazare/core";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import { collectThemeBehavior } from "./theme-behavior.js";
 import {
 	createThemeCapabilityPass,
@@ -146,6 +147,10 @@ import {
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
 import { analyzeNazareTheme } from "./theme-workspace.js";
 
+export const THEME_PROGRAM_DEFAULTS = Object.freeze({
+	incrementalValidationInterval: 0,
+});
+
 export type ThemeUpdateTelemetry = {
 	filesParsed: number;
 	passKeysProcessed: number;
@@ -174,7 +179,9 @@ export type ThemeGraphUpdate = {
 
 export class ThemeProgram {
 	private readonly filesByPath = new Map<string, ThemeInputFile>();
-	private readonly options: InspectNazareThemeOptions;
+	private readonly options: InspectNazareThemeOptions & {
+		incrementalValidationInterval: number;
+	};
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
 	private readonly memo = {} as ThemeAnalysisMemo;
 	private factStore: ThemeFactStore;
@@ -230,7 +237,23 @@ export class ThemeProgram {
 		files: ThemeInputFile[],
 		options: InspectNazareThemeOptions = {},
 	) {
-		this.options = { ...options, cache: this.cache, memo: this.memo };
+		const incrementalValidationInterval =
+			options.incrementalValidationInterval ??
+			THEME_PROGRAM_DEFAULTS.incrementalValidationInterval;
+		if (
+			!Number.isSafeInteger(incrementalValidationInterval) ||
+			incrementalValidationInterval < 0
+		) {
+			throw new Error(
+				"incrementalValidationInterval must be a non-negative safe integer",
+			);
+		}
+		this.options = {
+			...options,
+			incrementalValidationInterval,
+			cache: this.cache,
+			memo: this.memo,
+		};
 		for (const file of files) {
 			const normalized = normalizeProgramFile(file);
 			if (this.filesByPath.has(normalized.path)) {
@@ -438,7 +461,7 @@ export class ThemeProgram {
 						evidence.kind === "behavior" ||
 						evidence.kind === "localeTranslation",
 				),
-			].sort((a, b) => a.id.localeCompare(b.id)),
+			].sort((a, b) => compareCanonicalStrings(a.id, b.id)),
 			issues: ownedIssues,
 			themeCheck: {
 				path: themeCheckPolicy.path,
@@ -487,7 +510,6 @@ export class ThemeProgram {
 		nextImpactIndex.applyGraph(nextGraph);
 		nextGraph.impact = nextImpactIndex.toSummary();
 		nextGraphStore.applyGraph(nextGraph);
-		nextGraphStore.replaceOwnership(semanticUpdate.model);
 		const metafieldDefinitionIds = new Set([
 			...this.semanticStore
 				.getModel()
@@ -514,16 +536,21 @@ export class ThemeProgram {
 			)
 			.map((reference) => reference.fromPath)
 			.sort();
-		validateStagedProgram({
-			model: semanticUpdate.model,
-			graph: nextGraph,
-			factStore: nextFactStore,
-			factIndex: nextFactIndex,
-			diagnostics: collection.diagnostics,
-			analysisFacts: analysis.facts,
-			factChangedPaths,
-		});
-		if (shouldRunCanonicalValidation(this.options, this.revision + 1)) {
+		validateStagedRecordReachability(semanticUpdate.model);
+		if (
+			shouldRunCanonicalValidation(
+				this.options.incrementalValidationInterval,
+				this.revision + 1,
+			)
+		) {
+			validateStagedProgram({
+				graph: nextGraph,
+				factStore: nextFactStore,
+				factIndex: nextFactIndex,
+				diagnostics: collection.diagnostics,
+				analysisFacts: analysis.facts,
+				factChangedPaths,
+			});
 			validateCanonicalProgram(
 				this.files(),
 				this.options,
@@ -624,7 +651,7 @@ export class ThemeProgram {
 
 	private files(): ThemeInputFile[] {
 		return [...this.filesByPath.values()].sort((a, b) =>
-			a.path.localeCompare(b.path),
+			compareCanonicalStrings(a.path, b.path),
 		);
 	}
 }
@@ -838,7 +865,7 @@ function runCollectionPasses(
 	};
 	const execution = scheduler.execute(
 		[...new Set(changedPaths)]
-			.sort((a, b) => a.localeCompare(b))
+			.sort((a, b) => compareCanonicalStrings(a, b))
 			.map((path): PassChange => ({ kind: "factsChanged", path }))
 			.concat(additionalChanges),
 		context,
@@ -921,7 +948,9 @@ function replaceOwnedDiagnostics(
 	const byOwner = new Map<string, Diagnostic[]>();
 	for (const issue of issues) {
 		const owner = issue.span?.file ?? `global:${issue.code}`;
-		byOwner.set(owner, [...(byOwner.get(owner) ?? []), issue]);
+		const bucket = byOwner.get(owner);
+		if (bucket) bucket.push(issue);
+		else byOwner.set(owner, [issue]);
 	}
 	for (const [owner, ownedIssues] of byOwner) {
 		store.replace({ pass, owner }, ownedIssues);
@@ -933,7 +962,9 @@ function evidenceRecordsBySource(
 ): Map<string, ThemeEvidenceRecord[]> {
 	const bySource = new Map<string, ThemeEvidenceRecord[]>();
 	for (const record of records) {
-		bySource.set(record.file, [...(bySource.get(record.file) ?? []), record]);
+		const bucket = bySource.get(record.file);
+		if (bucket) bucket.push(record);
+		else bySource.set(record.file, [record]);
 	}
 	return bySource;
 }
@@ -984,110 +1015,25 @@ function cloneCollectionState(
 	state: ThemeCollectionState,
 ): ThemeCollectionState {
 	return {
-		declarations: cloneDeclarationResults(state.declarations),
-		references: new Map(
-			[...state.references].map(([path, records]) => [path, [...records]]),
-		),
-		declarationsByKey: cloneRecordIndex(state.declarationsByKey),
+		declarations: new Map(state.declarations),
+		references: new Map(state.references),
+		declarationsByKey: new Map(state.declarationsByKey),
 		referencesById: new Map(state.referencesById),
-		referencesByTargetKey: cloneRecordIndex(state.referencesByTargetKey),
+		referencesByTargetKey: new Map(state.referencesByTargetKey),
 		resolvedReferencesById: new Map(state.resolvedReferencesById),
-		schemaSettings: cloneSchemaSettingResults(state.schemaSettings),
-		instances: cloneInstanceResults(state.instances),
-		locales: cloneLocaleResults(state.locales),
-		dataFlowInputs: cloneDataFlowInputResults(state.dataFlowInputs),
-		derivedDataFlow: cloneDerivedDataFlowResults(state.derivedDataFlow),
-		metafields: { current: cloneMetafieldAnalysis(state.metafields.current) },
-		capabilitySignals: cloneRecordsBySource(state.capabilitySignals),
-		capabilities: cloneRecordsBySource(state.capabilities),
-		classifications: cloneRecordsBySource(state.classifications),
+		schemaSettings: new Map(state.schemaSettings),
+		instances: new Map(state.instances),
+		locales: new Map(state.locales),
+		dataFlowInputs: new Map(state.dataFlowInputs),
+		derivedDataFlow: new Map(state.derivedDataFlow),
+		metafields: { current: state.metafields.current },
+		capabilitySignals: new Map(state.capabilitySignals),
+		capabilities: new Map(state.capabilities),
+		classifications: new Map(state.classifications),
 		diagnostics: state.diagnostics.fork(),
-		evidenceBySource: cloneRecordsBySource(state.evidenceBySource),
+		evidenceBySource: new Map(state.evidenceBySource),
 		processedPassKeys: 0,
 	};
-}
-
-function cloneRecordIndex<RecordValue>(
-	index: Map<string, Map<string, RecordValue>>,
-): Map<string, Map<string, RecordValue>> {
-	return new Map([...index].map(([key, records]) => [key, new Map(records)]));
-}
-
-function cloneDeclarationResults(
-	results: Map<string, ThemeDeclarationPassResult>,
-): Map<string, ThemeDeclarationPassResult> {
-	return new Map(
-		[...results].map(([path, result]) => [
-			path,
-			{ files: new Map(result.files), declarations: [...result.declarations] },
-		]),
-	);
-}
-
-function cloneSchemaSettingResults(
-	results: Map<string, ThemeSchemaSettingPassResult>,
-): Map<string, ThemeSchemaSettingPassResult> {
-	return new Map(
-		[...results].map(([path, result]) => [
-			path,
-			{
-				schemas: [...result.schemas],
-				settings: [...result.settings],
-				blocks: [...result.blocks],
-				blockSettings: [...result.blockSettings],
-				settingReads: [...result.settingReads],
-			},
-		]),
-	);
-}
-
-function cloneInstanceResults(
-	results: Map<string, ThemeInstancePassResult>,
-): Map<string, ThemeInstancePassResult> {
-	return new Map(
-		[...results].map(([path, result]) => [
-			path,
-			{
-				sectionInstances: [...result.sectionInstances],
-				blockInstances: [...result.blockInstances],
-			},
-		]),
-	);
-}
-
-function cloneLocaleResults(
-	results: Map<string, ThemeLocalePassResult>,
-): Map<string, ThemeLocalePassResult> {
-	return new Map(
-		[...results].map(([path, result]) => [
-			path,
-			{
-				localeKeys: [...result.localeKeys],
-				localeTranslations: [...result.localeTranslations],
-				localeReferences: [...result.localeReferences],
-			},
-		]),
-	);
-}
-
-function cloneDataFlowInputResults(
-	results: Map<string, ThemeDataFlowInputPassResult>,
-): Map<string, ThemeDataFlowInputPassResult> {
-	return new Map(
-		[...results].map(([path, result]) => [
-			path,
-			{
-				dataAccesses: [...result.dataAccesses],
-				variableReads: [...result.variableReads],
-				guardedObjects: [...result.guardedObjects],
-				defaultedObjects: [...result.defaultedObjects],
-				docParams: [...result.docParams],
-				declaredInputs: [...result.declaredInputs],
-				renderSiteFacts: [...result.renderSiteFacts],
-				renderArguments: [...result.renderArguments],
-			},
-		]),
-	);
 }
 
 function emptyMetafieldAnalysis(): ThemeMetafieldAnalysis {
@@ -1100,17 +1046,6 @@ function emptyMetafieldAnalysis(): ThemeMetafieldAnalysis {
 	};
 }
 
-function cloneMetafieldAnalysis(
-	analysis: ThemeMetafieldAnalysis,
-): ThemeMetafieldAnalysis {
-	return {
-		...analysis,
-		definitions: [...analysis.definitions],
-		reads: [...analysis.reads],
-		issues: [...analysis.issues],
-	};
-}
-
 function dataAccessesBySource(
 	state: ThemeCollectionState,
 ): Map<string, ThemeDataAccessRecord[]> {
@@ -1119,7 +1054,9 @@ function dataAccessesBySource(
 		accesses.set(path, [...result.dataAccesses]);
 	}
 	for (const [path, result] of state.derivedDataFlow) {
-		accesses.set(path, [...(accesses.get(path) ?? []), ...result.dataAccesses]);
+		const bucket = accesses.get(path);
+		if (bucket) bucket.push(...result.dataAccesses);
+		else accesses.set(path, [...result.dataAccesses]);
 	}
 	return accesses;
 }
@@ -1159,25 +1096,6 @@ function metafieldSnapshotChanges(
 			state: next.state,
 		},
 	];
-}
-
-function cloneRecordsBySource<T>(records: Map<string, T[]>): Map<string, T[]> {
-	return new Map(records);
-}
-
-function cloneDerivedDataFlowResults(
-	results: Map<string, ThemeDerivedDataFlowResult>,
-): Map<string, ThemeDerivedDataFlowResult> {
-	return new Map(
-		[...results].map(([path, result]) => [
-			path,
-			{
-				expectedInputs: [...result.expectedInputs],
-				renderSites: [...result.renderSites],
-				dataAccesses: [...result.dataAccesses],
-			},
-		]),
-	);
 }
 
 function allDeclarations(
@@ -1271,7 +1189,7 @@ function modelWithCollectedRecords(
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
 	for (const path of [...declarationsBySource.keys()].sort((a, b) =>
-		a.localeCompare(b),
+		compareCanonicalStrings(a, b),
 	)) {
 		const result = declarationsBySource.get(path);
 		if (!result) continue;
@@ -1279,26 +1197,26 @@ function modelWithCollectedRecords(
 		declarations.push(...result.declarations);
 	}
 	const references = [...resolvedReferencesById.values()].sort((a, b) =>
-		a.id.localeCompare(b.id),
+		compareCanonicalStrings(a.id, b.id),
 	);
 	const schemaSettings = [...schemaSettingsBySource.keys()]
-		.sort((a, b) => a.localeCompare(b))
+		.sort((a, b) => compareCanonicalStrings(a, b))
 		.map((path) => schemaSettingsBySource.get(path))
 		.filter((result): result is ThemeSchemaSettingPassResult =>
 			Boolean(result),
 		);
 
 	const instances = [...instancesBySource.keys()]
-		.sort((a, b) => a.localeCompare(b))
+		.sort((a, b) => compareCanonicalStrings(a, b))
 		.map((path) => instancesBySource.get(path))
 		.filter((result): result is ThemeInstancePassResult => Boolean(result));
 	const locales = [...localesBySource.keys()]
-		.sort((a, b) => a.localeCompare(b))
+		.sort((a, b) => compareCanonicalStrings(a, b))
 		.map((path) => localesBySource.get(path))
 		.filter((result): result is ThemeLocalePassResult => Boolean(result));
 
 	const dataFlowInputs = [...dataFlowInputsBySource.keys()]
-		.sort((a, b) => a.localeCompare(b))
+		.sort((a, b) => compareCanonicalStrings(a, b))
 		.map((path) => dataFlowInputsBySource.get(path))
 		.filter((result): result is ThemeDataFlowInputPassResult =>
 			Boolean(result),
@@ -1409,7 +1327,7 @@ function uniqueById<RecordValue extends { id: string }>(
 ): RecordValue[] {
 	return [
 		...new Map(records.map((record) => [record.id, record])).values(),
-	].sort((a, b) => a.id.localeCompare(b.id));
+	].sort((a, b) => compareCanonicalStrings(a.id, b.id));
 }
 
 function diffGraphs(
@@ -1550,22 +1468,14 @@ function externalChangedPaths(
 	return paths;
 }
 
-function validateStagedProgram(input: {
-	model: ThemeSemanticModel;
-	graph: InspectNazareThemeResult;
-	factStore: ThemeFactStore;
-	factIndex: ThemeFactIndex;
-	diagnostics: ThemeDiagnosticStore;
-	analysisFacts: ThemeFact[];
-	factChangedPaths: string[];
-}): void {
+function validateStagedRecordReachability(model: ThemeSemanticModel): void {
 	const declarationIds = new Set(
-		input.model.declarations.map((declaration) => declaration.id),
+		model.declarations.map((declaration) => declaration.id),
 	);
 	for (const record of [
-		...input.model.references,
-		...input.model.sectionInstances,
-		...input.model.renderSites,
+		...model.references,
+		...model.sectionInstances,
+		...model.renderSites,
 	]) {
 		if (
 			record.resolvedDeclarationId &&
@@ -1576,6 +1486,16 @@ function validateStagedProgram(input: {
 			);
 		}
 	}
+}
+
+function validateStagedProgram(input: {
+	graph: InspectNazareThemeResult;
+	factStore: ThemeFactStore;
+	factIndex: ThemeFactIndex;
+	diagnostics: ThemeDiagnosticStore;
+	analysisFacts: ThemeFact[];
+	factChangedPaths: string[];
+}): void {
 	input.diagnostics.validateOwnership();
 	for (const path of input.factChangedPaths) {
 		const expected = input.analysisFacts.filter(
@@ -1603,11 +1523,10 @@ function validateStagedProgram(input: {
 }
 
 function shouldRunCanonicalValidation(
-	options: InspectNazareThemeOptions,
+	interval: number,
 	revision: number,
 ): boolean {
-	const interval = options.incrementalValidationInterval;
-	return interval !== undefined && interval > 0 && revision % interval === 0;
+	return interval > 0 && revision % interval === 0;
 }
 
 function validateCanonicalProgram(
@@ -1641,7 +1560,7 @@ function invalidationClosure(
 			if (!visited.has(dependent)) pending.push(dependent);
 		}
 	}
-	return [...visited].sort((a, b) => a.localeCompare(b));
+	return [...visited].sort((a, b) => compareCanonicalStrings(a, b));
 }
 
 function affectedPages(
@@ -1652,7 +1571,7 @@ function affectedPages(
 	for (const id of invalidationClosure(graph, changedPaths)) {
 		for (const page of graph.impact.affectedPages[id] ?? []) pages.add(page);
 	}
-	return [...pages].sort((a, b) => a.localeCompare(b));
+	return [...pages].sort((a, b) => compareCanonicalStrings(a, b));
 }
 
 function addedIds<T>(
@@ -1661,7 +1580,7 @@ function addedIds<T>(
 ): string[] {
 	return [...current.keys()]
 		.filter((id) => !previous.has(id))
-		.sort((a, b) => a.localeCompare(b));
+		.sort((a, b) => compareCanonicalStrings(a, b));
 }
 
 function changedIds<T>(
@@ -1677,5 +1596,5 @@ function changedIds<T>(
 			);
 		})
 		.map(([id]) => id)
-		.sort((a, b) => a.localeCompare(b));
+		.sort((a, b) => compareCanonicalStrings(a, b));
 }

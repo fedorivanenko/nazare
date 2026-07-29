@@ -1,4 +1,5 @@
 import type Parser from "tree-sitter";
+import { walkNamedNodes as walk } from "../tree-sitter-walk.js";
 import type { SourceDocument, SourceRange } from "../types.js";
 
 export type LiquidDependencyKind =
@@ -610,8 +611,12 @@ function firstLookup(node: Parser.SyntaxNode): LiquidSyntaxLookup | undefined {
 	if (direct) return direct;
 	const filterName =
 		node.type === "render_filter" ? node.childForFieldName("name") : undefined;
-	for (const child of node.namedChildren) {
-		if (child === filterName) continue;
+	for (let index = 0; index < node.namedChildCount; index += 1) {
+		const child = node.namedChild(index);
+		if (!child) {
+			throw new Error(`Missing named child ${index} on ${node.type}`);
+		}
+		if (child.id === filterName?.id) continue;
 		const lookup = firstLookup(child);
 		if (lookup) return lookup;
 	}
@@ -622,8 +627,9 @@ function lookupFromNode(
 	node: Parser.SyntaxNode,
 ): LiquidSyntaxLookup | undefined {
 	const path = accessPath(node);
-	const leading = node.text.length - node.text.trimStart().length;
-	const trailing = node.text.length - node.text.trimEnd().length;
+	const text = node.text;
+	const leading = text.length - text.trimStart().length;
+	const trailing = text.length - text.trimEnd().length;
 	return path
 		? {
 				...path,
@@ -653,18 +659,12 @@ function childFieldName(
 	child: Parser.SyntaxNode,
 ): string | undefined {
 	if (!parent) return undefined;
-	const index = parent.children.findIndex(
-		(candidate) => candidate.id === child.id,
-	);
-	return index < 0 ? undefined : (parent.fieldNameForChild(index) ?? undefined);
-}
-
-function walk(
-	node: Parser.SyntaxNode,
-	visit: (node: Parser.SyntaxNode) => void,
-): void {
-	visit(node);
-	for (const child of node.namedChildren) walk(child, visit);
+	for (let index = 0; index < parent.childCount; index += 1) {
+		if (parent.child(index)?.id === child.id) {
+			return parent.fieldNameForChild(index) ?? undefined;
+		}
+	}
+	return undefined;
 }
 
 function accessPath(

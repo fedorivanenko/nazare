@@ -1,4 +1,5 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import { THEME_FACT_CACHE_REVISION } from "./fact-cache-revision.js";
 import { themeFactSourcePath } from "./theme-fact-store.js";
 import type {
@@ -75,9 +76,9 @@ export function parsePersistedThemeInspection(
 				fact.kind === "file",
 		)
 		.map((fact) => fact.path)
-		.sort((left, right) => left.localeCompare(right));
+		.sort((left, right) => compareCanonicalStrings(left, right));
 	const impactPaths = Object.keys(impacts).sort((left, right) =>
-		left.localeCompare(right),
+		compareCanonicalStrings(left, right),
 	);
 	if (JSON.stringify(factFilePaths) !== JSON.stringify(impactPaths)) {
 		throw new Error("impact paths do not match cached file facts");
@@ -97,7 +98,7 @@ export function serializePersistedThemeInspection(
 ): string {
 	const entries = Object.fromEntries(
 		Object.entries(inspection.factCache.entries)
-			.sort(([left], [right]) => left.localeCompare(right))
+			.sort(([left], [right]) => compareCanonicalStrings(left, right))
 			.map(([path, entry]) => [
 				path,
 				{
@@ -109,7 +110,7 @@ export function serializePersistedThemeInspection(
 	);
 	const impacts = Object.fromEntries(
 		Object.entries(inspection.impacts).sort(([left], [right]) =>
-			left.localeCompare(right),
+			compareCanonicalStrings(left, right),
 		),
 	);
 	return JSON.stringify({
@@ -401,7 +402,6 @@ function isThemeSourceLanguage(value: unknown): boolean {
 		"liquid",
 		"css",
 		"javascript",
-		"typescript",
 		"json",
 		"asset",
 		"other",

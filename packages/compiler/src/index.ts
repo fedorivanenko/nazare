@@ -74,7 +74,6 @@ export {
 	checkStyleConstraints,
 	DEFAULT_COMPILER_MODE,
 } from "./check.js";
-export { checkComponentScripts } from "./check-script.js";
 export {
 	type CompiledComponent,
 	checkEmitPreconditions,
@@ -379,6 +378,7 @@ export {
 	ThemeSemanticTransaction,
 } from "./theme-semantic-store.js";
 export {
+	THEME_PROGRAM_DEFAULTS,
 	type ThemeGraphUpdate,
 	ThemeProgram,
 	type ThemeUpdateTelemetry,

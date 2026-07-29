@@ -13,14 +13,14 @@
   },
   "installedFiles": {
     "@nazare/cn": {
-      "cn.ts": "sha256-7cba613492165a5955ffaa0218d01257e14b076ed8d7fdb240009f162b0534d0",
-      "nazare.json": "sha256-f0a6c4a569d51205548c823768a69fa207ae652a246b47ef0c5be9bf88c68888"
+      "cn.js": "sha256-7fd39ce87143837d7ac3436a3c88ad58c00a7fb381c06309bd6d2f031f16bc83",
+      "nazare.json": "sha256-6a38937ca2ea365da8977cde6f76c0ac60cd8d046c861831f7b0c25b149112c5"
     },
     "@nazare/counter": {
-      "counter.nz.liquid": "sha256-293eb94ea26d886c9d760b1b3a138f82ec61e69fdb67b4b5d0567ff92002b755",
-      "counter.ts": "sha256-83f692955e66e382548c0e420c3ff65b4cbe039be4713e21eba35fe54fe45ef0",
-      "format.ts": "sha256-07d05263045f22145577feef16cd35342ab2c5a3a8ef13852846ba1b74bf964b",
-      "nazare.json": "sha256-8d5aa583e7ba8df4af3ed51fad7ed05e1d0b98a9d634ab2969da14e369c82b63"
+      "counter.nz.liquid": "sha256-76e28b3453bba7999b3600253e3c6b5744461145a6e76f6eab53013bf5d4839e",
+      "counter.js": "sha256-bb63dbcaab4980318766d9854fdcaa2578ebfc93e79dcb63875eb1f04315084e",
+      "format.js": "sha256-04f9222710309e59a2669c02227ec5bdb8fc00c8bcbdbfed26f8156e83aa7c2a",
+      "nazare.json": "sha256-862156918d449eec9d2caba743f9b579392d1854ce7033ed42743a296b0b58e4"
     }
   }
 }

@@ -52,6 +52,40 @@ Tree-sitter is the only built-in frontend for Nazare and plain-Liquid
 compilation and workspace analysis. `@nazare/scan`, authored-source Shopify
 parsing, and `sourceFrontend: "legacy"` were removed after deletion gates passed.
 
+## Incremental update benchmark
+
+Run the committed theme-corpus benchmark on demand or in scheduled CI:
+
+```sh
+pnpm -s benchmark:incremental
+```
+
+It constructs fresh `ThemeProgram` instances at 1x, 2x, and 4x corpus scales,
+warms each instance with three alternating edits, and measures ten further edits
+to `snippets/price.liquid`. Input IO is outside the measured samples. Output is
+versioned JSON containing cold construction time, edit-time distributions,
+work-counter distributions, runtime metadata, and the 4x/1x median growth
+ratio.
+
+A single-file sample must report exactly one parsed file. The process also
+fails when the default growth ratio exceeds 6. Both checks are machine-stable
+signals; absolute milliseconds remain report-only. Every configurable value is
+available explicitly:
+
+```sh
+pnpm -s benchmark:incremental -- \
+  --corpus fixtures/theme-corpus \
+  --edit-path snippets/price.liquid \
+  --iterations 10 \
+  --warmups 3 \
+  --scales 1,2,4 \
+  --max-growth-ratio 6
+```
+
+Scale factors must start at 1 and increase strictly. Scaling duplicates only
+blocks, sections, and snippets; singleton theme files remain singleton.
+Unknown options and invalid values fail rather than falling back.
+
 ## Shopify parser comparison harness
 
 The root dev dependency on `@shopify/liquid-html-parser` exists only for this
