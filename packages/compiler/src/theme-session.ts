@@ -487,7 +487,6 @@ export class ThemeProgram {
 		nextImpactIndex.applyGraph(nextGraph);
 		nextGraph.impact = nextImpactIndex.toSummary();
 		nextGraphStore.applyGraph(nextGraph);
-		nextGraphStore.replaceOwnership(semanticUpdate.model);
 		const metafieldDefinitionIds = new Set([
 			...this.semanticStore
 				.getModel()
