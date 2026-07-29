@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type {
 	InspectNazareThemeResult,
 	ThemeImpactSummary,
@@ -28,13 +29,17 @@ export class ThemeImpactIndex {
 	private readonly pathByNodeId = new Map<string, string>();
 	private readonly nodesById = new Map<string, ImpactNode>();
 	private readonly edgesById = new Map<string, ImpactEdge>();
+	private readonly edgeCountsByEndpoints = new Map<string, number>();
+	private readonly pageEdgeCountsByEndpoints = new Map<string, number>();
 	private summary: ThemeImpactSummary = emptyImpactSummary();
+	private publishedSummary: ThemeImpactSummary | undefined;
 
 	constructor(graph?: InspectNazareThemeResult) {
 		if (graph) this.replaceGraph(graph);
 	}
 
 	replaceGraph(graph: InspectNazareThemeResult): void {
+		validateImpactGraph(graph);
 		this.dependentsByNode.clear();
 		this.dependenciesByNode.clear();
 		this.pageDependentsByNode.clear();
@@ -43,6 +48,8 @@ export class ThemeImpactIndex {
 		this.pathByNodeId.clear();
 		this.nodesById.clear();
 		this.edgesById.clear();
+		this.edgeCountsByEndpoints.clear();
+		this.pageEdgeCountsByEndpoints.clear();
 		for (const node of graph.nodes) this.addNode(node);
 		for (const edge of graph.edges) this.addEdge(edge);
 		this.refreshSummary();
@@ -62,11 +69,19 @@ export class ThemeImpactIndex {
 		}
 		for (const [key, value] of this.nodesById) fork.nodesById.set(key, value);
 		for (const [key, value] of this.edgesById) fork.edgesById.set(key, value);
-		fork.summary = this.toSummary();
+		for (const [key, value] of this.edgeCountsByEndpoints) {
+			fork.edgeCountsByEndpoints.set(key, value);
+		}
+		for (const [key, value] of this.pageEdgeCountsByEndpoints) {
+			fork.pageEdgeCountsByEndpoints.set(key, value);
+		}
+		fork.summary = this.summary;
+		fork.publishedSummary = this.publishedSummary;
 		return fork;
 	}
 
 	applyGraph(graph: InspectNazareThemeResult): ThemeImpactIndexDelta {
+		validateImpactGraph(graph);
 		const previousSummary = this.summary;
 		const nextNodes = new Map(graph.nodes.map((node) => [node.id, node]));
 		const nextEdges = new Map(graph.edges.map((edge) => [edge.id, edge]));
@@ -131,22 +146,30 @@ export class ThemeImpactIndex {
 
 	private addEdge(edge: ImpactEdge): void {
 		this.edgesById.set(edge.id, edge);
-		addValue(this.dependenciesByNode, edge.from, edge.to);
-		addValue(this.dependentsByNode, edge.to, edge.from);
-		if (propagatesPageImpact(edge)) {
+		const endpointKey = edgeEndpointKey(edge.from, edge.to);
+		if (incrementCount(this.edgeCountsByEndpoints, endpointKey) === 1) {
+			addValue(this.dependenciesByNode, edge.from, edge.to);
+			addValue(this.dependentsByNode, edge.to, edge.from);
+		}
+		if (
+			propagatesPageImpact(edge) &&
+			incrementCount(this.pageEdgeCountsByEndpoints, endpointKey) === 1
+		) {
 			addValue(this.pageDependentsByNode, edge.to, edge.from);
 		}
 	}
 
 	private removeEdge(edge: ImpactEdge): void {
 		this.edgesById.delete(edge.id);
-		const sameEndpointsRemain = [...this.edgesById.values()].some(
-			(candidate) => candidate.from === edge.from && candidate.to === edge.to,
-		);
-		if (sameEndpointsRemain) return;
-		removeValue(this.dependenciesByNode, edge.from, edge.to);
-		removeValue(this.dependentsByNode, edge.to, edge.from);
-		if (propagatesPageImpact(edge)) {
+		const endpointKey = edgeEndpointKey(edge.from, edge.to);
+		if (decrementCount(this.edgeCountsByEndpoints, endpointKey) === 0) {
+			removeValue(this.dependenciesByNode, edge.from, edge.to);
+			removeValue(this.dependentsByNode, edge.to, edge.from);
+		}
+		if (
+			propagatesPageImpact(edge) &&
+			decrementCount(this.pageEdgeCountsByEndpoints, endpointKey) === 0
+		) {
 			removeValue(this.pageDependentsByNode, edge.to, edge.from);
 		}
 	}
@@ -160,6 +183,7 @@ export class ThemeImpactIndex {
 			this.pathByNodeId,
 		);
 		this.summary = shareImpactSummary(this.summary, next);
+		this.publishedSummary = undefined;
 	}
 
 	getUnusedFileCount(): number {
@@ -167,12 +191,13 @@ export class ThemeImpactIndex {
 	}
 
 	toSummary(): ThemeImpactSummary {
-		return {
+		this.publishedSummary ??= freezeImpactSummary({
 			dependencies: cloneRecord(this.summary.dependencies),
 			dependents: cloneRecord(this.summary.dependents),
 			affectedPages: cloneRecord(this.summary.affectedPages),
 			unusedFiles: [...this.summary.unusedFiles],
-		};
+		});
+		return this.publishedSummary;
 	}
 
 	getDependencies(nodeId: string): string[] {
@@ -217,6 +242,28 @@ export class ThemeImpactIndex {
 				pending.push(dependent);
 		}
 		return [...pages].sort();
+	}
+}
+
+function validateImpactGraph(graph: ImpactGraph): void {
+	const nodeIds = new Set<string>();
+	for (const node of graph.nodes) {
+		if (!node.id) throw new Error("Impact graph node id is required");
+		if (nodeIds.has(node.id)) {
+			throw new Error(`Duplicate impact graph node id ${node.id}`);
+		}
+		nodeIds.add(node.id);
+	}
+	const edgeIds = new Set<string>();
+	for (const edge of graph.edges) {
+		if (!edge.id) throw new Error("Impact graph edge id is required");
+		if (edgeIds.has(edge.id)) {
+			throw new Error(`Duplicate impact graph edge id ${edge.id}`);
+		}
+		if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) {
+			throw new Error(`Impact graph edge ${edge.id} references a missing node`);
+		}
+		edgeIds.add(edge.id);
 	}
 }
 
@@ -352,6 +399,27 @@ function propagatesPageImpact(edge: ImpactEdge): boolean {
 	);
 }
 
+function edgeEndpointKey(from: string, to: string): string {
+	return JSON.stringify([from, to]);
+}
+
+function incrementCount(map: Map<string, number>, key: string): number {
+	const next = (map.get(key) ?? 0) + 1;
+	map.set(key, next);
+	return next;
+}
+
+function decrementCount(map: Map<string, number>, key: string): number {
+	const current = map.get(key);
+	if (current === undefined || current < 1) {
+		throw new Error(`Cannot decrement missing impact edge count ${key}`);
+	}
+	const next = current - 1;
+	if (next === 0) map.delete(key);
+	else map.set(key, next);
+	return next;
+}
+
 function addValue(
 	map: Map<string, Set<string>>,
 	key: string,
@@ -380,7 +448,7 @@ function copySetMap(
 }
 
 function sameRecord(a: unknown, b: unknown): boolean {
-	return JSON.stringify(a) === JSON.stringify(b);
+	return a === b || isDeepStrictEqual(a, b);
 }
 
 function recordDelta<T>(
@@ -439,6 +507,19 @@ function sortedRecord(map: Map<string, Set<string>>): Record<string, string[]> {
 			.sort(([a], [b]) => a.localeCompare(b))
 			.map(([key, values]) => [key, [...values].sort()]),
 	);
+}
+
+function freezeImpactSummary(summary: ThemeImpactSummary): ThemeImpactSummary {
+	for (const record of [
+		summary.dependencies,
+		summary.dependents,
+		summary.affectedPages,
+	]) {
+		for (const values of Object.values(record)) Object.freeze(values);
+		Object.freeze(record);
+	}
+	Object.freeze(summary.unusedFiles);
+	return Object.freeze(summary);
 }
 
 function cloneRecord(

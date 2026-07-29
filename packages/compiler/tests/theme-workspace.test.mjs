@@ -121,7 +121,11 @@ test("impact index applies graph edge and node deltas transactionally", () => {
 	assert.equal(delta.unusedFileCount, 1);
 	assert.equal(staged.getUnusedFileCount(), 1);
 	assert.deepEqual(committed.toSummary(), first.impact);
-	assert.deepEqual(staged.toSummary(), second.impact);
+	const stagedSummary = staged.toSummary();
+	assert.deepEqual(stagedSummary, second.impact);
+	assert.strictEqual(staged.toSummary(), stagedSummary);
+	assert.equal(Object.isFrozen(stagedSummary), true);
+	assert.equal(Object.isFrozen(stagedSummary.affectedPages), true);
 	assert.equal(
 		staged
 			.getDependencies("sections/main.liquid")
@@ -379,6 +383,19 @@ test("semantic transaction shares unchanged identified records", () => {
 	);
 });
 
+test("semantic store rejects malformed record collections", () => {
+	const model = structuredClone(
+		analyzeNazareTheme([
+			{ path: "sections/main.liquid", contents: "<section>Main</section>" },
+		]).ir,
+	);
+	model.files[0].id = "";
+	assert.throws(
+		() => new ThemeSemanticStore(model),
+		/contains a record without an id/,
+	);
+});
+
 test("semantic transaction detects changed records sharing evidence IDs", () => {
 	const files = [
 		{ path: "sections/main.liquid", contents: "{% render 'button' %}" },
@@ -422,6 +439,16 @@ test("fact index replaces declarations and dependents transactionally", () => {
 	]);
 	index.replaceFileFacts("sections/main.liquid", []);
 	assert.deepEqual(index.getDependents("snippet:card"), []);
+	assert.throws(
+		() =>
+			index.replaceFileFacts("sections/main.liquid", [
+				{ kind: "file", path: "wrong.liquid", fileKind: "other" },
+			]),
+		/Cannot index fact for wrong.liquid/,
+	);
+	assert.deepEqual(index.getDeclarations("snippet:card"), [
+		"snippets/card.liquid",
+	]);
 });
 
 test("fact store replaces only one source bucket", () => {
@@ -443,6 +470,14 @@ test("fact store replaces only one source bucket", () => {
 	assert.deepEqual(store.files(), ["a.liquid", "b.liquid"]);
 	assert.equal(store.getFile("a.liquid").length, 1);
 	assert.equal(store.all().length, 2);
+	assert.throws(
+		() =>
+			store.replaceFile("a.liquid", [
+				{ kind: "file", path: "wrong.liquid", fileKind: "other" },
+			]),
+		/Cannot store fact for wrong.liquid/,
+	);
+	assert.equal(store.getFile("a.liquid").length, 1);
 });
 
 test("build session reports emitted output deltas", () => {
