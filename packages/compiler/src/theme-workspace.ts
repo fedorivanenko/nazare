@@ -20,6 +20,7 @@ import type {
 	InspectNazareThemeOptions,
 	InspectNazareThemeResult,
 	ThemeAnalysis,
+	ThemeAnalysisMemo,
 	ThemeBuildResult,
 	ThemeFact,
 	ThemeInputFile,
@@ -214,7 +215,11 @@ function analyzeNormalizedThemeFiles(
 	const dependencyResolver: DependencyResolver =
 		createDependencyResolver(readFile);
 	const cache = options.cache?.version === 1 ? options.cache : undefined;
-	const componentDependencyFingerprints = fingerprintComponentSources(files);
+	const componentDependencyFingerprints = fingerprintComponentSources(
+		files,
+		dependencyResolver,
+		options.memo,
+	);
 	if (cache) {
 		const currentPaths = new Set(files.map((file) => file.path));
 		for (const path of Object.keys(cache.entries)) {
@@ -340,26 +345,53 @@ function themeFileFingerprint(
 
 function fingerprintComponentSources(
 	files: ThemeInputFile[],
+	dependencyResolver: DependencyResolver,
+	memo: ThemeAnalysisMemo | undefined,
 ): Map<string, string> {
 	const sources = new Map(files.map((file) => [file.path, file]));
-	const components = files.filter(
-		(file) => classifyThemeFile(file.path) === "nazareComponent",
-	);
+	const componentSources = memo?.componentSources ?? new Map();
+	const currentPaths = new Set(sources.keys());
+	for (const path of componentSources.keys()) {
+		if (!currentPaths.has(path)) componentSources.delete(path);
+	}
+	for (const file of files) {
+		const cached = componentSources.get(file.path);
+		if (cached?.contents === file.contents) continue;
+		const imports: string[] = [];
+		if (classifyThemeFile(file.path) === "nazareComponent") {
+			const ast = dependencyResolver.loadAst(file.path);
+			if (!ast) {
+				throw new Error(
+					`Dependency resolver could not parse known source ${file.path}`,
+				);
+			}
+			for (const node of ast.nodes) {
+				if (node.type === "NazareImport" || node.type === "NazareAssetImport") {
+					imports.push(normalizeThemePath(node.path));
+				}
+			}
+		}
+		componentSources.set(file.path, {
+			contents: file.contents,
+			contentHash: createHash("sha256").update(file.contents).digest("hex"),
+			imports: [...new Set(imports)].sort(),
+		});
+	}
+	if (memo) memo.componentSources = componentSources;
 	const fingerprints = new Map<string, string>();
-	for (const file of components) {
+	for (const file of files) {
+		if (classifyThemeFile(file.path) !== "nazareComponent") continue;
 		const closure = new Set<string>();
 		const pending = [file.path];
 		while (pending.length > 0) {
 			const path = pending.pop();
 			if (path === undefined || closure.has(path)) continue;
 			closure.add(path);
-			const source = sources.get(path);
-			if (!source?.path.endsWith(".nz.liquid")) continue;
-			const ast = parseWorkspaceNazareAst(source.contents, source.path);
-			for (const node of ast.nodes) {
-				if (node.type !== "NazareImport" && node.type !== "NazareAssetImport")
-					continue;
-				const target = normalizeThemePath(node.path);
+			const source = componentSources.get(path);
+			if (!source) {
+				throw new Error(`Missing component source fingerprint for ${path}`);
+			}
+			for (const target of source.imports) {
 				if (sources.has(target)) pending.push(target);
 			}
 		}
@@ -367,7 +399,13 @@ function fingerprintComponentSources(
 			file.path,
 			[...closure]
 				.sort()
-				.map((path) => `${path}\0${sources.get(path)?.contents ?? ""}`)
+				.map((path) => {
+					const source = componentSources.get(path);
+					if (!source) {
+						throw new Error(`Missing component source fingerprint for ${path}`);
+					}
+					return `${path}\0${source.contentHash}`;
+				})
 				.join("\0"),
 		);
 	}
@@ -438,12 +476,11 @@ function scopedNazareClosure(
 		if (source === undefined || !path.endsWith(".nz.liquid")) continue;
 		const ast = parseWorkspaceNazareAst(source, path);
 		for (const node of ast.nodes) {
-			if (
-				node.type === "NazareImport" &&
-				byPath.has(normalizeThemePath(node.path))
-			) {
-				pending.push(normalizeThemePath(node.path));
+			if (node.type !== "NazareImport" && node.type !== "NazareAssetImport") {
+				continue;
 			}
+			const target = normalizeThemePath(node.path);
+			if (byPath.has(target)) pending.push(target);
 		}
 	}
 	return visited;

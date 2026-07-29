@@ -34,6 +34,10 @@ export interface ThemeAnalysisMemo {
 	model: ThemeSemanticModel;
 	projectionFingerprint?: string;
 	projectedModel?: ThemeSemanticModel;
+	componentSources?: Map<
+		string,
+		{ contents: string; contentHash: string; imports: string[] }
+	>;
 }
 
 export interface AnalyzeNazareThemeOptions {

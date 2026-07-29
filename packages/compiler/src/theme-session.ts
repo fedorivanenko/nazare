@@ -146,6 +146,10 @@ import {
 import { ThemeSemanticStore } from "./theme-semantic-store.js";
 import { analyzeNazareTheme } from "./theme-workspace.js";
 
+export const THEME_PROGRAM_DEFAULTS = Object.freeze({
+	incrementalValidationInterval: 0,
+});
+
 export type ThemeUpdateTelemetry = {
 	filesParsed: number;
 	passKeysProcessed: number;
@@ -174,7 +178,9 @@ export type ThemeGraphUpdate = {
 
 export class ThemeProgram {
 	private readonly filesByPath = new Map<string, ThemeInputFile>();
-	private readonly options: InspectNazareThemeOptions;
+	private readonly options: InspectNazareThemeOptions & {
+		incrementalValidationInterval: number;
+	};
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
 	private readonly memo = {} as ThemeAnalysisMemo;
 	private factStore: ThemeFactStore;
@@ -230,7 +236,23 @@ export class ThemeProgram {
 		files: ThemeInputFile[],
 		options: InspectNazareThemeOptions = {},
 	) {
-		this.options = { ...options, cache: this.cache, memo: this.memo };
+		const incrementalValidationInterval =
+			options.incrementalValidationInterval ??
+			THEME_PROGRAM_DEFAULTS.incrementalValidationInterval;
+		if (
+			!Number.isSafeInteger(incrementalValidationInterval) ||
+			incrementalValidationInterval < 0
+		) {
+			throw new Error(
+				"incrementalValidationInterval must be a non-negative safe integer",
+			);
+		}
+		this.options = {
+			...options,
+			incrementalValidationInterval,
+			cache: this.cache,
+			memo: this.memo,
+		};
 		for (const file of files) {
 			const normalized = normalizeProgramFile(file);
 			if (this.filesByPath.has(normalized.path)) {
@@ -513,16 +535,21 @@ export class ThemeProgram {
 			)
 			.map((reference) => reference.fromPath)
 			.sort();
-		validateStagedProgram({
-			model: semanticUpdate.model,
-			graph: nextGraph,
-			factStore: nextFactStore,
-			factIndex: nextFactIndex,
-			diagnostics: collection.diagnostics,
-			analysisFacts: analysis.facts,
-			factChangedPaths,
-		});
-		if (shouldRunCanonicalValidation(this.options, this.revision + 1)) {
+		validateStagedRecordReachability(semanticUpdate.model);
+		if (
+			shouldRunCanonicalValidation(
+				this.options.incrementalValidationInterval,
+				this.revision + 1,
+			)
+		) {
+			validateStagedProgram({
+				graph: nextGraph,
+				factStore: nextFactStore,
+				factIndex: nextFactIndex,
+				diagnostics: collection.diagnostics,
+				analysisFacts: analysis.facts,
+				factChangedPaths,
+			});
 			validateCanonicalProgram(
 				this.files(),
 				this.options,
@@ -983,110 +1010,25 @@ function cloneCollectionState(
 	state: ThemeCollectionState,
 ): ThemeCollectionState {
 	return {
-		declarations: cloneDeclarationResults(state.declarations),
-		references: new Map(
-			[...state.references].map(([path, records]) => [path, [...records]]),
-		),
-		declarationsByKey: cloneRecordIndex(state.declarationsByKey),
+		declarations: new Map(state.declarations),
+		references: new Map(state.references),
+		declarationsByKey: new Map(state.declarationsByKey),
 		referencesById: new Map(state.referencesById),
-		referencesByTargetKey: cloneRecordIndex(state.referencesByTargetKey),
+		referencesByTargetKey: new Map(state.referencesByTargetKey),
 		resolvedReferencesById: new Map(state.resolvedReferencesById),
-		schemaSettings: cloneSchemaSettingResults(state.schemaSettings),
-		instances: cloneInstanceResults(state.instances),
-		locales: cloneLocaleResults(state.locales),
-		dataFlowInputs: cloneDataFlowInputResults(state.dataFlowInputs),
-		derivedDataFlow: cloneDerivedDataFlowResults(state.derivedDataFlow),
-		metafields: { current: cloneMetafieldAnalysis(state.metafields.current) },
-		capabilitySignals: cloneRecordsBySource(state.capabilitySignals),
-		capabilities: cloneRecordsBySource(state.capabilities),
-		classifications: cloneRecordsBySource(state.classifications),
+		schemaSettings: new Map(state.schemaSettings),
+		instances: new Map(state.instances),
+		locales: new Map(state.locales),
+		dataFlowInputs: new Map(state.dataFlowInputs),
+		derivedDataFlow: new Map(state.derivedDataFlow),
+		metafields: { current: state.metafields.current },
+		capabilitySignals: new Map(state.capabilitySignals),
+		capabilities: new Map(state.capabilities),
+		classifications: new Map(state.classifications),
 		diagnostics: state.diagnostics.fork(),
-		evidenceBySource: cloneRecordsBySource(state.evidenceBySource),
+		evidenceBySource: new Map(state.evidenceBySource),
 		processedPassKeys: 0,
 	};
-}
-
-function cloneRecordIndex<RecordValue>(
-	index: Map<string, Map<string, RecordValue>>,
-): Map<string, Map<string, RecordValue>> {
-	return new Map([...index].map(([key, records]) => [key, new Map(records)]));
-}
-
-function cloneDeclarationResults(
-	results: Map<string, ThemeDeclarationPassResult>,
-): Map<string, ThemeDeclarationPassResult> {
-	return new Map(
-		[...results].map(([path, result]) => [
-			path,
-			{ files: new Map(result.files), declarations: [...result.declarations] },
-		]),
-	);
-}
-
-function cloneSchemaSettingResults(
-	results: Map<string, ThemeSchemaSettingPassResult>,
-): Map<string, ThemeSchemaSettingPassResult> {
-	return new Map(
-		[...results].map(([path, result]) => [
-			path,
-			{
-				schemas: [...result.schemas],
-				settings: [...result.settings],
-				blocks: [...result.blocks],
-				blockSettings: [...result.blockSettings],
-				settingReads: [...result.settingReads],
-			},
-		]),
-	);
-}
-
-function cloneInstanceResults(
-	results: Map<string, ThemeInstancePassResult>,
-): Map<string, ThemeInstancePassResult> {
-	return new Map(
-		[...results].map(([path, result]) => [
-			path,
-			{
-				sectionInstances: [...result.sectionInstances],
-				blockInstances: [...result.blockInstances],
-			},
-		]),
-	);
-}
-
-function cloneLocaleResults(
-	results: Map<string, ThemeLocalePassResult>,
-): Map<string, ThemeLocalePassResult> {
-	return new Map(
-		[...results].map(([path, result]) => [
-			path,
-			{
-				localeKeys: [...result.localeKeys],
-				localeTranslations: [...result.localeTranslations],
-				localeReferences: [...result.localeReferences],
-			},
-		]),
-	);
-}
-
-function cloneDataFlowInputResults(
-	results: Map<string, ThemeDataFlowInputPassResult>,
-): Map<string, ThemeDataFlowInputPassResult> {
-	return new Map(
-		[...results].map(([path, result]) => [
-			path,
-			{
-				dataAccesses: [...result.dataAccesses],
-				variableReads: [...result.variableReads],
-				guardedObjects: [...result.guardedObjects],
-				defaultedObjects: [...result.defaultedObjects],
-				docParams: [...result.docParams],
-				declaredInputs: [...result.declaredInputs],
-				renderSiteFacts: [...result.renderSiteFacts],
-				renderArguments: [...result.renderArguments],
-			},
-		]),
-	);
 }
 
 function emptyMetafieldAnalysis(): ThemeMetafieldAnalysis {
@@ -1096,17 +1038,6 @@ function emptyMetafieldAnalysis(): ThemeMetafieldAnalysis {
 		issues: [],
 		state: "unknown",
 		path: ".shopify/metafields.json",
-	};
-}
-
-function cloneMetafieldAnalysis(
-	analysis: ThemeMetafieldAnalysis,
-): ThemeMetafieldAnalysis {
-	return {
-		...analysis,
-		definitions: [...analysis.definitions],
-		reads: [...analysis.reads],
-		issues: [...analysis.issues],
 	};
 }
 
@@ -1158,25 +1089,6 @@ function metafieldSnapshotChanges(
 			state: next.state,
 		},
 	];
-}
-
-function cloneRecordsBySource<T>(records: Map<string, T[]>): Map<string, T[]> {
-	return new Map(records);
-}
-
-function cloneDerivedDataFlowResults(
-	results: Map<string, ThemeDerivedDataFlowResult>,
-): Map<string, ThemeDerivedDataFlowResult> {
-	return new Map(
-		[...results].map(([path, result]) => [
-			path,
-			{
-				expectedInputs: [...result.expectedInputs],
-				renderSites: [...result.renderSites],
-				dataAccesses: [...result.dataAccesses],
-			},
-		]),
-	);
 }
 
 function allDeclarations(
@@ -1549,22 +1461,14 @@ function externalChangedPaths(
 	return paths;
 }
 
-function validateStagedProgram(input: {
-	model: ThemeSemanticModel;
-	graph: InspectNazareThemeResult;
-	factStore: ThemeFactStore;
-	factIndex: ThemeFactIndex;
-	diagnostics: ThemeDiagnosticStore;
-	analysisFacts: ThemeFact[];
-	factChangedPaths: string[];
-}): void {
+function validateStagedRecordReachability(model: ThemeSemanticModel): void {
 	const declarationIds = new Set(
-		input.model.declarations.map((declaration) => declaration.id),
+		model.declarations.map((declaration) => declaration.id),
 	);
 	for (const record of [
-		...input.model.references,
-		...input.model.sectionInstances,
-		...input.model.renderSites,
+		...model.references,
+		...model.sectionInstances,
+		...model.renderSites,
 	]) {
 		if (
 			record.resolvedDeclarationId &&
@@ -1575,6 +1479,16 @@ function validateStagedProgram(input: {
 			);
 		}
 	}
+}
+
+function validateStagedProgram(input: {
+	graph: InspectNazareThemeResult;
+	factStore: ThemeFactStore;
+	factIndex: ThemeFactIndex;
+	diagnostics: ThemeDiagnosticStore;
+	analysisFacts: ThemeFact[];
+	factChangedPaths: string[];
+}): void {
 	input.diagnostics.validateOwnership();
 	for (const path of input.factChangedPaths) {
 		const expected = input.analysisFacts.filter(
@@ -1602,11 +1516,10 @@ function validateStagedProgram(input: {
 }
 
 function shouldRunCanonicalValidation(
-	options: InspectNazareThemeOptions,
+	interval: number,
 	revision: number,
 ): boolean {
-	const interval = options.incrementalValidationInterval;
-	return interval !== undefined && interval > 0 && revision % interval === 0;
+	return interval > 0 && revision % interval === 0;
 }
 
 function validateCanonicalProgram(
