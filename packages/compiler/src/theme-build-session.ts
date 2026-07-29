@@ -43,6 +43,7 @@ class ThemeBuildState {
 	>();
 	private outputPathsBySourcePath = new Map<string, Set<string>>();
 	private sourcePathsByOutputPath = new Map<string, Set<string>>();
+	private importGraph: ThemeImportGraph;
 	private revision = 0;
 
 	constructor(
@@ -62,6 +63,7 @@ class ThemeBuildState {
 			}
 			this.filesByPath.set(normalized.path, normalized);
 		}
+		this.importGraph = new ThemeImportGraph(this.files());
 		this.semanticSession =
 			semanticProgram ?? new ThemeProgram(this.files(), this.options);
 		this.build = buildNazareThemeWorkspace(this.files(), this.options);
@@ -126,10 +128,13 @@ class ThemeBuildState {
 		const startedAt = buildTelemetryNow();
 		const memoryAtStart = buildTelemetryMemory();
 		const previous = this.build;
-		const recomputedPaths = buildRecomputationClosure(
-			this.files(),
-			changedPaths,
-		);
+		const nextImportGraph = this.importGraph.fork();
+		for (const path of changedPaths) {
+			const file = this.filesByPath.get(path);
+			if (file) nextImportGraph.replaceFile(file);
+			else nextImportGraph.removeFile(path);
+		}
+		const recomputedPaths = nextImportGraph.dependentClosure(changedPaths);
 		const selectedPaths = recomputedPaths.filter(
 			(path) => path.endsWith(".nz.liquid") && this.filesByPath.has(path),
 		);
@@ -171,6 +176,7 @@ class ThemeBuildState {
 			),
 		);
 		this.replaceOutputOwnership(this.build);
+		this.importGraph = nextImportGraph;
 		this.revision += 1;
 		if (!graphUpdate)
 			throw new Error("Build update did not produce graph state");
@@ -428,37 +434,91 @@ function shareUnchangedOutputSnapshots(
 	};
 }
 
-function buildRecomputationClosure(
-	files: ThemeInputFile[],
-	changedPaths: string[],
-): string[] {
-	const components = new Map(
-		files
-			.filter((file) => file.path.endsWith(".nz.liquid"))
-			.map((file) => [file.path, file]),
-	);
-	const dependents = new Map<string, Set<string>>();
-	for (const file of components.values()) {
+class ThemeImportGraph {
+	private readonly dependenciesBySource = new Map<string, Set<string>>();
+	private readonly dependentsByTarget = new Map<string, Set<string>>();
+
+	constructor(files: ThemeInputFile[]) {
+		for (const file of files) this.replaceFile(file);
+	}
+
+	fork(): ThemeImportGraph {
+		const fork = new ThemeImportGraph([]);
+		copySetMap(this.dependenciesBySource, fork.dependenciesBySource);
+		copySetMap(this.dependentsByTarget, fork.dependentsByTarget);
+		return fork;
+	}
+
+	replaceFile(file: ThemeInputFile): void {
+		this.removeFile(file.path);
+		if (!file.path.endsWith(".nz.liquid")) return;
 		const ast = projectTreeSitterNazareAst(file.contents, file.path).ast;
+		const dependencies = new Set<string>();
 		for (const node of ast.nodes) {
 			if (node.type !== "NazareImport" && node.type !== "NazareAssetImport")
 				continue;
-			const target = normalizeThemePath(node.path);
-			if (!files.some((candidate) => candidate.path === target)) continue;
-			const paths = dependents.get(target) ?? new Set<string>();
-			paths.add(file.path);
-			dependents.set(target, paths);
+			dependencies.add(normalizeThemePath(node.path));
+		}
+		if (dependencies.size === 0) return;
+		this.dependenciesBySource.set(file.path, dependencies);
+		for (const target of dependencies) {
+			addToSetMap(this.dependentsByTarget, target, file.path);
 		}
 	}
-	const visited = new Set<string>();
-	const pending = [...changedPaths];
-	while (pending.length > 0) {
-		const path = pending.pop();
-		if (path === undefined || visited.has(path)) continue;
-		visited.add(path);
-		for (const dependent of dependents.get(path) ?? []) pending.push(dependent);
+
+	removeFile(path: string): void {
+		const dependencies = this.dependenciesBySource.get(path);
+		if (!dependencies) return;
+		this.dependenciesBySource.delete(path);
+		for (const target of dependencies) {
+			removeFromSetMap(this.dependentsByTarget, target, path);
+		}
 	}
-	return [...visited].sort((a, b) => a.localeCompare(b));
+
+	dependentClosure(changedPaths: Iterable<string>): string[] {
+		const visited = new Set<string>();
+		const pending = [...changedPaths];
+		for (let index = 0; index < pending.length; index += 1) {
+			const path = pending[index];
+			if (path === undefined) {
+				throw new Error(`Missing import-graph queue item at ${index}`);
+			}
+			if (visited.has(path)) continue;
+			visited.add(path);
+			for (const dependent of this.dependentsByTarget.get(path) ?? []) {
+				if (!visited.has(dependent)) pending.push(dependent);
+			}
+		}
+		return [...visited].sort((a, b) => a.localeCompare(b));
+	}
+}
+
+function addToSetMap(
+	map: Map<string, Set<string>>,
+	key: string,
+	value: string,
+): void {
+	const values = map.get(key);
+	if (values) values.add(value);
+	else map.set(key, new Set([value]));
+}
+
+function removeFromSetMap(
+	map: Map<string, Set<string>>,
+	key: string,
+	value: string,
+): void {
+	const values = map.get(key);
+	if (!values) return;
+	values.delete(value);
+	if (values.size === 0) map.delete(key);
+}
+
+function copySetMap(
+	source: Map<string, Set<string>>,
+	target: Map<string, Set<string>>,
+): void {
+	for (const [key, values] of source) target.set(key, new Set(values));
 }
 
 function diffBuilds(

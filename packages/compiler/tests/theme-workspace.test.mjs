@@ -871,6 +871,21 @@ test("ThemeProgram stores canonical semantic diagnostics by pass and owner", () 
 	);
 });
 
+test("ThemeProgram rejects invalid incremental validation intervals", () => {
+	const files = [{ path: "snippets/card.liquid", contents: "Card" }];
+	assert.throws(
+		() => new ThemeProgram(files, { incrementalValidationInterval: -1 }),
+		/non-negative safe integer/,
+	);
+	assert.throws(
+		() =>
+			new ThemeProgram(files, {
+				incrementalValidationInterval: Number.POSITIVE_INFINITY,
+			}),
+		/non-negative safe integer/,
+	);
+});
+
 test("ThemeProgram periodically validates canonical indexes and cold rebuilds", () => {
 	const files = [{ path: "snippets/card.liquid", contents: "Card" }];
 	const program = new ThemeProgram(files, { incrementalValidationInterval: 1 });

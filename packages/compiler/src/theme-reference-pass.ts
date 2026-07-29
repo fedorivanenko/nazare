@@ -77,11 +77,10 @@ function addReferenceToIndexes(
 ): void {
 	context.referencesById?.set(reference.id, reference);
 	for (const key of referenceTargetKeys(reference)) {
-		const references =
-			context.referencesByTargetKey?.get(key) ??
-			new Map<string, ThemeReference>();
+		if (!context.referencesByTargetKey) continue;
+		const references = new Map(context.referencesByTargetKey.get(key));
 		references.set(reference.id, reference);
-		context.referencesByTargetKey?.set(key, references);
+		context.referencesByTargetKey.set(key, references);
 	}
 }
 
@@ -91,10 +90,12 @@ function removeReferenceFromIndexes(
 ): void {
 	context.referencesById?.delete(reference.id);
 	for (const key of referenceTargetKeys(reference)) {
-		const references = context.referencesByTargetKey?.get(key);
-		if (!references) continue;
+		const current = context.referencesByTargetKey?.get(key);
+		if (!context.referencesByTargetKey || !current) continue;
+		const references = new Map(current);
 		references.delete(reference.id);
-		if (references.size === 0) context.referencesByTargetKey?.delete(key);
+		if (references.size === 0) context.referencesByTargetKey.delete(key);
+		else context.referencesByTargetKey.set(key, references);
 	}
 }
 

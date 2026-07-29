@@ -378,6 +378,7 @@ export {
 	ThemeSemanticTransaction,
 } from "./theme-semantic-store.js";
 export {
+	THEME_PROGRAM_DEFAULTS,
 	type ThemeGraphUpdate,
 	ThemeProgram,
 	type ThemeUpdateTelemetry,
