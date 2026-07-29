@@ -74,7 +74,6 @@ export {
 	checkStyleConstraints,
 	DEFAULT_COMPILER_MODE,
 } from "./check.js";
-export { checkComponentScripts } from "./check-script.js";
 export {
 	type CompiledComponent,
 	checkEmitPreconditions,

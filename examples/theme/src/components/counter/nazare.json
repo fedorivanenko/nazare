@@ -8,7 +8,7 @@
   },
   "files": [
     "counter.nz.liquid",
-    "counter.ts",
-    "format.ts"
+    "counter.js",
+    "format.js"
   ]
 }

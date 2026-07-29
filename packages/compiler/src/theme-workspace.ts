@@ -1,11 +1,9 @@
 import { createHash } from "node:crypto";
 import type { Diagnostic } from "@nazare/core";
-import { checkComponentScripts } from "./check-script.js";
 import { type EmitResult, emitTheme } from "./emit.js";
 // Generated from a digest of this package's source, so any change to fact
 // derivation invalidates persisted caches without anyone remembering to.
 import { THEME_FACT_CACHE_REVISION } from "./fact-cache-revision.js";
-import { markDiagnostics } from "./pipeline.js";
 import {
 	checkDependencies,
 	createDependencyResolver,
@@ -103,7 +101,7 @@ export function buildNazareThemeWorkspace(
 	// One resolver for every artifact's dependency check: the workspace's
 	// components import each other, so the parse/contract caches are shared.
 	const dependencyResolver = createDependencyResolver(readFile);
-	let selected = buildScopeArtifacts(
+	const selected = buildScopeArtifacts(
 		analysis.artifacts,
 		buildOptions.scope,
 		scopePaths,
@@ -121,29 +119,6 @@ export function buildNazareThemeWorkspace(
 		dependencyIssuesByPath.set(artifact.path, dependencyIssues);
 		pushUniqueDiagnostics(allIssues, dependencyIssues);
 	}
-
-	const scriptErrorPaths = new Set<string>();
-	if (buildOptions.checkScripts !== false) {
-		for (const artifact of analysis.artifacts) {
-			const scriptIssues = markDiagnostics(
-				checkComponentScripts(artifact.ir, { readFile }),
-				"check",
-			);
-			if (hasErrors(scriptIssues)) scriptErrorPaths.add(artifact.path);
-			pushUniqueDiagnostics(allIssues, scriptIssues);
-		}
-	}
-	const checkedAnalysisArtifacts = analysis.artifacts.map((artifact) =>
-		scriptErrorPaths.has(artifact.path)
-			? { ...artifact, canEmit: false }
-			: artifact,
-	);
-	selected = selected.map(
-		(artifact) =>
-			checkedAnalysisArtifacts.find(
-				(candidate) => candidate.path === artifact.path,
-			) ?? artifact,
-	);
 
 	const workspaceCanEmit =
 		!hasErrors(allIssues) || buildOptions.emitOnError === true;
@@ -209,7 +184,7 @@ export function buildNazareThemeWorkspace(
 	);
 	const resultAnalysis: ThemeAnalysis = {
 		...analysis,
-		artifacts: checkedAnalysisArtifacts.map(
+		artifacts: analysis.artifacts.map(
 			(artifact) => artifactByPath.get(artifact.path) ?? artifact,
 		),
 	};

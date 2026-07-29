@@ -10,7 +10,7 @@ export function parseInvalidImport(
 	return {
 		severity: "error",
 		code: "NAZARE_PARSE_IMPORT",
-		message: `Invalid import: ${markup} — every import binds a name to a relative path: {% import Name from "./name.nz.liquid" %} for components, {% import name from "./name.ts|.js|.css" %} for behaviors and styles`,
+		message: `Invalid import: ${markup} — every import binds a name to a relative path: {% import Name from "./name.nz.liquid" %} for components, {% import name from "./name.js|.css" %} for behaviors and styles`,
 		span,
 	};
 }
@@ -89,7 +89,7 @@ export function importUnsupportedExtension(
 	return {
 		severity: "error",
 		code: "NAZARE_IMPORT_UNSUPPORTED_EXTENSION",
-		message: `Cannot import "${specifier}"; importable files are components (.liquid), behaviors (.ts, .js), and styles (.css)`,
+		message: `Cannot import "${specifier}"; importable files are components (.liquid), behaviors (.js), and styles (.css)`,
 		span,
 	};
 }
@@ -561,7 +561,7 @@ export function unknownIsland(
 	return {
 		severity: "error",
 		code: "CONSTRAINT_UNKNOWN_ISLAND",
-		message: `island="${name}" names no imported behavior; import one with {% import ${name} from "./${name}.ts" %}, or remove the attribute`,
+		message: `island="${name}" names no imported behavior; import one with {% import ${name} from "./${name}.js" %}, or remove the attribute`,
 		nodeId,
 		span,
 	};
@@ -814,7 +814,31 @@ export function scriptImportInvalid(
 	return {
 		severity: "error",
 		code: "SCRIPT_IMPORT_INVALID",
-		message: `Cannot bundle "${specifier}" imported by ${importer}; imports must be relative .ts or .js paths inside the project`,
+		message: `Cannot bundle "${specifier}" imported by ${importer}; imports must be relative .js paths inside the project`,
+	};
+}
+
+export function scriptJavaScriptParseError(
+	message: string,
+	span?: SourceSpan,
+): Diagnostic {
+	return {
+		severity: "error",
+		code: "SCRIPT_JAVASCRIPT_PARSE_ERROR",
+		message: `Invalid JavaScript in behavior script: ${message}`,
+		phase: "parse",
+		span,
+	};
+}
+
+export function scriptTypeScriptUnsupported(span?: SourceSpan): Diagnostic {
+	return {
+		severity: "error",
+		code: "SCRIPT_TYPESCRIPT_UNSUPPORTED",
+		message:
+			'TypeScript behavior scripts are not supported; use JavaScript and lang="js"',
+		phase: "parse",
+		span,
 	};
 }
 
@@ -837,19 +861,6 @@ export function scriptImportCycle(
 		severity: "error",
 		code: "SCRIPT_IMPORT_CYCLE",
 		message: `Import cycle: ${importer} imports ${moduleId}, which is already loading`,
-	};
-}
-
-export function scriptTypeError(
-	message: string,
-	tsCode: number,
-	span: SourceSpan | undefined,
-): Diagnostic {
-	return {
-		severity: "error",
-		code: "SCRIPT_TYPE_ERROR",
-		message: `TS${tsCode}: ${message}`,
-		span,
 	};
 }
 

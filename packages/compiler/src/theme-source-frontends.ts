@@ -79,7 +79,7 @@ export const javaScriptThemeSourceFrontend: ThemeSourceFrontend = {
 			input,
 			this.name,
 			"javascript",
-			analyzeThemeScript(input.path, input.contents, "javascript"),
+			analyzeThemeScript(input.path, input.contents),
 		);
 	},
 };

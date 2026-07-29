@@ -1,55 +1,47 @@
-// Finds module syntax in behavior scripts that nothing downstream can
-// handle. The bundler resolves static relative imports only, so two shapes
-// are rejected here: legacy `import x = require(...)`, and dynamic
-// `import(...)` — the latter transpiles to a `require` call that does not
-// exist in the emitted wrapper and would throw in the shopper's browser.
-// Unresolvable specifiers are reported by the bundler (emit) and the
-// multi-module type check, which know the resolvers; this fast-path check
-// cannot.
-import ts from "typescript";
+// Finds module syntax that Nazare's JavaScript bundler cannot execute.
+import type { Program } from "acorn";
+import { type JavaScriptNode, walkJavaScript } from "./javascript-ast.js";
 
 export type ModuleSyntaxFinding = {
-	/** The offending expression's leading text, for the diagnostic message. */
 	text: string;
-	/** Character offsets within the script source. */
 	start: number;
 	end: number;
 };
 
 export function findUnsupportedModuleSyntax(
 	source: string,
+	program: Program,
 ): ModuleSyntaxFinding[] {
-	const sourceFile = ts.createSourceFile(
-		"script.ts",
-		source,
-		ts.ScriptTarget.ES2018,
-		true,
-	);
 	const findings: ModuleSyntaxFinding[] = [];
-
-	const record = (node: ts.Node): void => {
-		findings.push({
-			text: truncated(node.getText(sourceFile)),
-			start: node.getStart(sourceFile),
-			end: node.getEnd(),
-		});
-	};
-
-	const visit = (node: ts.Node): void => {
-		if (ts.isImportEqualsDeclaration(node)) record(node);
+	walkJavaScript(program, (node) => {
+		if (node.type === "ImportExpression") record(node);
 		if (
-			ts.isCallExpression(node) &&
-			(node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-				(ts.isIdentifier(node.expression) &&
-					node.expression.text === "require"))
+			node.type === "CallExpression" &&
+			identifierName(node.callee) === "require"
 		) {
 			record(node);
 		}
-		ts.forEachChild(node, visit);
-	};
-	visit(sourceFile);
-
+	});
 	return findings;
+
+	function record(node: JavaScriptNode): void {
+		findings.push({
+			text: truncated(source.slice(node.start, node.end)),
+			start: node.start,
+			end: node.end,
+		});
+	}
+}
+
+function identifierName(value: unknown): string | undefined {
+	return value &&
+		typeof value === "object" &&
+		"type" in value &&
+		value.type === "Identifier" &&
+		"name" in value &&
+		typeof value.name === "string"
+		? value.name
+		: undefined;
 }
 
 function truncated(text: string): string {

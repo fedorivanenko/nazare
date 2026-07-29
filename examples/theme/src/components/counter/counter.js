@@ -1,5 +1,5 @@
-import { cn } from "../cn/cn.ts";
-import { formatValue } from "./format.ts";
+import { cn } from "../cn/cn.js";
+import { formatValue } from "./format.js";
 
 export default island(({ root, refs, data }) => {
 	let value = data.root.start;

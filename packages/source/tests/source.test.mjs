@@ -144,7 +144,7 @@ test("unclosed embedded blocks produce CST issues and open regions", () => {
 
 test("script language has one named default and rejects unsupported values", () => {
 	for (const [opening, language] of [
-		["{% script %}", "typescript"],
+		["{% script %}", "javascript"],
 		['{% script lang="js" %}', "javascript"],
 		['{% script lang="ts" %}', "typescript"],
 	]) {

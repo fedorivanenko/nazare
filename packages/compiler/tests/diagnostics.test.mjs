@@ -372,20 +372,20 @@ const cases = [
 	// --- islands ----------------------------------------------------------
 	{
 		name: "island names no imported behavior",
-		files: { "counter.ts": `export default island(() => {});\n` },
-		src: `{% import counter from "./counter.ts" %}\n<div><section island="toggle"></section></div>`,
+		files: { "counter.js": `export default island(() => {});\n` },
+		src: `{% import counter from "./counter.js" %}\n<div><section island="toggle"></section></div>`,
 		expect: "CONSTRAINT_UNKNOWN_ISLAND",
 	},
 	{
 		name: "behavior placed twice",
-		files: { "counter.ts": `export default island(() => {});\n` },
-		src: `{% import counter from "./counter.ts" %}\n<div><section island="counter"></section><aside island="counter"></aside></div>`,
+		files: { "counter.js": `export default island(() => {});\n` },
+		src: `{% import counter from "./counter.js" %}\n<div><section island="counter"></section><aside island="counter"></aside></div>`,
 		expect: "CONSTRAINT_DUPLICATE_ISLAND",
 	},
 	{
 		name: "dynamic island value warns, not unknown-island",
-		files: { "counter.ts": `export default island(() => {});\n` },
-		src: `{% import counter from "./counter.ts" %}\n<div><section island="{{ x }}"></section></div>`,
+		files: { "counter.js": `export default island(() => {});\n` },
+		src: `{% import counter from "./counter.js" %}\n<div><section island="{{ x }}"></section></div>`,
 		check: (r) => {
 			assert.ok(codes(r).includes("NAZARE_PARSE_REF_ATTRIBUTE"));
 			assert.ok(!codes(r).includes("CONSTRAINT_UNKNOWN_ISLAND"));
@@ -395,7 +395,7 @@ const cases = [
 	// --- imports ----------------------------------------------------------
 	{
 		name: "side-effect import form",
-		src: `{% import "./x.ts" %}\n<div></div>`,
+		src: `{% import "./x.js" %}\n<div></div>`,
 		expect: "NAZARE_PARSE_IMPORT",
 	},
 	{
@@ -406,7 +406,7 @@ const cases = [
 	{
 		name: "import escaping the project root",
 		file: "a/b/c.nz.liquid",
-		src: `{% import x from "../../../outside/util.ts" %}\n<div></div>`,
+		src: `{% import x from "../../../outside/util.js" %}\n<div></div>`,
 		expect: "NAZARE_IMPORT_OUTSIDE_PROJECT",
 	},
 	{
@@ -417,10 +417,10 @@ const cases = [
 	{
 		name: "duplicate import binding",
 		files: {
-			"a.ts": `export default island(() => {});`,
-			"b.ts": `export default island(() => {});`,
+			"a.js": `export default island(() => {});`,
+			"b.js": `export default island(() => {});`,
 		},
-		src: `{% import behavior from "./a.ts" %}\n{% import behavior from "./b.ts" %}\n<div></div>`,
+		src: `{% import behavior from "./a.js" %}\n{% import behavior from "./b.js" %}\n<div></div>`,
 		expect: "NAZARE_PARSE_DUPLICATE_IMPORT",
 	},
 	{
@@ -430,24 +430,24 @@ const cases = [
 	},
 	{
 		name: "capitalized behavior import name",
-		src: `{% import Widget from "./widget.ts" %}\n<div></div>`,
+		src: `{% import Widget from "./widget.js" %}\n<div></div>`,
 		expect: "NAZARE_IMPORT_BINDING_CASE",
 	},
 	{
 		name: "unreadable behavior import",
-		src: `{% import missing from "./missing.ts" %}\n<div></div>`,
+		src: `{% import missing from "./missing.js" %}\n<div></div>`,
 		expect: "IMPORT_NOT_FOUND",
 	},
 
 	// --- behavior module syntax ------------------------------------------
 	{
-		name: "import-equals in a script",
-		src: `<div ref="root"></div>\n{% script lang="ts" %}\nimport lodash = require("lodash");\nexport default island(({ refs }) => refs.root.remove());\n{% endscript %}`,
+		name: "dynamic import in a script",
+		src: `<div ref="root"></div>\n{% script lang="js" %}\nimport("./lazy.js");\nexport default island(({ refs }) => refs.root.remove());\n{% endscript %}`,
 		expect: "SCRIPT_MODULE_SYNTAX_UNSUPPORTED",
 	},
 	{
-		name: "relative and type-only imports are allowed",
-		src: `<div ref="root"></div>\n{% script lang="ts" %}\nimport type { T } from "./t.ts";\nimport { d } from "./u.ts";\nexport default island(({ refs }) => refs.root.remove());\n{% endscript %}`,
+		name: "relative imports are allowed",
+		src: `<div ref="root"></div>\n{% script lang="js" %}\nimport { d } from "./u.js";\nexport default island(({ refs }) => refs.root.remove());\n{% endscript %}`,
 		check: (r) =>
 			assert.ok(!codes(r).includes("SCRIPT_MODULE_SYNTAX_UNSUPPORTED")),
 	},
@@ -494,22 +494,22 @@ const cases = [
 		name: "missing bundled module",
 		emit: true,
 		files: {
-			"components/w/w.ts": `import { gone } from "./missing.ts";\nexport default island(() => {});\n`,
+			"components/w/w.js": `import { gone } from "./missing.js";\nexport default island(() => {});\n`,
 		},
 		file: "components/w/w.nz.liquid",
-		src: `{% import w from "./w.ts" %}\n<div ref="root"></div>`,
+		src: `{% import w from "./w.js" %}\n<div ref="root"></div>`,
 		expect: "SCRIPT_IMPORT_NOT_FOUND",
 	},
 	{
 		name: "bundled import cycle",
 		emit: true,
 		files: {
-			"components/w/w.ts": `import "./a.ts";\nexport default island(() => {});\n`,
-			"components/w/a.ts": `import "./b.ts";\nexport const a = 1;\n`,
-			"components/w/b.ts": `import "./a.ts";\nexport const b = 2;\n`,
+			"components/w/w.js": `import "./a.js";\nexport default island(() => {});\n`,
+			"components/w/a.js": `import "./b.js";\nexport const a = 1;\n`,
+			"components/w/b.js": `import "./a.js";\nexport const b = 2;\n`,
 		},
 		file: "components/w/w.nz.liquid",
-		src: `{% import w from "./w.ts" %}\n<div ref="root"></div>`,
+		src: `{% import w from "./w.js" %}\n<div ref="root"></div>`,
 		expect: "SCRIPT_IMPORT_CYCLE",
 	},
 	{

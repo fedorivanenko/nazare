@@ -12,6 +12,7 @@ import {
 	emitLiquidFile,
 	emitScriptFiles,
 	emitTheme,
+	importSpecifiers,
 	projectTreeSitterNazareAst,
 	resolveAssetImports,
 	treeSitterNazareLiquidFrontend,
@@ -389,7 +390,7 @@ test("dependency checking reuses parsed transitive imports", async () => {
 
 test("missing asset imports remain resolve diagnostics", () => {
 	const compiled = compileNazareArtifact(
-		`{% import behavior from "./missing.ts" %}\n<div></div>`,
+		`{% import behavior from "./missing.js" %}\n<div></div>`,
 		"component.nz.liquid",
 	);
 	const issue = compiled.issues.find(
@@ -400,7 +401,7 @@ test("missing asset imports remain resolve diagnostics", () => {
 });
 
 test("resolveAssetImports returns a resolved AST without mutating parse output", () => {
-	const source = `{% import behavior from "./behavior.ts" %}\n<div></div>`;
+	const source = `{% import behavior from "./behavior.js" %}\n<div></div>`;
 	const ast = projectTreeSitterNazareAst(source, "component.nz.liquid").ast;
 	const resolved = resolveAssetImports(
 		ast,
@@ -410,4 +411,21 @@ test("resolveAssetImports returns a resolved AST without mutating parse output",
 	assert.equal(ast.nodes[0].type, "NazareAssetImport");
 	assert.equal(resolved.ast.nodes[0].type, "NazareScript");
 	assert.equal(resolved.issues.length, 0);
+});
+
+test("malformed imported JavaScript produces a resolve diagnostic", () => {
+	const source = `{% import behavior from "./behavior.js" %}\n<div></div>`;
+	const ast = projectTreeSitterNazareAst(source, "component.nz.liquid").ast;
+	const resolved = resolveAssetImports(ast, () => "export default ;");
+
+	assert.equal(resolved.issues.length, 1);
+	assert.equal(resolved.issues[0].code, "SCRIPT_JAVASCRIPT_PARSE_ERROR");
+	assert.equal(resolved.issues[0].phase, "resolve");
+});
+
+test("importSpecifiers rejects malformed JavaScript", () => {
+	assert.throws(
+		() => importSpecifiers("import {"),
+		/Cannot read JavaScript imports/,
+	);
 });

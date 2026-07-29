@@ -77,7 +77,7 @@ test("theme source registry rejects ambiguous frontend ownership", () => {
 });
 
 test("theme source registry rejects unsupported recognized input", () => {
-	const result = analyze("scripts/cart.ts", "", "other", []);
+	const result = analyze("scripts/cart.js", "", "other", []);
 
 	assert.equal(result.completeness, "failed");
 	assert.equal(result.frontend, "none");

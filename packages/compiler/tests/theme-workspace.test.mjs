@@ -1508,10 +1508,10 @@ test("workspace strictly checks plain Liquid and component scripts before emit",
 		{
 			path: "invalid.nz.liquid",
 			contents:
-				'<div ref="panel"></div>{% script lang="ts" %}export default island(({ refs }) => { refs.panel.disabled = true; });{% endscript %}',
+				'<div ref="panel"></div>{% script lang="ts" %}export default island(({ refs }) => refs.panel.remove());{% endscript %}',
 		},
 	]);
-	assert.equal(hasIssue(scripts, "SCRIPT_TYPE_ERROR"), true);
+	assert.equal(hasIssue(scripts, "SCRIPT_TYPESCRIPT_UNSUPPORTED"), true);
 	assert.deepEqual(scripts.emitted.files, []);
 });
 
@@ -1523,7 +1523,7 @@ test("workspace rejects malformed JavaScript and direct require calls", () => {
 				'<div></div>{% script lang="js" %}export default island(({ root }) => { root.remove( ; });{% endscript %}',
 		},
 	]);
-	assert.equal(hasIssue(malformed, "SCRIPT_TYPE_ERROR"), true);
+	assert.equal(hasIssue(malformed, "SCRIPT_JAVASCRIPT_PARSE_ERROR"), true);
 	assert.deepEqual(malformed.emitted.files, []);
 
 	const requireCall = buildNazareThemeWorkspace([
