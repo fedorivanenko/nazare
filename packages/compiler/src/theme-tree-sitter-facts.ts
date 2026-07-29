@@ -229,7 +229,9 @@ export function collectTreeSitterSourceThemeFacts(
 		);
 		if (!primary) continue;
 		for (const name of names) {
-			guardRanges.set(name, [...(guardRanges.get(name) ?? []), primary]);
+			const ranges = guardRanges.get(name);
+			if (ranges) ranges.push(primary);
+			else guardRanges.set(name, [primary]);
 		}
 		if (
 			liquid.localBindings.some(

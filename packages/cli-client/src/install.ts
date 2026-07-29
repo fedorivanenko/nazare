@@ -16,6 +16,10 @@ import {
 
 const THEME_MANIFEST = "nazare.theme.json";
 
+export const INSTALL_DEFAULTS = Object.freeze({
+	fetchConcurrency: 8,
+});
+
 /** add keeps an already-installed copy; update overwrites it after hash guards. */
 export type InstallMode = "add" | "update";
 
@@ -25,6 +29,7 @@ export type InstallOptions = {
 	sourceRoot: string;
 	/** Overwrite/delete local edits during update. Intended for explicit --force. */
 	force?: boolean;
+	fetchConcurrency?: number;
 };
 
 export type InstallOutcome = {
@@ -65,6 +70,11 @@ export async function installComponent(
 	options: InstallOptions,
 ): Promise<InstallOutcome> {
 	const { client, projectRoot, sourceRoot } = options;
+	const fetchConcurrency =
+		options.fetchConcurrency ?? INSTALL_DEFAULTS.fetchConcurrency;
+	if (!Number.isSafeInteger(fetchConcurrency) || fetchConcurrency < 1) {
+		throw new Error("fetchConcurrency must be a positive safe integer");
+	}
 	const manifest = await readThemeManifest(projectRoot);
 	const installedRecord = { ...(manifest.installed ?? {}) };
 	const installedFiles = cloneInstalledFiles(manifest.installedFiles ?? {});
@@ -73,56 +83,70 @@ export async function installComponent(
 	const warnings: string[] = [];
 	const skipped: { id: string; version: string }[] = [];
 
-	const queue: { id: string; version: string }[] = [{ id, version }];
-	while (queue.length > 0) {
-		const request = queue.shift();
-		if (!request) break;
-
-		const resolved = toWrite.get(request.id);
-		if (resolved) {
-			// Already chosen this run: a diamond. One copy wins; note a mismatch.
-			if (
-				request.version !== "latest" &&
-				resolved.version !== request.version
-			) {
-				warnings.push(
-					`${request.id}: keeping ${resolved.version}; ${request.version} also requested (one copy per project)`,
+	let frontier: { id: string; version: string }[] = [{ id, version }];
+	while (frontier.length > 0) {
+		const fetchRequests: { id: string; version: string }[] = [];
+		const deferred: { id: string; version: string }[] = [];
+		const scheduledIds = new Set<string>();
+		for (const request of frontier) {
+			const resolved = toWrite.get(request.id);
+			if (resolved) {
+				if (
+					request.version !== "latest" &&
+					resolved.version !== request.version
+				) {
+					warnings.push(
+						`${request.id}: keeping ${resolved.version}; ${request.version} also requested (one copy per project)`,
+					);
+				}
+				continue;
+			}
+			if (scheduledIds.has(request.id)) {
+				deferred.push(request);
+				continue;
+			}
+			scheduledIds.add(request.id);
+			fetchRequests.push(request);
+		}
+		const fetched = await mapConcurrent(
+			fetchRequests,
+			fetchConcurrency,
+			async (request) => ({
+				request,
+				component: await client.fetchComponent(request.id, request.version),
+			}),
+		);
+		const nextFrontier = [...deferred];
+		for (const { request, component } of fetched) {
+			if (!component) {
+				throw new Error(
+					`${request.id}@${request.version} was not found in the registry`,
 				);
 			}
-			continue;
-		}
-
-		const component = await client.fetchComponent(request.id, request.version);
-		if (!component) {
-			throw new Error(
-				`${request.id}@${request.version} was not found in the registry`,
-			);
-		}
-
-		const invalid = validateBasicRegistryComponent(component);
-		if (invalid) {
-			throw new Error(
-				`${request.id}@${request.version} returned an invalid registry component: ${invalid}`,
-			);
-		}
-
-		const installedVersion = installedRecord[request.id];
-		if (mode === "add" && installedVersion !== undefined) {
-			// One copy per project: an existing install is kept, not replaced. Its
-			// dependencies are already on disk, so the closure is not re-walked.
-			if (installedVersion !== component.version) {
-				warnings.push(
-					`${request.id}: already installed at ${installedVersion}, keeping it (skipped ${component.version})`,
+			const invalid = validateBasicRegistryComponent(component);
+			if (invalid) {
+				throw new Error(
+					`${request.id}@${request.version} returned an invalid registry component: ${invalid}`,
 				);
 			}
-			skipped.push({ id: request.id, version: installedVersion });
-			continue;
+			const installedVersion = installedRecord[request.id];
+			if (mode === "add" && installedVersion !== undefined) {
+				if (installedVersion !== component.version) {
+					warnings.push(
+						`${request.id}: already installed at ${installedVersion}, keeping it (skipped ${component.version})`,
+					);
+				}
+				skipped.push({ id: request.id, version: installedVersion });
+				continue;
+			}
+			toWrite.set(request.id, component);
+			for (const [depId, depVersion] of Object.entries(
+				component.dependencies,
+			)) {
+				nextFrontier.push({ id: depId, version: depVersion });
+			}
 		}
-
-		toWrite.set(request.id, component);
-		for (const [depId, depVersion] of Object.entries(component.dependencies)) {
-			queue.push({ id: depId, version: depVersion });
-		}
+		frontier = nextFrontier;
 	}
 
 	assertNoFolderCollisions(installedRecord, toWrite, sourceRoot);
@@ -378,6 +402,31 @@ async function fileHash(path: string): Promise<string | undefined> {
 
 function sha256(contents: string): string {
 	return `sha256-${createHash("sha256").update(contents).digest("hex")}`;
+}
+
+async function mapConcurrent<Input, Output>(
+	items: Input[],
+	concurrency: number,
+	operation: (item: Input) => Promise<Output>,
+): Promise<Output[]> {
+	const results = new Array<Output>(items.length);
+	let nextIndex = 0;
+	const workerCount = Math.min(concurrency, items.length);
+	await Promise.all(
+		Array.from({ length: workerCount }, async () => {
+			while (true) {
+				const index = nextIndex;
+				nextIndex += 1;
+				if (index >= items.length) return;
+				const item = items[index];
+				if (item === undefined) {
+					throw new Error(`Concurrent install queue is missing item ${index}`);
+				}
+				results[index] = await operation(item);
+			}
+		}),
+	);
+	return results;
 }
 
 function cloneInstalledFiles(

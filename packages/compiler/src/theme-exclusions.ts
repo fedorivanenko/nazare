@@ -66,11 +66,16 @@ export function partitionExcludedThemeFiles(
 	}
 	const analyzed: ThemeInputFile[] = [];
 	const excluded: ThemeExclusion[] = [];
+	const compiledPatterns = patterns.map((pattern) => ({
+		pattern,
+		compiled: globRegExp(pattern),
+	}));
 	for (const file of files) {
-		const pattern = patterns.find((candidate) =>
-			matchesThemeGlob(file.path, candidate),
+		const normalizedPath = normalizeThemePath(file.path);
+		const matched = compiledPatterns.find(({ compiled }) =>
+			compiled.test(normalizedPath),
 		);
-		if (pattern) excluded.push({ path: file.path, pattern });
+		if (matched) excluded.push({ path: file.path, pattern: matched.pattern });
 		else analyzed.push(file);
 	}
 	return { analyzed, excluded };

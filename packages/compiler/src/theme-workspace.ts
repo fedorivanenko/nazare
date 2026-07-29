@@ -108,6 +108,7 @@ export function buildNazareThemeWorkspace(
 		scopePaths,
 	);
 	const allIssues: Diagnostic[] = [...analysis.issues];
+	const diagnosticKeys = new Set(allIssues.map(diagnosticKey));
 	const emitted: EmitResult = { files: [], issues: [] };
 	const emittedContentsByPath = new Map<string, string>();
 	let hasOutputCollision = false;
@@ -118,7 +119,7 @@ export function buildNazareThemeWorkspace(
 			resolver: dependencyResolver,
 		});
 		dependencyIssuesByPath.set(artifact.path, dependencyIssues);
-		pushUniqueDiagnostics(allIssues, dependencyIssues);
+		pushUniqueDiagnostics(allIssues, diagnosticKeys, dependencyIssues);
 	}
 
 	const workspaceCanEmit =
@@ -158,11 +159,13 @@ export function buildNazareThemeWorkspace(
 			}
 			if (existing !== file.contents) {
 				hasOutputCollision = true;
-				pushUniqueDiagnostics(allIssues, [outputCollisionIssue(outputPath)]);
+				pushUniqueDiagnostics(allIssues, diagnosticKeys, [
+					outputCollisionIssue(outputPath),
+				]);
 			}
 		}
 		emitted.issues.push(...result.issues);
-		pushUniqueDiagnostics(allIssues, result.issues);
+		pushUniqueDiagnostics(allIssues, diagnosticKeys, result.issues);
 		return {
 			...artifact,
 			canEmit: artifact.canEmit && !hasErrors(result.issues),
@@ -565,9 +568,9 @@ function outputCollisionIssue(path: string): Diagnostic {
 
 function pushUniqueDiagnostics(
 	target: Diagnostic[],
+	seen: Set<string>,
 	diagnostics: Diagnostic[],
 ): void {
-	const seen = new Set(target.map(diagnosticKey));
 	for (const diagnostic of diagnostics) {
 		const key = diagnosticKey(diagnostic);
 		if (seen.has(key)) continue;

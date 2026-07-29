@@ -1,6 +1,7 @@
 import Parser from "tree-sitter";
 import Html from "tree-sitter-html";
 import { parseTreeText } from "../parser-input.js";
+import { walkNamedNodes as walk } from "../tree-sitter-walk.js";
 import {
 	DEFAULT_NAZARE_SCRIPT_LANGUAGE,
 	type SourceDocument,
@@ -730,18 +731,11 @@ function nodeRange(node: Parser.SyntaxNode): SourceRange {
 }
 
 function trimmedNodeRange(node: Parser.SyntaxNode): SourceRange {
+	const text = node.text;
 	return {
-		start: node.startIndex + (node.text.length - node.text.trimStart().length),
-		end: node.endIndex - (node.text.length - node.text.trimEnd().length),
+		start: node.startIndex + (text.length - text.trimStart().length),
+		end: node.endIndex - (text.length - text.trimEnd().length),
 	};
-}
-
-function walk(
-	node: Parser.SyntaxNode,
-	visit: (node: Parser.SyntaxNode) => void,
-): void {
-	visit(node);
-	for (const child of node.namedChildren) walk(child, visit);
 }
 
 function unquote(value: string): string {
