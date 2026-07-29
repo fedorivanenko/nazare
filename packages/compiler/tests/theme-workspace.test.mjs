@@ -229,6 +229,10 @@ test("graph store applies stable-ID records transactionally", () => {
 	const card = committed.getNode(cardId);
 	const staged = committed.fork();
 	const delta = staged.applyGraph(second);
+	assert.throws(
+		() => staged.getOwnedNodeIds(cardId),
+		/ownership is unavailable; call replaceOwnership\(\)/,
+	);
 	assert.strictEqual(staged.getNode(cardId), card);
 	const viewStore = committed.fork();
 	const configurationView = viewStore.getGraph().views.configuration;
@@ -290,7 +294,26 @@ test("graph store applies stable-ID records transactionally", () => {
 	);
 
 	const validationStore = new ThemeGraphStore(first);
+	validationStore.replaceOwnership(firstModel);
+	const previousOwnedNodeIds = validationStore.getOwnedNodeIds(cardId);
+	const malformedModel = structuredClone(firstModel);
+	malformedModel.files[0].id = "";
+	assert.throws(
+		() => validationStore.replaceOwnership(malformedModel),
+		/record without an id/,
+	);
+	assert.deepEqual(
+		validationStore.getOwnedNodeIds(cardId),
+		previousOwnedNodeIds,
+	);
 	const previousGraph = validationStore.getGraph();
+	const duplicateNode = structuredClone(first);
+	duplicateNode.nodes.push(structuredClone(duplicateNode.nodes[0]));
+	assert.throws(
+		() => validationStore.applyGraph(duplicateNode),
+		/Duplicate graph node id/,
+	);
+	assert.strictEqual(validationStore.getGraph(), previousGraph);
 	const missingEndpoint = structuredClone(first);
 	missingEndpoint.edges[0].to = "missing:node";
 	assert.throws(
@@ -303,6 +326,13 @@ test("graph store applies stable-ID records transactionally", () => {
 	assert.throws(
 		() => validationStore.applyGraph(missingEvidence),
 		/missing evidence missing:evidence/,
+	);
+	assert.strictEqual(validationStore.getGraph(), previousGraph);
+	const malformedEvidence = structuredClone(first);
+	malformedEvidence.edges[0].evidenceIds = "not-an-array";
+	assert.throws(
+		() => validationStore.applyGraph(malformedEvidence),
+		/evidenceIds must be an array/,
 	);
 	assert.strictEqual(validationStore.getGraph(), previousGraph);
 });
