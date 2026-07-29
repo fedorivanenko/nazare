@@ -104,17 +104,47 @@ test("add fetches each dependency frontier concurrently", async () => {
 	}
 });
 
-test("add rejects invalid fetch concurrency before registry or disk work", async () => {
+test("add waits for in-flight frontier fetches before reporting a failure", async () => {
+	const fetchDelayMs = 10;
+	const root = component("@nazare/root", "1.0.0", {
+		"@nazare/fails": "1.0.0",
+		"@nazare/settles": "1.0.0",
+	});
+	let settled = false;
+	const client = {
+		async fetchComponent(id) {
+			if (id === "@nazare/root") return root;
+			if (id === "@nazare/fails") throw new Error("registry unavailable");
+			await new Promise((resolve) => setTimeout(resolve, fetchDelayMs));
+			settled = true;
+			return component("@nazare/settles", "1.0.0");
+		},
+	};
 	await assert.rejects(
 		installComponent("@nazare/root", "1.0.0", "add", {
-			client: { fetchComponent: async () => undefined },
+			client,
 			projectRoot: "/unused",
 			sourceRoot: "nazare",
-			fetchConcurrency: 0,
+			fetchConcurrency: 2,
 		}),
-		/positive safe integer/,
+		/registry unavailable/,
 	);
+	assert.equal(settled, true);
 });
+
+for (const concurrencyOption of ["fetchConcurrency", "ioConcurrency"]) {
+	test(`add rejects invalid ${concurrencyOption} before registry or disk work`, async () => {
+		await assert.rejects(
+			installComponent("@nazare/root", "1.0.0", "add", {
+				client: { fetchComponent: async () => undefined },
+				projectRoot: "/unused",
+				sourceRoot: "nazare",
+				[concurrencyOption]: 0,
+			}),
+			new RegExp(`${concurrencyOption} must be a positive safe integer`),
+		);
+	});
+}
 
 test("re-adding an installed component at the same version is a no-op", async () => {
 	await withProject(

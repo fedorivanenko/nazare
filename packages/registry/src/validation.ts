@@ -32,8 +32,25 @@ export function validateBasicRegistryComponent(
 	}
 	if (Object.keys(component.files).length === 0)
 		return "files must not be empty";
+	const normalizedPaths = new Map<string, string>();
 	for (const path of Object.keys(component.files)) {
 		if (!isSafeRelativePath(path)) return `unsafe file path "${path}"`;
+		const normalized = path.split(/[\\/]/).join("/");
+		const collidingPath = normalizedPaths.get(normalized);
+		if (collidingPath !== undefined) {
+			return `file paths "${collidingPath}" and "${path}" collide`;
+		}
+		normalizedPaths.set(normalized, path);
+	}
+	for (const [normalized, path] of normalizedPaths) {
+		const segments = normalized.split("/");
+		for (let index = 1; index < segments.length; index += 1) {
+			const parentPath = segments.slice(0, index).join("/");
+			const parentFile = normalizedPaths.get(parentPath);
+			if (parentFile !== undefined) {
+				return `file path "${parentFile}" conflicts with child path "${path}"`;
+			}
+		}
 	}
 	return undefined;
 }
