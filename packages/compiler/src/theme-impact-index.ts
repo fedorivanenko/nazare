@@ -43,6 +43,11 @@ export class ThemeImpactIndex {
 	private readonly summaryDependenciesByPath = new Map<string, Set<string>>();
 	private readonly summaryDependentsByPath = new Map<string, Set<string>>();
 	private readonly pageDependenciesByPath = new Map<string, Set<string>>();
+	private readonly pageClosureByPagePath = new Map<string, Set<string>>();
+	private readonly affectedPagesByPath = new Map<string, Set<string>>();
+	private readonly touchedSummaryPaths = new Set<string>();
+	private readonly touchedPagePaths = new Set<string>();
+	private readonly pagePathCounts = new Map<string, number>();
 	private readonly summaryContributionByEdgeId = new Map<
 		string,
 		SummaryContribution
@@ -72,6 +77,11 @@ export class ThemeImpactIndex {
 		this.summaryDependenciesByPath.clear();
 		this.summaryDependentsByPath.clear();
 		this.pageDependenciesByPath.clear();
+		this.pageClosureByPagePath.clear();
+		this.affectedPagesByPath.clear();
+		this.touchedSummaryPaths.clear();
+		this.touchedPagePaths.clear();
+		this.pagePathCounts.clear();
 		this.summaryContributionByEdgeId.clear();
 		this.summaryEdgeCounts.clear();
 		this.summaryPageEdgeCounts.clear();
@@ -96,6 +106,11 @@ export class ThemeImpactIndex {
 		copySetMap(this.summaryDependenciesByPath, fork.summaryDependenciesByPath);
 		copySetMap(this.summaryDependentsByPath, fork.summaryDependentsByPath);
 		copySetMap(this.pageDependenciesByPath, fork.pageDependenciesByPath);
+		copySetMap(this.pageClosureByPagePath, fork.pageClosureByPagePath);
+		copySetMap(this.affectedPagesByPath, fork.affectedPagesByPath);
+		copySet(this.touchedSummaryPaths, fork.touchedSummaryPaths);
+		copySet(this.touchedPagePaths, fork.touchedPagePaths);
+		copyMap(this.pagePathCounts, fork.pagePathCounts);
 		copyMap(this.summaryContributionByEdgeId, fork.summaryContributionByEdgeId);
 		copyMap(this.summaryEdgeCounts, fork.summaryEdgeCounts);
 		copyMap(this.summaryPageEdgeCounts, fork.summaryPageEdgeCounts);
@@ -194,12 +209,20 @@ export class ThemeImpactIndex {
 			ids.add(node.id);
 			this.nodeIdsByPath.set(node.path, ids);
 		}
-		if (node.kind === "page") this.pagePathsByNode.set(node.id, [node.path]);
+		if (node.kind === "page") {
+			this.pagePathsByNode.set(node.id, [node.path]);
+			this.touchedPagePaths.add(node.path);
+			incrementCount(this.pagePathCounts, node.path);
+		}
 	}
 
 	private removeNode(node: ImpactNode): void {
 		this.nodesById.delete(node.id);
 		this.pagePathsByNode.delete(node.id);
+		if (node.kind === "page") {
+			this.touchedPagePaths.add(node.path);
+			decrementCount(this.pagePathCounts, node.path);
+		}
 		if (!("path" in node)) return;
 		this.pathByNodeId.delete(node.id);
 		const ids = this.nodeIdsByPath.get(node.path);
@@ -274,6 +297,8 @@ export class ThemeImpactIndex {
 			contribution.propagatesToPages &&
 			incrementCount(this.summaryPageEdgeCounts, key) === 1
 		) {
+			this.touchedSummaryPaths.add(contribution.fromPath);
+			this.touchedSummaryPaths.add(contribution.toPath);
 			addValue(
 				this.pageDependenciesByPath,
 				contribution.fromPath,
@@ -303,6 +328,8 @@ export class ThemeImpactIndex {
 			contribution.propagatesToPages &&
 			decrementCount(this.summaryPageEdgeCounts, key) === 0
 		) {
+			this.touchedSummaryPaths.add(contribution.fromPath);
+			this.touchedSummaryPaths.add(contribution.toPath);
 			removeValue(
 				this.pageDependenciesByPath,
 				contribution.fromPath,
@@ -312,15 +339,51 @@ export class ThemeImpactIndex {
 	}
 
 	private refreshSummary(): void {
+		this.refreshAffectedPages();
 		const next = impactSummaryFromIndexes(
 			this.nodesById.values(),
 			this.summaryDependenciesByPath,
 			this.summaryDependentsByPath,
 			this.pageDependenciesByPath,
+			this.affectedPagesByPath,
 			this.dynamicSnippetReferenceCount > 0,
 		);
 		this.summary = shareImpactSummary(this.summary, next);
 		this.publishedSummary = undefined;
+	}
+
+	private refreshAffectedPages(): void {
+		const affectedPagePaths = new Set(this.touchedPagePaths);
+		for (const path of this.touchedSummaryPaths) {
+			for (const pagePath of this.affectedPagesByPath.get(path) ?? []) {
+				affectedPagePaths.add(pagePath);
+			}
+		}
+		const pending = [...this.touchedSummaryPaths];
+		const visited = new Set<string>();
+		while (pending.length > 0) {
+			const path = pending.pop();
+			if (path === undefined || visited.has(path)) continue;
+			visited.add(path);
+			if (this.pagePathCounts.has(path)) affectedPagePaths.add(path);
+			for (const dependent of this.summaryDependentsByPath.get(path) ?? []) {
+				pending.push(dependent);
+			}
+		}
+		for (const pagePath of affectedPagePaths) {
+			for (const dependency of this.pageClosureByPagePath.get(pagePath) ?? []) {
+				removeValue(this.affectedPagesByPath, dependency, pagePath);
+			}
+			this.pageClosureByPagePath.delete(pagePath);
+			if (!this.pagePathCounts.has(pagePath)) continue;
+			const closure = dependencyClosure(pagePath, this.pageDependenciesByPath);
+			this.pageClosureByPagePath.set(pagePath, closure);
+			for (const dependency of closure) {
+				addValue(this.affectedPagesByPath, dependency, pagePath);
+			}
+		}
+		this.touchedSummaryPaths.clear();
+		this.touchedPagePaths.clear();
 	}
 
 	getUnusedFileCount(): number {
@@ -409,23 +472,10 @@ function impactSummaryFromIndexes(
 	dependencies: Map<string, Set<string>>,
 	dependents: Map<string, Set<string>>,
 	pageDependencies: Map<string, Set<string>>,
+	affectedPages: Map<string, Set<string>>,
 	hasDynamicSnippetReference: boolean,
 ): ThemeImpactSummary {
 	const nodeList = [...nodes];
-	const affectedPages = new Map<string, Set<string>>();
-	for (const page of nodeList.filter((node) => node.kind === "page")) {
-		const visited = new Set<string>();
-		const pending = [page.path];
-		while (pending.length > 0) {
-			const path = pending.pop();
-			if (path === undefined || visited.has(path)) continue;
-			visited.add(path);
-			addValue(affectedPages, path, page.path);
-			for (const dependency of pageDependencies.get(path) ?? []) {
-				pending.push(dependency);
-			}
-		}
-	}
 	const declaredFiles = new Set(
 		nodeList.filter((node) => node.kind === "file").map((node) => node.path),
 	);
@@ -517,6 +567,23 @@ function isDynamicSnippetReference(edge: ImpactEdge): boolean {
 	return edge.kind === "renders" && !("targetName" in edge && edge.targetName);
 }
 
+function dependencyClosure(
+	rootPath: string,
+	dependenciesByPath: Map<string, Set<string>>,
+): Set<string> {
+	const visited = new Set<string>();
+	const pending = [rootPath];
+	while (pending.length > 0) {
+		const path = pending.pop();
+		if (path === undefined || visited.has(path)) continue;
+		visited.add(path);
+		for (const dependency of dependenciesByPath.get(path) ?? []) {
+			pending.push(dependency);
+		}
+	}
+	return visited;
+}
+
 function propagatesPageImpact(edge: ImpactEdge): boolean {
 	return (
 		edge.kind !== "dependsOnDomHook" &&
@@ -563,6 +630,10 @@ function removeValue(
 	const values = map.get(key);
 	values?.delete(value);
 	if (values?.size === 0) map.delete(key);
+}
+
+function copySet<Value>(source: Set<Value>, target: Set<Value>): void {
+	for (const value of source) target.add(value);
 }
 
 function copyMap<Key, Value>(
