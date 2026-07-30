@@ -21,10 +21,12 @@ export class ThemeSemanticStore {
 	private model: ThemeSemanticModel;
 	private readonly recordsById = new Map<string, unknown>();
 	private readonly recordIdsBySourcePath = new Map<string, Set<string>>();
+	private recordGroupsById: Map<string, unknown[]>;
 
 	constructor(model: ThemeSemanticModel) {
 		this.model = canonicalizeSemanticModel(model);
-		this.indexModel(this.model);
+		this.recordGroupsById = groupRecordsById(this.model);
+		this.indexRecordGroups(this.recordGroupsById);
 	}
 
 	getModel(): ThemeSemanticModel {
@@ -42,37 +44,43 @@ export class ThemeSemanticStore {
 	beginUpdate(next: ThemeSemanticModel): ThemeSemanticTransaction {
 		return new ThemeSemanticTransaction(
 			this,
-			this.model,
+			this.recordGroupsById,
 			mergeSemanticModels(this.model, next),
 		);
 	}
 
-	commit(update: ThemeSemanticUpdate): ThemeSemanticUpdate {
+	commit(
+		update: ThemeSemanticUpdate,
+		nextGroups: Map<string, unknown[]>,
+	): ThemeSemanticUpdate {
 		this.model = update.model;
 		for (const id of [...update.removedRecordIds, ...update.changedRecordIds]) {
-			const previous = this.recordsById.get(id);
-			if (previous)
+			for (const previous of this.recordGroupsById.get(id) ?? []) {
 				removeSourceIndex(this.recordIdsBySourcePath, id, sourcePath(previous));
+			}
 			this.recordsById.delete(id);
 		}
-		const updatedRecordIds = new Set([
-			...update.addedRecordIds,
-			...update.changedRecordIds,
-		]);
-		for (const record of records(update.model)) {
-			if (!updatedRecordIds.has(record.id)) continue;
-			this.recordsById.set(record.id, record);
-			const path = sourcePath(record);
-			if (path) addSourceIndex(this.recordIdsBySourcePath, path, record.id);
+		for (const id of [...update.addedRecordIds, ...update.changedRecordIds]) {
+			const records = nextGroups.get(id) ?? [];
+			const representative = records.at(-1);
+			if (representative) this.recordsById.set(id, representative);
+			for (const record of records) {
+				const path = sourcePath(record);
+				if (path) addSourceIndex(this.recordIdsBySourcePath, path, id);
+			}
 		}
+		this.recordGroupsById = nextGroups;
 		return update;
 	}
 
-	private indexModel(model: ThemeSemanticModel): void {
-		for (const record of records(model)) {
-			this.recordsById.set(record.id, record);
-			const path = sourcePath(record);
-			if (path) addSourceIndex(this.recordIdsBySourcePath, path, record.id);
+	private indexRecordGroups(groups: Map<string, unknown[]>): void {
+		for (const [id, records] of groups) {
+			const representative = records.at(-1);
+			if (representative) this.recordsById.set(id, representative);
+			for (const record of records) {
+				const path = sourcePath(record);
+				if (path) addSourceIndex(this.recordIdsBySourcePath, path, id);
+			}
 		}
 	}
 }
@@ -81,13 +89,15 @@ export class ThemeSemanticTransaction {
 	readonly update: ThemeSemanticUpdate;
 	private committed = false;
 
+	private readonly nextGroups: Map<string, unknown[]>;
+
 	constructor(
 		private readonly store: ThemeSemanticStore,
-		previous: ThemeSemanticModel,
+		old: Map<string, unknown[]>,
 		model: ThemeSemanticModel,
 	) {
-		const old = groupRecordsById(previous);
 		const next = groupRecordsById(model);
+		this.nextGroups = next;
 		const addedRecordIds = [...next.keys()].filter((id) => !old.has(id)).sort();
 		const removedRecordIds = [...old.keys()]
 			.filter((id) => !next.has(id))
@@ -109,7 +119,7 @@ export class ThemeSemanticTransaction {
 		if (this.committed)
 			throw new Error("Semantic transaction already committed");
 		this.committed = true;
-		return this.store.commit(this.update);
+		return this.store.commit(this.update, this.nextGroups);
 	}
 }
 

@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { Diagnostic } from "@nazare/core";
 import { compareCanonicalStrings } from "./canonical-order.js";
 import { collectThemeBehavior } from "./theme-behavior.js";
@@ -77,6 +78,7 @@ import {
 	THEME_GRAPH_METAFIELD_SCHEMA_OWNER,
 	ThemeGraphStore,
 } from "./theme-graph-store.js";
+import { affectedPagesForPaths } from "./theme-impact.js";
 import { ThemeImpactIndex } from "./theme-impact-index.js";
 import {
 	createThemeInstancePass,
@@ -192,6 +194,8 @@ export class ThemeProgram {
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
 	private readonly memo = {} as ThemeAnalysisMemo;
 	private factStore: ThemeFactStore;
+	private factIndex: ThemeFactIndex;
+	private frontendIssues: Diagnostic[];
 	private readonly collectionScheduler = createCollectionScheduler();
 	private declarationResultsBySource = new Map<
 		string,
@@ -273,6 +277,8 @@ export class ThemeProgram {
 		}
 		const analysis = analyzeNazareTheme(this.files(), this.options);
 		this.factStore = new ThemeFactStore(analysis.facts);
+		this.factIndex = new ThemeFactIndex(analysis.facts);
+		this.frontendIssues = analysis.issues;
 		const collection = runCollectionPasses(
 			this.collectionScheduler,
 			this.factStore,
@@ -450,6 +456,74 @@ export class ThemeProgram {
 			);
 			nextFactStore.replaceFile(path, facts);
 		}
+		const snapshotChanges = metafieldSnapshotChanges(
+			changedPaths,
+			this.metafieldResult.current,
+			this.options.metafields,
+		);
+		if (
+			changedPaths.length === factChangedPaths.length &&
+			changedPaths.every((path) => factChangedPaths.includes(path)) &&
+			snapshotChanges.length === 0 &&
+			isDeepStrictEqual(analysis.issues, this.frontendIssues) &&
+			factChangedPaths.every((path) =>
+				isDeepStrictEqual(
+					this.factStore.getFile(path),
+					nextFactStore.getFile(path),
+				),
+			)
+		) {
+			this.frontendIssues = analysis.issues;
+			this.revision += 1;
+			const invalidatedNodeIds = this.factIndex.dependentsOfFiles(changedPaths);
+			if (this.graphProjectionActive) {
+				const graph = this.getGraph();
+				return diffGraphs(
+					this.revision,
+					graph,
+					graph,
+					changedPaths,
+					invalidatedNodeIds,
+					[],
+					changedPaths.flatMap((path) =>
+						this.getImpactIndex().getAffectedPages(path),
+					),
+					{
+						filesParsed: factChangedPaths.length,
+						passKeysProcessed: 0,
+						semanticRecordsReplaced: 0,
+						outputsEmitted: 0,
+						elapsedMs: telemetryNow() - startedAt,
+						peakMemoryBytes: Math.max(memoryAtStart, telemetryMemory()),
+					},
+				);
+			}
+			return {
+				revision: this.revision,
+				changedPaths,
+				changedSemanticRecordIds: [],
+				invalidatedNodeIds,
+				affectedPages: affectedPagesForPaths(
+					this.semanticStore.getModel(),
+					changedPaths,
+				),
+				addedNodeIds: [],
+				removedNodeIds: [],
+				changedNodeIds: [],
+				addedEdgeIds: [],
+				removedEdgeIds: [],
+				changedEdgeIds: [],
+				telemetry: {
+					filesParsed: factChangedPaths.length,
+					passKeysProcessed: 0,
+					semanticRecordsReplaced: 0,
+					graphRecordsReplaced: 0,
+					outputsEmitted: 0,
+					elapsedMs: telemetryNow() - startedAt,
+					peakMemoryBytes: Math.max(memoryAtStart, telemetryMemory()),
+				},
+			};
+		}
 		const nextFactIndex = new ThemeFactIndex(nextFactStore.all());
 		const collection = runCollectionPasses(
 			this.collectionScheduler,
@@ -457,11 +531,7 @@ export class ThemeProgram {
 			this.collectionState(),
 			factChangedPaths,
 			this.options.metafields,
-			metafieldSnapshotChanges(
-				changedPaths,
-				this.metafieldResult.current,
-				this.options.metafields,
-			),
+			snapshotChanges,
 		);
 		const collectedBaseModel = modelWithCollectedRecords(
 			analysis.ir,
@@ -547,23 +617,23 @@ export class ThemeProgram {
 		validateStagedRecordReachability(semanticUpdate.model);
 
 		if (!this.graphProjectionActive) {
-			const previousImpact = this.getQueryComputation().getImpactSummary();
+			const affectedKeys = [...changedPaths, ...changedMetafieldDefinitionIds];
+			const previousAffectedPages = affectedPagesForPaths(
+				this.semanticStore.getModel(),
+				affectedKeys,
+			);
 			const nextComputation = new ThemeComputation({
 				ir: semanticUpdate.model,
 				artifacts: [],
 				facts: nextFactStore.all(),
 				issues: semanticUpdate.model.issues,
 			});
-			const nextImpact = nextComputation.getImpactSummary();
-			const affectedKeys = [...changedPaths, ...changedMetafieldDefinitionIds];
 			const affectedPages = [
-				...new Set(
-					affectedKeys.flatMap((key) => [
-						...(previousImpact.affectedPages[key] ?? []),
-						...(nextImpact.affectedPages[key] ?? []),
-					]),
-				),
-			].sort();
+				...new Set([
+					...previousAffectedPages,
+					...affectedPagesForPaths(semanticUpdate.model, affectedKeys),
+				]),
+			].sort(compareCanonicalStrings);
 			if (
 				shouldRunCanonicalValidation(
 					this.options.incrementalValidationInterval,
@@ -588,6 +658,8 @@ export class ThemeProgram {
 			}
 			transaction.commit();
 			this.factStore = nextFactStore;
+			this.factIndex = nextFactIndex;
+			this.frontendIssues = analysis.issues;
 			this.applyCollectionState(collection);
 			this.metafieldIndex = nextMetafieldIndex;
 			this.queryComputation = nextComputation;
@@ -679,6 +751,8 @@ export class ThemeProgram {
 		}
 		transaction.commit();
 		this.factStore = nextFactStore;
+		this.factIndex = nextFactIndex;
+		this.frontendIssues = analysis.issues;
 		this.applyCollectionState(collection);
 		this.metafieldIndex = nextMetafieldIndex;
 		this.graph = nextGraph;
@@ -906,6 +980,7 @@ function runCollectionPasses(
 ): ThemeCollectionState {
 	const state = cloneCollectionState(previous);
 	let derivedSnapshot: Map<string, ThemeDerivedDataFlowResult> | undefined;
+	let renderDependencies: ThemeRenderDependencyIndex | undefined;
 	const context: ThemeCollectionContext = {
 		facts,
 		resultsBySource: state.declarations,
@@ -946,11 +1021,13 @@ function runCollectionPasses(
 			renderArgument: renderArgumentId,
 		},
 		get renderDependencies() {
+			if (renderDependencies) return renderDependencies;
 			const inputs = allDataFlowInputs(state.dataFlowInputs);
-			return new ThemeRenderDependencyIndex(
+			renderDependencies = new ThemeRenderDependencyIndex(
 				allDeclarations(state.declarations),
 				inputs.renderSiteFacts,
 			);
+			return renderDependencies;
 		},
 		recomputeDataFlowGroup(paths) {
 			derivedSnapshot ??= deriveDataFlowSnapshot(state);

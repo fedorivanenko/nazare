@@ -16,6 +16,7 @@ test("incremental benchmark arguments expose every default", () => {
 		scaleFactors: [1, 2, 4],
 		maxGrowthRatio: 6,
 		graphProjection: "lazy",
+		editKind: "semantic",
 	});
 });
 
@@ -34,6 +35,10 @@ test("incremental benchmark rejects ambiguous and invalid arguments", () => {
 	assert.throws(
 		() => parseArguments(["--graph-projection", "invalid"]),
 		/expects lazy or eager/,
+	);
+	assert.throws(
+		() => parseArguments(["--edit-kind", "invalid"]),
+		/expects semantic or syntax-neutral/,
 	);
 	assert.throws(() => parseArguments(["--unknown", "1"]), /Unknown argument/);
 });

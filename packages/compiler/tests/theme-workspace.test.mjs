@@ -971,7 +971,10 @@ test("ThemeProgram owns committed incremental workspace state", () => {
 		contents: "Updated",
 	});
 	assert.equal(update.revision, 1);
-	assert.notStrictEqual(program.getGraph(), committed);
+	assert.strictEqual(program.getGraph(), committed);
+	assert.equal(update.telemetry.passKeysProcessed, 0);
+	assert.equal(update.telemetry.semanticRecordsReplaced, 0);
+	assert.equal(update.telemetry.graphRecordsReplaced, 0);
 	assert.deepEqual(
 		program.getModel(),
 		analyzeNazareTheme([{ path: "snippets/card.liquid", contents: "Updated" }])

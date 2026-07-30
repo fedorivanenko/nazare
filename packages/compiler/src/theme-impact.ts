@@ -1,7 +1,109 @@
 import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeImpactSummary, ThemeSemanticModel } from "./theme-facts.js";
 
+type ImpactRelations = {
+	dependencies: Map<string, Set<string>>;
+	dependents: Map<string, Set<string>>;
+	pageDependencies: Map<string, Set<string>>;
+};
+
+export function affectedPagesForPaths(
+	model: ThemeSemanticModel,
+	paths: Iterable<string>,
+): string[] {
+	const { pageDependencies } = impactRelations(model);
+	const pagePaths = new Set(model.pages.map((page) => page.path));
+	const pageDependents = new Map<string, Set<string>>();
+	for (const [fromPath, dependencies] of pageDependencies) {
+		for (const dependency of dependencies) {
+			const dependents = pageDependents.get(dependency) ?? new Set<string>();
+			dependents.add(fromPath);
+			pageDependents.set(dependency, dependents);
+		}
+	}
+	const affected = new Set<string>();
+	const visited = new Set<string>();
+	const queue = [...paths];
+	for (let index = 0; index < queue.length; index += 1) {
+		const path = queue[index];
+		if (visited.has(path)) continue;
+		visited.add(path);
+		if (pagePaths.has(path)) affected.add(path);
+		for (const dependent of pageDependents.get(path) ?? [])
+			queue.push(dependent);
+	}
+	return [...affected].sort((a, b) => compareCanonicalStrings(a, b));
+}
+
 export function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
+	const { dependencies, dependents, pageDependencies } = impactRelations(model);
+	const affectedPages = new Map<string, Set<string>>();
+	for (const page of model.pages) {
+		const visited = new Set<string>();
+		const stack = [page.path];
+		while (stack.length > 0) {
+			const path = stack.pop();
+			if (!path || visited.has(path)) continue;
+			visited.add(path);
+			affectedPages.set(path, affectedPages.get(path) ?? new Set());
+			affectedPages.get(path)?.add(page.path);
+			for (const dependency of pageDependencies.get(path) ?? [])
+				stack.push(dependency);
+		}
+	}
+	const declaredFiles = new Set(model.files.map((file) => file.path));
+	const entryFiles = new Set([
+		...model.pages.map((page) => page.path),
+		...model.declarations
+			.filter(
+				(declaration) =>
+					declaration.kind === "layout" || declaration.kind === "locale",
+			)
+			.map((declaration) => declaration.path),
+		...model.files
+			.filter(
+				(file) =>
+					file.fileKind === "settingsSchema" ||
+					file.fileKind === "settingsData",
+			)
+			.map((file) => file.path),
+	]);
+	const structurallyReferencedFiles = new Set([
+		...entryFiles,
+		...[...pageDependencies.values()].flatMap((paths) => [...paths]),
+	]);
+	const hasDynamicSnippetReference = model.references.some(
+		(reference) => reference.kind === "rendersSnippet" && !reference.static,
+	);
+	const unusedCandidates = new Set(
+		model.declarations
+			.filter(
+				(declaration) =>
+					declaration.kind === "section" ||
+					declaration.kind === "snippet" ||
+					declaration.kind === "themeBlock" ||
+					declaration.kind === "component",
+			)
+			.filter(
+				(declaration) =>
+					!(hasDynamicSnippetReference && declaration.kind === "snippet"),
+			)
+			.map((declaration) => declaration.path),
+	);
+	return {
+		dependencies: sortedRecord(dependencies),
+		dependents: sortedRecord(dependents),
+		affectedPages: sortedRecord(affectedPages),
+		unusedFiles: [...declaredFiles]
+			.filter(
+				(path) =>
+					unusedCandidates.has(path) && !structurallyReferencedFiles.has(path),
+			)
+			.sort((a, b) => compareCanonicalStrings(a, b)),
+	};
+}
+
+function impactRelations(model: ThemeSemanticModel): ImpactRelations {
 	const declarationPathById = new Map(
 		model.declarations.map((declaration) => [declaration.id, declaration.path]),
 	);
@@ -103,70 +205,7 @@ export function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
 				add(consumer.fromPath, provider.fromPath);
 		}
 	}
-	const affectedPages = new Map<string, Set<string>>();
-	for (const page of model.pages) {
-		const visited = new Set<string>();
-		const stack = [page.path];
-		while (stack.length > 0) {
-			const path = stack.pop();
-			if (!path || visited.has(path)) continue;
-			visited.add(path);
-			affectedPages.set(path, affectedPages.get(path) ?? new Set());
-			affectedPages.get(path)?.add(page.path);
-			for (const dependency of pageDependencies.get(path) ?? [])
-				stack.push(dependency);
-		}
-	}
-	const declaredFiles = new Set(model.files.map((file) => file.path));
-	const entryFiles = new Set([
-		...model.pages.map((page) => page.path),
-		...model.declarations
-			.filter(
-				(declaration) =>
-					declaration.kind === "layout" || declaration.kind === "locale",
-			)
-			.map((declaration) => declaration.path),
-		...model.files
-			.filter(
-				(file) =>
-					file.fileKind === "settingsSchema" ||
-					file.fileKind === "settingsData",
-			)
-			.map((file) => file.path),
-	]);
-	const structurallyReferencedFiles = new Set([
-		...entryFiles,
-		...[...pageDependencies.values()].flatMap((paths) => [...paths]),
-	]);
-	const hasDynamicSnippetReference = model.references.some(
-		(reference) => reference.kind === "rendersSnippet" && !reference.static,
-	);
-	const unusedCandidates = new Set(
-		model.declarations
-			.filter(
-				(declaration) =>
-					declaration.kind === "section" ||
-					declaration.kind === "snippet" ||
-					declaration.kind === "themeBlock" ||
-					declaration.kind === "component",
-			)
-			.filter(
-				(declaration) =>
-					!(hasDynamicSnippetReference && declaration.kind === "snippet"),
-			)
-			.map((declaration) => declaration.path),
-	);
-	return {
-		dependencies: sortedRecord(dependencies),
-		dependents: sortedRecord(dependents),
-		affectedPages: sortedRecord(affectedPages),
-		unusedFiles: [...declaredFiles]
-			.filter(
-				(path) =>
-					unusedCandidates.has(path) && !structurallyReferencedFiles.has(path),
-			)
-			.sort((a, b) => compareCanonicalStrings(a, b)),
-	};
+	return { dependencies, dependents, pageDependencies };
 }
 
 function sortedRecord(map: Map<string, Set<string>>): Record<string, string[]> {
