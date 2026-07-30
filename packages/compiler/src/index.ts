@@ -341,6 +341,7 @@ export {
 	getThemeEdgesFrom,
 	getThemeEdgesTo,
 	getThemeFileImpact,
+	getThemeFileImpacts,
 	getThemeNode,
 	summarizeThemeGraph,
 	type ThemeFileImpact,
