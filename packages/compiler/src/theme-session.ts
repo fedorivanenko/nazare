@@ -85,7 +85,7 @@ import {
 	THEME_GRAPH_METAFIELD_SCHEMA_OWNER,
 	ThemeGraphStore,
 } from "./theme-graph-store.js";
-import { affectedPagesForPaths, impactSummary } from "./theme-impact.js";
+import { impactSummary, ThemeAffectedPageIndex } from "./theme-impact.js";
 import { ThemeImpactIndex } from "./theme-impact-index.js";
 import {
 	createThemeInstancePass,
@@ -245,6 +245,7 @@ export class ThemeProgram {
 	private evidenceBySource = new Map<string, ThemeEvidenceRecord[]>();
 	private semanticStore: ThemeSemanticStore;
 	private metafieldIndex: ThemeMetafieldIndex;
+	private affectedPageIndex: ThemeAffectedPageIndex;
 	private impactIndex: ThemeImpactIndex | undefined;
 	private graph: InspectNazareThemeResult | undefined;
 	private graphStore: ThemeGraphStore | undefined;
@@ -310,11 +311,15 @@ export class ThemeProgram {
 			collection.capabilities,
 			collection.classifications,
 			this.behaviorCollection,
+			collection.evidenceBySource,
 		);
 		const model = collectedModel;
 		this.evidenceBySource = evidenceRecordsBySource(model.evidence);
 		this.semanticStore = new ThemeSemanticStore(model);
 		this.metafieldIndex = new ThemeMetafieldIndex(model);
+		this.affectedPageIndex = new ThemeAffectedPageIndex(
+			this.semanticStore.getModel(),
+		);
 		if (this.graphProjectionActive) this.materializeGraphProjection();
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
@@ -522,10 +527,7 @@ export class ThemeProgram {
 				changedPaths,
 				changedSemanticRecordIds: [],
 				invalidatedNodeIds,
-				affectedPages: affectedPagesForPaths(
-					this.semanticStore.getModel(),
-					changedPaths,
-				),
+				affectedPages: this.affectedPageIndex.getAffectedPages(changedPaths),
 				addedNodeIds: [],
 				removedNodeIds: [],
 				changedNodeIds: [],
@@ -556,6 +558,7 @@ export class ThemeProgram {
 			nextFactStore,
 			factChangedPaths,
 		);
+		const previousCollection = this.collectionState();
 		const collectedBaseModel = modelWithCollectedRecords(
 			analysis.ir,
 			collection.declarations,
@@ -570,6 +573,12 @@ export class ThemeProgram {
 			collection.capabilities,
 			collection.classifications,
 			nextBehaviorCollection,
+			collection.evidenceBySource,
+			{
+				model: this.semanticStore.getModel(),
+				collection: previousCollection,
+				behavior: this.behaviorCollection,
+			},
 		);
 		const themeCheckPolicy = parseThemeCheckPolicy(this.options.themeCheck);
 		const ownedIssues = [
@@ -582,20 +591,6 @@ export class ThemeProgram {
 		];
 		const collectedModel = {
 			...collectedBaseModel,
-			evidence: [
-				...[...collection.evidenceBySource.values()]
-					.flat()
-					.filter(
-						(evidence) =>
-							evidence.kind !== "behavior" &&
-							evidence.kind !== "localeTranslation",
-					),
-				...collectedBaseModel.evidence.filter(
-					(evidence) =>
-						evidence.kind === "behavior" ||
-						evidence.kind === "localeTranslation",
-				),
-			].sort((a, b) => compareCanonicalStrings(a.id, b.id)),
 			issues: ownedIssues,
 			themeCheck: {
 				path: themeCheckPolicy.path,
@@ -604,7 +599,16 @@ export class ThemeProgram {
 		};
 		const transaction = this.semanticStore.beginUpdate(collectedModel);
 		const semanticUpdate = transaction.update;
-		const nextMetafieldIndex = new ThemeMetafieldIndex(semanticUpdate.model);
+		const previousModel = this.semanticStore.getModel();
+		const nextMetafieldIndex =
+			previousModel.metafieldDefinitions ===
+				semanticUpdate.model.metafieldDefinitions &&
+			previousModel.metafieldReads === semanticUpdate.model.metafieldReads
+				? this.metafieldIndex
+				: new ThemeMetafieldIndex(semanticUpdate.model);
+		const nextAffectedPageIndex = this.affectedPageIndex.update(
+			semanticUpdate.model,
+		);
 		const changedSemanticIds = [
 			...semanticUpdate.addedRecordIds,
 			...semanticUpdate.changedRecordIds,
@@ -641,10 +645,8 @@ export class ThemeProgram {
 
 		if (!this.graphProjectionActive) {
 			const affectedKeys = [...changedPaths, ...changedMetafieldDefinitionIds];
-			const previousAffectedPages = affectedPagesForPaths(
-				this.semanticStore.getModel(),
-				affectedKeys,
-			);
+			const previousAffectedPages =
+				this.affectedPageIndex.getAffectedPages(affectedKeys);
 			const nextComputation = new ThemeComputation({
 				ir: semanticUpdate.model,
 				artifacts: [],
@@ -654,7 +656,7 @@ export class ThemeProgram {
 			const affectedPages = [
 				...new Set([
 					...previousAffectedPages,
-					...affectedPagesForPaths(semanticUpdate.model, affectedKeys),
+					...nextAffectedPageIndex.getAffectedPages(affectedKeys),
 				]),
 			].sort(compareCanonicalStrings);
 			if (
@@ -686,6 +688,7 @@ export class ThemeProgram {
 			this.behaviorCollection = nextBehaviorCollection;
 			this.applyCollectionState(collection);
 			this.metafieldIndex = nextMetafieldIndex;
+			this.affectedPageIndex = nextAffectedPageIndex;
 			this.queryComputation = nextComputation;
 			this.revision += 1;
 			return {
@@ -780,6 +783,7 @@ export class ThemeProgram {
 		this.behaviorCollection = nextBehaviorCollection;
 		this.applyCollectionState(collection);
 		this.metafieldIndex = nextMetafieldIndex;
+		this.affectedPageIndex = nextAffectedPageIndex;
 		this.graph = nextGraph;
 		this.graphStore = nextGraphStore;
 		this.impactIndex = nextImpactIndex;
@@ -1419,6 +1423,18 @@ function replaceThemeBehaviorSources(
 	const replacement = collectThemeBehavior(
 		changedPaths.flatMap((path) => facts.getFile(path)),
 	);
+	const previousChangedRecords = previous.records.filter((record) =>
+		changed.has(record.fromPath),
+	);
+	const previousChangedAnalyses = previous.sourceAnalyses.filter((record) =>
+		changed.has(record.path),
+	);
+	if (
+		isDeepStrictEqual(previousChangedRecords, replacement.records) &&
+		isDeepStrictEqual(previousChangedAnalyses, replacement.sourceAnalyses)
+	) {
+		return previous;
+	}
 	const records = [
 		...previous.records.filter((record) => !changed.has(record.fromPath)),
 		...replacement.records,
@@ -1453,7 +1469,122 @@ function modelWithCollectedRecords(
 	capabilitiesBySource: Map<string, ThemeCapabilityRecord[]>,
 	classificationsBySource: Map<string, ThemeClassificationRecord[]>,
 	behavior: ThemeBehaviorCollection,
+	evidenceBySource: Map<string, ThemeEvidenceRecord[]>,
+	reuse?: {
+		model: ThemeSemanticModel;
+		collection: ThemeCollectionState;
+		behavior: ThemeBehaviorCollection;
+	},
 ): ThemeSemanticModel {
+	if (
+		reuse &&
+		sameMapProjections(
+			reuse.collection.declarations,
+			declarationsBySource,
+			(result) => result.declarations,
+		) &&
+		sameMapValues(
+			reuse.collection.resolvedReferencesById,
+			resolvedReferencesById,
+		) &&
+		sameMapValues(reuse.collection.schemaSettings, schemaSettingsBySource) &&
+		sameMapValues(reuse.collection.instances, instancesBySource) &&
+		sameMapValues(reuse.collection.locales, localesBySource) &&
+		isDeepStrictEqual(reuse.collection.metafields.current, metafields) &&
+		sameMapValues(
+			reuse.collection.capabilitySignals,
+			capabilitySignalsBySource,
+		) &&
+		sameMapValues(reuse.collection.capabilities, capabilitiesBySource) &&
+		sameMapValues(reuse.collection.classifications, classificationsBySource) &&
+		reuse.behavior === behavior
+	) {
+		const dataFlowInputs = [...dataFlowInputsBySource.values()];
+		const derivedDataFlow = [...derivedDataFlowBySource.values()];
+		const inputDataAccessesUnchanged = sameMapProjections(
+			reuse.collection.dataFlowInputs,
+			dataFlowInputsBySource,
+			(result) => result.dataAccesses,
+		);
+		const derivedDataAccessesUnchanged = sameMapProjections(
+			reuse.collection.derivedDataFlow,
+			derivedDataFlowBySource,
+			(result) => result.dataAccesses,
+		);
+		return {
+			...model,
+			files: [...declarationsBySource.keys()]
+				.sort((a, b) => compareCanonicalStrings(a, b))
+				.flatMap((path) => [
+					...(declarationsBySource.get(path)?.files.values() ?? []),
+				]),
+			pages: reuse.model.pages,
+			declarations: reuse.model.declarations,
+			references: reuse.model.references,
+			schemas: reuse.model.schemas,
+			settings: reuse.model.settings,
+			blocks: reuse.model.blocks,
+			blockSettings: reuse.model.blockSettings,
+			settingReads: reuse.model.settingReads,
+			sectionInstances: reuse.model.sectionInstances,
+			blockInstances: reuse.model.blockInstances,
+			localeKeys: reuse.model.localeKeys,
+			localeTranslations: reuse.model.localeTranslations,
+			localeReferences: reuse.model.localeReferences,
+			dataAccesses:
+				inputDataAccessesUnchanged && derivedDataAccessesUnchanged
+					? reuse.model.dataAccesses
+					: uniqueById([
+							...dataFlowInputs.flatMap((result) => result.dataAccesses),
+							...derivedDataFlow.flatMap((result) => result.dataAccesses),
+						]),
+			variableReads: sameMapProjections(
+				reuse.collection.dataFlowInputs,
+				dataFlowInputsBySource,
+				(result) => result.variableReads,
+			)
+				? reuse.model.variableReads
+				: uniqueById(dataFlowInputs.flatMap((result) => result.variableReads)),
+			renderArguments: sameMapProjections(
+				reuse.collection.dataFlowInputs,
+				dataFlowInputsBySource,
+				(result) => result.renderArguments,
+			)
+				? reuse.model.renderArguments
+				: uniqueById(
+						dataFlowInputs.flatMap((result) => result.renderArguments),
+					),
+			expectedInputs: sameMapProjections(
+				reuse.collection.derivedDataFlow,
+				derivedDataFlowBySource,
+				(result) => result.expectedInputs,
+			)
+				? reuse.model.expectedInputs
+				: uniqueById(
+						derivedDataFlow.flatMap((result) => result.expectedInputs),
+					),
+			renderSites: sameMapProjections(
+				reuse.collection.derivedDataFlow,
+				derivedDataFlowBySource,
+				(result) => result.renderSites,
+			)
+				? reuse.model.renderSites
+				: uniqueById(derivedDataFlow.flatMap((result) => result.renderSites)),
+			metafieldDefinitions: reuse.model.metafieldDefinitions,
+			metafieldReads: reuse.model.metafieldReads,
+			metafieldSchema: reuse.model.metafieldSchema,
+			capabilitySignals: reuse.model.capabilitySignals,
+			capabilities: reuse.model.capabilities,
+			classifications: reuse.model.classifications,
+			behavior: reuse.model.behavior,
+			sourceAnalyses: reuse.model.sourceAnalyses,
+			evidence: replaceEvidenceSources(
+				reuse.model.evidence,
+				reuse.collection.evidenceBySource,
+				evidenceBySource,
+			),
+		};
+	}
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
 	for (const path of [...declarationsBySource.keys()].sort((a, b) =>
@@ -1571,10 +1702,13 @@ function modelWithCollectedRecords(
 		behavior: behavior.records,
 		sourceAnalyses: behavior.sourceAnalyses,
 		evidence: uniqueById([
-			...model.evidence.filter(
-				(evidence) =>
-					evidence.kind !== "behavior" && evidence.kind !== "localeTranslation",
-			),
+			...[...evidenceBySource.values()]
+				.flat()
+				.filter(
+					(evidence) =>
+						evidence.kind !== "behavior" &&
+						evidence.kind !== "localeTranslation",
+				),
 			...behavior.evidence,
 			...locales
 				.flatMap((result) => result.localeTranslations)
@@ -1587,6 +1721,63 @@ function modelWithCollectedRecords(
 				})),
 		]),
 	};
+}
+
+function sameMapProjections<Key, Value, Projection>(
+	left: ReadonlyMap<Key, Value>,
+	right: ReadonlyMap<Key, Value>,
+	project: (value: Value) => Projection,
+): boolean {
+	if (left.size !== right.size) return false;
+	for (const [key, value] of left) {
+		const other = right.get(key);
+		if (
+			other === undefined ||
+			(value !== other && !isDeepStrictEqual(project(value), project(other)))
+		) {
+			return false;
+		}
+	}
+	return true;
+}
+
+function sameMapValues<Key, Value>(
+	left: ReadonlyMap<Key, Value>,
+	right: ReadonlyMap<Key, Value>,
+): boolean {
+	if (left.size !== right.size) return false;
+	for (const [key, value] of left) {
+		const other = right.get(key);
+		if (other !== value && !isDeepStrictEqual(other, value)) return false;
+	}
+	return true;
+}
+
+function replaceEvidenceSources(
+	previous: ThemeEvidenceRecord[],
+	oldBySource: ReadonlyMap<string, ThemeEvidenceRecord[]>,
+	nextBySource: ReadonlyMap<string, ThemeEvidenceRecord[]>,
+): ThemeEvidenceRecord[] {
+	const changedSources = new Set<string>();
+	for (const path of new Set([...oldBySource.keys(), ...nextBySource.keys()])) {
+		if (oldBySource.get(path) !== nextBySource.get(path))
+			changedSources.add(path);
+	}
+	if (changedSources.size === 0) return previous;
+	return [
+		...previous.filter(
+			(record) =>
+				record.kind === "behavior" ||
+				record.kind === "localeTranslation" ||
+				!changedSources.has(record.file),
+		),
+		...[...changedSources].flatMap((path) =>
+			(nextBySource.get(path) ?? []).filter(
+				(record) =>
+					record.kind !== "behavior" && record.kind !== "localeTranslation",
+			),
+		),
+	].sort((a, b) => compareCanonicalStrings(a.id, b.id));
 }
 
 function uniqueById<RecordValue extends { id: string }>(

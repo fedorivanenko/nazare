@@ -112,19 +112,28 @@ export class ThemeSemanticTransaction {
 		const next = new Map(old);
 		const affectedIds = new Set<string>();
 		for (const [key, value] of recordArrays(model)) {
-			if (value === previousModel[key]) continue;
-			for (const [id, records] of oldByField.get(key) ?? []) {
+			const previousValue = previousModel[key];
+			if (value === previousValue || !Array.isArray(previousValue)) continue;
+			const fieldAffectedIds = changedIds(previousValue, value);
+			if (fieldAffectedIds.size === 0) continue;
+			const previousGroups = oldByField.get(key) ?? new Map();
+			const currentGroups = groupSelectedRecords(value, fieldAffectedIds);
+			const nextFieldGroups = new Map(previousGroups);
+			for (const id of fieldAffectedIds) {
 				affectedIds.add(id);
-				const retained = removeRecordOccurrences(next.get(id) ?? [], records);
-				if (retained.length === 0) next.delete(id);
-				else next.set(id, retained);
+				const previousRecords = previousGroups.get(id) ?? [];
+				const currentRecords = currentGroups.get(id) ?? [];
+				const retained = removeRecordOccurrences(
+					next.get(id) ?? [],
+					previousRecords,
+				);
+				const replacement = [...retained, ...currentRecords];
+				if (replacement.length === 0) next.delete(id);
+				else next.set(id, replacement);
+				if (currentRecords.length === 0) nextFieldGroups.delete(id);
+				else nextFieldGroups.set(id, currentRecords);
 			}
-			const grouped = groupRecords(value);
-			nextByField.set(key, grouped);
-			for (const [id, records] of grouped) {
-				affectedIds.add(id);
-				next.set(id, [...(next.get(id) ?? []), ...records]);
-			}
+			nextByField.set(key, nextFieldGroups);
 		}
 		this.nextGroups = next;
 		this.nextGroupsByField = nextByField;
@@ -270,6 +279,49 @@ function combineFieldGroups(byField: RecordGroupsByField): RecordGroups {
 		}
 	}
 	return combined;
+}
+
+function changedIds(previous: unknown[], current: unknown[]): Set<string> {
+	let prefix = 0;
+	while (
+		prefix < previous.length &&
+		prefix < current.length &&
+		sameRecord(previous[prefix], current[prefix])
+	) {
+		prefix += 1;
+	}
+	let previousEnd = previous.length;
+	let currentEnd = current.length;
+	while (
+		previousEnd > prefix &&
+		currentEnd > prefix &&
+		sameRecord(previous[previousEnd - 1], current[currentEnd - 1])
+	) {
+		previousEnd -= 1;
+		currentEnd -= 1;
+	}
+	const ids = new Set<string>();
+	for (const record of previous.slice(prefix, previousEnd)) {
+		if (identified(record)) ids.add(record.id);
+	}
+	for (const record of current.slice(prefix, currentEnd)) {
+		if (identified(record)) ids.add(record.id);
+	}
+	return ids;
+}
+
+function groupSelectedRecords(
+	records: unknown[],
+	selectedIds: ReadonlySet<string>,
+): RecordGroups {
+	const grouped: RecordGroups = new Map();
+	for (const record of records) {
+		if (!identified(record) || !selectedIds.has(record.id)) continue;
+		const values = grouped.get(record.id);
+		if (values) values.push(record);
+		else grouped.set(record.id, [record]);
+	}
+	return grouped;
 }
 
 function groupRecords(records: unknown[]): RecordGroups {

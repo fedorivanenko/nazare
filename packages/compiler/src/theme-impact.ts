@@ -7,32 +7,50 @@ type ImpactRelations = {
 	pageDependencies: Map<string, Set<string>>;
 };
 
+export class ThemeAffectedPageIndex {
+	private readonly pagePaths: Set<string>;
+	private readonly pageDependents = new Map<string, Set<string>>();
+
+	constructor(private readonly model: ThemeSemanticModel) {
+		const { pageDependencies } = impactRelations(model);
+		this.pagePaths = new Set(model.pages.map((page) => page.path));
+		for (const [fromPath, dependencies] of pageDependencies) {
+			for (const dependency of dependencies) {
+				const dependents =
+					this.pageDependents.get(dependency) ?? new Set<string>();
+				dependents.add(fromPath);
+				this.pageDependents.set(dependency, dependents);
+			}
+		}
+	}
+
+	update(model: ThemeSemanticModel): ThemeAffectedPageIndex {
+		return sameImpactInputs(this.model, model)
+			? this
+			: new ThemeAffectedPageIndex(model);
+	}
+
+	getAffectedPages(paths: Iterable<string>): string[] {
+		const affected = new Set<string>();
+		const visited = new Set<string>();
+		const queue = [...paths];
+		for (let index = 0; index < queue.length; index += 1) {
+			const path = queue[index];
+			if (visited.has(path)) continue;
+			visited.add(path);
+			if (this.pagePaths.has(path)) affected.add(path);
+			for (const dependent of this.pageDependents.get(path) ?? [])
+				queue.push(dependent);
+		}
+		return [...affected].sort((a, b) => compareCanonicalStrings(a, b));
+	}
+}
+
 export function affectedPagesForPaths(
 	model: ThemeSemanticModel,
 	paths: Iterable<string>,
 ): string[] {
-	const { pageDependencies } = impactRelations(model);
-	const pagePaths = new Set(model.pages.map((page) => page.path));
-	const pageDependents = new Map<string, Set<string>>();
-	for (const [fromPath, dependencies] of pageDependencies) {
-		for (const dependency of dependencies) {
-			const dependents = pageDependents.get(dependency) ?? new Set<string>();
-			dependents.add(fromPath);
-			pageDependents.set(dependency, dependents);
-		}
-	}
-	const affected = new Set<string>();
-	const visited = new Set<string>();
-	const queue = [...paths];
-	for (let index = 0; index < queue.length; index += 1) {
-		const path = queue[index];
-		if (visited.has(path)) continue;
-		visited.add(path);
-		if (pagePaths.has(path)) affected.add(path);
-		for (const dependent of pageDependents.get(path) ?? [])
-			queue.push(dependent);
-	}
-	return [...affected].sort((a, b) => compareCanonicalStrings(a, b));
+	return new ThemeAffectedPageIndex(model).getAffectedPages(paths);
 }
 
 export function impactSummary(model: ThemeSemanticModel): ThemeImpactSummary {
@@ -206,6 +224,21 @@ function impactRelations(model: ThemeSemanticModel): ImpactRelations {
 		}
 	}
 	return { dependencies, dependents, pageDependencies };
+}
+
+function sameImpactInputs(
+	left: ThemeSemanticModel,
+	right: ThemeSemanticModel,
+): boolean {
+	return (
+		left.pages === right.pages &&
+		left.declarations === right.declarations &&
+		left.references === right.references &&
+		left.sectionInstances === right.sectionInstances &&
+		left.blockInstances === right.blockInstances &&
+		left.metafieldReads === right.metafieldReads &&
+		left.behavior === right.behavior
+	);
 }
 
 function sortedRecord(map: Map<string, Set<string>>): Record<string, string[]> {
