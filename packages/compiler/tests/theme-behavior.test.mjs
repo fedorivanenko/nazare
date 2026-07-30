@@ -47,53 +47,28 @@ const context = {
 };
 
 test("theme compiler links Liquid, CSS, and JavaScript behavior", () => {
-	const graph = inspectNazareTheme(files);
-	const node = (kind, name) =>
-		graph.nodes.find(
-			(candidate) => candidate.kind === kind && candidate.name === name,
+	const program = new ThemeProgram(files);
+	const graph = program.getGraph();
+	const behavior = program.getModel().behavior;
+	const hasBehavior = (subjectKind, name, operation) =>
+		behavior.some(
+			(record) =>
+				record.subjectKind === subjectKind &&
+				record.name === name &&
+				record.operation === operation,
 		);
 
-	assert.ok(node("domHook", "card"));
-	assert.ok(node("domHook", "data-product-id"));
-	assert.ok(node("domHook", "is-active"));
-	assert.ok(node("customProperty", "--card-accent"));
-	assert.ok(node("customEvent", "card:ready"));
-	assert.ok(node("customElement", "product-card"));
-
-	for (const kind of [
-		"emitsHook",
-		"selectsHook",
-		"queriesHook",
-		"mutatesHook",
-		"definesCustomProperty",
-		"readsCustomProperty",
-		"dispatchesEvent",
-		"listensForEvent",
-		"definesCustomElement",
-		"usesCustomElement",
-	]) {
-		assert.ok(
-			graph.edges.some((edge) => edge.kind === kind),
-			kind,
-		);
-	}
+	assert.ok(hasBehavior("domHook", "card", "emits"));
+	assert.ok(hasBehavior("domHook", "data-product-id", "queries"));
+	assert.ok(hasBehavior("domHook", "data-state", "mutates"));
+	assert.ok(hasBehavior("customProperty", "--card-accent", "defines"));
+	assert.ok(hasBehavior("customEvent", "card:ready", "dispatches"));
+	assert.ok(hasBehavior("customEvent", "card:ready", "listens"));
+	assert.ok(hasBehavior("customElement", "product-card", "defines"));
+	assert.ok(hasBehavior("customElement", "product-card", "uses"));
 
 	const scriptImpact = getThemeFileImpact(graph, "assets/theme.js");
 	assert.ok(scriptImpact.dependencies.includes("assets/cart.js"));
-	assert.ok(
-		graph.edges.some(
-			(edge) =>
-				edge.kind === "queriesHook" &&
-				edge.to === "dom-hook:attribute:data-product-id",
-		),
-	);
-	assert.ok(
-		graph.edges.some(
-			(edge) =>
-				edge.kind === "mutatesHook" &&
-				edge.to === "dom-hook:attribute:data-state",
-		),
-	);
 
 	const impact = getThemeFileImpact(graph, "snippets/card.liquid");
 	assert.deepEqual(impact.dependents, [

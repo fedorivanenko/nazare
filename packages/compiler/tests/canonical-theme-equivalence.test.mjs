@@ -16,7 +16,7 @@ import {
 	CANONICAL_THEME_ROOT,
 	loadThemeFixture,
 } from "../../../fixtures/theme-fixture.mjs";
-import { inspectNazareTheme, ThemeProgram } from "../dist/index.js";
+import { ThemeProgram } from "../dist/index.js";
 import { assertProgramEqualsCold } from "./theme-equivalence.mjs";
 
 const canonicalFiles = () => loadThemeFixture(CANONICAL_THEME_ROOT);
@@ -30,10 +30,13 @@ const options = {
 	},
 };
 
-test("canonical theme covers every semantic graph family", () => {
-	const graph = inspectNazareTheme(canonicalFiles(), options);
+test("canonical theme covers structural graph and rich semantic families", () => {
+	const files = canonicalFiles();
+	const program = new ThemeProgram(files, options);
+	const graph = program.getGraph();
 	const kinds = new Set(graph.nodes.map((node) => node.kind));
 	for (const kind of [
+		"file",
 		"section",
 		"sectionGroup",
 		"snippet",
@@ -45,30 +48,25 @@ test("canonical theme covers every semantic graph family", () => {
 		"asset",
 		"component",
 		"metafieldDefinition",
-		"classification",
-		"capability",
-		"expectedInput",
-		"domHook",
-		"customProperty",
-		"customEvent",
-		"customElement",
 	]) {
 		assert.ok(kinds.has(kind), `canonical theme produced no ${kind} node`);
 	}
 	const edgeKinds = new Set(graph.edges.map((edge) => edge.kind));
 	for (const kind of [
-		"emitsHook",
-		"selectsHook",
-		"queriesHook",
-		"definesCustomProperty",
-		"readsCustomProperty",
-		"dispatchesEvent",
-		"listensForEvent",
-		"definesCustomElement",
-		"usesCustomElement",
+		"declares",
+		"invokes",
+		"resolvesRenderTarget",
+		"readsSetting",
+		"readsMetafield",
 	]) {
 		assert.ok(edgeKinds.has(kind), `canonical theme produced no ${kind} edge`);
 	}
+	const model = program.getModel();
+	assert.ok(model.behavior.length > 0);
+	assert.ok(model.capabilities.length > 0);
+	assert.ok(model.classifications.length > 0);
+	assert.ok(model.expectedInputs.length > 0);
+	assert.ok(model.evidence.length > 0);
 });
 
 test("batch and program agree on the canonical theme", () => {

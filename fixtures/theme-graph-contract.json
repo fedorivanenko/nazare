@@ -1,9 +1,12 @@
 {
-  "version": 1,
+  "version": 2,
   "themes": {
     "canonical-theme": {
       "repositoryRoot": "fixtures/canonical-theme",
-      "minimums": { "nodes": 180, "edges": 290, "evidence": 125 },
+      "minimums": {
+        "nodes": 150,
+        "edges": 150
+      },
       "requiredNodeIds": [
         "page:templates/product.json",
         "page:templates/index.json",
@@ -15,34 +18,48 @@
         "snippet:snippets/product-card.liquid:product-card",
         "component:components/c-card.nz.liquid:components/c-card.nz.liquid",
         "locale:locales/fr.json:fr",
-        "shopify-property:product.price",
-        "shopify-property:cart.items",
-        "metafield:product:custom:subtitle",
-        "classification:snippets/product-card.liquid:productCard",
-        "classification:sections/main-product.liquid:productForm",
-        "classification:snippets/cart-drawer.liquid:cartDrawer",
-        "classification:snippets/search-overlay.liquid:searchOverlay",
-        "classification:sections/collection-grid.liquid:collectionGrid",
-        "classification:snippets/localization-form.liquid:localizationSelector",
-        "classification:sections/header.liquid:navigation",
-        "capability:sections/main-product.liquid:addsToCart",
-        "capability:snippets/search-overlay.liquid:performsPredictiveSearch",
-        "expected-input:snippets/product-card.liquid:product"
+        "metafield:product:custom:subtitle"
       ],
       "requiredEdges": [
-        { "kind": "accessesData", "from": "file:snippets/price.liquid", "to": "shopify-property:product.price" },
-        { "kind": "accessesData", "from": "file:snippets/cart-drawer.liquid", "to": "shopify-property:cart.items" },
-        { "kind": "readsSetting", "from": "file:sections/footer.liquid", "to": "setting:sections/footer.liquid:schema:note" },
-        { "kind": "readsMetafield", "from": "file:snippets/product-card.liquid" },
-        { "kind": "invokes", "from": "file:sections/main-product.liquid" },
-        { "kind": "imports", "from": "file:components/c-card.nz.liquid" },
-        { "kind": "containsSectionGroup", "from": "file:layout/theme.liquid" },
-        { "kind": "referencesLocaleKey", "from": "file:sections/footer.liquid" }
+        {
+          "kind": "readsSetting",
+          "from": "file:sections/footer.liquid",
+          "to": "setting:sections/footer.liquid:schema:note"
+        },
+        {
+          "kind": "readsMetafield",
+          "from": "file:snippets/product-card.liquid"
+        },
+        {
+          "kind": "invokes",
+          "from": "file:sections/main-product.liquid"
+        },
+        {
+          "kind": "imports",
+          "from": "file:components/c-card.nz.liquid"
+        },
+        {
+          "kind": "containsSectionGroup",
+          "from": "file:layout/theme.liquid"
+        },
+        {
+          "kind": "referencesLocaleKey",
+          "from": "file:sections/footer.liquid"
+        }
       ],
       "impact": [
-        { "artifact": "snippets/price.liquid", "dependent": "snippets/product-card.liquid" },
-        { "artifact": "snippets/product-card.liquid", "dependent": "sections/featured-collection.liquid" },
-        { "artifact": "snippets/price.liquid", "affectedPage": "templates/product.json" }
+        {
+          "artifact": "snippets/price.liquid",
+          "dependent": "snippets/product-card.liquid"
+        },
+        {
+          "artifact": "snippets/product-card.liquid",
+          "dependent": "sections/featured-collection.liquid"
+        },
+        {
+          "artifact": "snippets/price.liquid",
+          "affectedPage": "templates/product.json"
+        }
       ],
       "requiredUnusedFile": "sections/unused-promo.liquid",
       "issueMaximums": {
@@ -56,108 +73,142 @@
     "alkamind-nazare": {
       "rootEnv": "NAZARE_CORPUS_ALKAMIND_NAZARE",
       "defaultRoot": "~/Coding/hyuman/alkamind/alkamind-nazare",
-      "minimums": { "nodes": 2500, "edges": 5500, "evidence": 3500 },
+      "minimums": {
+        "nodes": 2000,
+        "edges": 3000
+      },
       "requiredNodeIds": [
         "page:templates/product.json",
         "layout:layout/theme.liquid:theme",
         "section:sections/s-bundle-gallery.liquid:s-bundle-gallery",
-        "snippet:snippets/c-bundle-card.liquid:c-bundle-card",
-        "shopify-property:product.price",
-        "classification:snippets/c-bundle-card.liquid:productCard",
-        "expected-input:snippets/c-button.liquid:attributes",
-        "capability:sections/s-footer.liquid:displaysNavigation",
-        "shopify-property:cart.items"
+        "snippet:snippets/c-bundle-card.liquid:c-bundle-card"
       ],
       "requiredEdges": [
-        { "kind": "accessesData", "from": "file:snippets/c-bundle-card.liquid", "to": "shopify-property:product.price" },
-        { "kind": "accessesData", "from": "file:snippets/c-mini-cart.liquid", "to": "shopify-property:cart.items" },
-        { "kind": "readsSetting", "from": "file:sections/s-about-ethos.liquid", "to": "setting:sections/s-about-ethos.liquid:schema:body" },
-        { "kind": "argumentReadsSetting", "to": "setting:sections/s-community-videos.liquid:schema:carousel_mode" }
+        {
+          "kind": "readsSetting",
+          "from": "file:sections/s-about-ethos.liquid",
+          "to": "setting:sections/s-about-ethos.liquid:schema:body"
+        }
       ],
       "impact": [
-        { "artifact": "snippets/c-bundle-card.liquid", "dependent": "sections/s-bundle-gallery.liquid", "affectedPage": "templates/product.product-bundle.json" }
+        {
+          "artifact": "snippets/c-bundle-card.liquid",
+          "dependent": "sections/s-bundle-gallery.liquid",
+          "affectedPage": "templates/product.product-bundle.json"
+        }
       ],
       "requiredUnusedFile": "sections/s-customer-register.liquid",
-      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 10, "THEME_RENDER_ARGUMENT_MISSING": 0 }
+      "issueMaximums": {
+        "NAZARE_PARSE_LIQUID": 0,
+        "PLAIN_LIQUID_FACTS_SKIPPED": 0,
+        "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 10,
+        "THEME_RENDER_ARGUMENT_MISSING": 0
+      }
     },
     "alkamind-old": {
       "rootEnv": "NAZARE_CORPUS_ALKAMIND_OLD",
       "defaultRoot": "~/Coding/hyuman/alkamind/alkamind-old",
-      "minimums": { "nodes": 9000, "edges": 19000, "evidence": 10000 },
+      "minimums": {
+        "nodes": 7000,
+        "edges": 10000
+      },
       "requiredNodeIds": [
         "page:templates/product.json",
         "layout:layout/theme.liquid:theme",
         "section:sections/main-product.liquid:main-product",
         "snippet:snippets/card-product.liquid:card-product",
-        "shopify-property:product.price",
-        "locale-key:accessibility.close",
-        "expected-input:snippets/card-product.liquid:card_product",
-        "capability:layout/password.liquid:addsToCart",
-        "shopify-property:cart.items"
+        "locale-key:accessibility.close"
       ],
       "requiredEdges": [
-        { "kind": "accessesData", "from": "file:snippets/card-product.liquid", "to": "shopify-property:product.price" },
-        { "kind": "accessesData", "from": "file:sections/main-cart-items.liquid", "to": "shopify-property:cart.items" },
-        { "kind": "resolvesRenderTarget", "to": "snippet:snippets/meta-tags.liquid:meta-tags" }
+        {
+          "kind": "resolvesRenderTarget",
+          "to": "snippet:snippets/meta-tags.liquid:meta-tags"
+        }
       ],
       "impact": [
-        { "artifact": "snippets/card-product.liquid", "dependent": "sections/featured-collection.liquid", "affectedPage": "templates/collection.json" }
+        {
+          "artifact": "snippets/card-product.liquid",
+          "dependent": "sections/featured-collection.liquid",
+          "affectedPage": "templates/collection.json"
+        }
       ],
       "requiredUnusedFile": "sections/bundle-products.liquid",
-      "issueMaximums": { "NAZARE_PARSE_LIQUID": 2, "PLAIN_LIQUID_FACTS_SKIPPED": 2, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 20, "THEME_RENDER_ARGUMENT_MISSING": 0 }
+      "issueMaximums": {
+        "NAZARE_PARSE_LIQUID": 2,
+        "PLAIN_LIQUID_FACTS_SKIPPED": 2,
+        "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 20,
+        "THEME_RENDER_ARGUMENT_MISSING": 0
+      }
     },
     "climatic-health": {
       "rootEnv": "NAZARE_CORPUS_CLIMATIC_HEALTH",
       "defaultRoot": "~/Coding/hyuman/climatic-health",
-      "minimums": { "nodes": 2400, "edges": 5200, "evidence": 3200 },
+      "minimums": {
+        "nodes": 1800,
+        "edges": 2500
+      },
       "requiredNodeIds": [
         "page:templates/collection.liquid",
         "layout:layout/theme.liquid:theme",
         "section:sections/collection-content.liquid:collection-content",
-        "snippet:snippets/c-cart-upsell-card.liquid:c-cart-upsell-card",
-        "shopify-property:product.price",
-        "classification:sections/collection-content.liquid:collectionGrid",
-        "expected-input:snippets/c-img-srcset.liquid:alt",
-        "capability:sections/collection-content.liquid:filtersCollections",
-        "shopify-property:cart.items"
+        "snippet:snippets/c-cart-upsell-card.liquid:c-cart-upsell-card"
       ],
       "requiredEdges": [
-        { "kind": "accessesData", "from": "file:snippets/c-item-selling-plan.liquid", "to": "shopify-property:product.price" },
-        { "kind": "accessesData", "from": "file:snippets/c-cart.liquid", "to": "shopify-property:cart.items" },
-        { "kind": "readsSetting", "from": "file:layout/theme.liquid", "to": "setting:config/settings_schema.json:config/settings_schema.json:klaviyo_public_key" }
+        {
+          "kind": "readsSetting",
+          "from": "file:layout/theme.liquid",
+          "to": "setting:config/settings_schema.json:config/settings_schema.json:klaviyo_public_key"
+        }
       ],
       "impact": [
-        { "artifact": "sections/collection-content.liquid", "dependent": "templates/collection.liquid", "affectedPage": "templates/collection.liquid" }
+        {
+          "artifact": "sections/collection-content.liquid",
+          "dependent": "templates/collection.liquid",
+          "affectedPage": "templates/collection.liquid"
+        }
       ],
       "requiredUnusedFile": "sections/cart-content.liquid",
-      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 10, "THEME_RENDER_ARGUMENT_MISSING": 0 }
+      "issueMaximums": {
+        "NAZARE_PARSE_LIQUID": 0,
+        "PLAIN_LIQUID_FACTS_SKIPPED": 0,
+        "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 10,
+        "THEME_RENDER_ARGUMENT_MISSING": 0
+      }
     },
     "ucan": {
       "rootEnv": "NAZARE_CORPUS_UCAN",
       "defaultRoot": "~/Coding/hyuman/ucan",
-      "minimums": { "nodes": 4200, "edges": 8700, "evidence": 4500 },
+      "minimums": {
+        "nodes": 3500,
+        "edges": 6000
+      },
       "requiredNodeIds": [
         "page:templates/product.json",
         "layout:layout/theme.liquid:theme",
         "section:sections/main-product.liquid:main-product",
         "snippet:snippets/product-card.liquid:product-card",
-        "shopify-property:product.price",
-        "classification:sections/custom-carousel.liquid:productForm",
-        "locale-key:pagefly.article.read_more",
-        "expected-input:snippets/product-card.liquid:classes",
-        "capability:sections/custom-carousel.liquid:addsToCart",
-        "shopify-property:cart.items"
+        "locale-key:pagefly.article.read_more"
       ],
       "requiredEdges": [
-        { "kind": "accessesData", "from": "file:snippets/product-card.liquid", "to": "shopify-property:product.price" },
-        { "kind": "accessesData", "from": "file:sections/main-product.liquid", "to": "shopify-property:cart.items" },
-        { "kind": "resolvesRenderTarget", "to": "snippet:snippets/section-product-rows.liquid:section-product-rows" }
+        {
+          "kind": "resolvesRenderTarget",
+          "to": "snippet:snippets/section-product-rows.liquid:section-product-rows"
+        }
       ],
       "impact": [
-        { "artifact": "snippets/product-card.liquid", "dependent": "sections/main-search.liquid", "affectedPage": "templates/product.json" }
+        {
+          "artifact": "snippets/product-card.liquid",
+          "dependent": "sections/main-search.liquid",
+          "affectedPage": "templates/product.json"
+        }
       ],
       "requiredUnusedFile": "sections/byob-custom-messages.liquid",
-      "issueMaximums": { "NAZARE_PARSE_LIQUID": 0, "PLAIN_LIQUID_FACTS_SKIPPED": 0, "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 20, "THEME_RENDER_ARGUMENT_MISSING": 0 }
+      "issueMaximums": {
+        "NAZARE_PARSE_LIQUID": 0,
+        "PLAIN_LIQUID_FACTS_SKIPPED": 0,
+        "LIQUID_UNSCANNED_SETTINGS_EXPRESSION": 20,
+        "THEME_RENDER_ARGUMENT_MISSING": 0
+      }
     }
   }
 }

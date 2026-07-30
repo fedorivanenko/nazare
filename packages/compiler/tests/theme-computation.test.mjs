@@ -52,7 +52,7 @@ test("ThemeProgram keeps graph projection lazy until a graph caller opts in", ()
 	const second = { ...changed[2], contents: "{{ product.handle }}" };
 	const graphUpdate = program.updateFile(second);
 	assert.ok(graphUpdate.graph);
-	assert.ok(graphUpdate.telemetry.graphRecordsReplaced > 0);
+	assert.equal(graphUpdate.telemetry.graphRecordsReplaced, 0);
 });
 
 test("direct impact queries do not require a public graph snapshot", () => {

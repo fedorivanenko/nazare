@@ -3,20 +3,12 @@ import type {
 	InspectNazareThemeResult,
 	SemanticThemeGraphEdge,
 	SemanticThemeGraphNode,
-	ThemeGraphViews,
 	ThemeImpactSummary,
 	ThemeReference,
 	ThemeSemanticModel,
 } from "./theme-facts.js";
 import { impactSummary } from "./theme-impact.js";
-import {
-	blockId,
-	blockInstanceId,
-	dataObjectId,
-	dataPropertyId,
-	fileId,
-	schemaId,
-} from "./theme-model.js";
+import { blockId, blockInstanceId, fileId, schemaId } from "./theme-model.js";
 
 export function shareThemeGraphRecords(
 	previous: InspectNazareThemeResult,
@@ -222,34 +214,13 @@ export function themeGraphFromModel(
 			to: schema.id,
 		});
 	}
-	const translationPathsByLocaleKeyId = new Map<string, string[]>();
-	const selectedTranslationKeyIds = new Set<string>();
-	for (const translation of model.localeTranslations) {
-		translationPathsByLocaleKeyId.set(translation.localeKeyId, [
-			...(translationPathsByLocaleKeyId.get(translation.localeKeyId) ?? []),
-			translation.path,
-		]);
-		if (projects(translation.id)) {
-			selectedTranslationKeyIds.add(translation.localeKeyId);
-			pushEdge({
-				id: `edge:definesLocaleTranslation:${translation.id}->${translation.localeKeyId}`,
-				kind: "definesLocaleTranslation",
-				from: fileId(translation.path),
-				to: translation.localeKeyId,
-				evidenceIds: [translation.id],
-			});
-		}
-	}
 	for (const localeKey of model.localeKeys) {
-		if (!projects(localeKey.id) && !selectedTranslationKeyIds.has(localeKey.id))
-			continue;
+		if (!projects(localeKey.id)) continue;
 		pushNode({
 			id: localeKey.id,
 			kind: "localeKey",
 			key: localeKey.key,
-			translationPaths: [
-				...new Set(translationPathsByLocaleKeyId.get(localeKey.id) ?? []),
-			].sort((a, b) => compareCanonicalStrings(a, b)),
+			translationPaths: [],
 		});
 	}
 	for (const localeReference of model.localeReferences) {
@@ -525,49 +496,6 @@ export function themeGraphFromModel(
 			evidenceIds: [read.dataAccessId],
 		});
 	}
-	for (const dataAccess of model.dataAccesses) {
-		if (!projects(dataAccess.id)) continue;
-		const objectId = dataObjectId(dataAccess.object);
-		pushNode({
-			id: objectId,
-			kind: "shopifyObject",
-			object: dataAccess.object,
-		});
-		const to = dataAccess.propertyPath
-			? dataPropertyId(dataAccess.object, dataAccess.propertyPath)
-			: objectId;
-		if (dataAccess.propertyPath) {
-			pushNode({
-				id: to,
-				kind: "shopifyProperty",
-				object: dataAccess.object,
-				propertyPath: dataAccess.propertyPath,
-			});
-			pushEdge({
-				id: `edge:declares:${objectId}->${to}`,
-				kind: "declares",
-				from: objectId,
-				to,
-			});
-		}
-		pushEdge({
-			id: `edge:accessesData:${dataAccess.id}`,
-			kind: "accessesData",
-			from: fileId(dataAccess.fromPath),
-			to,
-			expression: dataAccess.expression,
-			evidenceIds: [dataAccess.id],
-		});
-	}
-	const declarationById = new Map(
-		model.declarations.map((declaration) => [declaration.id, declaration]),
-	);
-	const expectedInputByPathAndName = new Map(
-		model.expectedInputs.map((input) => [`${input.path}:${input.name}`, input]),
-	);
-	const renderArgumentById = new Map(
-		model.renderArguments.map((argument) => [argument.id, argument]),
-	);
 	const renderEvidenceByLocation = new Map(
 		model.references
 			.filter((reference) => reference.kind === "rendersSnippet")
@@ -613,294 +541,6 @@ export function themeGraphFromModel(
 			to: target,
 			evidenceIds: renderEvidenceId ? [renderEvidenceId] : undefined,
 		});
-		for (const argumentId of site.argumentIds) {
-			pushEdge({
-				id: `edge:hasArgument:${site.id}->${argumentId}`,
-				kind: "hasArgument",
-				from: site.id,
-				to: argumentId,
-				evidenceIds: [argumentId],
-			});
-			const argument = renderArgumentById.get(argumentId);
-			const targetPath = site.resolvedDeclarationId
-				? declarationById.get(site.resolvedDeclarationId)?.path
-				: undefined;
-			const input =
-				argument && targetPath
-					? expectedInputByPathAndName.get(
-							`${targetPath}:${argument.argumentName}`,
-						)
-					: undefined;
-			if (input) {
-				pushEdge({
-					id: `edge:satisfiesInput:${argumentId}->${input.id}`,
-					kind: "satisfiesInput",
-					from: argumentId,
-					to: input.id,
-					evidenceIds: [argumentId, ...input.evidenceIds],
-				});
-			}
-		}
-	}
-	for (const argument of model.renderArguments) {
-		if (!projects(argument.id)) continue;
-		pushNode({
-			id: argument.id,
-			kind: "renderArgument",
-			argumentName: argument.argumentName,
-			valueExpression: argument.valueExpression,
-			fromPath: argument.fromPath,
-			targetName: argument.targetName,
-		});
-		pushEdge({
-			id: `edge:passesArgument:${argument.id}`,
-			kind: "passesArgument",
-			from: fileId(argument.fromPath),
-			to: argument.id,
-			argumentName: argument.argumentName,
-			valueExpression: argument.valueExpression,
-			evidenceIds: [argument.id],
-		});
-		if (argument.sourceObject?.endsWith(".settings") && argument.sourcePath) {
-			const sourceKind = argument.sourceObject.split(".")[0];
-			const targets =
-				sourceKind === "section"
-					? model.settings
-							.filter(
-								(setting) =>
-									setting.path === argument.fromPath &&
-									setting.settingId === argument.sourcePath,
-							)
-							.map((setting) => setting.id)
-					: model.blockSettings
-							.filter(
-								(setting) =>
-									setting.path === argument.fromPath &&
-									setting.settingId === argument.sourcePath,
-							)
-							.map((setting) => setting.id);
-			if (targets.length === 0) {
-				const unresolved = `unresolved:setting:${argument.sourceObject}:${argument.sourcePath}`;
-				pushNode({
-					id: unresolved,
-					kind: "unresolved",
-					targetKind: "setting",
-					name: `${argument.sourceObject}.${argument.sourcePath}`,
-				});
-				targets.push(unresolved);
-			}
-			for (const target of targets) {
-				pushEdge({
-					id: `edge:argumentReadsSetting:${argument.id}->${target}`,
-					kind: "argumentReadsSetting",
-					from: argument.id,
-					to: target,
-					evidenceIds: [argument.id],
-				});
-			}
-		}
-		if (argument.sourceObject && !argument.sourceObject.endsWith(".settings")) {
-			const objectId = dataObjectId(argument.sourceObject);
-			pushNode({
-				id: objectId,
-				kind: "shopifyObject",
-				object: argument.sourceObject,
-			});
-			const to = argument.sourcePath
-				? dataPropertyId(argument.sourceObject, argument.sourcePath)
-				: objectId;
-			if (argument.sourcePath) {
-				pushNode({
-					id: to,
-					kind: "shopifyProperty",
-					object: argument.sourceObject,
-					propertyPath: argument.sourcePath,
-				});
-				pushEdge({
-					id: `edge:declares:${objectId}->${to}`,
-					kind: "declares",
-					from: objectId,
-					to,
-				});
-			}
-			pushEdge({
-				id: `edge:argumentValue:${argument.id}`,
-				kind: "accessesData",
-				from: argument.id,
-				to,
-				expression: argument.valueExpression,
-			});
-		}
-	}
-	for (const input of model.expectedInputs) {
-		if (!projects(input.id)) continue;
-		pushNode({
-			id: input.id,
-			kind: "expectedInput",
-			path: input.path,
-			name: input.name,
-			required: input.required,
-			requirement: input.requirement,
-			provenance: input.provenance,
-			inferredRequirement: input.inferredRequirement,
-			declaredType: input.declaredType,
-			origin: input.origin,
-			propertyPaths: input.propertyPaths,
-			evidenceIds: input.evidenceIds,
-		});
-		pushEdge({
-			id: `edge:expectsInput:${fileId(input.path)}->${input.id}`,
-			kind: "expectsInput",
-			from: fileId(input.path),
-			to: input.id,
-		});
-	}
-	for (const capability of model.capabilities) {
-		if (!projects(capability.id)) continue;
-		pushNode({
-			id: capability.id,
-			kind: "capability",
-			capability: capability.capability,
-			evidenceStrength: capability.evidenceStrength,
-			evidenceIds: capability.evidenceIds,
-		});
-		pushEdge({
-			id: `edge:hasCapability:${fileId(capability.path)}->${capability.id}`,
-			kind: "hasCapability",
-			from: fileId(capability.path),
-			to: capability.id,
-		});
-	}
-	for (const classification of model.classifications) {
-		if (!projects(classification.id)) continue;
-		pushNode({
-			id: classification.id,
-			kind: "classification",
-			label: classification.label,
-			evidenceStrength: classification.evidenceStrength,
-			evidenceIds: classification.evidenceIds,
-			uncertainty: classification.uncertainty,
-		});
-		pushEdge({
-			id: `edge:classifiedAs:${fileId(classification.path)}->${classification.id}`,
-			kind: "classifiedAs",
-			from: fileId(classification.path),
-			to: classification.id,
-		});
-	}
-	for (const behavior of model.behavior) {
-		if (!projects(behavior.id)) continue;
-		const subjectId = behaviorSubjectId(behavior);
-		if (behavior.subjectKind === "domHook") {
-			pushNode({
-				id: subjectId,
-				kind: "domHook",
-				hookKind: behavior.hookKind,
-				name: behavior.name,
-			});
-		} else {
-			pushNode({
-				id: subjectId,
-				kind: behavior.subjectKind,
-				name: behavior.name,
-			});
-		}
-		pushEdge({
-			id: `edge:${behaviorEdgeKind(behavior)}:${behavior.id}->${subjectId}`,
-			kind: behaviorEdgeKind(behavior),
-			from: fileId(behavior.fromPath),
-			to: subjectId,
-			evidenceIds: [behavior.id],
-		});
-	}
-	const domBehaviorBySubject = new Map<
-		string,
-		Array<
-			Extract<
-				ThemeSemanticModel["behavior"][number],
-				{ subjectKind: "domHook" }
-			>
-		>
-	>();
-	for (const behavior of model.behavior) {
-		if (behavior.subjectKind !== "domHook") continue;
-		const subjectId = behaviorSubjectId(behavior);
-		domBehaviorBySubject.set(subjectId, [
-			...(domBehaviorBySubject.get(subjectId) ?? []),
-			behavior,
-		]);
-	}
-	for (const [subjectId, records] of domBehaviorBySubject) {
-		const providers = records.filter(
-			(record) =>
-				record.operation === "emits" || record.operation === "mutates",
-		);
-		const consumers = records.filter(
-			(record) =>
-				record.operation === "selects" || record.operation === "queries",
-		);
-		const consumersByPath = behaviorRecordsByPath(consumers);
-		const providersByPath = behaviorRecordsByPath(providers);
-		for (const [consumerPath, consumerRecords] of consumersByPath) {
-			for (const [providerPath, providerRecords] of providersByPath) {
-				const evidenceIds = [...consumerRecords, ...providerRecords].map(
-					(record) => record.id,
-				);
-				if (consumerPath === providerPath || !evidenceIds.some(projects))
-					continue;
-				pushEdge({
-					id: `edge:dependsOnDomHook:${encodeURIComponent(consumerPath)}->${encodeURIComponent(providerPath)}:${subjectId}`,
-					kind: "dependsOnDomHook",
-					from: fileId(consumerPath),
-					to: fileId(providerPath),
-					hook: subjectId,
-					evidenceIds,
-				});
-			}
-		}
-	}
-	const linkedBehaviorBySubject = new Map<
-		string,
-		ThemeSemanticModel["behavior"]
-	>();
-	for (const behavior of model.behavior) {
-		if (behavior.subjectKind === "domHook") continue;
-		const subjectId = behaviorSubjectId(behavior);
-		linkedBehaviorBySubject.set(subjectId, [
-			...(linkedBehaviorBySubject.get(subjectId) ?? []),
-			behavior,
-		]);
-	}
-	for (const [subjectId, records] of linkedBehaviorBySubject) {
-		const providers = records.filter(
-			(record) =>
-				record.operation === "defines" || record.operation === "dispatches",
-		);
-		const consumers = records.filter(
-			(record) =>
-				record.operation === "reads" ||
-				record.operation === "listens" ||
-				record.operation === "uses",
-		);
-		const consumersByPath = behaviorRecordsByPath(consumers);
-		const providersByPath = behaviorRecordsByPath(providers);
-		for (const [consumerPath, consumerRecords] of consumersByPath) {
-			for (const [providerPath, providerRecords] of providersByPath) {
-				const evidenceIds = [...consumerRecords, ...providerRecords].map(
-					(record) => record.id,
-				);
-				if (consumerPath === providerPath || !evidenceIds.some(projects))
-					continue;
-				pushEdge({
-					id: `edge:dependsOnBehaviorContract:${encodeURIComponent(consumerPath)}->${encodeURIComponent(providerPath)}:${subjectId}`,
-					kind: "dependsOnBehaviorContract",
-					from: fileId(consumerPath),
-					to: fileId(providerPath),
-					subject: subjectId,
-					evidenceIds,
-				});
-			}
-		}
 	}
 	for (const reference of model.references) {
 		if (!projects(reference.id)) continue;
@@ -971,94 +611,97 @@ export function themeGraphFromModel(
 	});
 }
 
+const STRUCTURAL_NODE_KINDS = new Set<SemanticThemeGraphNode["kind"]>([
+	"file",
+	"sourceAnalysis",
+	"section",
+	"snippet",
+	"template",
+	"page",
+	"layout",
+	"locale",
+	"asset",
+	"sectionGroup",
+	"themeBlock",
+	"sectionInstance",
+	"blockInstance",
+	"renderSite",
+	"component",
+	"schema",
+	"block",
+	"blockSetting",
+	"setting",
+	"localeKey",
+	"metafieldDefinition",
+	"metafieldRead",
+	"storeSchema",
+	"unresolved",
+]);
+
+const STRUCTURAL_EDGE_KINDS = new Set<SemanticThemeGraphEdge["kind"]>([
+	"declares",
+	"invokes",
+	"resolvesRenderTarget",
+	"imports",
+	"referencesAsset",
+	"containsSectionGroup",
+	"usesLayout",
+	"referencesLocaleKey",
+	"definesSchema",
+	"definesSetting",
+	"definesBlock",
+	"definesBlockSetting",
+	"pageUsesTemplate",
+	"pageContainsSectionInstance",
+	"templateContainsSectionInstance",
+	"sectionInstanceContainsBlockInstance",
+	"blockInstanceContainsBlockInstance",
+	"instanceOf",
+	"instanceOfBlock",
+	"templateContainsSection",
+	"readsSetting",
+	"readsMetafield",
+	"resolvesMetafieldDefinition",
+	"missingMetafieldDefinition",
+	"schemaFor",
+	"hasSourceAnalysis",
+]);
+
 export function themeGraphFromRecords(
 	model: ThemeSemanticModel,
 	nodes: SemanticThemeGraphNode[],
 	edges: SemanticThemeGraphEdge[],
 	options: { impact?: ThemeImpactSummary; validate?: boolean } = {},
 ): InspectNazareThemeResult {
-	const sortedNodes = [...nodes].sort((a, b) =>
-		compareCanonicalStrings(a.id, b.id),
-	);
-	const sortedEdges = [...edges].sort((a, b) =>
-		compareCanonicalStrings(a.id, b.id),
-	);
-	const views = graphViews(sortedNodes, sortedEdges);
+	const sortedNodes = nodes
+		.filter((node) => STRUCTURAL_NODE_KINDS.has(node.kind))
+		.sort((a, b) => compareCanonicalStrings(a.id, b.id));
+	const sortedEdges = edges
+		.filter((edge) => STRUCTURAL_EDGE_KINDS.has(edge.kind))
+		.map((edge) => {
+			const { evidenceIds, ...structural } = edge;
+			if (evidenceIds) {
+				Object.defineProperty(structural, "evidenceIds", {
+					value: evidenceIds,
+					enumerable: false,
+				});
+			}
+			return structural as SemanticThemeGraphEdge;
+		})
+		.sort((a, b) => compareCanonicalStrings(a.id, b.id));
 	if (options.validate !== false) {
-		assertGraphIntegrity(sortedNodes, sortedEdges, views, model.evidence);
+		assertGraphIntegrity(sortedNodes, sortedEdges);
 	}
 	return {
-		version: 4,
+		version: 5,
 		root: model.root,
 		nodes: sortedNodes,
 		edges: sortedEdges,
-		evidence: model.evidence,
 		impact: options.impact ?? impactSummary(model),
 		metafields: metafieldQueries(model),
 		themeCheck: model.themeCheck,
-		views,
 		issues: model.issues,
 	};
-}
-
-function behaviorRecordsByPath<
-	RecordValue extends ThemeSemanticModel["behavior"][number],
->(records: RecordValue[]): Map<string, RecordValue[]> {
-	const byPath = new Map<string, RecordValue[]>();
-	for (const record of records) {
-		byPath.set(record.fromPath, [
-			...(byPath.get(record.fromPath) ?? []),
-			record,
-		]);
-	}
-	return byPath;
-}
-
-function behaviorSubjectId(
-	behavior: ThemeSemanticModel["behavior"][number],
-): string {
-	if (behavior.subjectKind === "domHook") {
-		return `dom-hook:${behavior.hookKind}:${encodeURIComponent(behavior.name)}`;
-	}
-	return `${behavior.subjectKind}:${encodeURIComponent(behavior.name)}`;
-}
-
-function behaviorEdgeKind(
-	behavior: ThemeSemanticModel["behavior"][number],
-):
-	| "emitsHook"
-	| "selectsHook"
-	| "queriesHook"
-	| "mutatesHook"
-	| "definesCustomProperty"
-	| "readsCustomProperty"
-	| "dispatchesEvent"
-	| "listensForEvent"
-	| "definesCustomElement"
-	| "usesCustomElement" {
-	if (behavior.subjectKind === "domHook") {
-		return (
-			{
-				emits: "emitsHook",
-				selects: "selectsHook",
-				queries: "queriesHook",
-				mutates: "mutatesHook",
-			} as const
-		)[behavior.operation];
-	}
-	if (behavior.subjectKind === "customProperty") {
-		return behavior.operation === "defines"
-			? "definesCustomProperty"
-			: "readsCustomProperty";
-	}
-	if (behavior.subjectKind === "customEvent") {
-		return behavior.operation === "dispatches"
-			? "dispatchesEvent"
-			: "listensForEvent";
-	}
-	return behavior.operation === "defines"
-		? "definesCustomElement"
-		: "usesCustomElement";
 }
 
 function metafieldQueries(model: ThemeSemanticModel) {
@@ -1092,12 +735,8 @@ function metafieldQueries(model: ThemeSemanticModel) {
 function assertGraphIntegrity(
 	nodes: SemanticThemeGraphNode[],
 	edges: SemanticThemeGraphEdge[],
-	views: ThemeGraphViews,
-	evidence: ThemeSemanticModel["evidence"],
 ): void {
 	const nodeIds = new Set(nodes.map((node) => node.id));
-	const evidenceIds = new Set(evidence.map((record) => record.id));
-	const edgeById = new Map(edges.map((edge) => [edge.id, edge]));
 	for (const edge of edges) {
 		if (!nodeIds.has(edge.from)) {
 			throw new Error(
@@ -1109,159 +748,7 @@ function assertGraphIntegrity(
 				`Semantic theme graph edge ${edge.id} missing to ${edge.to}`,
 			);
 		}
-		for (const evidenceId of edge.evidenceIds ?? []) {
-			if (!evidenceIds.has(evidenceId)) {
-				throw new Error(
-					`Semantic theme graph edge ${edge.id} points to missing evidence ${evidenceId}`,
-				);
-			}
-		}
 	}
-	for (const [viewName, view] of Object.entries(views)) {
-		const viewNodeIds = new Set(view.nodeIds);
-		for (const nodeId of view.nodeIds) {
-			if (!nodeIds.has(nodeId)) {
-				throw new Error(
-					`Semantic theme graph view ${viewName} references missing node ${nodeId}`,
-				);
-			}
-		}
-		for (const edgeId of view.edgeIds) {
-			const edge = edgeById.get(edgeId);
-			if (!edge) {
-				throw new Error(
-					`Semantic theme graph view ${viewName} references missing edge ${edgeId}`,
-				);
-			}
-			if (!viewNodeIds.has(edge.from)) {
-				throw new Error(
-					`Semantic theme graph view ${viewName} omits ${edge.from}`,
-				);
-			}
-			if (!viewNodeIds.has(edge.to)) {
-				throw new Error(
-					`Semantic theme graph view ${viewName} omits ${edge.to}`,
-				);
-			}
-		}
-	}
-}
-
-function graphViews(
-	nodes: SemanticThemeGraphNode[],
-	edges: SemanticThemeGraphEdge[],
-): ThemeGraphViews {
-	const view = (
-		nodeKinds: Set<SemanticThemeGraphNode["kind"]>,
-		edgeKinds: Set<SemanticThemeGraphEdge["kind"]>,
-	) => {
-		const selectedEdges = edges.filter((edge) => edgeKinds.has(edge.kind));
-		const selectedNodeIds = new Set(
-			nodes.filter((node) => nodeKinds.has(node.kind)).map((node) => node.id),
-		);
-		for (const edge of selectedEdges) {
-			selectedNodeIds.add(edge.from);
-			selectedNodeIds.add(edge.to);
-		}
-		return {
-			nodeIds: [...selectedNodeIds].sort((a, b) =>
-				compareCanonicalStrings(a, b),
-			),
-			edgeIds: selectedEdges
-				.map((edge) => edge.id)
-				.sort((a, b) => compareCanonicalStrings(a, b)),
-		};
-	};
-	return {
-		themeStructure: view(
-			new Set([
-				"file",
-				"template",
-				"section",
-				"sectionGroup",
-				"sectionInstance",
-				"blockInstance",
-				"themeBlock",
-				"snippet",
-				"renderSite",
-				"component",
-				"asset",
-				"layout",
-			]),
-			new Set([
-				"declares",
-				"invokes",
-				"resolvesRenderTarget",
-				"hasArgument",
-				"satisfiesInput",
-				"imports",
-				"referencesAsset",
-				"containsSectionGroup",
-				"usesLayout",
-				"templateContainsSection",
-				"templateContainsSectionInstance",
-				"instanceOf",
-				"sectionInstanceContainsBlockInstance",
-				"blockInstanceContainsBlockInstance",
-				"instanceOfBlock",
-			]),
-		),
-		shopifyData: view(
-			new Set(["file", "shopifyObject", "shopifyProperty"]),
-			new Set(["accessesData", "declares"]),
-		),
-		storefrontArchitecture: view(
-			new Set([
-				"page",
-				"template",
-				"sectionInstance",
-				"blockInstance",
-				"section",
-				"themeBlock",
-				"snippet",
-				"renderSite",
-				"capability",
-				"classification",
-			]),
-			new Set([
-				"pageUsesTemplate",
-				"pageContainsSectionInstance",
-				"templateContainsSectionInstance",
-				"instanceOf",
-				"sectionInstanceContainsBlockInstance",
-				"blockInstanceContainsBlockInstance",
-				"instanceOfBlock",
-				"invokes",
-				"resolvesRenderTarget",
-				"hasCapability",
-				"classifiedAs",
-			]),
-		),
-		configuration: view(
-			new Set([
-				"file",
-				"schema",
-				"setting",
-				"block",
-				"blockSetting",
-				"locale",
-				"localeKey",
-			]),
-			new Set([
-				"definesSchema",
-				"definesSetting",
-				"definesBlock",
-				"definesBlockSetting",
-				"readsSetting",
-				"argumentReadsSetting",
-				"referencesLocaleKey",
-			]),
-		),
-		changeImpact: view(
-			new Set(nodes.map((node) => node.kind)),
-			new Set(edges.map((edge) => edge.kind)),
-		),
-	};
 }
 
 function unresolvedNodeId(reference: ThemeReference): string {

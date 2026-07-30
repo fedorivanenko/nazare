@@ -81,7 +81,7 @@ import {
 	THEME_GRAPH_METAFIELD_SCHEMA_OWNER,
 	ThemeGraphStore,
 } from "./theme-graph-store.js";
-import { affectedPagesForPaths } from "./theme-impact.js";
+import { affectedPagesForPaths, impactSummary } from "./theme-impact.js";
 import { ThemeImpactIndex } from "./theme-impact-index.js";
 import {
 	createThemeInstancePass,
@@ -732,7 +732,7 @@ export class ThemeProgram {
 		nextGraphStore.replaceOwnership(semanticUpdate.model);
 		const nextImpactIndex = this.impactIndex.fork();
 		nextImpactIndex.applyGraph(nextGraph);
-		nextGraph.impact = nextImpactIndex.toSummary();
+		nextGraph.impact = impactSummary(semanticUpdate.model);
 		nextGraphStore.applyGraph(nextGraph);
 		const metafieldAffectedPages = changedMetafieldDefinitionIds.flatMap(
 			(id) => [
