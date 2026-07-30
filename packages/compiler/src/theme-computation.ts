@@ -1,4 +1,5 @@
 import type { Diagnostic } from "@nazare/core";
+import { compareCanonicalStrings } from "./canonical-order.js";
 import type {
 	InspectNazareThemeResult,
 	ThemeAnalysis,
@@ -9,6 +10,15 @@ import type {
 import type { ThemeFileKind } from "./theme-file-classifier.js";
 import { themeGraphFromModel } from "./theme-graph-output.js";
 import { impactSummary } from "./theme-impact.js";
+
+export type ThemeRenderOccurrence = {
+	id: string;
+	fromPath: string;
+	targetPath?: string;
+	targetName?: string;
+	invocationKind: "render" | "include";
+	span?: ThemeSemanticModel["renderSites"][number]["span"];
+};
 
 export type ThemeFileImpact = {
 	version: 1;
@@ -102,6 +112,37 @@ export class ThemeComputation {
 			affectedPages: summary.affectedPages[path] ?? [],
 			issues: this.issuesByPath.get(path) ?? [],
 		};
+	}
+
+	getRenderOccurrences(path: string): ThemeRenderOccurrence[] {
+		const declarationPathById = new Map(
+			this.model.declarations.map((declaration) => [
+				declaration.id,
+				declaration.path,
+			]),
+		);
+		return this.model.renderSites
+			.map(
+				(site): ThemeRenderOccurrence => ({
+					id: site.id,
+					fromPath: site.fromPath,
+					targetPath: site.resolvedDeclarationId
+						? declarationPathById.get(site.resolvedDeclarationId)
+						: undefined,
+					targetName: site.targetName,
+					invocationKind: site.invocationKind,
+					span: site.span,
+				}),
+			)
+			.filter(
+				(occurrence) =>
+					occurrence.fromPath === path || occurrence.targetPath === path,
+			)
+			.sort((a, b) => compareCanonicalStrings(a.id, b.id));
+	}
+
+	getEvidence(recordId: string): ThemeSemanticModel["evidence"] {
+		return this.model.evidence.filter((record) => record.id === recordId);
 	}
 
 	getFileImpacts(): Map<string, ThemeFileImpact> {

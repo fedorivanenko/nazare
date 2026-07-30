@@ -144,6 +144,14 @@ test("graph server supports MCP tools and build updates", async () => {
 			responses[1].result.tools.some((tool) => tool.name === "fileImpact"),
 		);
 		assert.ok(
+			responses[1].result.tools.some(
+				(tool) => tool.name === "renderOccurrences",
+			),
+		);
+		assert.ok(
+			responses[1].result.tools.some((tool) => tool.name === "evidence"),
+		);
+		assert.ok(
 			responses[1].result.tools.every(
 				(tool) => tool.inputSchema.additionalProperties === false,
 			),

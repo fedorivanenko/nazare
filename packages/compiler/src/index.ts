@@ -171,6 +171,7 @@ export {
 export {
 	ThemeComputation,
 	type ThemeFileImpact,
+	type ThemeRenderOccurrence,
 } from "./theme-computation.js";
 export { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 export {

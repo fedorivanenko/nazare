@@ -496,54 +496,60 @@ export function themeGraphFromModel(
 			evidenceIds: [read.dataAccessId],
 		});
 	}
-	const renderEvidenceByLocation = new Map(
-		model.references
-			.filter((reference) => reference.kind === "rendersSnippet")
-			.map((reference) => [
-				`${reference.fromPath}:${reference.span?.start.line}:${reference.span?.start.column}`,
-				reference.id,
-			]),
+	const declarationPathById = new Map(
+		model.declarations.map((declaration) => [declaration.id, declaration.path]),
 	);
-	for (const site of model.renderSites) {
-		if (!projects(site.id)) continue;
-		const renderEvidenceId = renderEvidenceByLocation.get(
-			`${site.fromPath}:${site.span?.start.line}:${site.span?.start.column}`,
-		);
-		pushNode({
-			id: site.id,
-			kind: "renderSite",
-			fromPath: site.fromPath,
-			targetName: site.targetName,
-			invocationKind: site.invocationKind,
-		});
-		pushEdge({
-			id: `edge:invokes:${fileId(site.fromPath)}->${site.id}`,
-			kind: "invokes",
-			from: fileId(site.fromPath),
-			to: site.id,
-			evidenceIds: renderEvidenceId ? [renderEvidenceId] : undefined,
-		});
-		const target =
-			site.resolvedDeclarationId ??
-			`unresolved:snippet:${site.targetName ?? site.id}`;
-		if (!site.resolvedDeclarationId) {
+	const renderRelations = new Map<
+		string,
+		{
+			from: string;
+			to: string;
+			targetName?: string;
+			evidenceIds: string[];
+		}
+	>();
+	for (const reference of model.references) {
+		if (reference.kind !== "rendersSnippet") continue;
+		const targetPath = reference.resolvedDeclarationId
+			? declarationPathById.get(reference.resolvedDeclarationId)
+			: undefined;
+		const from = fileId(reference.fromPath);
+		const to = targetPath
+			? fileId(targetPath)
+			: `unresolved:snippet:${reference.targetName ?? "dynamic"}`;
+		const key = `${from}\0${to}`;
+		const relation = renderRelations.get(key);
+		if (relation) relation.evidenceIds.push(reference.id);
+		else {
+			renderRelations.set(key, {
+				from,
+				to,
+				targetName: reference.targetName,
+				evidenceIds: [reference.id],
+			});
+		}
+	}
+	for (const relation of renderRelations.values()) {
+		if (!relation.evidenceIds.some(projects)) continue;
+		if (relation.to.startsWith("unresolved:")) {
 			pushNode({
-				id: target,
+				id: relation.to,
 				kind: "unresolved",
 				targetKind: "snippet",
-				name: site.targetName,
+				name: relation.targetName,
 			});
 		}
 		pushEdge({
-			id: `edge:resolvesRenderTarget:${site.id}->${target}`,
-			kind: "resolvesRenderTarget",
-			from: site.id,
-			to: target,
-			evidenceIds: renderEvidenceId ? [renderEvidenceId] : undefined,
+			id: `edge:renders:${relation.from}->${relation.to}`,
+			kind: "renders",
+			from: relation.from,
+			to: relation.to,
+			evidenceIds: relation.evidenceIds,
 		});
 	}
 	for (const reference of model.references) {
-		if (!projects(reference.id)) continue;
+		if (reference.kind === "rendersSnippet" || !projects(reference.id))
+			continue;
 		const to = reference.resolvedDeclarationId ?? unresolvedNodeId(reference);
 		if (!reference.resolvedDeclarationId) {
 			pushNode({
@@ -625,7 +631,6 @@ const STRUCTURAL_NODE_KINDS = new Set<SemanticThemeGraphNode["kind"]>([
 	"themeBlock",
 	"sectionInstance",
 	"blockInstance",
-	"renderSite",
 	"component",
 	"schema",
 	"block",
@@ -640,8 +645,7 @@ const STRUCTURAL_NODE_KINDS = new Set<SemanticThemeGraphNode["kind"]>([
 
 const STRUCTURAL_EDGE_KINDS = new Set<SemanticThemeGraphEdge["kind"]>([
 	"declares",
-	"invokes",
-	"resolvesRenderTarget",
+	"renders",
 	"imports",
 	"referencesAsset",
 	"containsSectionGroup",

@@ -240,13 +240,19 @@ async function handleRequest(
 		setWatcher(() => undefined);
 		return { watching: false };
 	}
-	const graph = session.getGraph();
-	if (request.method === "summary") return summarizeThemeGraph(graph);
 	if (request.method === "fileImpact") {
 		return (
 			session.getFileImpact(requiredString(request.params, "path")) ?? null
 		);
 	}
+	if (request.method === "renderOccurrences") {
+		return session.getRenderOccurrences(requiredString(request.params, "path"));
+	}
+	if (request.method === "evidence") {
+		return session.getEvidence(requiredString(request.params, "recordId"));
+	}
+	const graph = session.getGraph();
+	if (request.method === "summary") return summarizeThemeGraph(graph);
 	if (
 		["node", "dependencies", "dependents", "affectedPages"].includes(
 			request.method,
@@ -492,7 +498,13 @@ function validateToolArguments(
 	args: Record<string, unknown> | undefined,
 ): void {
 	const allowedKeys =
-		name === "summary" ? [] : name === "fileImpact" ? ["path"] : ["nodeId"];
+		name === "summary"
+			? []
+			: name === "fileImpact" || name === "renderOccurrences"
+				? ["path"]
+				: name === "evidence"
+					? ["recordId"]
+					: ["nodeId"];
 	const unknownKeys = Object.keys(args ?? {}).filter(
 		(key) => !allowedKeys.includes(key),
 	);
@@ -542,6 +554,12 @@ function graphTools(): {
 		required: ["path"],
 		additionalProperties: false,
 	};
+	const recordId = {
+		type: "object",
+		properties: { recordId: { type: "string" } },
+		required: ["recordId"],
+		additionalProperties: false,
+	};
 	return [
 		{
 			name: "summary",
@@ -569,6 +587,17 @@ function graphTools(): {
 			description:
 				"Explain one theme file's usage, dependencies, dependents, affected pages, diagnostics, and uncertainty.",
 			inputSchema: path,
+		},
+		{
+			name: "renderOccurrences",
+			description:
+				"Get source render/include occurrences where a file is caller or target.",
+			inputSchema: path,
+		},
+		{
+			name: "evidence",
+			description: "Get semantic evidence on demand by record ID.",
+			inputSchema: recordId,
 		},
 	];
 }

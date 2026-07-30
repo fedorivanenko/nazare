@@ -15,6 +15,7 @@ type SummaryContribution = {
 };
 
 const SUMMARY_REFERENCE_EDGE_KINDS = new Set<ImpactEdge["kind"]>([
+	"renders",
 	"templateContainsSection",
 	"containsSectionGroup",
 	"usesLayout",
@@ -578,6 +579,14 @@ function isDynamicSnippetReference(
 	edge: ImpactEdge,
 	nodesById: Map<string, ImpactNode>,
 ): boolean {
+	if (edge.kind === "renders") {
+		const target = nodesById.get(edge.to);
+		return (
+			target?.kind === "unresolved" &&
+			target.targetKind === "snippet" &&
+			target.name === undefined
+		);
+	}
 	if (edge.kind !== "resolvesRenderTarget") return false;
 	const site = nodesById.get(edge.from);
 	return site?.kind === "renderSite" && site.targetName === undefined;

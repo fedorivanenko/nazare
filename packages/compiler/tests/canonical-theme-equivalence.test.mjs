@@ -54,8 +54,7 @@ test("canonical theme covers structural graph and rich semantic families", () =>
 	const edgeKinds = new Set(graph.edges.map((edge) => edge.kind));
 	for (const kind of [
 		"declares",
-		"invokes",
-		"resolvesRenderTarget",
+		"renders",
 		"readsSetting",
 		"readsMetafield",
 	]) {

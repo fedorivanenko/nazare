@@ -35,6 +35,30 @@ test("computation owns direct queries and lazily projects the public graph", () 
 	assert.deepEqual(computation.getFileImpacts(), getThemeFileImpacts(graph));
 	assert.strictEqual(computation.toInspectGraph(), graph);
 	assert.deepEqual(graph, inspectNazareTheme(files));
+	assert.equal(
+		graph.nodes.some((node) => node.kind === "renderSite"),
+		false,
+	);
+	assert.ok(
+		graph.edges.some(
+			(edge) =>
+				edge.kind === "renders" &&
+				edge.from === "file:sections/main-product.liquid" &&
+				edge.to === "file:snippets/card.liquid",
+		),
+	);
+	assert.deepEqual(computation.getRenderOccurrences("snippets/card.liquid"), [
+		{
+			id: computation.model.renderSites[0].id,
+			fromPath: "sections/main-product.liquid",
+			targetPath: "snippets/card.liquid",
+			targetName: "card",
+			invocationKind: "render",
+			span: computation.model.renderSites[0].span,
+		},
+	]);
+	const referenceId = computation.model.references[0].id;
+	assert.ok(computation.getEvidence(referenceId).length > 0);
 });
 
 test("ThemeProgram keeps graph projection lazy until a graph caller opts in", () => {

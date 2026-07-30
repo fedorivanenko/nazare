@@ -18,7 +18,11 @@ import {
 	createThemeClassificationPass,
 	type ThemeClassificationPassContext,
 } from "./theme-classification-pass.js";
-import { ThemeComputation, type ThemeFileImpact } from "./theme-computation.js";
+import {
+	ThemeComputation,
+	type ThemeFileImpact,
+	type ThemeRenderOccurrence,
+} from "./theme-computation.js";
 import { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 import {
 	createThemeDataFlowFixedPointPass,
@@ -377,6 +381,14 @@ export class ThemeProgram {
 
 	getFileImpact(path: string): ThemeFileImpact | undefined {
 		return this.getQueryComputation().getFileImpact(path);
+	}
+
+	getRenderOccurrences(path: string): ThemeRenderOccurrence[] {
+		return this.getQueryComputation().getRenderOccurrences(path);
+	}
+
+	getEvidence(recordId: string): ThemeSemanticModel["evidence"] {
+		return this.getQueryComputation().getEvidence(recordId);
 	}
 
 	updateFile(file: ThemeInputFile): ThemeGraphUpdate {

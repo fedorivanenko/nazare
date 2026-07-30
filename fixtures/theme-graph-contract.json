@@ -4,7 +4,7 @@
     "canonical-theme": {
       "repositoryRoot": "fixtures/canonical-theme",
       "minimums": {
-        "nodes": 150,
+        "nodes": 130,
         "edges": 150
       },
       "requiredNodeIds": [
@@ -31,7 +31,7 @@
           "from": "file:snippets/product-card.liquid"
         },
         {
-          "kind": "invokes",
+          "kind": "renders",
           "from": "file:sections/main-product.liquid"
         },
         {
@@ -75,7 +75,7 @@
       "defaultRoot": "~/Coding/hyuman/alkamind/alkamind-nazare",
       "minimums": {
         "nodes": 2000,
-        "edges": 3000
+        "edges": 2500
       },
       "requiredNodeIds": [
         "page:templates/product.json",
@@ -121,8 +121,8 @@
       ],
       "requiredEdges": [
         {
-          "kind": "resolvesRenderTarget",
-          "to": "snippet:snippets/meta-tags.liquid:meta-tags"
+          "kind": "renders",
+          "to": "file:snippets/meta-tags.liquid"
         }
       ],
       "impact": [
@@ -144,7 +144,7 @@
       "rootEnv": "NAZARE_CORPUS_CLIMATIC_HEALTH",
       "defaultRoot": "~/Coding/hyuman/climatic-health",
       "minimums": {
-        "nodes": 1800,
+        "nodes": 1400,
         "edges": 2500
       },
       "requiredNodeIds": [
@@ -191,8 +191,8 @@
       ],
       "requiredEdges": [
         {
-          "kind": "resolvesRenderTarget",
-          "to": "snippet:snippets/section-product-rows.liquid:section-product-rows"
+          "kind": "renders",
+          "to": "file:snippets/section-product-rows.liquid"
         }
       ],
       "impact": [

@@ -183,6 +183,7 @@ export type SemanticThemeGraphEdge = (
 	| { id: string; kind: "declares"; from: string; to: string }
 	| { id: string; kind: "invokes"; from: string; to: string }
 	| { id: string; kind: "resolvesRenderTarget"; from: string; to: string }
+	| { id: string; kind: "renders"; from: string; to: string }
 	| { id: string; kind: "hasArgument"; from: string; to: string }
 	| { id: string; kind: "satisfiesInput"; from: string; to: string }
 	| { id: string; kind: "imports"; from: string; to: string; specifier: string }

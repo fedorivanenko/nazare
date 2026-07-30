@@ -293,7 +293,7 @@ test("graph store applies stable-ID records transactionally", () => {
 	assert.equal(
 		owned
 			.getOwnedEdgeIds(reference.id)
-			.some((id) => id.startsWith("edge:resolvesRenderTarget:")),
+			.some((id) => id.startsWith("edge:renders:")),
 		true,
 	);
 
@@ -1095,8 +1095,7 @@ test("structural graph connects pages, blocks, render sites, settings, and layou
 		"pageContainsSectionInstance",
 		"sectionInstanceContainsBlockInstance",
 		"instanceOfBlock",
-		"invokes",
-		"resolvesRenderTarget",
+		"renders",
 		"readsSetting",
 	]) {
 		assert.ok(
@@ -1104,7 +1103,6 @@ test("structural graph connects pages, blocks, render sites, settings, and layou
 			kind,
 		);
 	}
-	assert.ok(graph.nodes.some((node) => node.kind === "renderSite"));
 	assert.ok(graph.nodes.some((node) => node.kind === "themeBlock"));
 	assert.ok(graph.nodes.some((node) => node.kind === "blockInstance"));
 });
