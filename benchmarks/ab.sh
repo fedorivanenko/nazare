@@ -8,6 +8,7 @@
 #   benchmarks/ab.sh                          # against origin/main
 #   BASELINE_REF=HEAD~3 benchmarks/ab.sh
 #   THEME=climatic-health RUNS=5 benchmarks/ab.sh
+#   ALLOW_OUTPUT_CHANGE=1 BASELINE_REF=v0.1.0-rc.4 benchmarks/ab.sh
 set -euo pipefail
 
 REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -51,5 +52,6 @@ node benchmarks/inspect-theme.mjs \
 	--runs "$RUNS" \
 	--baseline-cli "$WORKTREE/packages/cli-client/dist/index.js" \
 	--max-cold-regression "$MAX_COLD_REGRESSION" \
+	${ALLOW_OUTPUT_CHANGE:+--allow-output-change} \
 	${REPORT_JSON:+--json} \
 	| tee "${REPORT_PATH:-/dev/null}"

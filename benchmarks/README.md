@@ -67,8 +67,15 @@ doubles as the correctness check for optimization work.
 against the PR's merge base, and uploads the report as an artifact.
 
 Shared GitHub runners are noisy, so treat the CI numbers as a comparison and
-never as absolutes worth quoting. The budget is 15% and only the larger scales
-are gated.
+never as absolutes worth quoting. The budget is 15%, and a runner is fast
+enough that only the larger scales clear the one-second floor — those are the
+cells the gate actually watches.
+
+The nightly run compares against the most recent release tag instead, because
+drift since a release is the question there. A graph shape change across
+releases is intended, so that run passes `ALLOW_OUTPUT_CHANGE=1` and reports
+differences without failing; inside a pull request an output change is a
+finding and fails the job.
 
 ## On Railway
 

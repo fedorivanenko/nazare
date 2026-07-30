@@ -73,10 +73,14 @@ export async function main(argumentsList = process.argv.slice(2)) {
 			console.log(renderReport(report));
 		}
 		const failures = [
-			...report.outputMismatches.map(
-				(mismatch) =>
-					`${mismatch.theme}: graph output differs from baseline at byte ${mismatch.offset}`,
-			),
+			// Across releases the graph is meant to change, so a comparison that
+			// spans one reports differences without failing on them.
+			...(options.allowOutputChange
+				? []
+				: report.outputMismatches.map(
+						(mismatch) =>
+							`${mismatch.theme}: graph output differs from baseline at byte ${mismatch.offset}`,
+					)),
 			...report.coldRegressions.map(
 				(regression) =>
 					`${regression.theme}: cold ${regression.metric} regressed ${regression.percent.toFixed(1)}% (${regression.baseline.toFixed(2)}s -> ${regression.candidate.toFixed(2)}s), over the ${regression.allowedPercent}% budget`,
@@ -105,6 +109,7 @@ export function parseArguments(
 		cli: join(repositoryRoot, "packages/cli-client/dist/index.js"),
 		baselineCli: undefined,
 		maxColdRegression: undefined,
+		allowOutputChange: false,
 		json: false,
 		keep: false,
 	};
@@ -116,6 +121,10 @@ export function parseArguments(
 		}
 		if (argument === "--keep") {
 			options.keep = true;
+			continue;
+		}
+		if (argument === "--allow-output-change") {
+			options.allowOutputChange = true;
 			continue;
 		}
 		const value = argumentsList[index + 1];
@@ -231,6 +240,7 @@ function runBenchmark(options, workspace) {
 			theme: options.theme,
 			scales: options.theme === "fixture" ? options.scales : undefined,
 			runs: options.runs,
+			outputChangeAllowed: options.allowOutputChange,
 			builds: builds.map((build) => ({
 				name: build.name,
 				cli: relative(options.repositoryRoot, build.cli),

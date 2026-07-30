@@ -53,9 +53,24 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - name: inspect theme A/B against the merge base
+      # A pull request is asking "does this change cost anything", so it
+      # compares against its merge base. The nightly is asking "have we drifted
+      # since we shipped", and comparing a merge commit against its own parent
+      # would answer neither.
+      - name: resolve baseline
+        id: baseline
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "ref=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=$(git describe --tags --abbrev=0)" >> "$GITHUB_OUTPUT"
+          fi
+      - name: inspect theme A/B
         env:
-          BASELINE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || 'HEAD~1' }}
+          BASELINE_REF: ${{ steps.baseline.outputs.ref }}
+          # A graph shape change between releases is intended; one inside a pull
+          # request is a finding, so only the nightly tolerates it.
+          ALLOW_OUTPUT_CHANGE: ${{ github.event_name != 'pull_request' && '1' || '' }}
           # A runner is fast enough that the smaller scales land under the
           # gate's one-second floor, where a cell measures process startup
           # rather than analysis. 64 and 96 are what it actually watches.
