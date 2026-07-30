@@ -163,26 +163,45 @@ function runBenchmark(options, workspace) {
 	const cells = [];
 	const outputMismatches = [];
 	for (const theme of themes) {
-		const measurements = {};
-		const outputs = {};
-		// Interleaved: a machine that slows down mid-run slows both builds.
-		for (const build of builds) {
-			const outputPath = join(
-				workspace,
-				`${fileSafe(theme.label)}.${build.name}.json`,
-			);
-			measurements[build.name] = {
-				cold: measure(build.cli, theme.directory, options.runs, {
-					cold: true,
-					outputPath,
-				}),
-				warm: measure(build.cli, theme.directory, options.runs, {
-					cold: false,
-					outputPath,
-				}),
-			};
-			outputs[build.name] = outputPath;
+		const outputs = Object.fromEntries(
+			builds.map((build) => [
+				build.name,
+				join(workspace, `${fileSafe(theme.label)}.${build.name}.json`),
+			]),
+		);
+		const samples = Object.fromEntries(
+			builds.map((build) => [
+				build.name,
+				{ cold: { wall: [], cpu: [] }, warm: { wall: [], cpu: [] } },
+			]),
+		);
+		// Interleaved per run, and the order flips each run. Measuring one build
+		// to completion before starting the other hands whichever went first
+		// every bit of drift on a machine that is warming up or quieting down.
+		for (let run = 0; run < options.runs; run += 1) {
+			const order = run % 2 === 0 ? builds : [...builds].reverse();
+			for (const build of order) {
+				for (const phase of ["cold", "warm"]) {
+					const sample = runPhase(build.cli, theme.directory, {
+						cold: phase === "cold",
+						outputPath: outputs[build.name],
+					});
+					samples[build.name][phase].wall.push(sample.wall);
+					if (sample.cpu !== undefined) {
+						samples[build.name][phase].cpu.push(sample.cpu);
+					}
+				}
+			}
 		}
+		const measurements = Object.fromEntries(
+			builds.map((build) => [
+				build.name,
+				{
+					cold: summarizePhase(samples[build.name].cold, options.runs),
+					warm: summarizePhase(samples[build.name].warm, options.runs),
+				},
+			]),
+		);
 		if (builds.length === 2) {
 			const difference = firstDifference(outputs.baseline, outputs.candidate);
 			if (difference) {
@@ -294,19 +313,21 @@ function resolveThemeRoot(options) {
 	return root;
 }
 
-function measure(cli, directory, runs, { cold, outputPath }) {
-	const wall = [];
-	const cpu = [];
-	for (let run = 0; run < runs; run += 1) {
-		if (cold)
-			rmSync(join(directory, ".nazare-out"), { recursive: true, force: true });
-		const sample = runInspect(cli, directory, outputPath);
-		wall.push(sample.wall);
-		if (sample.cpu !== undefined) cpu.push(sample.cpu);
+/**
+ * One timed invocation. A cold phase drops the cache first; the warm phase
+ * that follows it reuses what the cold run just wrote.
+ */
+function runPhase(cli, directory, { cold, outputPath }) {
+	if (cold) {
+		rmSync(join(directory, ".nazare-out"), { recursive: true, force: true });
 	}
+	return runInspect(cli, directory, outputPath);
+}
+
+function summarizePhase(sample, runs) {
 	return {
-		wallSeconds: summarize(wall),
-		cpuSeconds: cpu.length === runs ? summarize(cpu) : undefined,
+		wallSeconds: summarize(sample.wall),
+		cpuSeconds: sample.cpu.length === runs ? summarize(sample.cpu) : undefined,
 	};
 }
 
