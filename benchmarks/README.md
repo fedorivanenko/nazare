@@ -32,20 +32,68 @@ delete `.nazare-out` and that must never happen inside a real theme.
 
 ## A/B against another build
 
-Point `--baseline-cli` at a second build to interleave both per cell and diff
-their graph output:
+`benchmarks/ab.sh` builds both sides from source and compares them:
 
 ```bash
-git worktree add /tmp/nazare-baseline <commit>
-cd /tmp/nazare-baseline && pnpm install --frozen-lockfile && pnpm -s build
-cd -
-pnpm benchmark:inspect \
-  --baseline-cli /tmp/nazare-baseline/packages/cli-client/dist/index.js
+benchmarks/ab.sh                                    # against origin/main
+BASELINE_REF=HEAD~3 SCALES=1,4,16 RUNS=5 benchmarks/ab.sh
+THEME=climatic-health benchmarks/ab.sh
 ```
 
-A performance change is expected to leave the graph byte-identical. The run
-exits non-zero and prints the first differing bytes when it does not, so this
+Or point `--baseline-cli` at a build you already have:
+
+```bash
+pnpm benchmark:inspect \
+  --baseline-cli /path/to/baseline/packages/cli-client/dist/index.js \
+  --max-cold-regression 15
+```
+
+Both builds run back to back per cell, so drift in the machine hits both. The
+run exits non-zero when the graph output stops being byte-identical, or when
+cold time regresses past `--max-cold-regression`.
+
+Two rules keep the gate honest on a shared machine: it compares the *minimum*
+of the runs rather than the median, because contention inflates the median far
+more than the floor; and it skips cells whose baseline is under a second, which
+measure process startup and grammar init rather than analysis.
+
+A performance change is expected to leave the graph byte-identical, so this
 doubles as the correctness check for optimization work.
+
+## In CI
+
+`.github/workflows/performance.yml` runs the A/B on pull requests that touch
+`packages/compiler`, `packages/source`, `packages/cli-client`, or this folder,
+against the PR's merge base, and uploads the report as an artifact.
+
+Shared GitHub runners are noisy, so treat the CI numbers as a comparison and
+never as absolutes worth quoting. The budget is 15% and only the larger scales
+are gated.
+
+## On Railway
+
+`benchmarks/Dockerfile` builds a runner image that clones the repository at run
+time, so one image benchmarks any pair of refs:
+
+1. New service from this repository, Dockerfile path `benchmarks/Dockerfile`.
+2. Set `HEAD_REF` (branch to measure) and `BASELINE_REF` (default
+   `origin/main`). `GITHUB_TOKEN` is only needed while the repository is
+   private, and the script keeps it out of the logs.
+3. Give it a cron schedule. The service runs to completion and exits non-zero
+   on a regression or an output difference, so a failed run is the signal.
+
+Railway's vCPU is shared and burstable, which is fine for the interleaved
+comparison this harness does and not fine for absolute numbers.
+
+Budget: one run installs and builds twice, which is the bulk of the cost — a
+few minutes of vCPU, so roughly $0.10–0.30 per run at Hobby pricing. Weekly or
+on-demand fits inside a $5 plan comfortably; nightly may not. Both installs
+share one pnpm store in the image, so the second one mostly links.
+
+Real themes are not in this repository, and putting client theme source on a
+third-party PaaS is a data decision rather than a technical one. The default
+`THEME=fixture` needs nothing external; to benchmark a real theme there,
+attach a volume, populate it yourself, and point `THEME` at that path.
 
 ## Themes
 

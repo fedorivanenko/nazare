@@ -17,19 +17,19 @@
  */
 import { spawnSync } from "node:child_process";
 import {
+	closeSync,
 	cpSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
 	openSync,
-	closeSync,
 	readdirSync,
 	readFileSync,
 	rmSync,
 	statSync,
 	writeFileSync,
 } from "node:fs";
-import { homedir, cpus, loadavg, tmpdir } from "node:os";
+import { cpus, homedir, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { scaleCorpus } from "../packages/compiler/scripts/benchmark-incremental.mjs";
@@ -39,6 +39,11 @@ const FIXTURE_CORPUS_PATH = "fixtures/theme-corpus";
 const CORPUS_MANIFEST_PATH = "fixtures/theme-graph-corpus.json";
 const DEFAULT_SCALES = [1, 4, 16];
 const DEFAULT_RUNS = 3;
+/**
+ * Below this, a cell is mostly process startup and grammar init rather than
+ * analysis, so its percentage swings on noise and cannot gate anything.
+ */
+const MIN_GATED_SECONDS = 1;
 const COPY_EXCLUDED = new Set([
 	".git",
 	".nazare-out",
@@ -67,7 +72,18 @@ export async function main(argumentsList = process.argv.slice(2)) {
 		} else {
 			console.log(renderReport(report));
 		}
-		if (report.outputMismatches.length > 0) process.exitCode = 1;
+		const failures = [
+			...report.outputMismatches.map(
+				(mismatch) =>
+					`${mismatch.theme}: graph output differs from baseline at byte ${mismatch.offset}`,
+			),
+			...report.coldRegressions.map(
+				(regression) =>
+					`${regression.theme}: cold ${regression.metric} regressed ${regression.percent.toFixed(1)}% (${regression.baseline.toFixed(2)}s -> ${regression.candidate.toFixed(2)}s), over the ${regression.allowedPercent}% budget`,
+			),
+		];
+		for (const failure of failures) console.error(failure);
+		if (failures.length > 0) process.exitCode = 1;
 	} finally {
 		if (options.keep) {
 			console.error(`Kept benchmark workspace ${workspace}`);
@@ -77,7 +93,10 @@ export async function main(argumentsList = process.argv.slice(2)) {
 	}
 }
 
-export function parseArguments(argumentsList, repositoryRoot = REPOSITORY_ROOT) {
+export function parseArguments(
+	argumentsList,
+	repositoryRoot = REPOSITORY_ROOT,
+) {
 	const options = {
 		repositoryRoot,
 		theme: "fixture",
@@ -85,6 +104,7 @@ export function parseArguments(argumentsList, repositoryRoot = REPOSITORY_ROOT) 
 		runs: DEFAULT_RUNS,
 		cli: join(repositoryRoot, "packages/cli-client/dist/index.js"),
 		baselineCli: undefined,
+		maxColdRegression: undefined,
 		json: false,
 		keep: false,
 	};
@@ -111,6 +131,8 @@ export function parseArguments(argumentsList, repositoryRoot = REPOSITORY_ROOT) 
 			options.cli = resolve(requiredValue(argument, value));
 		} else if (argument === "--baseline-cli") {
 			options.baselineCli = resolve(requiredValue(argument, value));
+		} else if (argument === "--max-cold-regression") {
+			options.maxColdRegression = nonNegativeNumber(argument, value);
 		} else {
 			throw new Error(`Unknown argument ${argument}`);
 		}
@@ -120,6 +142,11 @@ export function parseArguments(argumentsList, repositoryRoot = REPOSITORY_ROOT) 
 		if (cli && !existsSync(cli)) {
 			throw new Error(`CLI is not built: ${cli}`);
 		}
+	}
+	if (options.maxColdRegression !== undefined && !options.baselineCli) {
+		throw new Error(
+			"--max-cold-regression needs --baseline-cli to compare against",
+		);
 	}
 	return options;
 }
@@ -157,10 +184,7 @@ function runBenchmark(options, workspace) {
 			outputs[build.name] = outputPath;
 		}
 		if (builds.length === 2) {
-			const difference = firstDifference(
-				outputs.baseline,
-				outputs.candidate,
-			);
+			const difference = firstDifference(outputs.baseline, outputs.candidate);
 			if (difference) {
 				outputMismatches.push({ theme: theme.label, ...difference });
 			}
@@ -174,6 +198,7 @@ function runBenchmark(options, workspace) {
 		});
 	}
 	return {
+		coldRegressions: coldRegressions(cells, options.maxColdRegression),
 		environment: {
 			node: process.version,
 			platform: process.platform,
@@ -273,7 +298,8 @@ function measure(cli, directory, runs, { cold, outputPath }) {
 	const wall = [];
 	const cpu = [];
 	for (let run = 0; run < runs; run += 1) {
-		if (cold) rmSync(join(directory, ".nazare-out"), { recursive: true, force: true });
+		if (cold)
+			rmSync(join(directory, ".nazare-out"), { recursive: true, force: true });
 		const sample = runInspect(cli, directory, outputPath);
 		wall.push(sample.wall);
 		if (sample.cpu !== undefined) cpu.push(sample.cpu);
@@ -349,9 +375,7 @@ function firstDifference(baselinePath, candidatePath) {
 		offset,
 		baselineBytes: baseline.length,
 		candidateBytes: candidate.length,
-		baselineContext: baseline
-			.subarray(from, offset + context)
-			.toString("utf8"),
+		baselineContext: baseline.subarray(from, offset + context).toString("utf8"),
 		candidateContext: candidate
 			.subarray(from, offset + context)
 			.toString("utf8"),
@@ -378,6 +402,46 @@ function readThemeFiles(root) {
 	visit(root);
 	if (files.length === 0) throw new Error(`No theme files found in ${root}`);
 	return files.sort((left, right) => (left.path < right.path ? -1 : 1));
+}
+
+/**
+ * Cold-time regressions worth failing a build over.
+ *
+ * Shared CI runners are noisy, so the budget is a percentage rather than an
+ * absolute, the comparison uses the minimum of the runs rather than the median
+ * (a contended run inflates the median far more than the floor), CPU time is
+ * preferred over wall time whenever the platform reports it, and cells too
+ * small to be doing real work are skipped.
+ */
+function coldRegressions(cells, allowedPercent) {
+	if (allowedPercent === undefined) return [];
+	const regressions = [];
+	for (const cell of cells) {
+		const candidate = cell.measurements.candidate?.cold;
+		const baseline = cell.measurements.baseline?.cold;
+		if (!candidate || !baseline) continue;
+		const metric = candidate.cpuSeconds && baseline.cpuSeconds ? "cpu" : "wall";
+		const candidateSeconds = (
+			metric === "cpu" ? candidate.cpuSeconds : candidate.wallSeconds
+		).min;
+		const baselineSeconds = (
+			metric === "cpu" ? baseline.cpuSeconds : baseline.wallSeconds
+		).min;
+		if (baselineSeconds < MIN_GATED_SECONDS) continue;
+		const percent =
+			((candidateSeconds - baselineSeconds) / baselineSeconds) * 100;
+		if (percent > allowedPercent) {
+			regressions.push({
+				theme: cell.theme,
+				metric,
+				baseline: baselineSeconds,
+				candidate: candidateSeconds,
+				percent,
+				allowedPercent,
+			});
+		}
+	}
+	return regressions;
 }
 
 /** Labels reach file names, and a path argument carries separators. */
@@ -414,8 +478,10 @@ function renderReport(report) {
 	}
 	lines.push("");
 	const names = report.methodology.builds.map((build) => build.name);
+	const comparing = names.includes("baseline");
 	const header = ["theme", "files", "output"];
 	for (const name of names) header.push(`${name} cold`, `${name} warm`);
+	if (comparing) header.push("cold delta", "warm delta");
 	const rows = [header];
 	for (const cell of report.cells) {
 		const row = [
@@ -427,6 +493,12 @@ function renderReport(report) {
 			row.push(
 				formatTiming(cell.measurements[name].cold),
 				formatTiming(cell.measurements[name].warm),
+			);
+		}
+		if (comparing) {
+			row.push(
+				formatDelta(cell.measurements, "cold"),
+				formatDelta(cell.measurements, "warm"),
 			);
 		}
 		rows.push(row);
@@ -465,6 +537,24 @@ function renderScaling(report, names) {
 		lines.push(`  ${name}: ${points.join(" · ")}`);
 	}
 	return lines.join("\n");
+}
+
+/**
+ * Minimums, matching the gate: on a contended machine the median moves with
+ * the neighbours while the floor stays put.
+ */
+function formatDelta(measurements, phase) {
+	const candidate = measurements.candidate[phase];
+	const baseline = measurements.baseline[phase];
+	const metric =
+		candidate.cpuSeconds && baseline.cpuSeconds ? "cpuSeconds" : "wallSeconds";
+	const candidateSeconds = candidate[metric].min;
+	const baselineSeconds = baseline[metric].min;
+	if (baselineSeconds === 0) return "n/a";
+	const percent =
+		((candidateSeconds - baselineSeconds) / baselineSeconds) * 100;
+	const sign = percent > 0 ? "+" : "";
+	return `${sign}${percent.toFixed(1)}%`;
 }
 
 function formatTiming(timing) {
@@ -511,6 +601,14 @@ function expandHome(path) {
 function requiredValue(argument, value) {
 	if (value === undefined) throw new Error(`${argument} expects a value`);
 	return value;
+}
+
+function nonNegativeNumber(argument, value) {
+	const parsed = Number(requiredValue(argument, value));
+	if (!Number.isFinite(parsed) || parsed < 0) {
+		throw new Error(`${argument} expects a non-negative number`);
+	}
+	return parsed;
 }
 
 function positiveInteger(argument, value) {
