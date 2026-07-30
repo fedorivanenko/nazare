@@ -144,7 +144,7 @@ const graph = computation.toInspectGraph();
 
 ### `analyzeNazareTheme(files, options)` / `inspectNazareTheme(files, options)`
 
-Build deterministic whole-theme semantics from ordinary Shopify theme files and optional Nazare components. `analyzeNazareTheme()` returns canonical version 3 `ThemeSemanticModel` IR. `inspectNazareTheme()` is a convenience wrapper around `computeNazareTheme(...).toInspectGraph()` and projects that IR into stable version 3 graph nodes, edges, evidence, query views, and impact indexes.
+Build deterministic whole-theme semantics from ordinary Shopify theme files and optional Nazare components. `analyzeNazareTheme()` returns canonical version 3 `ThemeSemanticModel` IR. `inspectNazareTheme()` is a convenience wrapper around `computeNazareTheme(...).toInspectGraph()` and projects that IR into version 4 graph nodes, edges, evidence, query views, and impact indexes. Version 4 removes inverse declaration edges and direct render shortcuts; occurrence topology is canonical.
 
 Every included source passes through exactly one whole-theme `ThemeSourceFrontend`. Built-ins analyze Nazare Liquid, plain Liquid, Shopify JSON, CSS, JavaScript, and opaque assets. Ambiguous or unsupported ownership fails explicitly. Frontends emit file-owned Shopify semantic facts; the whole-theme linker alone resolves cross-file and cross-language relationships.
 

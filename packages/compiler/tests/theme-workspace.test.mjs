@@ -304,7 +304,7 @@ test("graph store applies stable-ID records transactionally", () => {
 	assert.equal(
 		owned
 			.getOwnedEdgeIds(reference.id)
-			.some((id) => id.startsWith("edge:renders:")),
+			.some((id) => id.startsWith("edge:resolvesRenderTarget:")),
 		true,
 	);
 

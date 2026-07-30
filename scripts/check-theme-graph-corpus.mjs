@@ -171,7 +171,7 @@ function expandHome(path) {
 }
 
 function checkGraph(slug, graph, expected) {
-	assert(graph.version === 3, `expected graph version 3, got ${graph.version}`);
+	assert(graph.version === 4, `expected graph version 4, got ${graph.version}`);
 	for (const collection of ["nodes", "edges", "evidence", "issues"]) {
 		assert(Array.isArray(graph[collection]), `missing ${collection} array`);
 	}

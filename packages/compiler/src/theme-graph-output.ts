@@ -190,12 +190,6 @@ export function themeGraphFromModel(
 			from: fileId(declaration.path),
 			to: declaration.id,
 		});
-		pushEdge({
-			id: `edge:implementedBy:${declaration.id}->${fileId(declaration.path)}`,
-			kind: "implementedBy",
-			from: declaration.id,
-			to: fileId(declaration.path),
-		});
 	}
 	for (const page of model.pages) {
 		if (!projects(page.id)) continue;
@@ -919,16 +913,6 @@ export function themeGraphFromModel(
 				name: reference.targetName ?? reference.targetPath,
 			});
 		}
-		if (reference.kind === "rendersSnippet") {
-			pushEdge({
-				id: `edge:renders:${reference.id}`,
-				kind: "renders",
-				from: fileId(reference.fromPath),
-				to,
-				targetName: reference.targetName,
-				evidenceIds: [reference.id],
-			});
-		}
 		if (reference.kind === "containsSection") {
 			pushEdge({
 				id: `edge:templateContainsSection:${reference.id}`,
@@ -1004,7 +988,7 @@ export function themeGraphFromRecords(
 		assertGraphIntegrity(sortedNodes, sortedEdges, views, model.evidence);
 	}
 	return {
-		version: 3,
+		version: 4,
 		root: model.root,
 		nodes: sortedNodes,
 		edges: sortedEdges,
@@ -1206,8 +1190,6 @@ function graphViews(
 			]),
 			new Set([
 				"declares",
-				"implementedBy",
-				"renders",
 				"invokes",
 				"resolvesRenderTarget",
 				"hasArgument",
@@ -1249,7 +1231,6 @@ function graphViews(
 				"sectionInstanceContainsBlockInstance",
 				"blockInstanceContainsBlockInstance",
 				"instanceOfBlock",
-				"renders",
 				"invokes",
 				"resolvesRenderTarget",
 				"hasCapability",

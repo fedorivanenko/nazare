@@ -34,7 +34,7 @@
         { "kind": "accessesData", "from": "file:snippets/cart-drawer.liquid", "to": "shopify-property:cart.items" },
         { "kind": "readsSetting", "from": "file:sections/footer.liquid", "to": "setting:sections/footer.liquid:schema:note" },
         { "kind": "readsMetafield", "from": "file:snippets/product-card.liquid" },
-        { "kind": "renders", "from": "file:sections/main-product.liquid" },
+        { "kind": "invokes", "from": "file:sections/main-product.liquid" },
         { "kind": "imports", "from": "file:components/c-card.nz.liquid" },
         { "kind": "containsSectionGroup", "from": "file:layout/theme.liquid" },
         { "kind": "referencesLocaleKey", "from": "file:sections/footer.liquid" }

@@ -35,7 +35,7 @@ export type ThemeImpactSummary = {
 };
 
 export interface InspectNazareThemeResult {
-	version: 3;
+	version: 4;
 	root: string;
 	nodes: SemanticThemeGraphNode[];
 	edges: SemanticThemeGraphEdge[];

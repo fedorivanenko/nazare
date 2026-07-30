@@ -15,7 +15,6 @@ type SummaryContribution = {
 };
 
 const SUMMARY_REFERENCE_EDGE_KINDS = new Set<ImpactEdge["kind"]>([
-	"renders",
 	"templateContainsSection",
 	"containsSectionGroup",
 	"usesLayout",
@@ -232,7 +231,9 @@ export class ThemeImpactIndex {
 
 	private addEdge(edge: ImpactEdge): void {
 		this.edgesById.set(edge.id, edge);
-		if (isDynamicSnippetReference(edge)) this.dynamicSnippetReferenceCount += 1;
+		if (isDynamicSnippetReference(edge, this.nodesById)) {
+			this.dynamicSnippetReferenceCount += 1;
+		}
 		this.addSummaryContribution(edge);
 		const endpointKey = edgeEndpointKey(edge.from, edge.to);
 		if (incrementCount(this.edgeCountsByEndpoints, endpointKey) === 1) {
@@ -250,7 +251,7 @@ export class ThemeImpactIndex {
 	private removeEdge(edge: ImpactEdge): void {
 		this.removeSummaryContribution(edge.id);
 		this.edgesById.delete(edge.id);
-		if (isDynamicSnippetReference(edge)) {
+		if (isDynamicSnippetReference(edge, this.nodesById)) {
 			if (this.dynamicSnippetReferenceCount < 1) {
 				throw new Error("Dynamic snippet reference count underflow");
 			}
@@ -401,6 +402,8 @@ export class ThemeImpactIndex {
 	}
 
 	getDependencies(nodeId: string): string[] {
+		const semantic = this.summaryDependenciesByPath.get(nodeId);
+		if (semantic) return [...semantic].sort();
 		return [
 			...new Set(
 				this.lookupNodeIds(nodeId).flatMap((id) =>
@@ -413,6 +416,8 @@ export class ThemeImpactIndex {
 	}
 
 	getDependents(nodeId: string): string[] {
+		const semantic = this.summaryDependentsByPath.get(nodeId);
+		if (semantic) return [...semantic].sort();
 		return [
 			...new Set(
 				this.lookupNodeIds(nodeId).flatMap((id) =>
@@ -429,6 +434,8 @@ export class ThemeImpactIndex {
 	}
 
 	getAffectedPages(nodeId: string): string[] {
+		const semantic = this.affectedPagesByPath.get(nodeId);
+		if (semantic) return [...semantic].sort();
 		const pages = new Set<string>();
 		const visited = new Set<string>();
 		const pending = [nodeId, ...(this.nodeIdsByPath.get(nodeId) ?? [])];
@@ -538,7 +545,11 @@ function summaryContribution(
 ): SummaryContribution | undefined {
 	let fromPath: string | undefined;
 	let toPath: string | undefined;
-	if (SUMMARY_REFERENCE_EDGE_KINDS.has(edge.kind)) {
+	if (edge.kind === "resolvesRenderTarget") {
+		const site = nodesById.get(edge.from);
+		fromPath = site?.kind === "renderSite" ? site.fromPath : undefined;
+		toPath = pathByNodeId.get(edge.to);
+	} else if (SUMMARY_REFERENCE_EDGE_KINDS.has(edge.kind)) {
 		fromPath = pathByNodeId.get(edge.from);
 		toPath = pathByNodeId.get(edge.to);
 	} else if (edge.kind === "instanceOf" || edge.kind === "instanceOfBlock") {
@@ -563,8 +574,13 @@ function summaryContribution(
 	};
 }
 
-function isDynamicSnippetReference(edge: ImpactEdge): boolean {
-	return edge.kind === "renders" && !("targetName" in edge && edge.targetName);
+function isDynamicSnippetReference(
+	edge: ImpactEdge,
+	nodesById: Map<string, ImpactNode>,
+): boolean {
+	if (edge.kind !== "resolvesRenderTarget") return false;
+	const site = nodesById.get(edge.from);
+	return site?.kind === "renderSite" && site.targetName === undefined;
 }
 
 function dependencyClosure(
