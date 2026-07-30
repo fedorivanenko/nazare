@@ -16,7 +16,9 @@ THEME="${THEME:-fixture}"
 SCALES="${SCALES:-1,4,16}"
 RUNS="${RUNS:-3}"
 MAX_COLD_REGRESSION="${MAX_COLD_REGRESSION:-15}"
-WORKTREE="${WORKTREE:-$(mktemp -d -t nazare-baseline)}"
+# An explicit template rather than -t: GNU mktemp requires the XXXXXX that BSD
+# mktemp treats as optional.
+WORKTREE="${WORKTREE:-$(mktemp -d "${TMPDIR:-/tmp}/nazare-baseline.XXXXXX")}"
 
 cd "$REPOSITORY_ROOT"
 
