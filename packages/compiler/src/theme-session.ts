@@ -14,6 +14,7 @@ import {
 	createThemeClassificationPass,
 	type ThemeClassificationPassContext,
 } from "./theme-classification-pass.js";
+import { ThemeComputation, type ThemeFileImpact } from "./theme-computation.js";
 import { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 import {
 	createThemeDataFlowFixedPointPass,
@@ -231,6 +232,7 @@ export class ThemeProgram {
 	private graph: InspectNazareThemeResult;
 	private graphStore: ThemeGraphStore;
 	private externalFingerprint: string;
+	private queryComputation: ThemeComputation | undefined;
 	private revision = 0;
 
 	constructor(
@@ -325,6 +327,19 @@ export class ThemeProgram {
 
 	getMetafieldAffectedSources(definitionId: string): string[] {
 		return this.metafieldIndex.getAffectedSources(definitionId);
+	}
+
+	getFileImpact(path: string): ThemeFileImpact | undefined {
+		this.queryComputation ??= new ThemeComputation(
+			{
+				ir: this.semanticStore.getModel(),
+				artifacts: [],
+				facts: this.factStore.all(),
+				issues: this.semanticStore.getModel().issues,
+			},
+			{ impactSummary: this.impactIndex.toSummary() },
+		);
+		return this.queryComputation.getFileImpact(path);
 	}
 
 	updateFile(file: ThemeInputFile): ThemeGraphUpdate {
@@ -566,6 +581,7 @@ export class ThemeProgram {
 		this.graph = nextGraph;
 		this.graphStore = nextGraphStore;
 		this.impactIndex = nextImpactIndex;
+		this.queryComputation = undefined;
 		this.revision += 1;
 		return diffGraphs(
 			this.revision,

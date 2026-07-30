@@ -168,6 +168,10 @@ export {
 	deriveThemeClassifications,
 	type ThemeClassificationPassContext,
 } from "./theme-classification-pass.js";
+export {
+	ThemeComputation,
+	type ThemeFileImpact,
+} from "./theme-computation.js";
 export { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 export {
 	collectThemeDataFlowInputs,
@@ -344,7 +348,6 @@ export {
 	getThemeFileImpacts,
 	getThemeNode,
 	summarizeThemeGraph,
-	type ThemeFileImpact,
 	type ThemeGraphSummary,
 	themeGraphToDot,
 } from "./theme-queries.js";
@@ -407,6 +410,7 @@ export {
 export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
+	computeNazareTheme,
 	inspectNazareTheme,
 	THEME_ANALYSIS_DEFAULTS,
 	THEME_BUILD_DEFAULTS,

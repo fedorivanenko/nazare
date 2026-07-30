@@ -11,6 +11,7 @@ import {
 	type DependencyResolver,
 } from "./resolver.js";
 import { parseThemeCheckPolicy } from "./theme-check-policy.js";
+import { ThemeComputation } from "./theme-computation.js";
 import {
 	partitionExcludedThemeFiles,
 	themeExclusionIssues,
@@ -33,7 +34,6 @@ import {
 	normalizeThemePath,
 	themeNameFromPath,
 } from "./theme-file-classifier.js";
-import { themeGraphFromModel } from "./theme-graph-output.js";
 import { buildThemeSemanticModel } from "./theme-model.js";
 import { analyzeThemeSource } from "./theme-source-frontends.js";
 import { projectTreeSitterNazareAst } from "./tree-sitter-nazare-projector.js";
@@ -69,11 +69,18 @@ export function analyzeNazareTheme(
 	});
 }
 
+export function computeNazareTheme(
+	files: ThemeInputFile[],
+	options: InspectNazareThemeOptions = {},
+): ThemeComputation {
+	return new ThemeComputation(analyzeNazareTheme(files, options));
+}
+
 export function inspectNazareTheme(
 	files: ThemeInputFile[],
 	options: InspectNazareThemeOptions = {},
 ): InspectNazareThemeResult {
-	return themeGraphFromModel(analyzeNazareTheme(files, options).ir);
+	return computeNazareTheme(files, options).toInspectGraph();
 }
 
 export function buildNazareThemeWorkspace(

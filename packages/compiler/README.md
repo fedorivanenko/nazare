@@ -129,13 +129,26 @@ Returns:
 - `contracts` — imported component contracts;
 - `canEmit` — false if compile errors exist.
 
+### `computeNazareTheme(files, options)`
+
+Builds the canonical computation-oriented theme program. Typed semantic records and direct indexes own meaning; public graph JSON is a lazy projection rather than the query substrate.
+
+```ts
+const computation = computeNazareTheme(files);
+const impact = computation.getFileImpact("snippets/product-card.liquid");
+const allImpacts = computation.getFileImpacts();
+const graph = computation.toInspectGraph();
+```
+
+`getFileImpact()` and `getFileImpacts()` read semantic indexes directly and do not materialize the public graph. `toInspectGraph()` creates and memoizes the deterministic public projection only when requested.
+
 ### `analyzeNazareTheme(files, options)` / `inspectNazareTheme(files, options)`
 
-Build deterministic whole-theme semantics from ordinary Shopify theme files and optional Nazare components. `analyzeNazareTheme()` returns canonical version 3 `ThemeSemanticModel` IR. `inspectNazareTheme()` projects that IR into stable version 3 graph nodes, edges, evidence, query views, and impact indexes.
+Build deterministic whole-theme semantics from ordinary Shopify theme files and optional Nazare components. `analyzeNazareTheme()` returns canonical version 3 `ThemeSemanticModel` IR. `inspectNazareTheme()` is a convenience wrapper around `computeNazareTheme(...).toInspectGraph()` and projects that IR into stable version 3 graph nodes, edges, evidence, query views, and impact indexes.
 
 Every included source passes through exactly one whole-theme `ThemeSourceFrontend`. Built-ins analyze Nazare Liquid, plain Liquid, Shopify JSON, CSS, JavaScript, and opaque assets. Ambiguous or unsupported ownership fails explicitly. Frontends emit file-owned Shopify semantic facts; the whole-theme linker alone resolves cross-file and cross-language relationships.
 
-Semantic output distinguishes:
+Build, diagnostics, and targeted query callers should consume computation records/indexes without constructing `InspectNazareThemeResult`. Semantic output distinguishes:
 
 - direct source facts, carrying source evidence;
 - derived value-flow facts, such as a passed `product` becoming `product.price` inside a snippet;

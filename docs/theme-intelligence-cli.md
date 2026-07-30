@@ -61,8 +61,9 @@ Issues: none
 
 ## Correctness rules
 
-- Queries project the canonical `InspectNazareThemeResult`; they never rescan
-  source or maintain a second dependency model.
+- Queries read the canonical computation-oriented semantic indexes directly;
+  `InspectNazareThemeResult` is a lazy public projection, not a second dependency
+  model or an internal query substrate.
 - Dependencies and dependents are direct. Affected pages are transitive.
 - `unused` is emitted only for file kinds the impact index can prove unused.
 - Dynamic references, markup hooks, and script selectors produce
@@ -87,10 +88,10 @@ Issues: none
 
 ## Architecture
 
-`@nazare/compiler` exports the pure `getThemeFileImpact(graph, path)` query and
-its versioned `ThemeFileImpact` result. CLI owns argument handling and text
-rendering. `graph-server` exposes the same projection as the `fileImpact` MCP
-tool without reimplementing it.
+`@nazare/compiler` exports `computeNazareTheme()`. Its `ThemeComputation`
+answers `getFileImpact(path)` directly and projects the public graph only through
+`toInspectGraph()`. CLI owns argument handling and text rendering. The graph
+server exposes the same semantic query as the `fileImpact` MCP tool.
 
 This split keeps semantic truth in compiler and presentation in client.
 Whole-theme source frontends own local extraction; the linker alone owns

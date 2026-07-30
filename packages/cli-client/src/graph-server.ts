@@ -4,7 +4,6 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import {
-	getThemeFileImpact,
 	getThemeNode,
 	summarizeThemeGraph,
 	ThemeBuildSession,
@@ -245,7 +244,7 @@ async function handleRequest(
 	if (request.method === "summary") return summarizeThemeGraph(graph);
 	if (request.method === "fileImpact") {
 		return (
-			getThemeFileImpact(graph, requiredString(request.params, "path")) ?? null
+			session.getFileImpact(requiredString(request.params, "path")) ?? null
 		);
 	}
 	if (
