@@ -56,10 +56,12 @@ jobs:
       - name: inspect theme A/B against the merge base
         env:
           BASELINE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || 'HEAD~1' }}
-          SCALES: "1,4,16,32"
+          # A runner is fast enough that the smaller scales land under the
+          # gate's one-second floor, where a cell measures process startup
+          # rather than analysis. 64 and 96 are what it actually watches.
+          SCALES: "1,16,64,96"
           RUNS: "3"
-          # Shared runners are noisy; cells under a second are skipped by the
-          # gate because they measure process startup rather than analysis.
+          # Shared runners are noisy, so the budget is wide.
           MAX_COLD_REGRESSION: "15"
           REPORT_PATH: inspect-ab.txt
         run: benchmarks/ab.sh
