@@ -150,7 +150,13 @@ import { analyzeNazareTheme } from "./theme-workspace.js";
 
 export const THEME_PROGRAM_DEFAULTS = Object.freeze({
 	incrementalValidationInterval: 0,
+	graphProjection: "lazy" as const,
 });
+
+export type ThemeProgramOptions = InspectNazareThemeOptions & {
+	/** Materialize and incrementally maintain the public graph after every edit. */
+	graphProjection?: "lazy" | "eager";
+};
 
 export type ThemeUpdateTelemetry = {
 	filesParsed: number;
@@ -164,7 +170,7 @@ export type ThemeUpdateTelemetry = {
 
 export type ThemeGraphUpdate = {
 	revision: number;
-	graph: InspectNazareThemeResult;
+	graph?: InspectNazareThemeResult;
 	changedPaths: string[];
 	changedSemanticRecordIds: string[];
 	invalidatedNodeIds: string[];
@@ -186,7 +192,6 @@ export class ThemeProgram {
 	private readonly cache: ThemeAnalysisCache = { version: 1, entries: {} };
 	private readonly memo = {} as ThemeAnalysisMemo;
 	private factStore: ThemeFactStore;
-	private factIndex: ThemeFactIndex;
 	private readonly collectionScheduler = createCollectionScheduler();
 	private declarationResultsBySource = new Map<
 		string,
@@ -228,19 +233,22 @@ export class ThemeProgram {
 	private evidenceBySource = new Map<string, ThemeEvidenceRecord[]>();
 	private semanticStore: ThemeSemanticStore;
 	private metafieldIndex: ThemeMetafieldIndex;
-	private impactIndex: ThemeImpactIndex;
-	private graph: InspectNazareThemeResult;
-	private graphStore: ThemeGraphStore;
+	private impactIndex: ThemeImpactIndex | undefined;
+	private graph: InspectNazareThemeResult | undefined;
+	private graphStore: ThemeGraphStore | undefined;
+	private graphProjectionActive: boolean;
 	private externalFingerprint: string;
 	private queryComputation: ThemeComputation | undefined;
 	private revision = 0;
 
-	constructor(
-		files: ThemeInputFile[],
-		options: InspectNazareThemeOptions = {},
-	) {
+	constructor(files: ThemeInputFile[], options: ThemeProgramOptions = {}) {
+		const {
+			graphProjection = THEME_PROGRAM_DEFAULTS.graphProjection,
+			...analysisOptions
+		} = options;
+		this.graphProjectionActive = graphProjection === "eager";
 		const incrementalValidationInterval =
-			options.incrementalValidationInterval ??
+			analysisOptions.incrementalValidationInterval ??
 			THEME_PROGRAM_DEFAULTS.incrementalValidationInterval;
 		if (
 			!Number.isSafeInteger(incrementalValidationInterval) ||
@@ -251,7 +259,7 @@ export class ThemeProgram {
 			);
 		}
 		this.options = {
-			...options,
+			...analysisOptions,
 			incrementalValidationInterval,
 			cache: this.cache,
 			memo: this.memo,
@@ -265,7 +273,6 @@ export class ThemeProgram {
 		}
 		const analysis = analyzeNazareTheme(this.files(), this.options);
 		this.factStore = new ThemeFactStore(analysis.facts);
-		this.factIndex = new ThemeFactIndex(analysis.facts);
 		const collection = runCollectionPasses(
 			this.collectionScheduler,
 			this.factStore,
@@ -293,15 +300,14 @@ export class ThemeProgram {
 		this.evidenceBySource = evidenceRecordsBySource(model.evidence);
 		this.semanticStore = new ThemeSemanticStore(model);
 		this.metafieldIndex = new ThemeMetafieldIndex(model);
-		const indexedGraph = graphWithIndexedImpact(this.semanticStore.getModel());
-		this.graph = indexedGraph.graph;
-		this.graphStore = new ThemeGraphStore(this.graph);
-		this.graphStore.replaceOwnership(this.semanticStore.getModel());
-		this.impactIndex = indexedGraph.index;
+		if (this.graphProjectionActive) this.materializeGraphProjection();
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
 
 	getGraph(): InspectNazareThemeResult {
+		this.graphProjectionActive = true;
+		this.materializeGraphProjection();
+		if (!this.graph) throw new Error("Graph projection did not materialize");
 		return this.graph;
 	}
 
@@ -314,22 +320,38 @@ export class ThemeProgram {
 	}
 
 	getDependencies(nodeId: string): string[] {
-		return this.impactIndex.getDependencies(nodeId);
+		return this.getImpactIndex().getDependencies(nodeId);
 	}
 
 	getDependents(nodeId: string): string[] {
-		return this.impactIndex.getDependents(nodeId);
+		return this.getImpactIndex().getDependents(nodeId);
 	}
 
 	getAffectedPages(nodeId: string): string[] {
-		return this.impactIndex.getAffectedPages(nodeId);
+		return this.getImpactIndex().getAffectedPages(nodeId);
 	}
 
 	getMetafieldAffectedSources(definitionId: string): string[] {
 		return this.metafieldIndex.getAffectedSources(definitionId);
 	}
 
-	getFileImpact(path: string): ThemeFileImpact | undefined {
+	private materializeGraphProjection(): void {
+		if (this.graph && this.graphStore && this.impactIndex) return;
+		const computation = this.getQueryComputation();
+		this.graph = computation.toInspectGraph();
+		this.graphStore = new ThemeGraphStore(this.graph);
+		this.graphStore.replaceOwnership(this.semanticStore.getModel());
+		this.impactIndex = new ThemeImpactIndex(this.graph);
+	}
+
+	private getImpactIndex(): ThemeImpactIndex {
+		this.graphProjectionActive = true;
+		this.materializeGraphProjection();
+		if (!this.impactIndex) throw new Error("Impact index did not materialize");
+		return this.impactIndex;
+	}
+
+	private getQueryComputation(): ThemeComputation {
 		this.queryComputation ??= new ThemeComputation(
 			{
 				ir: this.semanticStore.getModel(),
@@ -337,9 +359,13 @@ export class ThemeProgram {
 				facts: this.factStore.all(),
 				issues: this.semanticStore.getModel().issues,
 			},
-			{ impactSummary: this.impactIndex.toSummary() },
+			{ impactSummary: this.impactIndex?.toSummary() },
 		);
-		return this.queryComputation.getFileImpact(path);
+		return this.queryComputation;
+	}
+
+	getFileImpact(path: string): ThemeFileImpact | undefined {
+		return this.getQueryComputation().getFileImpact(path);
 	}
 
 	updateFile(file: ThemeInputFile): ThemeGraphUpdate {
@@ -494,6 +520,105 @@ export class ThemeProgram {
 		if (changedPaths.includes(".shopify/metafields.json")) {
 			changedSemanticIds.push(THEME_GRAPH_METAFIELD_SCHEMA_OWNER);
 		}
+		const metafieldDefinitionIds = new Set([
+			...this.semanticStore
+				.getModel()
+				.metafieldDefinitions.map((definition) => definition.id),
+			...semanticUpdate.model.metafieldDefinitions.map(
+				(definition) => definition.id,
+			),
+		]);
+		const changedMetafieldDefinitionIds = changedSemanticIds.filter((id) =>
+			metafieldDefinitionIds.has(id),
+		);
+		const changedRecordIds = new Set(changedSemanticIds);
+		const resolverDependents = semanticUpdate.model.references
+			.filter(
+				(reference) =>
+					reference.resolvedDeclarationId &&
+					changedRecordIds.has(reference.resolvedDeclarationId),
+			)
+			.map((reference) => reference.fromPath)
+			.sort();
+		const invalidatedNodeIds = [
+			...nextFactIndex.dependentsOfFiles(changedPaths),
+			...resolverDependents,
+		];
+		validateStagedRecordReachability(semanticUpdate.model);
+
+		if (!this.graphProjectionActive) {
+			const previousImpact = this.getQueryComputation().getImpactSummary();
+			const nextComputation = new ThemeComputation({
+				ir: semanticUpdate.model,
+				artifacts: [],
+				facts: nextFactStore.all(),
+				issues: semanticUpdate.model.issues,
+			});
+			const nextImpact = nextComputation.getImpactSummary();
+			const affectedKeys = [...changedPaths, ...changedMetafieldDefinitionIds];
+			const affectedPages = [
+				...new Set(
+					affectedKeys.flatMap((key) => [
+						...(previousImpact.affectedPages[key] ?? []),
+						...(nextImpact.affectedPages[key] ?? []),
+					]),
+				),
+			].sort();
+			if (
+				shouldRunCanonicalValidation(
+					this.options.incrementalValidationInterval,
+					this.revision + 1,
+				)
+			) {
+				const validationGraph = nextComputation.toInspectGraph();
+				validateStagedProgram({
+					graph: validationGraph,
+					factStore: nextFactStore,
+					factIndex: nextFactIndex,
+					diagnostics: collection.diagnostics,
+					analysisFacts: analysis.facts,
+					factChangedPaths,
+				});
+				validateCanonicalProgram(
+					this.files(),
+					this.options,
+					semanticUpdate.model,
+					validationGraph,
+				);
+			}
+			transaction.commit();
+			this.factStore = nextFactStore;
+			this.applyCollectionState(collection);
+			this.metafieldIndex = nextMetafieldIndex;
+			this.queryComputation = nextComputation;
+			this.revision += 1;
+			return {
+				revision: this.revision,
+				changedPaths,
+				changedSemanticRecordIds: semanticUpdate.changedRecordIds,
+				invalidatedNodeIds: [...new Set(invalidatedNodeIds)].sort(),
+				affectedPages,
+				addedNodeIds: [],
+				removedNodeIds: [],
+				changedNodeIds: [],
+				addedEdgeIds: [],
+				removedEdgeIds: [],
+				changedEdgeIds: [],
+				telemetry: {
+					filesParsed: factChangedPaths.length,
+					passKeysProcessed: collection.processedPassKeys,
+					semanticRecordsReplaced: changedSemanticIds.length,
+					graphRecordsReplaced: 0,
+					outputsEmitted: 0,
+					elapsedMs: telemetryNow() - startedAt,
+					peakMemoryBytes: Math.max(memoryAtStart, telemetryMemory()),
+				},
+			};
+		}
+
+		if (!previous || !this.graphStore || !this.impactIndex) {
+			throw new Error("Eager graph projection state is incomplete");
+		}
 		const nextGraphStore = this.graphStore.fork();
 		const selectedSemanticIds =
 			nextGraphStore.expandSemanticIds(changedSemanticIds);
@@ -525,33 +650,12 @@ export class ThemeProgram {
 		nextImpactIndex.applyGraph(nextGraph);
 		nextGraph.impact = nextImpactIndex.toSummary();
 		nextGraphStore.applyGraph(nextGraph);
-		const metafieldDefinitionIds = new Set([
-			...this.semanticStore
-				.getModel()
-				.metafieldDefinitions.map((definition) => definition.id),
-			...semanticUpdate.model.metafieldDefinitions.map(
-				(definition) => definition.id,
-			),
-		]);
-		const changedMetafieldDefinitionIds = changedSemanticIds.filter((id) =>
-			metafieldDefinitionIds.has(id),
-		);
 		const metafieldAffectedPages = changedMetafieldDefinitionIds.flatMap(
 			(id) => [
-				...this.impactIndex.getAffectedPages(id),
+				...(this.impactIndex?.getAffectedPages(id) ?? []),
 				...nextImpactIndex.getAffectedPages(id),
 			],
 		);
-		const changedRecordIds = new Set(changedSemanticIds);
-		const resolverDependents = semanticUpdate.model.references
-			.filter(
-				(reference) =>
-					reference.resolvedDeclarationId &&
-					changedRecordIds.has(reference.resolvedDeclarationId),
-			)
-			.map((reference) => reference.fromPath)
-			.sort();
-		validateStagedRecordReachability(semanticUpdate.model);
 		if (
 			shouldRunCanonicalValidation(
 				this.options.incrementalValidationInterval,
@@ -575,7 +679,6 @@ export class ThemeProgram {
 		}
 		transaction.commit();
 		this.factStore = nextFactStore;
-		this.factIndex = nextFactIndex;
 		this.applyCollectionState(collection);
 		this.metafieldIndex = nextMetafieldIndex;
 		this.graph = nextGraph;
@@ -588,14 +691,11 @@ export class ThemeProgram {
 			previous,
 			this.graph,
 			changedPaths,
-			[
-				...this.factIndex.dependentsOfFiles(changedPaths),
-				...resolverDependents,
-			],
+			invalidatedNodeIds,
 			semanticUpdate.changedRecordIds,
 			[
 				...changedPaths.flatMap((path) =>
-					this.impactIndex.getAffectedPages(path),
+					nextImpactIndex.getAffectedPages(path),
 				),
 				...metafieldAffectedPages,
 			],
@@ -654,15 +754,32 @@ export class ThemeProgram {
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
-		return diffGraphs(
-			this.revision,
-			this.graph,
-			this.graph,
+		if (this.graphProjectionActive) {
+			const graph = this.getGraph();
+			return diffGraphs(this.revision, graph, graph, changedPaths, [], [], []);
+		}
+		return {
+			revision: this.revision,
 			changedPaths,
-			[],
-			[],
-			[],
-		);
+			changedSemanticRecordIds: [],
+			invalidatedNodeIds: [],
+			affectedPages: [],
+			addedNodeIds: [],
+			removedNodeIds: [],
+			changedNodeIds: [],
+			addedEdgeIds: [],
+			removedEdgeIds: [],
+			changedEdgeIds: [],
+			telemetry: {
+				filesParsed: 0,
+				passKeysProcessed: 0,
+				semanticRecordsReplaced: 0,
+				graphRecordsReplaced: 0,
+				outputsEmitted: 0,
+				elapsedMs: 0,
+				peakMemoryBytes: telemetryMemory(),
+			},
+		};
 	}
 
 	private files(): ThemeInputFile[] {

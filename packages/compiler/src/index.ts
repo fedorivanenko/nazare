@@ -385,6 +385,7 @@ export {
 	THEME_PROGRAM_DEFAULTS,
 	type ThemeGraphUpdate,
 	ThemeProgram,
+	type ThemeProgramOptions,
 	type ThemeUpdateTelemetry,
 	ThemeWorkspaceSession,
 } from "./theme-session.js";

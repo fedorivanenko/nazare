@@ -5,6 +5,7 @@ import {
 	getThemeFileImpact,
 	getThemeFileImpacts,
 	inspectNazareTheme,
+	ThemeProgram,
 } from "../dist/index.js";
 
 const files = [
@@ -34,6 +35,24 @@ test("computation owns direct queries and lazily projects the public graph", () 
 	assert.deepEqual(computation.getFileImpacts(), getThemeFileImpacts(graph));
 	assert.strictEqual(computation.toInspectGraph(), graph);
 	assert.deepEqual(graph, inspectNazareTheme(files));
+});
+
+test("ThemeProgram keeps graph projection lazy until a graph caller opts in", () => {
+	const program = new ThemeProgram(files);
+	const changed = files.map((file) =>
+		file.path === "snippets/card.liquid"
+			? { ...file, contents: "{{ product.title }} {{ product.price }}" }
+			: file,
+	);
+	const semanticUpdate = program.updateFile(changed[2]);
+	assert.equal(semanticUpdate.graph, undefined);
+	assert.equal(semanticUpdate.telemetry.graphRecordsReplaced, 0);
+	assert.deepEqual(program.getGraph(), inspectNazareTheme(changed));
+
+	const second = { ...changed[2], contents: "{{ product.handle }}" };
+	const graphUpdate = program.updateFile(second);
+	assert.ok(graphUpdate.graph);
+	assert.ok(graphUpdate.telemetry.graphRecordsReplaced > 0);
 });
 
 test("direct impact queries do not require a public graph snapshot", () => {

@@ -17,6 +17,7 @@ const DEFAULT_ITERATIONS = 10;
 const DEFAULT_WARMUPS = 3;
 const DEFAULT_SCALE_FACTORS = [1, 2, 4];
 const DEFAULT_MAX_GROWTH_RATIO = 6;
+const DEFAULT_GRAPH_PROJECTION = "lazy";
 const CLONED_DIRECTORIES = new Set(["blocks", "sections", "snippets"]);
 const CONTENT_FILE_PATTERNS = [
 	/\.nz\.liquid$/,
@@ -61,6 +62,7 @@ export function parseArguments(
 		warmups: DEFAULT_WARMUPS,
 		scaleFactors: [...DEFAULT_SCALE_FACTORS],
 		maxGrowthRatio: DEFAULT_MAX_GROWTH_RATIO,
+		graphProjection: DEFAULT_GRAPH_PROJECTION,
 	};
 	for (let index = 0; index < argumentsList.length; index += 1) {
 		const argument = argumentsList[index];
@@ -77,6 +79,8 @@ export function parseArguments(
 			options.scaleFactors = parseScaleFactors(requiredValue(argument, value));
 		} else if (argument === "--max-growth-ratio") {
 			options.maxGrowthRatio = positiveNumber(argument, value);
+		} else if (argument === "--graph-projection") {
+			options.graphProjection = graphProjection(argument, value);
 		} else {
 			throw new Error(`Unknown argument ${argument}`);
 		}
@@ -95,7 +99,9 @@ function benchmarkIncrementalUpdates(ThemeProgram, options) {
 	const samples = options.scaleFactors.map((scaleFactor) => {
 		const files = scaleCorpus(baseFiles, scaleFactor);
 		const coldStart = performance.now();
-		const program = new ThemeProgram(files);
+		const program = new ThemeProgram(files, {
+			graphProjection: options.graphProjection,
+		});
 		const coldMs = performance.now() - coldStart;
 		for (let index = 0; index < options.warmups; index += 1) {
 			program.updateFile(editVariant(editFile, index));
@@ -140,6 +146,7 @@ function benchmarkIncrementalUpdates(ThemeProgram, options) {
 			warmups: options.warmups,
 			scaleFactors: options.scaleFactors,
 			maxGrowthRatio: options.maxGrowthRatio,
+			graphProjection: options.graphProjection,
 			inputIoTimed: false,
 			assetContentsLoaded: false,
 			scaledDirectories: [...CLONED_DIRECTORIES].sort(compareAscii),
@@ -287,6 +294,14 @@ function nonNegativeInteger(argument, value) {
 	const parsed = Number(requiredValue(argument, value));
 	if (!Number.isSafeInteger(parsed) || parsed < 0) {
 		throw new Error(`${argument} expects a non-negative integer`);
+	}
+	return parsed;
+}
+
+function graphProjection(argument, value) {
+	const parsed = requiredValue(argument, value);
+	if (parsed !== "lazy" && parsed !== "eager") {
+		throw new Error(`${argument} expects lazy or eager`);
 	}
 	return parsed;
 }

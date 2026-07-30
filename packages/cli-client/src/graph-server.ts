@@ -396,7 +396,12 @@ async function loadProgramState(
 		".shopify/metafields.json",
 	);
 	const themeCheck = await optionalFile(projectRoot, ".theme-check.yml");
-	const program = new ThemeProgram(files, { exclude, metafields, themeCheck });
+	const program = new ThemeProgram(files, {
+		exclude,
+		metafields,
+		themeCheck,
+		graphProjection: "eager",
+	});
 	return {
 		program,
 		buildSession: new ThemeBuildSession(files, {}, program),

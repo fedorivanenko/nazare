@@ -15,6 +15,7 @@ test("incremental benchmark arguments expose every default", () => {
 		warmups: 3,
 		scaleFactors: [1, 2, 4],
 		maxGrowthRatio: 6,
+		graphProjection: "lazy",
 	});
 });
 
@@ -29,6 +30,10 @@ test("incremental benchmark rejects ambiguous and invalid arguments", () => {
 	assert.throws(
 		() => parseArguments(["--scales", "1,4,2"]),
 		/strictly increasing/,
+	);
+	assert.throws(
+		() => parseArguments(["--graph-projection", "invalid"]),
+		/expects lazy or eager/,
 	);
 	assert.throws(() => parseArguments(["--unknown", "1"]), /Unknown argument/);
 });
