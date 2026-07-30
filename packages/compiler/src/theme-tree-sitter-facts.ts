@@ -408,11 +408,9 @@ function narrowToBranch(scope: Range, branches: Range[]): Range {
 
 /** Local bindings of one file, indexed by name for offset lookups. */
 class BindingIndex {
-	private readonly all: Binding[] = [];
 	private readonly byName = new Map<string, Binding[]>();
 
 	add(binding: Binding): void {
-		this.all.push(binding);
 		const named = this.byName.get(binding.name);
 		if (named) named.push(binding);
 		else this.byName.set(binding.name, [binding]);
@@ -433,8 +431,8 @@ class BindingIndex {
 		return this.byName.get(name) ?? [];
 	}
 
-	snapshot(): readonly Binding[] {
-		return [...this.all];
+	names(): readonly string[] {
+		return [...this.byName.keys()];
 	}
 }
 
@@ -457,22 +455,20 @@ function promoteDefiniteAssignments(
 			continue;
 		const [first, ...rest] = conditional.branches;
 		if (!first) continue;
-		// One promotion per name: repeating it for every covering binding of the
-		// same name only appends duplicates of an identical scope.
-		const promoted = new Set<string>();
-		for (const binding of bindings.snapshot()) {
-			if (promoted.has(binding.name)) continue;
-			if (!covers(binding, first)) continue;
-			const candidates = bindings.named(binding.name);
+		// A name assigned in every branch is bound after the conditional. One
+		// promotion per name: repeating it for every covering binding of the same
+		// name only appends duplicates of an identical scope.
+		for (const name of bindings.names()) {
+			const candidates = bindings.named(name);
+			if (!candidates.some((candidate) => covers(candidate, first))) continue;
 			if (
 				!rest.every((branch) =>
 					candidates.some((candidate) => covers(candidate, branch)),
 				)
 			)
 				continue;
-			promoted.add(binding.name);
 			bindings.add({
-				name: binding.name,
+				name,
 				scope: narrowToBranch(
 					{ start: conditional.range.end, end: fileEnd },
 					branches,
