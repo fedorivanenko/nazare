@@ -32,11 +32,15 @@ import {
 import { cpus, homedir, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	isParsedThemeInputPath,
+	isThemeInputPath,
+} from "../fixtures/theme-fixture.mjs";
 import { scaleCorpus } from "../packages/compiler/scripts/benchmark-incremental.mjs";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const FIXTURE_CORPUS_PATH = "fixtures/theme-corpus";
-const CORPUS_MANIFEST_PATH = "fixtures/theme-graph-corpus.json";
+const FIXTURE_CORPUS_PATH = "fixtures/canonical-theme";
+const CORPUS_MANIFEST_PATH = "fixtures/theme-graph-contract.json";
 const DEFAULT_SCALES = [1, 4, 16];
 const DEFAULT_RUNS = 3;
 /**
@@ -50,17 +54,6 @@ const COPY_EXCLUDED = new Set([
 	"node_modules",
 	".DS_Store",
 ]);
-/** Only these are timed as content; assets are copied but never parsed. */
-const CONTENT_FILE_PATTERNS = [
-	/\.nz\.liquid$/,
-	/^sections\/[^/]+\.(json|liquid)$/,
-	/^snippets\/[^/]+\.liquid$/,
-	/^blocks\/[^/]+\.liquid$/,
-	/^templates\/.+\.(json|liquid)$/,
-	/^layout\/[^/]+\.liquid$/,
-	/^locales\/[^/]+\.json$/,
-	/^config\/settings_(schema|data)\.json$/,
-];
 
 export async function main(argumentsList = process.argv.slice(2)) {
 	const options = parseArguments(argumentsList);
@@ -268,9 +261,10 @@ function prepareThemes(options, workspace) {
 			return {
 				label: `fixture-x${scale}`,
 				directory,
-				fileCount: files.length,
-				contentFileCount: files.filter((file) => isContentPath(file.path))
-					.length,
+				fileCount: files.filter((file) => isThemeInputPath(file.path)).length,
+				contentFileCount: files.filter((file) =>
+					isParsedThemeInputPath(file.path),
+				).length,
 			};
 		});
 	}
@@ -290,8 +284,10 @@ function prepareThemes(options, workspace) {
 		{
 			label,
 			directory,
-			fileCount: files.length,
-			contentFileCount: files.filter((file) => isContentPath(file.path)).length,
+			fileCount: files.filter((file) => isThemeInputPath(file.path)).length,
+			contentFileCount: files.filter((file) =>
+				isParsedThemeInputPath(file.path),
+			).length,
 		},
 	];
 }
@@ -478,10 +474,6 @@ function coldRegressions(cells, allowedPercent) {
 /** Labels reach file names, and a path argument carries separators. */
 function fileSafe(label) {
 	return label.replace(/[^A-Za-z0-9._-]+/g, "-");
-}
-
-function isContentPath(path) {
-	return CONTENT_FILE_PATTERNS.some((pattern) => pattern.test(path));
 }
 
 function summarize(values) {

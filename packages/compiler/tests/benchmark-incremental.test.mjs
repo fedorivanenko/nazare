@@ -9,7 +9,7 @@ import {
 test("incremental benchmark arguments expose every default", () => {
 	assert.deepEqual(parseArguments([], "/repository"), {
 		repositoryRoot: "/repository",
-		corpusPath: "fixtures/theme-corpus",
+		corpusPath: "fixtures/canonical-theme",
 		editPath: "snippets/price.liquid",
 		iterations: 10,
 		warmups: 3,

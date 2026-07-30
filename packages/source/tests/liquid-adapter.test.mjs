@@ -10,7 +10,7 @@ import {
 } from "../dist/index.js";
 
 const corpusRoot = fileURLToPath(
-	new URL("../../../fixtures/theme-corpus/", import.meta.url),
+	new URL("../../../fixtures/canonical-theme/", import.meta.url),
 );
 const registry = createDefaultSourceParserRegistry();
 

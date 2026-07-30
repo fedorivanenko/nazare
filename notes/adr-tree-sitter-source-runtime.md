@@ -106,7 +106,7 @@ Tree-sitter Nazare path never parses authored source with Shopify. Focused
 malformed component/import/render/blocks/stylesheet/attribute and unclosed-raw
 parity is gated in tests. Plain-Liquid compiler and workspace facts now use the
 same Tree-sitter adapter when selected, including schema validation and complete
-theme-corpus fact parity. Strict mode now validates HTML through a masked
+canonical-theme fact parity. Strict mode now validates HTML through a masked
 `tree-sitter-html` pass while Liquid-only mode intentionally skips HTML errors.
 A broad malformed corpus gates fail-closed behavior and verifies that no partial
 facts escape invalid CSTs. One intentional tightening is recorded: Tree-sitter
@@ -149,7 +149,7 @@ Run after `pnpm build`:
 
 ```sh
 node packages/source/scripts/benchmark.mjs \
-  $(find fixtures/theme-corpus -type f -name '*.liquid')
+  $(find fixtures/canonical-theme -type f -name '*.liquid')
 ```
 
 Harness reports cold wall time, one append edit per retained file, input bytes,

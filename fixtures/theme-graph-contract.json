@@ -1,8 +1,8 @@
 {
   "version": 1,
   "themes": {
-    "fixture-theme": {
-      "repositoryRoot": "fixtures/theme-corpus",
+    "canonical-theme": {
+      "repositoryRoot": "fixtures/canonical-theme",
       "minimums": { "nodes": 180, "edges": 290, "evidence": 125 },
       "requiredNodeIds": [
         "page:templates/product.json",

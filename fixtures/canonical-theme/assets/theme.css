@@ -1,0 +1,9 @@
+:root {
+  --card-gap: 1rem;
+  color: #101010;
+}
+
+.product-card[data-product-card] {
+  display: grid;
+  gap: var(--card-gap);
+}

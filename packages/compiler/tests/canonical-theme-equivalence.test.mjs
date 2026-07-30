@@ -1,4 +1,4 @@
-// Equivalence over the committed corpus theme in fixtures/theme-corpus.
+// Equivalence over the committed theme in fixtures/canonical-theme.
 //
 // theme-replay.test.mjs proves the same properties over hand-written file sets
 // of a few files each. This proves them over a theme that exercises every file
@@ -9,66 +9,29 @@
 // Every deletion of a duplicate implementation is justified by these three
 // assertions, so they run in CI on every change.
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import {
+	CANONICAL_THEME_ROOT,
+	loadThemeFixture,
+} from "../../../fixtures/theme-fixture.mjs";
 import { inspectNazareTheme, ThemeProgram } from "../dist/index.js";
 import { assertProgramEqualsCold } from "./theme-equivalence.mjs";
 
-const corpusRoot = resolve(
-	dirname(fileURLToPath(import.meta.url)),
-	"../../../fixtures/theme-corpus",
-);
-
-/** The same file-selection policy the CLI applies, kept deliberately simple. */
-function readsContents(path) {
-	return (
-		path.endsWith(".nz.liquid") ||
-		/^sections\/[^/]+\.(json|liquid)$/.test(path) ||
-		/^snippets\/[^/]+\.liquid$/.test(path) ||
-		/^blocks\/[^/]+\.liquid$/.test(path) ||
-		/^templates\/.+\.(json|liquid)$/.test(path) ||
-		/^layout\/[^/]+\.liquid$/.test(path) ||
-		/^locales\/[^/]+\.json$/.test(path) ||
-		path === "config/settings_schema.json" ||
-		path === "config/settings_data.json"
-	);
-}
-
-function corpusFiles() {
-	const files = [];
-	const walk = (directory) => {
-		for (const entry of readdirSync(directory)) {
-			const absolute = join(directory, entry);
-			if (statSync(absolute).isDirectory()) {
-				walk(absolute);
-				continue;
-			}
-			const path = relative(corpusRoot, absolute).split(sep).join("/");
-			if (readsContents(path)) {
-				files.push({ path, contents: readFileSync(absolute, "utf8") });
-			} else if (path.startsWith("assets/")) {
-				files.push({ path, contents: "" });
-			}
-		}
-	};
-	walk(corpusRoot);
-	return files.sort((a, b) => a.path.localeCompare(b.path));
-}
-
+const canonicalFiles = () => loadThemeFixture(CANONICAL_THEME_ROOT);
 const options = {
 	metafields: {
 		path: ".shopify/metafields.json",
 		contents: readFileSync(
-			join(corpusRoot, ".shopify/metafields.json"),
+			join(CANONICAL_THEME_ROOT, ".shopify/metafields.json"),
 			"utf8",
 		),
 	},
 };
 
-test("corpus fixture covers every theme file kind", () => {
-	const graph = inspectNazareTheme(corpusFiles(), options);
+test("canonical theme covers every semantic graph family", () => {
+	const graph = inspectNazareTheme(canonicalFiles(), options);
 	const kinds = new Set(graph.nodes.map((node) => node.kind));
 	for (const kind of [
 		"section",
@@ -85,18 +48,36 @@ test("corpus fixture covers every theme file kind", () => {
 		"classification",
 		"capability",
 		"expectedInput",
+		"domHook",
+		"customProperty",
+		"customEvent",
+		"customElement",
 	]) {
-		assert.ok(kinds.has(kind), `corpus produced no ${kind} node`);
+		assert.ok(kinds.has(kind), `canonical theme produced no ${kind} node`);
+	}
+	const edgeKinds = new Set(graph.edges.map((edge) => edge.kind));
+	for (const kind of [
+		"emitsHook",
+		"selectsHook",
+		"queriesHook",
+		"definesCustomProperty",
+		"readsCustomProperty",
+		"dispatchesEvent",
+		"listensForEvent",
+		"definesCustomElement",
+		"usesCustomElement",
+	]) {
+		assert.ok(edgeKinds.has(kind), `canonical theme produced no ${kind} edge`);
 	}
 });
 
-test("batch and program agree on the corpus", () => {
-	const files = corpusFiles();
+test("batch and program agree on the canonical theme", () => {
+	const files = canonicalFiles();
 	assertProgramEqualsCold(new ThemeProgram(files, options), files, options);
 });
 
-test("incremental edits converge on the cold corpus graph", () => {
-	const files = corpusFiles();
+test("incremental edits converge on the cold canonical graph", () => {
+	const files = canonicalFiles();
 	const program = new ThemeProgram(files, options);
 
 	// Edit a leaf snippet every page depends on transitively.

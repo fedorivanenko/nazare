@@ -1,7 +1,7 @@
 {
 	"version": 1,
 	"themes": {
-		"fixture-theme": {
+		"canonical-theme": {
 			"declared": 5,
 			"compared": 5,
 			"agree": 3,

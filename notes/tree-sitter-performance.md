@@ -54,7 +54,7 @@ parsing, and `sourceFrontend: "legacy"` were removed after deletion gates passed
 
 ## Incremental update benchmark
 
-Run the committed theme-corpus benchmark on demand or in scheduled CI:
+Run the committed canonical-theme benchmark on demand or in scheduled CI:
 
 ```sh
 pnpm -s benchmark:incremental
@@ -74,7 +74,7 @@ available explicitly:
 
 ```sh
 pnpm -s benchmark:incremental -- \
-  --corpus fixtures/theme-corpus \
+  --corpus fixtures/canonical-theme \
   --edit-path snippets/price.liquid \
   --iterations 10 \
   --warmups 3 \

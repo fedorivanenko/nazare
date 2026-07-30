@@ -104,12 +104,32 @@ attach a volume, populate it yourself, and point `THEME` at that path.
 
 ## Themes
 
-`--theme fixture` (default) scales `fixtures/theme-corpus` by cloning its
+`--theme fixture` (default) scales `fixtures/canonical-theme` by cloning its
 sections, snippets, and blocks, so it runs anywhere and needs no external
 theme. Its files are uniform, which makes it good at catching superlinear
 behavior and poor at reproducing the shape of one enormous template.
 
-`--theme <slug>` resolves a slug from `fixtures/theme-graph-corpus.json` the
+`fixtures/canonical-theme` is also the readable semantic-topology seed. It covers
+Shopify structure, render/data flow, settings, locales, metafields, Nazare
+imports, unresolved targets, and Liquid/CSS/JavaScript behavior relationships.
+
+For an inspectable large theme with an exact compiler-input count, scaffold one
+outside the repository and benchmark it as a path:
+
+```bash
+pnpm benchmark:scaffold --files 400 --out /tmp/nazare-theme-400
+pnpm benchmark:inspect --theme /tmp/nazare-theme-400 --runs 5
+
+pnpm benchmark:scaffold --files 800 --out /tmp/nazare-theme-800
+pnpm benchmark:inspect --theme /tmp/nazare-theme-800 --runs 5
+```
+
+Scaffolding is deterministic and refuses to replace an existing directory
+unless `--force` is passed. It copies the topology seed, then adds realistic
+Liquid, JSON, Nazare component, CSS, and JavaScript files. A
+`nazare.benchmark.json` manifest records the seed and exact generated count.
+
+`--theme <slug>` resolves a slug from `fixtures/theme-graph-contract.json` the
 same way the corpus check does: `$NAZARE_CORPUS_*` first, then the recorded
 default path. Those are real themes that live on individual machines, so the
 committed fixture stays the portable option.

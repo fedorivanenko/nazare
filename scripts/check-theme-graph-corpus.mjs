@@ -23,7 +23,7 @@ const compareCanonicalStrings = (left, right) =>
 	left < right ? -1 : left > right ? 1 : 0;
 const manifestPath = join(
 	repositoryRoot,
-	"fixtures/theme-graph-corpus.json",
+	"fixtures/theme-graph-contract.json",
 );
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const options = parseArguments(process.argv.slice(2));

@@ -2,7 +2,7 @@
   @param {product} product - Product to render.
   @param {string} [heading_tag] - Optional heading element.
 {% enddoc %}
-<article>
+<product-card class="product-card" data-product-card>
   {% if heading_tag %}<{{ heading_tag }}>{{ product.title }}</{{ heading_tag }}>{% endif %}
   {{ product.featured_image | image_url: width: 400 | image_tag }}
   {% render 'price', product: product %}
@@ -10,4 +10,4 @@
     <s>{{ product.compare_at_price | money }}</s>
   {% endif %}
   <p>{{ product.metafields.custom.subtitle }}</p>
-</article>
+</product-card>
