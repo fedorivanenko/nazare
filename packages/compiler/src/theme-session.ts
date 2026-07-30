@@ -1,7 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Diagnostic } from "@nazare/core";
 import { compareCanonicalStrings } from "./canonical-order.js";
-import { collectThemeBehavior } from "./theme-behavior.js";
+import {
+	collectThemeBehavior,
+	type ThemeBehaviorCollection,
+} from "./theme-behavior.js";
 import {
 	createThemeCapabilityPass,
 	type ThemeCapabilityPassContext,
@@ -196,6 +199,7 @@ export class ThemeProgram {
 	private factStore: ThemeFactStore;
 	private factIndex: ThemeFactIndex;
 	private frontendIssues: Diagnostic[];
+	private behaviorCollection: ThemeBehaviorCollection;
 	private readonly collectionScheduler = createCollectionScheduler();
 	private declarationResultsBySource = new Map<
 		string,
@@ -287,6 +291,7 @@ export class ThemeProgram {
 			this.options.metafields,
 		);
 		this.applyCollectionState(collection);
+		this.behaviorCollection = collectThemeBehavior(this.factStore.all());
 		const collectedModel = modelWithCollectedRecords(
 			analysis.ir,
 			collection.declarations,
@@ -300,7 +305,7 @@ export class ThemeProgram {
 			collection.capabilitySignals,
 			collection.capabilities,
 			collection.classifications,
-			this.factStore.all(),
+			this.behaviorCollection,
 		);
 		const model = collectedModel;
 		this.evidenceBySource = evidenceRecordsBySource(model.evidence);
@@ -449,12 +454,14 @@ export class ThemeProgram {
 			...this.options,
 			factsOnly: true,
 		});
-		const nextFactStore = new ThemeFactStore(this.factStore.all());
+		const nextFactStore = this.factStore.fork();
+		const nextFactIndex = this.factIndex.fork();
 		for (const path of factChangedPaths) {
 			const facts = analysis.facts.filter(
 				(fact) => themeFactSourcePath(fact) === path,
 			);
 			nextFactStore.replaceFile(path, facts);
+			nextFactIndex.replaceFileFacts(path, facts);
 		}
 		const snapshotChanges = metafieldSnapshotChanges(
 			changedPaths,
@@ -524,7 +531,6 @@ export class ThemeProgram {
 				},
 			};
 		}
-		const nextFactIndex = new ThemeFactIndex(nextFactStore.all());
 		const collection = runCollectionPasses(
 			this.collectionScheduler,
 			nextFactStore,
@@ -532,6 +538,11 @@ export class ThemeProgram {
 			factChangedPaths,
 			this.options.metafields,
 			snapshotChanges,
+		);
+		const nextBehaviorCollection = replaceThemeBehaviorSources(
+			this.behaviorCollection,
+			nextFactStore,
+			factChangedPaths,
 		);
 		const collectedBaseModel = modelWithCollectedRecords(
 			analysis.ir,
@@ -546,7 +557,7 @@ export class ThemeProgram {
 			collection.capabilitySignals,
 			collection.capabilities,
 			collection.classifications,
-			nextFactStore.all(),
+			nextBehaviorCollection,
 		);
 		const themeCheckPolicy = parseThemeCheckPolicy(this.options.themeCheck);
 		const ownedIssues = [
@@ -660,6 +671,7 @@ export class ThemeProgram {
 			this.factStore = nextFactStore;
 			this.factIndex = nextFactIndex;
 			this.frontendIssues = analysis.issues;
+			this.behaviorCollection = nextBehaviorCollection;
 			this.applyCollectionState(collection);
 			this.metafieldIndex = nextMetafieldIndex;
 			this.queryComputation = nextComputation;
@@ -753,6 +765,7 @@ export class ThemeProgram {
 		this.factStore = nextFactStore;
 		this.factIndex = nextFactIndex;
 		this.frontendIssues = analysis.issues;
+		this.behaviorCollection = nextBehaviorCollection;
 		this.applyCollectionState(collection);
 		this.metafieldIndex = nextMetafieldIndex;
 		this.graph = nextGraph;
@@ -1385,6 +1398,35 @@ function deriveDataFlowSnapshot(
 	return snapshot;
 }
 
+function replaceThemeBehaviorSources(
+	previous: ThemeBehaviorCollection,
+	facts: ThemeFactStore,
+	changedPaths: string[],
+): ThemeBehaviorCollection {
+	const changed = new Set(changedPaths);
+	const replacement = collectThemeBehavior(
+		changedPaths.flatMap((path) => facts.getFile(path)),
+	);
+	const records = [
+		...previous.records.filter((record) => !changed.has(record.fromPath)),
+		...replacement.records,
+	].sort((a, b) => compareCanonicalStrings(a.id, b.id));
+	return {
+		records,
+		sourceAnalyses: [
+			...previous.sourceAnalyses.filter((record) => !changed.has(record.path)),
+			...replacement.sourceAnalyses,
+		].sort((a, b) => compareCanonicalStrings(a.id, b.id)),
+		evidence: records.map((record) => ({
+			id: record.id,
+			kind: "behavior" as const,
+			file: record.fromPath,
+			span: record.span,
+			extractor: record.extractor,
+		})),
+	};
+}
+
 function modelWithCollectedRecords(
 	model: ThemeSemanticModel,
 	declarationsBySource: Map<string, ThemeDeclarationPassResult>,
@@ -1398,7 +1440,7 @@ function modelWithCollectedRecords(
 	capabilitySignalsBySource: Map<string, ThemeCapabilitySignalRecord[]>,
 	capabilitiesBySource: Map<string, ThemeCapabilityRecord[]>,
 	classificationsBySource: Map<string, ThemeClassificationRecord[]>,
-	facts: ThemeFact[],
+	behavior: ThemeBehaviorCollection,
 ): ThemeSemanticModel {
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
@@ -1456,7 +1498,6 @@ function modelWithCollectedRecords(
 		instances.flatMap((result) => result.sectionInstances),
 		instances.flatMap((result) => result.blockInstances),
 	);
-	const behavior = collectThemeBehavior(facts);
 	return {
 		...model,
 		files,

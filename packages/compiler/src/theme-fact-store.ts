@@ -16,6 +16,14 @@ export class ThemeFactStore {
 		}
 	}
 
+	fork(): ThemeFactStore {
+		const fork = new ThemeFactStore();
+		for (const [path, bucket] of this.buckets) fork.buckets.set(path, bucket);
+		fork.cachedFiles = this.cachedFiles;
+		fork.cachedFacts = this.cachedFacts;
+		return fork;
+	}
+
 	replaceFile(path: string, facts: ThemeFact[]): void {
 		for (const fact of facts) {
 			const factPath = themeFactSourcePath(fact);

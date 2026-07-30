@@ -448,6 +448,12 @@ test("fact index replaces declarations and dependents transactionally", () => {
 		"sections/main.liquid",
 		"snippets/card.liquid",
 	]);
+	const fork = index.fork();
+	fork.replaceFileFacts("sections/main.liquid", []);
+	assert.deepEqual(fork.getDependents("snippet:card"), []);
+	assert.deepEqual(index.getDependents("snippet:card"), [
+		"sections/main.liquid",
+	]);
 	index.replaceFileFacts("sections/main.liquid", []);
 	assert.deepEqual(index.getDependents("snippet:card"), []);
 	assert.throws(
@@ -475,6 +481,10 @@ test("fact store replaces only one source bucket", () => {
 		},
 		{ kind: "file", path: "b.liquid", fileKind: "other" },
 	]);
+	const fork = store.fork();
+	fork.replaceFile("a.liquid", []);
+	assert.equal(fork.getFile("a.liquid").length, 0);
+	assert.equal(store.getFile("a.liquid").length, 2);
 	store.replaceFile("a.liquid", [
 		{ kind: "file", path: "a.liquid", fileKind: "other" },
 	]);
