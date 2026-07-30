@@ -126,6 +126,17 @@ const pairedNodes = new Map<string, string>([
 	["tablerow_statement", "tablerow"],
 ]);
 
+/** Node types `collectReadAndGuards` can turn into a read or a guard. */
+const readCandidateNodes = new Set(["access", "identifier", "filter"]);
+
+/** Node types `collectBinding` can turn into a local binding. */
+const bindingNodes = new Set([
+	"assignment_statement",
+	"capture_statement",
+	"for_loop_statement",
+	"tablerow_statement",
+]);
+
 const rawAncestors = new Set([
 	"schema_statement",
 	"raw_statement",
@@ -169,9 +180,37 @@ export function liquidSyntaxFacts(document: SourceDocument): LiquidSyntaxFacts {
 	const reads: LiquidSyntaxRead[] = [];
 	const guards: LiquidSyntaxGuard[] = [];
 	let schema: LiquidSyntaxSchema | undefined;
-	walk(document.tree.rootNode, (node) => {
-		collectReadAndGuards(document.source, node, reads, guards);
-		const pairedName = pairedNodes.get(node.type);
+	walk(document.tree.rootNode, (walked) => {
+		const type = walked.type;
+		const parentType = walked.parentType;
+		const inRaw = hasRawAncestor(walked.ancestorTypes);
+		const readCandidate = !inRaw && readCandidateNodes.has(type);
+		if (
+			!readCandidate &&
+			!pairedNodes.has(type) &&
+			!bindingNodes.has(type) &&
+			!dependencyNodes.has(type) &&
+			type !== "render_statement" &&
+			type !== "include_statement" &&
+			type !== "filter" &&
+			type !== "doc" &&
+			type !== "schema_statement" &&
+			type !== "access"
+		) {
+			return;
+		}
+		const node = walked.node();
+		if (readCandidate) {
+			collectReadAndGuards(
+				document.source,
+				node,
+				type,
+				parentType,
+				reads,
+				guards,
+			);
+		}
+		const pairedName = pairedNodes.get(type);
 		if (pairedName) {
 			const block = blockFromNode(document.source, node, pairedName);
 			blocks.push(block);
@@ -186,16 +225,16 @@ export function liquidSyntaxFacts(document: SourceDocument): LiquidSyntaxFacts {
 			}
 		}
 
-		collectBinding(document.source, node, blocks, localBindings);
-		if (node.type === "render_statement" || node.type === "include_statement") {
+		collectBinding(document.source, node, type, blocks, localBindings);
+		if (type === "render_statement" || type === "include_statement") {
 			collectRenderArguments(document.source, node, renderArguments);
 		}
-		if (node.type === "filter" && node.parent?.type !== "filter") {
+		if (type === "filter" && parentType !== "filter") {
 			collectStringReference(node, assetReferences, localeReferences);
 		}
-		if (node.type === "doc") collectDocParams(document.source, node, docParams);
+		if (type === "doc") collectDocParams(document.source, node, docParams);
 
-		const dependency = dependencyNodes.get(node.type);
+		const dependency = dependencyNodes.get(type);
 		if (dependency) {
 			const string = node.namedChildren.find(
 				(child) => child.type === "string",
@@ -203,7 +242,7 @@ export function liquidSyntaxFacts(document: SourceDocument): LiquidSyntaxFacts {
 			const name =
 				string !== undefined
 					? unquote(string.text)
-					: node.type === "layout_statement" && /\bnone\s*$/.test(node.text)
+					: type === "layout_statement" && /\bnone\s*$/.test(node.text)
 						? "none"
 						: undefined;
 			dependencies.push({
@@ -214,15 +253,11 @@ export function liquidSyntaxFacts(document: SourceDocument): LiquidSyntaxFacts {
 			});
 		}
 
-		if (node.type === "schema_statement" && !schema) {
+		if (type === "schema_statement" && !schema) {
 			schema = schemaFromNode(document.source, node);
 		}
 
-		if (
-			node.type === "access" &&
-			node.parent?.type !== "access" &&
-			!hasRawAncestor(node)
-		) {
+		if (type === "access" && parentType !== "access" && !inRaw) {
 			const lookup = accessPath(node);
 			if (!lookup) return;
 			if (lookup.root === "settings" && lookup.path[0]) {
@@ -301,25 +336,26 @@ const statementTags = new Map<string, string>([
 function collectReadAndGuards(
 	source: string,
 	node: Parser.SyntaxNode,
+	type: string,
+	parentType: string | undefined,
 	reads: LiquidSyntaxRead[],
 	guards: LiquidSyntaxGuard[],
 ): void {
-	if (hasRawAncestor(node)) return;
 	let lookup: LiquidSyntaxLookup | undefined;
-	if (node.type === "access" && node.parent?.type !== "access") {
+	if (type === "access" && parentType !== "access") {
 		lookup = lookupFromNode(node);
-	} else if (node.type === "identifier" && node.parent?.type !== "access") {
+	} else if (type === "identifier" && parentType !== "access") {
+		if (parentType === "assignment_target") return;
 		const parent = node.parent;
-		if (parent?.type === "assignment_target") return;
 		const field = childFieldName(parent, node);
 		if (
 			field === "variable_name" ||
 			field === "variable" ||
 			field === "local_name" ||
-			(field === "target" && parent?.type === "nazare_render_statement") ||
+			(field === "target" && parentType === "nazare_render_statement") ||
 			(field === "item" &&
-				(parent?.type === "for_loop_statement" ||
-					parent?.type === "tablerow_statement")) ||
+				(parentType === "for_loop_statement" ||
+					parentType === "tablerow_statement")) ||
 			field === "key" ||
 			field === "name" ||
 			field === "property"
@@ -349,7 +385,7 @@ function collectReadAndGuards(
 			guards.push({ name: lookup.root, via: "guard", range: lookup.range });
 		}
 	}
-	if (node.type === "filter" && node.parent?.type !== "filter") {
+	if (type === "filter" && parentType !== "filter") {
 		const chain = filterChain(node);
 		if (
 			chain.names.includes("default") &&
@@ -456,10 +492,11 @@ function conditionalFromNode(
 function collectBinding(
 	source: string,
 	node: Parser.SyntaxNode,
+	type: string,
 	blocks: readonly LiquidSyntaxBlock[],
 	bindings: LiquidSyntaxLocalBinding[],
 ): void {
-	if (node.type === "assignment_statement") {
+	if (type === "assignment_statement") {
 		const name = node.childForFieldName("variable_name")?.text;
 		if (!name) return;
 		bindings.push({
@@ -470,7 +507,7 @@ function collectBinding(
 		});
 		return;
 	}
-	if (node.type === "capture_statement") {
+	if (type === "capture_statement") {
 		const name = node.childForFieldName("variable")?.text;
 		if (!name) return;
 		bindings.push({
@@ -481,9 +518,9 @@ function collectBinding(
 		return;
 	}
 	const via =
-		node.type === "for_loop_statement"
+		type === "for_loop_statement"
 			? "for"
-			: node.type === "tablerow_statement"
+			: type === "tablerow_statement"
 				? "tablerow"
 				: undefined;
 	if (!via) return;
@@ -680,11 +717,10 @@ function accessPath(
 		: undefined;
 }
 
-function hasRawAncestor(node: Parser.SyntaxNode): boolean {
-	let parent = node.parent;
-	while (parent) {
-		if (rawAncestors.has(parent.type)) return true;
-		parent = parent.parent;
+function hasRawAncestor(ancestorTypes: readonly string[]): boolean {
+	for (let index = ancestorTypes.length - 1; index >= 0; index--) {
+		const type = ancestorTypes[index];
+		if (type !== undefined && rawAncestors.has(type)) return true;
 	}
 	return false;
 }

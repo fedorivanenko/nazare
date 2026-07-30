@@ -48,7 +48,7 @@ import {
 	printCommandHelp,
 	printHelp,
 } from "./options.js";
-import type { Output } from "./output.js";
+import { type Output, processOutput } from "./output.js";
 
 /** Heavy modules, loaded only by commands that use them. */
 const compiler = () => import("@nazare/compiler");
@@ -81,7 +81,7 @@ export async function main(
 	args = process.argv.slice(2),
 	options: MainOptions = {},
 ): Promise<number> {
-	const output = options.output ?? console;
+	const output = options.output ?? processOutput;
 	const env = options.env ?? process.env;
 	const command = args[0];
 
