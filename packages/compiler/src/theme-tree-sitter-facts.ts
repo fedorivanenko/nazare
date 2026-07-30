@@ -66,14 +66,20 @@ export function collectTreeSitterSourceThemeFacts(
 			.map((block) => block.body),
 		...liquid.conditionals.flatMap((conditional) => conditional.branches),
 	];
-	const bindings: Binding[] = liquid.localBindings.map((binding) => ({
-		name: binding.name,
-		scope: narrowToBranch(binding.scope, branchBodies),
-		alias:
-			binding.via === "for" || binding.via === "tablerow"
-				? collectionElementAlias(binding.value)
-				: bareLookup(binding.value),
-	}));
+	// Every read resolves through the bindings visible at its offset, so the
+	// bindings are kept indexed by name: a template with thousands of reads and
+	// thousands of assigns otherwise rescans the whole list per lookup.
+	const bindings = new BindingIndex();
+	for (const binding of liquid.localBindings) {
+		bindings.add({
+			name: binding.name,
+			scope: narrowToBranch(binding.scope, branchBodies),
+			alias:
+				binding.via === "for" || binding.via === "tablerow"
+					? collectionElementAlias(binding.value)
+					: bareLookup(binding.value),
+		});
+	}
 	promoteDefiniteAssignments(
 		bindings,
 		liquid.conditionals,
@@ -81,14 +87,7 @@ export function collectTreeSitterSourceThemeFacts(
 		source.length,
 	);
 	const visibleBinding = (name: string, at: number): Binding | undefined =>
-		bindings
-			.filter(
-				(binding) =>
-					binding.name === name &&
-					at >= binding.scope.start &&
-					at <= binding.scope.end,
-			)
-			.sort((left, right) => right.scope.start - left.scope.start)[0];
+		bindings.visibleAt(name, at);
 	const resolve = (root: string, pathParts: string[], at: number) => {
 		let object = root;
 		let resolvedPath = [...pathParts];
@@ -397,18 +396,48 @@ function collectionElementAlias(value: string | undefined): Binding["alias"] {
 }
 
 function narrowToBranch(scope: Range, branches: Range[]): Range {
-	const containing = branches
-		.filter(
-			(branch) => scope.start >= branch.start && scope.start <= branch.end,
-		)
-		.sort((left, right) => right.start - left.start)[0];
+	let containing: Range | undefined;
+	for (const branch of branches) {
+		if (scope.start < branch.start || scope.start > branch.end) continue;
+		if (!containing || branch.start > containing.start) containing = branch;
+	}
 	return containing
 		? { start: scope.start, end: Math.min(scope.end, containing.end) }
 		: scope;
 }
 
+/** Local bindings of one file, indexed by name for offset lookups. */
+class BindingIndex {
+	private readonly byName = new Map<string, Binding[]>();
+
+	add(binding: Binding): void {
+		const named = this.byName.get(binding.name);
+		if (named) named.push(binding);
+		else this.byName.set(binding.name, [binding]);
+	}
+
+	/** Innermost binding of `name` whose scope contains `at`. */
+	visibleAt(name: string, at: number): Binding | undefined {
+		let visible: Binding | undefined;
+		for (const binding of this.byName.get(name) ?? []) {
+			if (at < binding.scope.start || at > binding.scope.end) continue;
+			if (!visible || binding.scope.start > visible.scope.start)
+				visible = binding;
+		}
+		return visible;
+	}
+
+	named(name: string): readonly Binding[] {
+		return this.byName.get(name) ?? [];
+	}
+
+	names(): readonly string[] {
+		return [...this.byName.keys()];
+	}
+}
+
 function promoteDefiniteAssignments(
-	bindings: Binding[],
+	bindings: BindingIndex,
 	conditionals: LiquidSyntaxFacts["conditionals"],
 	branches: Range[],
 	fileEnd: number,
@@ -426,19 +455,20 @@ function promoteDefiniteAssignments(
 			continue;
 		const [first, ...rest] = conditional.branches;
 		if (!first) continue;
-		for (const binding of [...bindings]) {
-			if (!covers(binding, first)) continue;
+		// A name assigned in every branch is bound after the conditional. One
+		// promotion per name: repeating it for every covering binding of the same
+		// name only appends duplicates of an identical scope.
+		for (const name of bindings.names()) {
+			const candidates = bindings.named(name);
+			if (!candidates.some((candidate) => covers(candidate, first))) continue;
 			if (
 				!rest.every((branch) =>
-					bindings.some(
-						(candidate) =>
-							candidate.name === binding.name && covers(candidate, branch),
-					),
+					candidates.some((candidate) => covers(candidate, branch)),
 				)
 			)
 				continue;
-			bindings.push({
-				name: binding.name,
+			bindings.add({
+				name,
 				scope: narrowToBranch(
 					{ start: conditional.range.end, end: fileEnd },
 					branches,

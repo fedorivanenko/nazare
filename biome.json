@@ -10,6 +10,7 @@
 			"packages/**",
 			"apps/**",
 			"registry/**",
+			"benchmarks/**",
 			"!**/dist",
 			"!**/.nazare-out",
 			"!**/*.json",

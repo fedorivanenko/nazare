@@ -19,15 +19,16 @@ export function collectEmbeddedRegions(
 	const regions: EmbeddedRegion[] = [];
 	const representedOpenings = new Set<number>();
 
-	walkNamedNodes(tree.rootNode, (node) => {
+	walkNamedNodes(tree.rootNode, (walked) => {
 		if (
-			node.type !== "nazare_script_statement" &&
-			node.type !== "stylesheet_statement"
+			walked.type !== "nazare_script_statement" &&
+			walked.type !== "stylesheet_statement"
 		) {
 			return;
 		}
+		const node = walked.node();
 		const kind: BlockKind =
-			node.type === "nazare_script_statement" ? "script" : "stylesheet";
+			walked.type === "nazare_script_statement" ? "script" : "stylesheet";
 		const boundaries = pairedBlockBoundaries(source, node, kind);
 		const language = languageOfPairedBlock(node, kind);
 		if (!language) return;

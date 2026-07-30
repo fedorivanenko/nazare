@@ -108,52 +108,102 @@ export function getThemeFileImpact(
 	graph: InspectNazareThemeResult,
 	path: string,
 ): ThemeFileImpact | undefined {
-	const file = graph.nodes.find(
-		(node) => node.kind === "file" && node.path === path,
-	);
-	if (!file || file.kind !== "file") return undefined;
-	const dependencies = getThemeDependencies(graph, path);
-	const dependents = getThemeDependents(graph, path);
-	const affectedPages = getThemeAffectedPages(graph, path);
-	const unused = graph.impact.unusedFiles.includes(path);
-	const targetKind = dynamicTargetKind(file.fileKind);
-	const hasDynamicReference =
-		targetKind !== undefined &&
-		graph.nodes.some(
-			(node) =>
-				node.kind === "unresolved" &&
-				node.targetKind === targetKind &&
-				node.name === undefined,
-		);
-	const sourceAnalysis = graph.nodes.find(
-		(node) => node.kind === "sourceAnalysis" && node.path === path,
-	);
-	const uncertainty = [
-		...(hasDynamicReference
-			? [
-					`Theme contains a dynamic ${targetKind} reference that may resolve to ${path}`,
-				]
-			: []),
-		...(sourceAnalysis?.kind === "sourceAnalysis"
-			? sourceAnalysis.uncertainty
-			: []),
-	];
+	return themeFileImpactIndex(graph).impact(path);
+}
+
+/**
+ * Every file's impact projection. Callers that want the whole theme go through
+ * here: each single-file query scans the node list, and inspect asks for one
+ * per file.
+ */
+export function getThemeFileImpacts(
+	graph: InspectNazareThemeResult,
+): Map<string, ThemeFileImpact> {
+	const index = themeFileImpactIndex(graph);
+	const impacts = new Map<string, ThemeFileImpact>();
+	for (const path of index.paths) {
+		const impact = index.impact(path);
+		if (impact) impacts.set(path, impact);
+	}
+	return impacts;
+}
+
+type ThemeFileImpactIndex = {
+	paths: readonly string[];
+	impact: (path: string) => ThemeFileImpact | undefined;
+};
+
+function themeFileImpactIndex(
+	graph: InspectNazareThemeResult,
+): ThemeFileImpactIndex {
+	const files = new Map<
+		string,
+		Extract<SemanticThemeGraphNode, { kind: "file" }>
+	>();
+	const sourceAnalysisByPath = new Map<
+		string,
+		Extract<SemanticThemeGraphNode, { kind: "sourceAnalysis" }>
+	>();
+	const dynamicTargetKinds = new Set<string>();
+	for (const node of graph.nodes) {
+		if (node.kind === "file") {
+			if (!files.has(node.path)) files.set(node.path, node);
+			continue;
+		}
+		if (node.kind === "sourceAnalysis") {
+			if (!sourceAnalysisByPath.has(node.path))
+				sourceAnalysisByPath.set(node.path, node);
+			continue;
+		}
+		if (node.kind === "unresolved" && node.name === undefined) {
+			dynamicTargetKinds.add(node.targetKind);
+		}
+	}
+	const unusedFiles = new Set(graph.impact.unusedFiles);
+	const issuesByPath = new Map<string, Diagnostic[]>();
+	for (const issue of graph.issues) {
+		const file = issue.span?.file;
+		if (file === undefined) continue;
+		const existing = issuesByPath.get(file);
+		if (existing) existing.push(issue);
+		else issuesByPath.set(file, [issue]);
+	}
 	return {
-		version: 1,
-		path,
-		fileKind: file.fileKind,
-		usage: themeFileUsage(
-			file.fileKind,
-			dependents.length,
-			unused,
-			hasDynamicReference,
-		),
-		certainty: uncertainty.length > 0 ? "partial" : "complete",
-		uncertainty,
-		dependencies,
-		dependents,
-		affectedPages,
-		issues: graph.issues.filter((issue) => issue.span?.file === path),
+		paths: [...files.keys()],
+		impact: (path) => {
+			const file = files.get(path);
+			if (!file) return undefined;
+			const dependents = getThemeDependents(graph, path);
+			const targetKind = dynamicTargetKind(file.fileKind);
+			const hasDynamicReference =
+				targetKind !== undefined && dynamicTargetKinds.has(targetKind);
+			const sourceAnalysis = sourceAnalysisByPath.get(path);
+			const uncertainty = [
+				...(hasDynamicReference
+					? [
+							`Theme contains a dynamic ${targetKind} reference that may resolve to ${path}`,
+						]
+					: []),
+				...(sourceAnalysis ? sourceAnalysis.uncertainty : []),
+			];
+			return {
+				version: 1,
+				path,
+				fileKind: file.fileKind,
+				usage: themeFileUsage(
+					file.fileKind,
+					dependents.length,
+					unusedFiles.has(path),
+					hasDynamicReference,
+				),
+				certainty: uncertainty.length > 0 ? "partial" : "complete",
+				uncertainty,
+				dependencies: getThemeDependencies(graph, path),
+				dependents,
+				affectedPages: getThemeAffectedPages(graph, path),
+				issues: issuesByPath.get(path) ?? [],
+			};
+		},
 	};
 }
 

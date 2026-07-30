@@ -41,15 +41,36 @@ export type HtmlMarkupFacts = {
 	uncertainty: HtmlMarkupUncertainty[];
 };
 
+/**
+ * Facts and diagnostics both read the same masked HTML view of a document, and
+ * building it means a second parse of every theme file. Documents are replaced
+ * rather than mutated on edit, so the tree can be kept alongside one.
+ */
+const htmlTrees = new WeakMap<SourceDocument, Parser.Tree>();
+let htmlParser: Parser | undefined;
+
+function htmlTree(document: SourceDocument): Parser.Tree {
+	const cached = htmlTrees.get(document);
+	if (cached) return cached;
+	if (!htmlParser) {
+		htmlParser = new Parser();
+		htmlParser.setLanguage(Html);
+	}
+	const tree = parseTreeText(htmlParser, maskedHtmlSource(document));
+	htmlTrees.set(document, tree);
+	return tree;
+}
+
 /** Static DOM contracts from HTML regions of a Liquid source document. */
 export function htmlMarkupFacts(document: SourceDocument): HtmlMarkupFacts {
-	const parser = new Parser();
-	parser.setLanguage(Html);
-	const tree = parseTreeText(parser, maskedHtmlSource(document));
+	const tree = htmlTree(document);
 	const hooks: HtmlMarkupHookFact[] = [];
 	const uncertainty: HtmlMarkupUncertainty[] = [];
-	walk(tree.rootNode, (node) => {
-		if (node.type !== "start_tag" && node.type !== "self_closing_tag") return;
+	walk(tree.rootNode, (walked) => {
+		if (walked.type !== "start_tag" && walked.type !== "self_closing_tag") {
+			return;
+		}
+		const node = walked.node();
 		const tagNameNode = node.namedChildren.find(
 			(child) => child.type === "tag_name",
 		);
@@ -120,11 +141,17 @@ export function htmlMarkupFacts(document: SourceDocument): HtmlMarkupFacts {
 export function htmlSyntaxIssues(
 	document: SourceDocument,
 ): readonly SourceParseIssue[] {
-	const parser = new Parser();
-	parser.setLanguage(Html);
-	const tree = parseTreeText(parser, maskedHtmlSource(document));
+	const tree = htmlTree(document);
 	const issues: SourceParseIssue[] = [];
-	walk(tree.rootNode, (node) => {
+	walk(tree.rootNode, (walked) => {
+		if (
+			walked.type !== "ERROR" &&
+			walked.type !== "element" &&
+			!walked.isMissing
+		) {
+			return;
+		}
+		const node = walked.node();
 		if (node.type === "ERROR" || node.isMissing) {
 			issues.push({
 				code: node.isMissing ? "TREE_SITTER_MISSING" : "TREE_SITTER_ERROR",
@@ -156,18 +183,26 @@ export function htmlSyntaxIssues(
 }
 
 function maskedHtmlSource(document: SourceDocument): string {
-	const masked: string[] = document.source
-		.split("")
-		.map((character) =>
-			character === "\n" || character === "\r" ? character : " ",
-		);
-	walk(document.tree.rootNode, (node) => {
-		if (node.type !== "template_content") return;
-		for (let offset = node.startIndex; offset < node.endIndex; offset += 1) {
-			masked[offset] = document.source[offset] as string;
-		}
+	const source = document.source;
+	const parts: string[] = [];
+	let cursor = 0;
+	walk(document.tree.rootNode, (walked) => {
+		if (walked.type !== "template_content") return;
+		const node = walked.node();
+		// Pre-order walk yields ascending starts; a nested region is already
+		// covered by the enclosing one that was emitted first.
+		if (node.startIndex < cursor) return;
+		parts.push(blankOutside(source.slice(cursor, node.startIndex)));
+		parts.push(source.slice(node.startIndex, node.endIndex));
+		cursor = node.endIndex;
 	});
-	return masked.join("");
+	parts.push(blankOutside(source.slice(cursor)));
+	return parts.join("");
+}
+
+/** Keeps offsets and line breaks, drops everything HTML must not see. */
+function blankOutside(text: string): string {
+	return text.replace(/[^\n\r]/g, " ");
 }
 
 function containsLiquid(value: string): boolean {

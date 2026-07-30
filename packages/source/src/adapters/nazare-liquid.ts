@@ -167,6 +167,18 @@ const conditionalNodes = new Set([
 	"tablerow_statement",
 ]);
 
+/** Node types the fact walk can turn into a Nazare syntax fact. */
+const nazareFactNodes = new Set([
+	"nazare_component_statement",
+	"nazare_import_statement",
+	"nazare_props_statement",
+	"nazare_render_statement",
+	"nazare_blocks_statement",
+	"nazare_script_statement",
+	"stylesheet_statement",
+	"access",
+]);
+
 /** Mechanical Nazare declarations and references. Semantic meaning stays in compiler. */
 export function nazareSyntaxFacts(document: SourceDocument): NazareSyntaxFacts {
 	if (document.language !== "nazare-liquid") {
@@ -183,7 +195,9 @@ export function nazareSyntaxFacts(document: SourceDocument): NazareSyntaxFacts {
 
 	const facts: NazareSyntaxFact[] = [];
 	const styleBindings = collectStyleBindings(document.tree.rootNode);
-	walk(document.tree.rootNode, (node) => {
+	walk(document.tree.rootNode, (walked) => {
+		if (!nazareFactNodes.has(walked.type)) return;
+		const node = walked.node();
 		if (node.type === "nazare_component_statement") {
 			const range = tagRange(document.source, node);
 			const componentKind = requiredField(node, "kind").text;
@@ -291,8 +305,8 @@ export function nazareSyntaxFacts(document: SourceDocument): NazareSyntaxFacts {
 		}
 		if (
 			node.type === "access" &&
-			node.parent?.type !== "access" &&
-			!hasRawAncestor(node)
+			walked.parentType !== "access" &&
+			!hasRawAncestor(walked.ancestorTypes)
 		) {
 			const lookup = accessPath(node);
 			if (!lookup || lookup.path.length === 0) return;
@@ -333,14 +347,14 @@ function tagSyntaxProblems(document: SourceDocument): NazareSyntaxProblem[] {
 	const ignored: SourceRange[] = [
 		...document.embeddedRegions.map((region) => region.bodyRange),
 	];
-	walk(document.tree.rootNode, (node) => {
+	walk(document.tree.rootNode, (walked) => {
 		if (
-			node.type === "comment" ||
-			node.type === "doc" ||
-			node.type === "raw_statement" ||
-			node.type === "schema_statement"
+			walked.type === "comment" ||
+			walked.type === "doc" ||
+			walked.type === "raw_statement" ||
+			walked.type === "schema_statement"
 		) {
-			ignored.push(nodeRange(node));
+			ignored.push(nodeRange(walked.node()));
 		}
 	});
 	const problems: NazareSyntaxProblem[] = document.embeddedRegions
@@ -350,8 +364,9 @@ function tagSyntaxProblems(document: SourceDocument): NazareSyntaxProblem[] {
 			block: region.language === "css" ? "stylesheet" : "script",
 			range: region.openRange,
 		}));
-	walk(document.tree.rootNode, (node) => {
-		if (node.type !== "nazare_script_statement") return;
+	walk(document.tree.rootNode, (walked) => {
+		if (walked.type !== "nazare_script_statement") return;
+		const node = walked.node();
 		const language = node.childForFieldName("language")?.text;
 		if (
 			language === undefined ||
@@ -421,8 +436,11 @@ function htmlFacts(
 	parser.setLanguage(Html);
 	const tree = parseTreeText(parser, masked);
 	const facts: NazareSyntaxFact[] = [];
-	walk(tree.rootNode, (node) => {
-		if (node.type !== "start_tag" && node.type !== "self_closing_tag") return;
+	walk(tree.rootNode, (walked) => {
+		if (walked.type !== "start_tag" && walked.type !== "self_closing_tag") {
+			return;
+		}
+		const node = walked.node();
 		const tagName = node.namedChildren.find(
 			(child) => child.type === "tag_name",
 		)?.text;
@@ -512,18 +530,21 @@ function htmlFacts(
 }
 
 function maskedHtmlSource(document: SourceDocument): string {
-	const masked: string[] = document.source
-		.split("")
-		.map((character) =>
-			character === "\n" || character === "\r" ? character : " ",
-		);
-	walk(document.tree.rootNode, (node) => {
-		if (node.type !== "template_content") return;
-		for (let offset = node.startIndex; offset < node.endIndex; offset += 1) {
-			masked[offset] = document.source[offset] as string;
-		}
+	const source = document.source;
+	const parts: string[] = [];
+	let cursor = 0;
+	walk(document.tree.rootNode, (walked) => {
+		if (walked.type !== "template_content") return;
+		const node = walked.node();
+		// Pre-order walk yields ascending starts; a nested region is already
+		// covered by the enclosing one that was emitted first.
+		if (node.startIndex < cursor) return;
+		parts.push(source.slice(cursor, node.startIndex).replace(/[^\n\r]/g, " "));
+		parts.push(source.slice(node.startIndex, node.endIndex));
+		cursor = node.endIndex;
 	});
-	return masked.join("");
+	parts.push(source.slice(cursor).replace(/[^\n\r]/g, " "));
+	return parts.join("");
 }
 
 function htmlRootMarkerRange(
@@ -578,7 +599,14 @@ function dataBindingFromAttribute(
 
 function collectStyleBindings(root: Parser.SyntaxNode): Set<string> {
 	const bindings = new Set<string>();
-	walk(root, (node) => {
+	walk(root, (walked) => {
+		if (
+			walked.type !== "stylesheet_statement" &&
+			walked.type !== "nazare_import_statement"
+		) {
+			return;
+		}
+		const node = walked.node();
 		if (node.type === "stylesheet_statement") {
 			const binding = node.childForFieldName("binding")?.text;
 			if (binding) bindings.add(binding);
@@ -647,18 +675,17 @@ function accessPath(
 		: undefined;
 }
 
-function hasRawAncestor(node: Parser.SyntaxNode): boolean {
-	let parent = node.parent;
-	while (parent) {
+function hasRawAncestor(ancestorTypes: readonly string[]): boolean {
+	for (let index = ancestorTypes.length - 1; index >= 0; index--) {
+		const type = ancestorTypes[index];
 		if (
-			parent.type === "schema_statement" ||
-			parent.type === "raw_statement" ||
-			parent.type === "comment" ||
-			parent.type === "doc"
+			type === "schema_statement" ||
+			type === "raw_statement" ||
+			type === "comment" ||
+			type === "doc"
 		) {
 			return true;
 		}
-		parent = parent.parent;
 	}
 	return false;
 }

@@ -48,7 +48,7 @@ import {
 	printCommandHelp,
 	printHelp,
 } from "./options.js";
-import type { Output } from "./output.js";
+import { type Output, processOutput } from "./output.js";
 
 /** Heavy modules, loaded only by commands that use them. */
 const compiler = () => import("@nazare/compiler");
@@ -81,7 +81,7 @@ export async function main(
 	args = process.argv.slice(2),
 	options: MainOptions = {},
 ): Promise<number> {
-	const output = options.output ?? console;
+	const output = options.output ?? processOutput;
 	const env = options.env ?? process.env;
 	const command = args[0];
 
@@ -752,8 +752,10 @@ async function analyzePreparedThemeInspection(
 	});
 	if (prepared.persisted?.inputFingerprint !== prepared.inputFingerprint) {
 		const impacts: Record<string, ThemeFileImpact> = Object.create(null);
-		for (const file of inspected.nodes.filter((node) => node.kind === "file")) {
-			const impact = compilerModule.getThemeFileImpact(inspected, file.path);
+		const projected = compilerModule.getThemeFileImpacts(inspected);
+		for (const file of inspected.nodes) {
+			if (file.kind !== "file") continue;
+			const impact = projected.get(file.path);
 			if (!impact) {
 				throw new Error(
 					`Compiler did not produce impact projection for ${file.path}`,

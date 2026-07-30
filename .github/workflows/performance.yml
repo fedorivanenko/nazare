@@ -3,10 +3,17 @@ name: performance
 on:
   schedule:
     - cron: "0 4 * * *"
+  pull_request:
+    paths:
+      - "packages/compiler/**"
+      - "packages/source/**"
+      - "packages/cli-client/**"
+      - "benchmarks/**"
+      - ".github/workflows/performance.yml"
   workflow_dispatch:
 
 concurrency:
-  group: performance-${{ github.ref }}
+  group: performance-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -27,3 +34,40 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm -s benchmark:incremental
+
+  # Builds both sides from source and runs them interleaved in one job, because
+  # a shared runner's absolute numbers drift between jobs while a difference
+  # measured back to back on one runner holds up.
+  inspect-ab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # ab.sh resolves a baseline ref and adds a worktree for it.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.0.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: inspect theme A/B against the merge base
+        env:
+          BASELINE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || 'HEAD~1' }}
+          # A runner is fast enough that the smaller scales land under the
+          # gate's one-second floor, where a cell measures process startup
+          # rather than analysis. 64 and 96 are what it actually watches.
+          SCALES: "1,16,64,96"
+          RUNS: "3"
+          # Shared runners are noisy, so the budget is wide.
+          MAX_COLD_REGRESSION: "15"
+          REPORT_PATH: inspect-ab.txt
+        run: benchmarks/ab.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inspect-ab
+          path: inspect-ab.txt
+          if-no-files-found: warn
