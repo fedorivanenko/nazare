@@ -140,7 +140,10 @@ function runBenchmark(options, workspace) {
 		const outputs = {};
 		// Interleaved: a machine that slows down mid-run slows both builds.
 		for (const build of builds) {
-			const outputPath = join(workspace, `${theme.label}.${build.name}.json`);
+			const outputPath = join(
+				workspace,
+				`${fileSafe(theme.label)}.${build.name}.json`,
+			);
 			measurements[build.name] = {
 				cold: measure(build.cli, theme.directory, options.runs, {
 					cold: true,
@@ -218,6 +221,11 @@ function prepareThemes(options, workspace) {
 		});
 	}
 	const root = resolveThemeRoot(options);
+	// A path argument names the theme by its directory; the whole path would
+	// travel into output file names.
+	const label = options.theme.includes(sep)
+		? (root.split(sep).at(-1) ?? "theme")
+		: options.theme;
 	const directory = join(workspace, "theme");
 	cpSync(root, directory, {
 		recursive: true,
@@ -226,7 +234,7 @@ function prepareThemes(options, workspace) {
 	const files = readThemeFiles(directory);
 	return [
 		{
-			label: options.theme,
+			label,
 			directory,
 			fileCount: files.length,
 			contentFileCount: files.filter((file) => isContentPath(file.path)).length,
@@ -370,6 +378,11 @@ function readThemeFiles(root) {
 	visit(root);
 	if (files.length === 0) throw new Error(`No theme files found in ${root}`);
 	return files.sort((left, right) => (left.path < right.path ? -1 : 1));
+}
+
+/** Labels reach file names, and a path argument carries separators. */
+function fileSafe(label) {
+	return label.replace(/[^A-Za-z0-9._-]+/g, "-");
 }
 
 function isContentPath(path) {
