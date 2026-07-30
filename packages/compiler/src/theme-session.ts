@@ -1364,21 +1364,25 @@ function deriveDataFlowSnapshot(
 		declarations,
 		inputs.variableReads,
 	);
-	const paths = new Set([
-		...expectedInputs.map((record) => record.path),
-		...renderSites.map((record) => record.fromPath),
-		...dataAccesses.map((record) => record.fromPath),
-	]);
-	return new Map(
-		[...paths].sort().map((path) => [
-			path,
-			{
-				expectedInputs: expectedInputs.filter((record) => record.path === path),
-				renderSites: renderSites.filter((record) => record.fromPath === path),
-				dataAccesses: dataAccesses.filter((record) => record.fromPath === path),
-			},
-		]),
-	);
+	const snapshot = new Map<string, ThemeDerivedDataFlowResult>();
+	const resultFor = (path: string): ThemeDerivedDataFlowResult => {
+		const existing = snapshot.get(path);
+		if (existing) return existing;
+		const created: ThemeDerivedDataFlowResult = {
+			expectedInputs: [],
+			renderSites: [],
+			dataAccesses: [],
+		};
+		snapshot.set(path, created);
+		return created;
+	};
+	for (const record of expectedInputs)
+		resultFor(record.path).expectedInputs.push(record);
+	for (const record of renderSites)
+		resultFor(record.fromPath).renderSites.push(record);
+	for (const record of dataAccesses)
+		resultFor(record.fromPath).dataAccesses.push(record);
+	return snapshot;
 }
 
 function modelWithCollectedRecords(
