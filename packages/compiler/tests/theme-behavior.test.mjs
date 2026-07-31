@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
 	analyzeThemeSource,
+	computeNazareTheme,
 	getThemeFileImpact,
 	inspectNazareTheme,
 	ThemeProgram,
@@ -77,6 +78,78 @@ test("theme compiler links Liquid, CSS, and JavaScript behavior", () => {
 		"templates/index.liquid",
 	]);
 	assert.deepEqual(impact.affectedPages, ["templates/index.liquid"]);
+});
+
+test("behavior queries connect hooks to JavaScript function owners", () => {
+	const program = new ThemeProgram([
+		{
+			path: "snippets/card.liquid",
+			contents:
+				'<div id="product-card-root" data-product-card class="product-card"></div>',
+		},
+		{
+			path: "assets/card.js",
+			contents: `export function initializeProductCard() {
+	return document.querySelector('[data-product-card]');
+}
+const activateCard = () => document.querySelector('.product-card');
+class CardController {
+	mount() { return document.getElementById('product-card-root'); }
+}`,
+		},
+	]);
+	const attribute = {
+		subjectKind: "domHook",
+		hookKind: "attribute",
+		name: "data-product-card",
+	};
+	const producers = program.getBehaviorProducers(attribute);
+	const consumers = program.getBehaviorConsumers(attribute);
+	assert.equal(producers.length, 1);
+	assert.equal(producers[0].fromPath, "snippets/card.liquid");
+	assert.equal(consumers.length, 1);
+	assert.equal(consumers[0].fromPath, "assets/card.js");
+	assert.deepEqual(
+		{
+			kind: consumers[0].javaScriptOwner.kind,
+			name: consumers[0].javaScriptOwner.name,
+			exported: consumers[0].javaScriptOwner.exported,
+		},
+		{ kind: "function", name: "initializeProductCard", exported: true },
+	);
+	assert.equal(consumers[0].javaScriptOwner.span.file, "assets/card.js");
+	const classConsumer = program.getBehaviorConsumers({
+		subjectKind: "domHook",
+		hookKind: "class",
+		name: "product-card",
+	})[0];
+	assert.equal(classConsumer.javaScriptOwner.name, "activateCard");
+	const idConsumer = program.getBehaviorConsumers({
+		subjectKind: "domHook",
+		hookKind: "id",
+		name: "product-card-root",
+	})[0];
+	assert.deepEqual(
+		{
+			kind: idConsumer.javaScriptOwner.kind,
+			name: idConsumer.javaScriptOwner.name,
+		},
+		{ kind: "method", name: "mount" },
+	);
+	assert.ok(
+		program
+			.getBehaviorConnections("snippets/card.liquid")
+			.some((connection) =>
+				connection.related.some(
+					(record) => record.javaScriptOwner?.name === "initializeProductCard",
+				),
+			),
+	);
+	assert.equal(program.getGraph().version, 5);
+	assert.equal(
+		program.getGraph().nodes.some((node) => node.kind === "domHook"),
+		false,
+	);
 });
 
 test("behavior consumers do not make unreachable Liquid files used", () => {
@@ -196,5 +269,6 @@ test("behavior graph updates converge with a cold theme compile", () => {
 	);
 	program.updateFile(updated.find((file) => file.path === "assets/theme.js"));
 
+	assert.deepEqual(program.getModel(), computeNazareTheme(updated).model);
 	assert.deepEqual(program.getGraph(), inspectNazareTheme(updated));
 });

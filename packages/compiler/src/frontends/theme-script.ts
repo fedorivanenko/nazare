@@ -7,7 +7,7 @@ import {
 	walkJavaScript,
 } from "../javascript-ast.js";
 import { spanFromOffsets } from "../source.js";
-import type { ThemeFact } from "../theme-facts.js";
+import type { ThemeFact, ThemeJavaScriptOwner } from "../theme-facts.js";
 import type { ThemeSourceUncertainty } from "../theme-source-frontend.js";
 
 export type ThemeScriptAnalysis = {
@@ -44,7 +44,7 @@ export function analyzeThemeScript(
 	const facts: ThemeFact[] = [];
 	const issues: Diagnostic[] = [];
 	const uncertainty: ThemeSourceUncertainty[] = [];
-	walkJavaScript(program, (node, parent) => {
+	walkJavaScript(program, (node, parent, ancestors) => {
 		if (
 			(node.type === "ImportDeclaration" ||
 				node.type === "ExportNamedDeclaration" ||
@@ -63,12 +63,16 @@ export function analyzeThemeScript(
 				);
 			} else analyzeModuleSpecifier(specifier);
 		}
-		if (node.type === "MemberExpression") analyzeDatasetAccess(node, parent);
-		if (node.type === "CallExpression") analyzeCall(node);
+		if (node.type === "MemberExpression")
+			analyzeDatasetAccess(node, parent, ownerFor(ancestors));
+		if (node.type === "CallExpression") analyzeCall(node, ownerFor(ancestors));
 	});
 	return { facts, issues, uncertainty };
 
-	function analyzeCall(call: JavaScriptNode): void {
+	function analyzeCall(
+		call: JavaScriptNode,
+		owner: ThemeJavaScriptOwner,
+	): void {
 		const callee = asNode(call.callee);
 		if (!callee || callee.type !== "MemberExpression") return;
 		const method = memberName(callee);
@@ -91,12 +95,14 @@ export function analyzeThemeScript(
 			try {
 				const root = selectorParser().astSync(selector);
 				root.walkClasses((hook) =>
-					pushDom("class", hook.value, "queries", call),
+					pushDom("class", hook.value, "queries", call, owner),
 				);
-				root.walkIds((hook) => pushDom("id", hook.value, "queries", call));
+				root.walkIds((hook) =>
+					pushDom("id", hook.value, "queries", call, owner),
+				);
 				root.walkAttributes((hook) => {
 					if (hook.attribute)
-						pushDom("attribute", hook.attribute, "queries", call);
+						pushDom("attribute", hook.attribute, "queries", call, owner);
 				});
 			} catch (error) {
 				issues.push({
@@ -133,6 +139,7 @@ export function analyzeThemeScript(
 						? "queries"
 						: "mutates",
 					call,
+					owner,
 				);
 			}
 			return;
@@ -145,7 +152,7 @@ export function analyzeThemeScript(
 					"Dynamic getElementById argument prevents complete DOM hook analysis",
 					call,
 				);
-			} else pushDom("id", id, "queries", call);
+			} else pushDom("id", id, "queries", call, owner);
 			return;
 		}
 		const target = asNode(callee.object);
@@ -162,12 +169,12 @@ export function analyzeThemeScript(
 						`Dynamic classList.${method} argument prevents complete DOM hook analysis`,
 						argument,
 					);
-				} else pushDom("class", className, "mutates", argument);
+				} else pushDom("class", className, "mutates", argument, owner);
 			}
 			return;
 		}
 		if (method === "addEventListener") {
-			pushEvent("listens", staticString(args[0]), call);
+			pushEvent("listens", staticString(args[0]), call, owner);
 			return;
 		}
 		if (method === "dispatchEvent") {
@@ -176,17 +183,18 @@ export function analyzeThemeScript(
 				argument?.type === "NewExpression"
 					? staticString(nodes(argument.arguments)[0])
 					: undefined;
-			pushEvent("dispatches", eventName, call);
+			pushEvent("dispatches", eventName, call, owner);
 			return;
 		}
 		if (method === "define" && identifierName(target) === "customElements") {
-			pushCustomElement(staticString(args[0]), call);
+			pushCustomElement(staticString(args[0]), call, owner);
 		}
 	}
 
 	function analyzeDatasetAccess(
 		access: JavaScriptNode,
 		parent: JavaScriptNode | undefined,
+		owner: ThemeJavaScriptOwner,
 	): void {
 		const target = asNode(access.object);
 		if (target?.type !== "MemberExpression" || memberName(target) !== "dataset")
@@ -205,6 +213,7 @@ export function analyzeThemeScript(
 			datasetAttributeName(key),
 			isWriteAccess(access, parent) ? "mutates" : "queries",
 			access,
+			owner,
 		);
 	}
 
@@ -228,6 +237,7 @@ export function analyzeThemeScript(
 		name: string,
 		operation: "queries" | "mutates",
 		node: JavaScriptNode,
+		javaScriptOwner: ThemeJavaScriptOwner,
 	): void {
 		facts.push({
 			kind: "behavior",
@@ -238,6 +248,7 @@ export function analyzeThemeScript(
 			name,
 			span: nodeSpan(node),
 			extractor: "javascript-ast",
+			javaScriptOwner,
 		});
 	}
 
@@ -245,6 +256,7 @@ export function analyzeThemeScript(
 		operation: "dispatches" | "listens",
 		name: string | undefined,
 		node: JavaScriptNode,
+		javaScriptOwner: ThemeJavaScriptOwner,
 	): void {
 		if (name === undefined) {
 			pushUncertainty(
@@ -262,12 +274,14 @@ export function analyzeThemeScript(
 			name,
 			span: nodeSpan(node),
 			extractor: "javascript-ast",
+			javaScriptOwner,
 		});
 	}
 
 	function pushCustomElement(
 		name: string | undefined,
 		node: JavaScriptNode,
+		javaScriptOwner: ThemeJavaScriptOwner,
 	): void {
 		if (name === undefined) {
 			pushUncertainty(
@@ -285,7 +299,36 @@ export function analyzeThemeScript(
 			name,
 			span: nodeSpan(node),
 			extractor: "javascript-ast",
+			javaScriptOwner,
 		});
+	}
+
+	function ownerFor(ancestors: JavaScriptNode[]): ThemeJavaScriptOwner {
+		for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+			const node = ancestors[index];
+			if (!isFunctionNode(node)) continue;
+			const parent = ancestors[index - 1];
+			const named = functionOwnerName(node, parent);
+			const location = `${node.start}:${node.end}`;
+			return {
+				kind: named.kind,
+				name: named.name,
+				exported: ancestors
+					.slice(0, index)
+					.some(
+						(ancestor) =>
+							ancestor.type === "ExportNamedDeclaration" ||
+							ancestor.type === "ExportDefaultDeclaration",
+					),
+				id: `javascript-owner:${encodeURIComponent(path)}:${location}:${encodeURIComponent(named.name ?? "anonymous")}`,
+				span: nodeSpan(node),
+			};
+		}
+		return {
+			kind: "module",
+			name: path,
+			id: `javascript-owner:${encodeURIComponent(path)}:module`,
+		};
 	}
 
 	function pushUncertainty(
@@ -299,6 +342,43 @@ export function analyzeThemeScript(
 	function nodeSpan(node: JavaScriptNode) {
 		return spanFromOffsets(source, path, { start: node.start, end: node.end });
 	}
+}
+
+function isFunctionNode(node: JavaScriptNode): boolean {
+	return (
+		node.type === "FunctionDeclaration" ||
+		node.type === "FunctionExpression" ||
+		node.type === "ArrowFunctionExpression"
+	);
+}
+
+function functionOwnerName(
+	node: JavaScriptNode,
+	parent: JavaScriptNode | undefined,
+): {
+	kind: "function" | "method" | "anonymousFunction";
+	name?: string;
+} {
+	const declaredName = identifierName(asNode(node.id));
+	if (declaredName) return { kind: "function", name: declaredName };
+	if (parent?.type === "VariableDeclarator") {
+		const name = identifierName(asNode(parent.id));
+		if (name) return { kind: "function", name };
+	}
+	if (parent?.type === "MethodDefinition" || parent?.type === "Property") {
+		const name = propertyName(asNode(parent.key));
+		if (name) return { kind: "method", name };
+	}
+	if (parent?.type === "AssignmentExpression") {
+		const left = asNode(parent.left);
+		const name = identifierName(left) ?? (left ? memberName(left) : undefined);
+		if (name) return { kind: "function", name };
+	}
+	return { kind: "anonymousFunction" };
+}
+
+function propertyName(node: JavaScriptNode | undefined): string | undefined {
+	return identifierName(node) ?? staticString(node);
 }
 
 function staticString(node: JavaScriptNode | undefined): string | undefined {

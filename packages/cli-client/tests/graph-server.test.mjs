@@ -152,6 +152,14 @@ test("graph server supports MCP tools and build updates", async () => {
 			responses[1].result.tools.some((tool) => tool.name === "evidence"),
 		);
 		assert.ok(
+			responses[1].result.tools.some((tool) => tool.name === "behaviorUsages"),
+		);
+		assert.ok(
+			responses[1].result.tools.some(
+				(tool) => tool.name === "behaviorConnections",
+			),
+		);
+		assert.ok(
 			responses[1].result.tools.every(
 				(tool) => tool.inputSchema.additionalProperties === false,
 			),
@@ -162,6 +170,46 @@ test("graph server supports MCP tools and build updates", async () => {
 		assert.equal(responses[3].result.isError, false);
 		assert.equal(responses[4].result.revision, 1);
 		assert.ok(responses[4].result.changedOutputPaths.length > 0);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("graph server queries cross-language behavior and JavaScript owners", async () => {
+	const root = await mkdtemp(join(tmpdir(), "nazare-behavior-server-"));
+	try {
+		await mkdir(join(root, "snippets"));
+		await mkdir(join(root, "assets"));
+		await writeFile(
+			join(root, "snippets/card.liquid"),
+			"<div data-product-card></div>",
+		);
+		await writeFile(
+			join(root, "assets/card.js"),
+			"export function initializeProductCard() { return document.querySelector('[data-product-card]'); }",
+		);
+		const [usages, connections] = await runServer(root, [
+			{
+				id: 1,
+				method: "behaviorUsages",
+				params: {
+					subjectKind: "domHook",
+					hookKind: "attribute",
+					name: "data-product-card",
+					role: "consumers",
+				},
+			},
+			{
+				id: 2,
+				method: "behaviorConnections",
+				params: { path: "snippets/card.liquid" },
+			},
+		]);
+		assert.equal(
+			usages.result[0].javaScriptOwner.name,
+			"initializeProductCard",
+		);
+		assert.equal(connections.result[0].related[0].fromPath, "assets/card.js");
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

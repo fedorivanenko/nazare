@@ -19,6 +19,8 @@ import {
 	type ThemeClassificationPassContext,
 } from "./theme-classification-pass.js";
 import {
+	type ThemeBehaviorConnection,
+	type ThemeBehaviorQuery,
 	ThemeComputation,
 	type ThemeFileImpact,
 	type ThemeRenderOccurrence,
@@ -389,6 +391,26 @@ export class ThemeProgram {
 
 	getFileImpact(path: string): ThemeFileImpact | undefined {
 		return this.getQueryComputation().getFileImpact(path);
+	}
+
+	getBehaviorUsages(query: ThemeBehaviorQuery): ThemeSemanticModel["behavior"] {
+		return this.getQueryComputation().getBehaviorUsages(query);
+	}
+
+	getBehaviorProducers(
+		query: ThemeBehaviorQuery,
+	): ThemeSemanticModel["behavior"] {
+		return this.getQueryComputation().getBehaviorProducers(query);
+	}
+
+	getBehaviorConsumers(
+		query: ThemeBehaviorQuery,
+	): ThemeSemanticModel["behavior"] {
+		return this.getQueryComputation().getBehaviorConsumers(query);
+	}
+
+	getBehaviorConnections(path: string): ThemeBehaviorConnection[] {
+		return this.getQueryComputation().getBehaviorConnections(path);
 	}
 
 	getRenderOccurrences(path: string): ThemeRenderOccurrence[] {

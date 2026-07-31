@@ -3,6 +3,7 @@ import { compareCanonicalStrings } from "./canonical-order.js";
 import type {
 	InspectNazareThemeResult,
 	ThemeAnalysis,
+	ThemeBehaviorRecord,
 	ThemeFileRecord,
 	ThemeImpactSummary,
 	ThemeSemanticModel,
@@ -18,6 +19,22 @@ export type ThemeRenderOccurrence = {
 	targetName?: string;
 	invocationKind: "render" | "include";
 	span?: ThemeSemanticModel["renderSites"][number]["span"];
+};
+
+export type ThemeBehaviorQuery =
+	| {
+			subjectKind: "domHook";
+			hookKind: "class" | "id" | "attribute";
+			name: string;
+	  }
+	| {
+			subjectKind: "customProperty" | "customEvent" | "customElement";
+			name: string;
+	  };
+
+export type ThemeBehaviorConnection = {
+	usage: ThemeBehaviorRecord;
+	related: ThemeBehaviorRecord[];
 };
 
 export type ThemeFileImpact = {
@@ -47,6 +64,9 @@ export class ThemeComputation {
 	>;
 	private readonly issuesByPath: Map<string, Diagnostic[]>;
 	private readonly dynamicTargetKinds: Set<string>;
+	private behaviorBySubjectValue:
+		| Map<string, ThemeBehaviorRecord[]>
+		| undefined;
 	private impactSummaryValue: ThemeImpactSummary | undefined;
 	private unusedFilesValue: Set<string> | undefined;
 	private graphValue: InspectNazareThemeResult | undefined;
@@ -114,6 +134,46 @@ export class ThemeComputation {
 		};
 	}
 
+	getBehaviorUsages(query: ThemeBehaviorQuery): ThemeBehaviorRecord[] {
+		return [
+			...(this.getBehaviorBySubject().get(behaviorSubjectKey(query)) ?? []),
+		];
+	}
+
+	private getBehaviorBySubject(): Map<string, ThemeBehaviorRecord[]> {
+		if (this.behaviorBySubjectValue) return this.behaviorBySubjectValue;
+		const index = new Map<string, ThemeBehaviorRecord[]>();
+		for (const record of this.model.behavior) {
+			const key = behaviorSubjectKey(record);
+			const records = index.get(key);
+			if (records) records.push(record);
+			else index.set(key, [record]);
+		}
+		this.behaviorBySubjectValue = index;
+		return index;
+	}
+
+	getBehaviorProducers(query: ThemeBehaviorQuery): ThemeBehaviorRecord[] {
+		return this.getBehaviorUsages(query).filter(isBehaviorProducer);
+	}
+
+	getBehaviorConsumers(query: ThemeBehaviorQuery): ThemeBehaviorRecord[] {
+		return this.getBehaviorUsages(query).filter(isBehaviorConsumer);
+	}
+
+	getBehaviorConnections(path: string): ThemeBehaviorConnection[] {
+		return this.model.behavior
+			.filter((usage) => usage.fromPath === path)
+			.map((usage) => ({
+				usage,
+				related: this.getBehaviorUsages(behaviorQuery(usage)).filter(
+					(record) => record.id !== usage.id,
+				),
+			}))
+			.filter((connection) => connection.related.length > 0)
+			.sort((a, b) => compareCanonicalStrings(a.usage.id, b.usage.id));
+	}
+
 	getRenderOccurrences(path: string): ThemeRenderOccurrence[] {
 		const declarationPathById = new Map(
 			this.model.declarations.map((declaration) => [
@@ -167,6 +227,35 @@ export class ThemeComputation {
 		});
 		return this.graphValue;
 	}
+}
+
+function behaviorSubjectKey(
+	subject: ThemeBehaviorQuery | ThemeBehaviorRecord,
+): string {
+	const hookKind = subject.subjectKind === "domHook" ? subject.hookKind : "";
+	return `${subject.subjectKind}\0${hookKind}\0${subject.name}`;
+}
+
+function behaviorQuery(record: ThemeBehaviorRecord): ThemeBehaviorQuery {
+	return record.subjectKind === "domHook"
+		? {
+				subjectKind: "domHook",
+				hookKind: record.hookKind,
+				name: record.name,
+			}
+		: { subjectKind: record.subjectKind, name: record.name };
+}
+
+function isBehaviorProducer(record: ThemeBehaviorRecord): boolean {
+	return ["emits", "mutates", "defines", "dispatches"].includes(
+		record.operation,
+	);
+}
+
+function isBehaviorConsumer(record: ThemeBehaviorRecord): boolean {
+	return ["selects", "queries", "mutates", "reads", "listens", "uses"].includes(
+		record.operation,
+	);
 }
 
 function issuesByPath(issues: Diagnostic[]): Map<string, Diagnostic[]> {

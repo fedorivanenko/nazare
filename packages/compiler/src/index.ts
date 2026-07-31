@@ -169,6 +169,8 @@ export {
 	type ThemeClassificationPassContext,
 } from "./theme-classification-pass.js";
 export {
+	type ThemeBehaviorConnection,
+	type ThemeBehaviorQuery,
 	ThemeComputation,
 	type ThemeFileImpact,
 	type ThemeRenderOccurrence,
@@ -256,6 +258,7 @@ export type {
 	ThemeGraphViews,
 	ThemeImpactSummary,
 	ThemeInputFile,
+	ThemeJavaScriptOwner,
 	ThemeLocaleKeyRecord,
 	ThemeLocaleReferenceRecord,
 	ThemeLocaleTranslationRecord,

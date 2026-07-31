@@ -6,6 +6,7 @@ import type { Readable, Writable } from "node:stream";
 import {
 	getThemeNode,
 	summarizeThemeGraph,
+	type ThemeBehaviorQuery,
 	ThemeBuildSession,
 	type ThemeInputFile,
 	ThemeProgram,
@@ -247,6 +248,22 @@ async function handleRequest(
 	}
 	if (request.method === "renderOccurrences") {
 		return session.getRenderOccurrences(requiredString(request.params, "path"));
+	}
+	if (request.method === "behaviorUsages") {
+		const query = behaviorQueryParams(request.params);
+		const role = optionalEnum(request.params, "role", [
+			"all",
+			"producers",
+			"consumers",
+		]);
+		if (role === "producers") return session.getBehaviorProducers(query);
+		if (role === "consumers") return session.getBehaviorConsumers(query);
+		return session.getBehaviorUsages(query);
+	}
+	if (request.method === "behaviorConnections") {
+		return session.getBehaviorConnections(
+			requiredString(request.params, "path"),
+		);
 	}
 	if (request.method === "evidence") {
 		return session.getEvidence(requiredString(request.params, "recordId"));
@@ -500,11 +517,15 @@ function validateToolArguments(
 	const allowedKeys =
 		name === "summary"
 			? []
-			: name === "fileImpact" || name === "renderOccurrences"
+			: name === "fileImpact" ||
+					name === "renderOccurrences" ||
+					name === "behaviorConnections"
 				? ["path"]
-				: name === "evidence"
-					? ["recordId"]
-					: ["nodeId"];
+				: name === "behaviorUsages"
+					? ["subjectKind", "hookKind", "name", "role"]
+					: name === "evidence"
+						? ["recordId"]
+						: ["nodeId"];
 	const unknownKeys = Object.keys(args ?? {}).filter(
 		(key) => !allowedKeys.includes(key),
 	);
@@ -514,6 +535,49 @@ function validateToolArguments(
 			`Unknown tool argument: ${unknownKeys.sort()[0]}`,
 		);
 	}
+}
+
+function behaviorQueryParams(
+	params: Record<string, unknown> | undefined,
+): ThemeBehaviorQuery {
+	const subjectKind = requiredEnum(params, "subjectKind", [
+		"domHook",
+		"customProperty",
+		"customEvent",
+		"customElement",
+	]);
+	const name = requiredString(params, "name");
+	if (subjectKind !== "domHook") return { subjectKind, name };
+	return {
+		subjectKind,
+		name,
+		hookKind: requiredEnum(params, "hookKind", ["class", "id", "attribute"]),
+	};
+}
+
+function requiredEnum<const Values extends readonly string[]>(
+	params: Record<string, unknown> | undefined,
+	key: string,
+	values: Values,
+): Values[number] {
+	const value = requiredString(params, key);
+	if (!values.includes(value)) {
+		throw new RpcError(-32602, `Invalid ${key}: ${value}`);
+	}
+	return value;
+}
+
+function optionalEnum<const Values extends readonly string[]>(
+	params: Record<string, unknown> | undefined,
+	key: string,
+	values: Values,
+): Values[number] | undefined {
+	const value = params?.[key];
+	if (value === undefined) return undefined;
+	if (typeof value !== "string" || !values.includes(value)) {
+		throw new RpcError(-32602, `Invalid ${key}: ${String(value)}`);
+	}
+	return value;
 }
 
 function requiredFile(
@@ -554,6 +618,20 @@ function graphTools(): {
 		required: ["path"],
 		additionalProperties: false,
 	};
+	const behavior = {
+		type: "object",
+		properties: {
+			subjectKind: {
+				type: "string",
+				enum: ["domHook", "customProperty", "customEvent", "customElement"],
+			},
+			hookKind: { type: "string", enum: ["class", "id", "attribute"] },
+			name: { type: "string" },
+			role: { type: "string", enum: ["all", "producers", "consumers"] },
+		},
+		required: ["subjectKind", "name"],
+		additionalProperties: false,
+	};
 	const recordId = {
 		type: "object",
 		properties: { recordId: { type: "string" } },
@@ -592,6 +670,18 @@ function graphTools(): {
 			name: "renderOccurrences",
 			description:
 				"Get source render/include occurrences where a file is caller or target.",
+			inputSchema: path,
+		},
+		{
+			name: "behaviorUsages",
+			description:
+				"Find producers, consumers, and JavaScript function owners for a DOM hook, custom event, custom property, or custom element.",
+			inputSchema: behavior,
+		},
+		{
+			name: "behaviorConnections",
+			description:
+				"Find cross-language behavior relationships connected to one source file.",
 			inputSchema: path,
 		},
 		{
