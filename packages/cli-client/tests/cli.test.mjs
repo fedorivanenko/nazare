@@ -851,9 +851,15 @@ test("cli: inspect metafield reports definition, readers, and affected pages", a
 				],
 			}),
 			"templates/product.json": JSON.stringify({
-				sections: { main: { type: "main" } },
+				sections: {
+					main: {
+						type: "main",
+						settings: {
+							source: "{{ product.metafields.custom.subtitle }}",
+						},
+					},
+				},
 			}),
-			"sections/main.liquid": "{{ product.metafields.custom.subtitle }}",
 		},
 		async (cwd) => {
 			const text = await runCli(
@@ -866,7 +872,7 @@ test("cli: inspect metafield reports definition, readers, and affected pages", a
 			assert.equal(text.status, 0, text.stderr);
 			assert.match(text.stdout, /Metafield: product\.custom\.subtitle/);
 			assert.match(text.stdout, /Definition: single_line_text_field/);
-			assert.match(text.stdout, /- sections\/main\.liquid \(1 read\)/);
+			assert.match(text.stdout, /- templates\/product\.json \(1 read\)/);
 			assert.match(text.stdout, /- templates\/product\.json/);
 			assert.match(text.stdout, /Certainty: complete/);
 
@@ -883,7 +889,7 @@ test("cli: inspect metafield reports definition, readers, and affected pages", a
 			const impact = JSON.parse(json.stdout);
 			assert.equal(impact.version, 1);
 			assert.equal(impact.definition.type, "single_line_text_field");
-			assert.deepEqual(impact.affectedSources, ["sections/main.liquid"]);
+			assert.deepEqual(impact.affectedSources, ["templates/product.json"]);
 			assert.deepEqual(impact.affectedPages, ["templates/product.json"]);
 			assert.equal(impact.snapshot.state, "present");
 			assert.equal(impact.certainty, "complete");

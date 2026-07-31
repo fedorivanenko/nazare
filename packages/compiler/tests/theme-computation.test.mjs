@@ -101,11 +101,144 @@ test("metafield impact joins definitions, readers, and affected pages", () => {
 	assert.deepEqual(impact.uncertainSources, []);
 });
 
-test("metafield impact reports unavailable definitions and unresolved reads", () => {
+test("metafield impact indexes JSON template dynamic-source settings", () => {
+	const templatePath = "templates/product.json";
+	const computation = computeNazareTheme(
+		[
+			{
+				path: templatePath,
+				contents: `/* Shopify generated */\n${JSON.stringify(
+					{
+						sections: {
+							main: {
+								type: "main",
+								settings: {
+									source: "{{ product.metafields.custom.subtitle.value }}",
+								},
+								blocks: {
+									text: {
+										type: "text",
+										settings: {
+											source:
+												'{{ product.metafields.custom["subtitle"] | metafield_tag }}',
+										},
+									},
+								},
+								description:
+									"{{ product.metafields.custom.must_not_be_scanned }}",
+							},
+						},
+					},
+					null,
+					2,
+				)}`,
+			},
+		],
+		{
+			metafields: {
+				path: ".shopify/metafields.json",
+				contents: JSON.stringify({
+					product: [{ namespace: "custom", key: "subtitle" }],
+				}),
+			},
+		},
+	);
+	const impact = computation.getMetafieldImpact({
+		owner: "product",
+		namespace: "custom",
+		key: "subtitle",
+	});
+	assert.equal(impact.reads.length, 2);
+	assert.deepEqual(impact.affectedSources, [templatePath]);
+	assert.deepEqual(impact.affectedPages, [templatePath]);
+	assert.ok(impact.reads.every((read) => read.fromPath === templatePath));
+	const accesses = impact.reads.map((read) =>
+		computation.model.dataAccesses.find(
+			(access) => access.id === read.dataAccessId,
+		),
+	);
+	assert.ok(accesses.every((access) => access.span?.file === templatePath));
+	assert.equal(
+		computation.model.metafieldReads.some(
+			(read) => read.key === "must_not_be_scanned",
+		),
+		false,
+	);
+});
+
+test("malformed JSON template dynamic sources are explicit uncertainty", () => {
+	const templatePath = "templates/product.json";
+	const computation = computeNazareTheme(
+		[
+			{
+				path: templatePath,
+				contents: JSON.stringify({
+					sections: {
+						main: {
+							type: "main",
+							settings: {
+								source: "{{ product.metafields[namespace][key] }}",
+							},
+						},
+					},
+				}),
+			},
+		],
+		{
+			metafields: {
+				path: ".shopify/metafields.json",
+				contents: JSON.stringify({ product: [] }),
+			},
+		},
+	);
+	assert.equal(
+		computation.model.issues.some(
+			(issue) => issue.code === "THEME_JSON_METAFIELD_SOURCE_INVALID",
+		),
+		true,
+	);
+	const impact = computation.getMetafieldImpact({
+		owner: "product",
+		namespace: "custom",
+		key: "subtitle",
+	});
+	assert.equal(impact.certainty, "partial");
+	assert.equal(impact.uncertainSources[0].path, templatePath);
+	assert.match(impact.uncertainSources[0].reasons[0], /Unsupported metafield/);
+});
+
+test("metafield impact warns when a Shopify definition pull may be truncated", () => {
+	const definitions = Array.from({ length: 250 }, (_, index) => ({
+		namespace: "custom",
+		key: `field_${index}`,
+	}));
+	const computation = computeNazareTheme([], {
+		metafields: {
+			path: ".shopify/metafields.json",
+			contents: JSON.stringify({ product: definitions, article: [] }),
+		},
+	});
+	const impact = computation.getMetafieldImpact({
+		owner: "product",
+		namespace: "custom",
+		key: "field_0",
+	});
+	assert.equal(impact.snapshot.state, "present");
+	assert.equal(impact.certainty, "partial");
+	assert.match(impact.uncertainty[0], /exactly 250 product definitions/);
+	assert.equal(
+		computation.model.issues.some(
+			(issue) => issue.code === "THEME_METAFIELDS_POSSIBLY_TRUNCATED",
+		),
+		true,
+	);
+});
+
+test("metafield impact reports unavailable definitions", () => {
 	const computation = computeNazareTheme([
 		{
 			path: "snippets/card.liquid",
-			contents: "{{ product.metafields[namespace][key] }}",
+			contents: "{{ product.metafields.custom.subtitle }}",
 		},
 	]);
 	const impact = computation.getMetafieldImpact({
@@ -117,7 +250,6 @@ test("metafield impact reports unavailable definitions and unresolved reads", ()
 	assert.equal(impact.snapshot.state, "unknown");
 	assert.equal(impact.certainty, "partial");
 	assert.match(impact.uncertainty[0], /definitions are unavailable/);
-	assert.match(impact.uncertainSources[0].reasons[0], /dynamic segment/);
 });
 
 test("ThemeProgram keeps graph projection lazy until a graph caller opts in", () => {

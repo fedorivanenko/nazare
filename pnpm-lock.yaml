@@ -86,6 +86,9 @@ importers:
       acorn-walk:
         specifier: ^8.3.4
         version: 8.3.5
+      jsonc-parser:
+        specifier: ^3.3.1
+        version: 3.3.1
       postcss:
         specifier: ^8.5.17
         version: 8.5.17

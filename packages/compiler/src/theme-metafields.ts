@@ -100,11 +100,19 @@ export function collectMetafieldDefinitions(
 			});
 		}
 	}
+	const possiblyTruncatedOwners = snapshot
+		? findPossiblyTruncatedOwners(value)
+		: [];
 	return {
 		definitions: definitions.sort((a, b) =>
 			compareCanonicalStrings(a.id, b.id),
 		),
-		issues: [],
+		issues: possiblyTruncatedOwners.map((owner) => ({
+			severity: "warning",
+			code: "THEME_METAFIELDS_POSSIBLY_TRUNCATED",
+			message: `Metafield snapshot contains exactly ${SHOPIFY_METAFIELD_PULL_PAGE_SIZE} ${owner} definitions; Shopify CLI pulls may be truncated at one page`,
+			phase: "parse" as const,
+		})),
 		state: snapshot ? "present" : "unknown",
 		path,
 		pulledAt: snapshot?.pulledAt,
@@ -200,6 +208,8 @@ function metafieldPath(
 		key: parts[offset + 1],
 	};
 }
+
+const SHOPIFY_METAFIELD_PULL_PAGE_SIZE = 250;
 
 const METAFIELD_CONTAINER_KEYS = new Set([
 	"data",
@@ -306,6 +316,25 @@ function scanDefinitionCandidates(value: unknown): MetafieldSnapshotScan {
 	}
 	return { recognized, candidates };
 }
+function findPossiblyTruncatedOwners(value: unknown): string[] {
+	if (!isRecord(value)) return [];
+	const owners = new Set<string>();
+	for (const [key, child] of Object.entries(value)) {
+		if (METAFIELD_CONTAINER_KEYS.has(key)) {
+			for (const owner of findPossiblyTruncatedOwners(child)) owners.add(owner);
+			continue;
+		}
+		if (
+			METAFIELD_OWNER_NAMES.has(key.toLowerCase()) &&
+			Array.isArray(child) &&
+			child.length === SHOPIFY_METAFIELD_PULL_PAGE_SIZE
+		) {
+			owners.add(key.toLowerCase());
+		}
+	}
+	return [...owners].sort(compareCanonicalStrings);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === "object" && !Array.isArray(value);
 }

@@ -153,6 +153,7 @@ export class ThemeComputation {
 		].sort(compareCanonicalStrings);
 		const uncertainty = metafieldSnapshotUncertainty(
 			this.model.metafieldSchema,
+			this.model.issues,
 		);
 		const uncertainSources = metafieldUncertainSources(this.model);
 		return {
@@ -252,10 +253,13 @@ export class ThemeComputation {
 
 function metafieldSnapshotUncertainty(
 	schema: ThemeSemanticModel["metafieldSchema"],
+	issues: Diagnostic[],
 ): string[] {
 	switch (schema.state) {
 		case "present":
-			return [];
+			return issues
+				.filter((issue) => issue.code === "THEME_METAFIELDS_POSSIBLY_TRUNCATED")
+				.map((issue) => issue.message);
 		case "unknown":
 			return [`Metafield definitions are unavailable at ${schema.path}`];
 		case "invalid":
@@ -280,27 +284,25 @@ function metafieldUncertainSources(
 			"Dynamic metafield access cannot be assigned to a static owner.namespace.key",
 		);
 	}
-	for (const read of model.metafieldReads) {
-		if (read.definitionId) continue;
-		addUncertainty(
-			reasonsByPath,
-			read.fromPath,
-			`Unresolved metafield read ${read.owner}.${read.namespace}.${read.key} may contain a dynamic segment`,
-		);
+	for (const issue of model.issues) {
+		if (issue.code !== "THEME_JSON_METAFIELD_SOURCE_INVALID") continue;
+		const path = issue.span?.file;
+		if (!path) continue;
+		addUncertainty(reasonsByPath, path, issue.message);
 	}
 	for (const source of model.sourceAnalyses) {
 		if (!source.path.endsWith(".liquid")) continue;
-		if (source.completeness === "complete" && source.uncertainty.length === 0)
-			continue;
-		if (source.uncertainty.length === 0) {
+		if (source.completeness === "failed") {
 			addUncertainty(
 				reasonsByPath,
 				source.path,
-				`Source analysis is ${source.completeness}`,
+				"Source analysis failed and may hide metafield reads",
 			);
 		}
 		for (const reason of source.uncertainty) {
-			addUncertainty(reasonsByPath, source.path, reason);
+			if (reason.toLowerCase().includes("metafield")) {
+				addUncertainty(reasonsByPath, source.path, reason);
+			}
 		}
 	}
 	return [...reasonsByPath]
