@@ -466,6 +466,109 @@ test("metafield owner provenance follows assignments, loops, and render argument
 	assert.ok(impact.reads.every((read) => read.owner === "product"));
 });
 
+test("local JavaScript API calls and static GraphQL metafields respect the source boundary", () => {
+	const computation = computeNazareTheme(
+		[
+			{
+				path: "layout/theme.liquid",
+				contents: `{{ 'theme.js' | asset_url | script_tag }}{{ content_for_layout }}`,
+			},
+			{
+				path: "templates/product.liquid",
+				contents: "{{ product.title }}",
+			},
+			{
+				path: "templates/page.liquid",
+				contents: "{% layout 'alternate' %}{{ page.title }}",
+			},
+			{
+				path: "layout/alternate.liquid",
+				contents: "{{ content_for_layout }}",
+			},
+			{
+				path: "assets/theme.js",
+				contents: `const query = \`query ProductData {
+	product(handle: "example") {
+		metafield(namespace: "custom", key: "subtitle") { value }
+	}
+}\`;
+fetch("/api/2025-01/graphql.json", {
+	method: "POST",
+	body: JSON.stringify({ query }),
+});
+fetch("/apps/recommendations", {
+	method: "POST",
+	body: JSON.stringify({ productId }),
+});`,
+			},
+		],
+		{
+			metafields: {
+				path: ".shopify/metafields.json",
+				contents: JSON.stringify({
+					product: [{ namespace: "custom", key: "subtitle" }],
+				}),
+			},
+		},
+	);
+	assert.equal(computation.model.networkAccesses.length, 2);
+	assert.equal(
+		computation.model.networkAccesses.filter(
+			(access) => access.graphql === "static",
+		).length,
+		1,
+	);
+	assert.equal(
+		computation.model.networkAccesses.filter(
+			(access) => access.graphql === "none",
+		).length,
+		1,
+	);
+	const impact = computation.getMetafieldImpact({
+		owner: "product",
+		namespace: "custom",
+		key: "subtitle",
+	});
+	assert.equal(impact.version, 2);
+	assert.equal(impact.apiReads.length, 1);
+	assert.equal(impact.localNetworkAccessCount, 2);
+	assert.deepEqual(impact.affectedSources, ["assets/theme.js"]);
+	assert.deepEqual(impact.affectedPages, ["templates/product.liquid"]);
+	assert.equal(impact.certainty, "complete");
+	assert.ok(impact.scope.excluded.includes("remoteAppRuntime"));
+});
+
+test("dynamic local GraphQL payloads are explicit metafield uncertainty", () => {
+	const computation = computeNazareTheme(
+		[
+			{
+				path: "assets/theme.js",
+				contents: `fetch("/api/2025-01/graphql.json", {
+	method: "POST",
+	body: JSON.stringify({ query: buildQuery(namespace, key) }),
+});`,
+			},
+		],
+		{
+			metafields: {
+				path: ".shopify/metafields.json",
+				contents: JSON.stringify({
+					product: [{ namespace: "custom", key: "subtitle" }],
+				}),
+			},
+		},
+	);
+	const impact = computation.getMetafieldImpact({
+		owner: "product",
+		namespace: "custom",
+		key: "subtitle",
+	});
+	assert.equal(impact.apiReads.length, 0);
+	assert.equal(impact.certainty, "partial");
+	assert.equal(impact.uncertainSources[0].path, "assets/theme.js");
+	assert.match(impact.uncertainSources[0].reasons[0], /GraphQL identity/);
+});
+
 test("metafield impact warns when a Shopify definition pull may be truncated", () => {
 	const definitions = Array.from({ length: 250 }, (_, index) => ({
 		namespace: "custom",
@@ -509,6 +612,41 @@ test("metafield impact reports unavailable definitions", () => {
 	assert.equal(impact.snapshot.state, "unknown");
 	assert.equal(impact.certainty, "partial");
 	assert.match(impact.uncertainty[0], /definitions are unavailable/);
+});
+
+test("incremental JavaScript network facts converge with cold metafield impact", () => {
+	const initial = [
+		{ path: "assets/theme.js", contents: 'fetch("/apps/recommendations")' },
+	];
+	const options = {
+		metafields: {
+			path: ".shopify/metafields.json",
+			contents: JSON.stringify({
+				product: [{ namespace: "custom", key: "subtitle" }],
+			}),
+		},
+	};
+	const changed = {
+		path: "assets/theme.js",
+		contents: `const query = \`query { product(handle: "example") { metafield(namespace: "custom", key: "subtitle") { value } } }\`;
+fetch("/api/graphql", { body: JSON.stringify({ query }) });`,
+	};
+	const program = new ThemeProgram(initial, options);
+	program.updateFile(changed);
+	const cold = computeNazareTheme([changed], options);
+	assert.deepEqual(program.getModel(), cold.model);
+	assert.deepEqual(
+		program.getMetafieldImpact({
+			owner: "product",
+			namespace: "custom",
+			key: "subtitle",
+		}),
+		cold.getMetafieldImpact({
+			owner: "product",
+			namespace: "custom",
+			key: "subtitle",
+		}),
+	);
 });
 
 test("ThemeProgram keeps graph projection lazy until a graph caller opts in", () => {

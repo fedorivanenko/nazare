@@ -6,6 +6,7 @@ import type {
 	ThemeDeclaration,
 	ThemeExpectedInputRecord,
 	ThemeFact,
+	ThemeNetworkAccessRecord,
 	ThemeRenderArgumentRecord,
 	ThemeRenderSiteRecord,
 	ThemeVariableReadRecord,
@@ -126,6 +127,7 @@ export function dataFlowWorkKey(
 
 export type ThemeDataFlowInputPassResult = {
 	dataAccesses: ThemeDataAccessRecord[];
+	networkAccesses: ThemeNetworkAccessRecord[];
 	variableReads: ThemeVariableReadRecord[];
 	guardedObjects: string[];
 	defaultedObjects: string[];
@@ -140,6 +142,7 @@ export type ThemeDataFlowInputPassResult = {
 
 export type ThemeDataFlowInputRecord =
 	| ThemeDataAccessRecord
+	| ThemeNetworkAccessRecord
 	| ThemeVariableReadRecord
 	| ThemeRenderArgumentRecord;
 
@@ -247,6 +250,11 @@ export type ThemeDataFlowIds = {
 		name: string,
 		span: ThemeVariableReadRecord["span"],
 	): string;
+	networkAccess(
+		path: string,
+		transport: ThemeNetworkAccessRecord["transport"],
+		span: ThemeNetworkAccessRecord["span"],
+	): string;
 	renderArgument(siteId: string, argumentName: string): string;
 };
 
@@ -289,6 +297,7 @@ export function createThemeDataFlowInputPass(): IncrementalPass<
 				}
 				records.push(
 					...next.dataAccesses,
+					...next.networkAccesses,
 					...next.variableReads,
 					...next.renderArguments,
 				);
@@ -319,6 +328,7 @@ export function collectThemeDataFlowInputs(
 	ids: ThemeDataFlowIds,
 ): ThemeDataFlowInputPassResult {
 	const dataAccesses: ThemeDataAccessRecord[] = [];
+	const networkAccesses: ThemeNetworkAccessRecord[] = [];
 	const variableReads: ThemeVariableReadRecord[] = [];
 	const guardedObjects = new Set<string>();
 	const defaultedObjects = new Set<string>();
@@ -351,6 +361,18 @@ export function collectThemeDataFlowInputs(
 		if (fact.kind === "declaresDocParam") docParams.push(fact);
 		if (fact.kind === "declaresDocParam" || fact.kind === "declaresInput")
 			declaredInputs.push(fact);
+		if (fact.kind === "accessesNetwork") {
+			networkAccesses.push({
+				id: ids.networkAccess(fact.fromPath, fact.transport, fact.span),
+				fromPath: fact.fromPath,
+				transport: fact.transport,
+				endpoint: fact.endpoint,
+				method: fact.method,
+				graphql: fact.graphql,
+				metafieldReferences: fact.metafieldReferences,
+				span: fact.span,
+			});
+		}
 		if (fact.kind === "readsShopifyData") {
 			dataAccesses.push({
 				id: ids.dataAccess(fact.fromPath, fact.expression, fact.span),
@@ -380,6 +402,7 @@ export function collectThemeDataFlowInputs(
 	}
 	return {
 		dataAccesses,
+		networkAccesses,
 		variableReads,
 		guardedObjects: [...guardedObjects].sort(),
 		defaultedObjects: [...defaultedObjects].sort(),
@@ -393,6 +416,7 @@ export function collectThemeDataFlowInputs(
 function dataFlowInputCount(result: ThemeDataFlowInputPassResult): number {
 	return (
 		result.dataAccesses.length +
+		result.networkAccesses.length +
 		result.variableReads.length +
 		result.guardedObjects.length +
 		result.defaultedObjects.length +

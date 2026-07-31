@@ -9,6 +9,7 @@ import {
 } from "../javascript-ast.js";
 import { spanFromOffsets } from "../source.js";
 import type { ThemeFact, ThemeJavaScriptOwner } from "../theme-facts.js";
+import { analyzeThemeScriptNetwork } from "../theme-script-network.js";
 import type { ThemeSourceUncertainty } from "../theme-source-frontend.js";
 
 export type ThemeScriptAnalysis = {
@@ -42,10 +43,11 @@ export function analyzeThemeScript(
 	}
 	const program = parsed.program;
 	const exportsByBinding = collectExportKinds(program);
+	const network = analyzeThemeScriptNetwork(path, source, program);
 
-	const facts: ThemeFact[] = [];
+	const facts: ThemeFact[] = [...network.facts];
 	const issues: Diagnostic[] = [];
-	const uncertainty: ThemeSourceUncertainty[] = [];
+	const uncertainty: ThemeSourceUncertainty[] = [...network.uncertainty];
 	walkJavaScript(program, (node, parent, ancestors) => {
 		if (
 			(node.type === "ImportDeclaration" ||

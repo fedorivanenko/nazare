@@ -32,15 +32,39 @@ export type ThemeRenderOccurrence = {
 	span?: ThemeSemanticModel["renderSites"][number]["span"];
 };
 
+/**
+ * Public Inspect boundary: checked-out theme sources plus supplied Shopify
+ * snapshots. Recognizable calls in local JavaScript files are indexed. Static
+ * GraphQL metafield arguments are queryable; dynamic GraphQL is uncertainty.
+ * Runtime responses, app proxies, remote app code, and server-side app data
+ * stay opaque. Nazare records local call sites but never guesses remote data.
+ */
+export const THEME_METAFIELD_IMPACT_SCOPE = {
+	included: [
+		"liquid",
+		"shopifyJsonDynamicSources",
+		"localJavaScriptNetworkCalls",
+		"staticGraphqlMetafieldRequests",
+	],
+	excluded: [
+		"remoteAppRuntime",
+		"runtimeNetworkResponses",
+		"appProxyResponses",
+		"serverSideAppData",
+	],
+} as const;
+
+export type ThemeMetafieldImpactScope = typeof THEME_METAFIELD_IMPACT_SCOPE;
+
 export type ThemeMetafieldImpact = {
-	version: 1;
-	scope: {
-		included: ["liquid", "shopifyJsonDynamicSources"];
-		excluded: ["javascript", "graphql"];
-	};
+	version: 2;
+	scope: ThemeMetafieldImpactScope;
 	identity: ThemeMetafieldIdentity;
 	definition: ThemeSemanticModel["metafieldDefinitions"][number] | null;
 	reads: ThemeSemanticModel["metafieldReads"];
+	apiReads: ThemeSemanticModel["networkAccesses"];
+	/** All local JavaScript network calls, including non-metafield endpoints. */
+	localNetworkAccessCount: number;
 	affectedSources: string[];
 	affectedPages: string[];
 	snapshot: ThemeSemanticModel["metafieldSchema"];
@@ -149,12 +173,19 @@ export class ThemeComputation {
 		const query = this.getMetafieldIndex().query(identity);
 		const summary = this.getImpactSummary();
 		const pagePaths = this.model.pages.map((page) => page.path);
+		const apiReads = this.model.networkAccesses.filter((access) =>
+			networkAccessExactlyMatches(access, identity),
+		);
+		const affectedSources = [
+			...new Set([
+				...query.affectedSources,
+				...apiReads.map((access) => access.fromPath),
+			]),
+		].sort(compareCanonicalStrings);
 		const affectedPages = [
 			...new Set(
-				query.affectedSources.flatMap((path) =>
-					path === "config/settings_data.json"
-						? pagePaths
-						: (summary.affectedPages[path] ?? []),
+				affectedSources.flatMap((path) =>
+					affectedMetafieldPages(path, this.model, summary, pagePaths),
 				),
 			),
 		].sort(compareCanonicalStrings);
@@ -164,15 +195,14 @@ export class ThemeComputation {
 		);
 		const uncertainSources = metafieldUncertainSources(this.model, identity);
 		return {
-			version: 1,
-			scope: {
-				included: ["liquid", "shopifyJsonDynamicSources"],
-				excluded: ["javascript", "graphql"],
-			},
+			version: 2,
+			scope: THEME_METAFIELD_IMPACT_SCOPE,
 			identity: query.identity,
 			definition: query.definition ?? null,
 			reads: query.reads,
-			affectedSources: query.affectedSources,
+			apiReads,
+			localNetworkAccessCount: this.model.networkAccesses.length,
+			affectedSources,
 			affectedPages,
 			snapshot: { ...this.model.metafieldSchema },
 			certainty:
@@ -262,6 +292,65 @@ export class ThemeComputation {
 	}
 }
 
+function affectedMetafieldPages(
+	path: string,
+	model: ThemeSemanticModel,
+	summary: ThemeImpactSummary,
+	pagePaths: string[],
+): string[] {
+	if (path === "config/settings_data.json") return pagePaths;
+	const affected = new Set(summary.affectedPages[path] ?? []);
+	const declarationPathById = new Map(
+		model.declarations.map((declaration) => [declaration.id, declaration.path]),
+	);
+	const directDependents = new Map<string, Set<string>>();
+	for (const reference of model.references) {
+		const targetPath = reference.resolvedDeclarationId
+			? declarationPathById.get(reference.resolvedDeclarationId)
+			: undefined;
+		if (!targetPath) continue;
+		const paths = directDependents.get(targetPath) ?? new Set<string>();
+		paths.add(reference.fromPath);
+		directDependents.set(targetPath, paths);
+	}
+	const dependents = new Set<string>([path]);
+	const pending = [path];
+	while (pending.length > 0) {
+		const current = pending.pop();
+		if (!current) continue;
+		for (const dependent of directDependents.get(current) ?? []) {
+			if (dependents.has(dependent)) continue;
+			dependents.add(dependent);
+			pending.push(dependent);
+		}
+	}
+	const affectedLayouts = new Set(
+		[...dependents].filter((dependent) => dependent.startsWith("layout/")),
+	);
+	if (affectedLayouts.size === 0) return [...affected];
+	for (const page of model.pages) {
+		const explicitLayouts = model.references.filter(
+			(reference) =>
+				reference.kind === "usesLayout" && reference.fromPath === page.path,
+		);
+		if (explicitLayouts.length === 0) {
+			if (affectedLayouts.has("layout/theme.liquid")) affected.add(page.path);
+			continue;
+		}
+		if (
+			explicitLayouts.some((reference) => {
+				const layoutPath = reference.resolvedDeclarationId
+					? declarationPathById.get(reference.resolvedDeclarationId)
+					: undefined;
+				return layoutPath !== undefined && affectedLayouts.has(layoutPath);
+			})
+		) {
+			affected.add(page.path);
+		}
+	}
+	return [...affected];
+}
+
 function metafieldSnapshotUncertainty(
 	schema: ThemeSemanticModel["metafieldSchema"],
 	issues: Diagnostic[],
@@ -303,6 +392,20 @@ function metafieldUncertainSources(
 			"Dynamic metafield access cannot be assigned to a static owner.namespace.key",
 		);
 	}
+	for (const access of model.networkAccesses) {
+		if (
+			access.graphql === "none" ||
+			networkAccessExactlyMatches(access, identity) ||
+			!networkAccessCouldMatch(access, identity)
+		) {
+			continue;
+		}
+		addUncertainty(
+			reasonsByPath,
+			access.fromPath,
+			`Local ${access.transport} request may read this metafield, but its GraphQL identity is not fully static`,
+		);
+	}
 	for (const issue of model.issues) {
 		if (issue.code !== "THEME_JSON_METAFIELD_SOURCE_INVALID") continue;
 		const path = issue.span?.file;
@@ -333,6 +436,34 @@ function metafieldUncertainSources(
 			reasons: [...reasons].sort(compareCanonicalStrings),
 		}))
 		.sort((a, b) => compareCanonicalStrings(a.path, b.path));
+}
+
+function networkAccessExactlyMatches(
+	access: ThemeSemanticModel["networkAccesses"][number],
+	identity: ThemeMetafieldIdentity,
+): boolean {
+	return access.metafieldReferences.some(
+		(reference) =>
+			reference.certainty === "exact" &&
+			reference.owner === identity.owner &&
+			reference.namespace === identity.namespace &&
+			reference.key === identity.key,
+	);
+}
+
+function networkAccessCouldMatch(
+	access: ThemeSemanticModel["networkAccesses"][number],
+	identity: ThemeMetafieldIdentity,
+): boolean {
+	if (access.graphql === "dynamic" || access.graphql === "invalid") return true;
+	return access.metafieldReferences.some(
+		(reference) =>
+			reference.certainty === "partial" &&
+			(reference.owner === undefined || reference.owner === identity.owner) &&
+			(reference.namespace === undefined ||
+				reference.namespace === identity.namespace) &&
+			(reference.key === undefined || reference.key === identity.key),
+	);
 }
 
 function isMetafieldAccess(

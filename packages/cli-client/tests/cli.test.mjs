@@ -850,6 +850,10 @@ test("cli: inspect metafield reports definition, readers, and affected pages", a
 					},
 				],
 			}),
+			"layout/theme.liquid":
+				"{{ 'theme.js' | asset_url | script_tag }}{{ content_for_layout }}",
+			"assets/theme.js": `const query = \`query { product(handle: "example") { metafield(namespace: "custom", key: "subtitle") { value } } }\`;
+fetch("/api/graphql.json", { method: "POST", body: JSON.stringify({ query }) });`,
 			"templates/product.json": JSON.stringify({
 				sections: {
 					main: {
@@ -871,12 +875,16 @@ test("cli: inspect metafield reports definition, readers, and affected pages", a
 			);
 			assert.equal(text.status, 0, text.stderr);
 			assert.match(text.stdout, /Metafield: product\.custom\.subtitle/);
+			assert.match(text.stdout, /local JavaScript network calls/);
+			assert.match(text.stdout, /remote app runtime/);
+			assert.match(text.stdout, /Definition: single_line_text_field/);
+			assert.match(text.stdout, /- assets\/theme\.js \(1 read\)/);
+			assert.match(text.stdout, /- templates\/product\.json \(1 read\)/);
 			assert.match(
 				text.stdout,
-				/Scope: Liquid and Shopify JSON dynamic sources; JavaScript and GraphQL excluded/,
+				/Recognizable local JavaScript network calls indexed: 1/,
 			);
-			assert.match(text.stdout, /Definition: single_line_text_field/);
-			assert.match(text.stdout, /- templates\/product\.json \(1 read\)/);
+			assert.match(text.stdout, /Local API readers \(1\):/);
 			assert.match(text.stdout, /- templates\/product\.json/);
 			assert.match(text.stdout, /Certainty: complete/);
 
@@ -891,10 +899,20 @@ test("cli: inspect metafield reports definition, readers, and affected pages", a
 			);
 			assert.equal(json.status, 0, json.stderr);
 			const impact = JSON.parse(json.stdout);
-			assert.equal(impact.version, 1);
-			assert.deepEqual(impact.scope.excluded, ["javascript", "graphql"]);
+			assert.equal(impact.version, 2);
+			assert.deepEqual(impact.scope.excluded, [
+				"remoteAppRuntime",
+				"runtimeNetworkResponses",
+				"appProxyResponses",
+				"serverSideAppData",
+			]);
 			assert.equal(impact.definition.type, "single_line_text_field");
-			assert.deepEqual(impact.affectedSources, ["templates/product.json"]);
+			assert.equal(impact.apiReads.length, 1);
+			assert.equal(impact.localNetworkAccessCount, 1);
+			assert.deepEqual(impact.affectedSources, [
+				"assets/theme.js",
+				"templates/product.json",
+			]);
 			assert.deepEqual(impact.affectedPages, ["templates/product.json"]);
 			assert.equal(impact.snapshot.state, "present");
 			assert.equal(impact.certainty, "complete");

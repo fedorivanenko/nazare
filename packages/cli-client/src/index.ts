@@ -889,13 +889,21 @@ function renderMetafieldImpact(impact: ThemeMetafieldImpact): string {
 		: "";
 	const lines = [
 		`Metafield: ${identifier}`,
-		"Scope: Liquid and Shopify JSON dynamic sources; JavaScript and GraphQL excluded",
+		"Scope: checked-out Liquid, Shopify JSON, and local JavaScript network calls; static GraphQL metafield requests included",
+		"Opaque: remote app runtime, app-proxy/runtime responses, and server-side app data excluded",
 		`Definition: ${definition}`,
 		`Snapshot: ${impact.snapshot.state} · ${impact.snapshot.path}${pulledAt}`,
 		`Certainty: ${impact.certainty}`,
+		`Recognizable local JavaScript network calls indexed: ${impact.localNetworkAccessCount}`,
 	];
 	const readCountByPath = new Map<string, number>();
 	for (const read of impact.reads) {
+		readCountByPath.set(
+			read.fromPath,
+			(readCountByPath.get(read.fromPath) ?? 0) + 1,
+		);
+	}
+	for (const read of impact.apiReads) {
 		readCountByPath.set(
 			read.fromPath,
 			(readCountByPath.get(read.fromPath) ?? 0) + 1,
@@ -906,6 +914,14 @@ function renderMetafieldImpact(impact: ThemeMetafieldImpact): string {
 		return `${path} (${count} ${count === 1 ? "read" : "reads"})`;
 	});
 	appendInspectList(lines, "Readers", readers);
+	appendInspectList(
+		lines,
+		"Local API readers",
+		impact.apiReads.map(
+			(read) =>
+				`${read.fromPath} (${read.transport}${read.endpoint ? ` · ${read.endpoint}` : ""})`,
+		),
+	);
 	appendInspectList(lines, "Affected pages", impact.affectedPages);
 	appendInspectList(lines, "Uncertainty", impact.uncertainty);
 	if (impact.uncertainSources.length === 0) {

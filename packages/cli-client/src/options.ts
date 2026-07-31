@@ -187,7 +187,7 @@ export function printHelp(output: Output = console): void {
                                      dir defaults to nazare.theme.json build.sourceRoot
   nazare inspect impact <file> [dir] change impact for one theme-relative file
   nazare inspect metafield <owner.namespace.key> [dir]
-                                     metafield readers and affected pages
+                                     local Liquid/JSON/static GraphQL readers and affected pages
   nazare graph-server [dir]          serve graph queries over newline-delimited JSON stdio
 
 Preview:
@@ -289,8 +289,8 @@ Views:
 Theme queries:
   impact                  show direct dependencies, dependents, affected pages,
                           usage, diagnostics, and analysis uncertainty for one file
-  metafield               show definition, static readers, affected pages, snapshot
-                          state, and analysis uncertainty for one metafield
+  metafield               show local Liquid, JSON, and static GraphQL readers,
+                          affected pages, snapshot state, and opaque-runtime boundary
 
 Options:
   --strictness loose|strict

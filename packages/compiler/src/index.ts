@@ -178,9 +178,11 @@ export {
 	type ThemeClassificationPassContext,
 } from "./theme-classification-pass.js";
 export {
+	THEME_METAFIELD_IMPACT_SCOPE,
 	ThemeComputation,
 	type ThemeFileImpact,
 	type ThemeMetafieldImpact,
+	type ThemeMetafieldImpactScope,
 	type ThemeRenderOccurrence,
 } from "./theme-computation.js";
 export { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
@@ -273,6 +275,8 @@ export type {
 	ThemeMetafieldDefinitionRecord,
 	ThemeMetafieldQueries,
 	ThemeMetafieldReadRecord,
+	ThemeNetworkAccessRecord,
+	ThemeNetworkMetafieldReference,
 	ThemePageRecord,
 	ThemeRenderArgumentRecord,
 	ThemeRenderSiteRecord,

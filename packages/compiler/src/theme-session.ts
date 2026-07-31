@@ -136,6 +136,7 @@ import {
 	localeKeyId,
 	localeReferenceId,
 	localeTranslationId,
+	networkAccessId,
 	pageId,
 	referenceId,
 	renderArgumentId,
@@ -1078,6 +1079,7 @@ function runCollectionPasses(
 		metafieldResult: state.metafields,
 		dataFlowIds: {
 			dataAccess: dataAccessId,
+			networkAccess: networkAccessId,
 			variableRead: variableReadId,
 			renderArgument: renderArgumentId,
 		},
@@ -1381,6 +1383,7 @@ function allDataFlowInputs(
 	const values = [...results.values()];
 	return {
 		dataAccesses: values.flatMap((result) => result.dataAccesses),
+		networkAccesses: values.flatMap((result) => result.networkAccesses),
 		variableReads: values.flatMap((result) => result.variableReads),
 		guardedObjects: values.flatMap((result) => result.guardedObjects),
 		defaultedObjects: values.flatMap((result) => result.defaultedObjects),
@@ -1570,6 +1573,15 @@ function modelWithCollectedRecords(
 							...dataFlowInputs.flatMap((result) => result.dataAccesses),
 							...derivedDataFlow.flatMap((result) => result.dataAccesses),
 						]),
+			networkAccesses: sameMapProjections(
+				reuse.collection.dataFlowInputs,
+				dataFlowInputsBySource,
+				(result) => result.networkAccesses,
+			)
+				? reuse.model.networkAccesses
+				: uniqueById(
+						dataFlowInputs.flatMap((result) => result.networkAccesses),
+					),
 			variableReads: sameMapProjections(
 				reuse.collection.dataFlowInputs,
 				dataFlowInputsBySource,
@@ -1726,6 +1738,9 @@ function modelWithCollectedRecords(
 			locales.flatMap((result) => result.localeReferences),
 		).records,
 		dataAccesses,
+		networkAccesses: uniqueById(
+			dataFlowInputs.flatMap((result) => result.networkAccesses),
+		),
 		variableReads: uniqueById(
 			dataFlowInputs.flatMap((result) => result.variableReads),
 		),

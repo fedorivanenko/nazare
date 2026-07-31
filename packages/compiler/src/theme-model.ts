@@ -153,10 +153,12 @@ export function buildThemeSemanticModel(
 	});
 	const dataFlowInputs = collectThemeDataFlowInputs(facts, {
 		dataAccess: dataAccessId,
+		networkAccess: networkAccessId,
 		variableRead: variableReadId,
 		renderArgument: renderArgumentId,
 	});
 	const dataAccesses = [...dataFlowInputs.dataAccesses];
+	const networkAccesses = dataFlowInputs.networkAccesses;
 	const variableReads = dataFlowInputs.variableReads;
 	const guardedObjects = new Set(dataFlowInputs.guardedObjects);
 	const defaultedObjects = new Set(dataFlowInputs.defaultedObjects);
@@ -316,6 +318,9 @@ export function buildThemeSemanticModel(
 			compareCanonicalStrings(a.id, b.id),
 		),
 		dataAccesses: dedupeById(dataAccesses).sort((a, b) =>
+			compareCanonicalStrings(a.id, b.id),
+		),
+		networkAccesses: dedupeById(networkAccesses).sort((a, b) =>
 			compareCanonicalStrings(a.id, b.id),
 		),
 		metafieldDefinitions: metafields.definitions,
@@ -716,6 +721,14 @@ export function dataAccessId(
 	span?: SourceSpan,
 ): string {
 	return `data-access:${path}:${expression}:${occurrenceSuffix(span)}`;
+}
+
+export function networkAccessId(
+	path: string,
+	transport: string,
+	span?: SourceSpan,
+): string {
+	return `network-access:${path}:${transport}:${occurrenceSuffix(span)}`;
 }
 
 export function renderArgumentId(siteId: string, argumentName: string): string {

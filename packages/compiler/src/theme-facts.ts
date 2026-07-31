@@ -286,6 +286,16 @@ export type ThemeFact =
 			span?: SourceSpan;
 	  }
 	| {
+			kind: "accessesNetwork";
+			fromPath: string;
+			transport: "fetch" | "xmlHttpRequest" | "sendBeacon" | "graphqlClient";
+			endpoint?: string;
+			method?: string;
+			graphql: "none" | "static" | "dynamic" | "invalid";
+			metafieldReferences: ThemeNetworkMetafieldReference[];
+			span?: SourceSpan;
+	  }
+	| {
 			kind: "readsShopifyData";
 			fromPath: string;
 			object: string;
@@ -510,6 +520,30 @@ export type ThemeMetafieldDefinitionRecord = {
 	type?: string;
 };
 
+/** Static identity constraints recovered from a local GraphQL request. */
+export type ThemeNetworkMetafieldReference = {
+	owner?: string;
+	namespace?: string;
+	key?: string;
+	certainty: "exact" | "partial";
+};
+
+/**
+ * Recognizable network call authored in a checked-out JavaScript theme file.
+ * This is local call-site evidence only; response contents and remote systems
+ * remain outside the semantic boundary.
+ */
+export type ThemeNetworkAccessRecord = {
+	id: string;
+	fromPath: string;
+	transport: "fetch" | "xmlHttpRequest" | "sendBeacon" | "graphqlClient";
+	endpoint?: string;
+	method?: string;
+	graphql: "none" | "static" | "dynamic" | "invalid";
+	metafieldReferences: ThemeNetworkMetafieldReference[];
+	span?: SourceSpan;
+};
+
 export type ThemeMetafieldReadRecord = {
 	id: string;
 	fromPath: string;
@@ -652,6 +686,8 @@ export interface ThemeSemanticModel {
 	localeReferences: ThemeLocaleReferenceRecord[];
 	settingReads: ThemeSettingReadRecord[];
 	dataAccesses: ThemeDataAccessRecord[];
+	/** Local JavaScript network-call evidence. Remote responses remain opaque. */
+	networkAccesses: ThemeNetworkAccessRecord[];
 	metafieldDefinitions: ThemeMetafieldDefinitionRecord[];
 	metafieldReads: ThemeMetafieldReadRecord[];
 	metafieldSchema: {

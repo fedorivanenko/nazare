@@ -301,6 +301,20 @@ function isThemeFact(value: unknown): value is ThemeFact {
 				isString(value.settingId) &&
 				isOptionalSpan(value.span)
 			);
+		case "accessesNetwork":
+			return (
+				isString(value.fromPath) &&
+				["fetch", "xmlHttpRequest", "sendBeacon", "graphqlClient"].includes(
+					String(value.transport),
+				) &&
+				isOptionalString(value.endpoint) &&
+				isOptionalString(value.method) &&
+				["none", "static", "dynamic", "invalid"].includes(
+					String(value.graphql),
+				) &&
+				isNetworkMetafieldReferences(value.metafieldReferences) &&
+				isOptionalSpan(value.span)
+			);
 		case "readsShopifyData":
 			return (
 				isString(value.fromPath) &&
@@ -518,6 +532,20 @@ function isOptionalMetafieldOwnerSetting(value: unknown): boolean {
 	return value.settingObject === "block"
 		? isString(value.blockInstanceId)
 		: value.blockInstanceId === undefined;
+}
+
+function isNetworkMetafieldReferences(value: unknown): boolean {
+	return (
+		Array.isArray(value) &&
+		value.every(
+			(reference) =>
+				isRecord(reference) &&
+				isOptionalString(reference.owner) &&
+				isOptionalString(reference.namespace) &&
+				isOptionalString(reference.key) &&
+				(reference.certainty === "exact" || reference.certainty === "partial"),
+		)
+	);
 }
 
 function isOptionalBoolean(value: unknown): boolean {
