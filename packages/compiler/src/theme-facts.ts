@@ -521,12 +521,19 @@ export type ThemeMetafieldDefinitionRecord = {
 };
 
 /** Static identity constraints recovered from a local GraphQL request. */
-export type ThemeNetworkMetafieldReference = {
-	owner?: string;
-	namespace?: string;
-	key?: string;
-	certainty: "exact" | "partial";
-};
+export type ThemeNetworkMetafieldReference =
+	| {
+			certainty: "exact";
+			owner: string;
+			namespace: string;
+			key: string;
+	  }
+	| {
+			certainty: "partial";
+			owner?: string;
+			namespace?: string;
+			key?: string;
+	  };
 
 /**
  * Recognizable network call authored in a checked-out JavaScript theme file.

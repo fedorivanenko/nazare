@@ -548,8 +548,13 @@ export function themeGraphFromModel(
 		});
 	}
 	for (const reference of model.references) {
-		if (reference.kind === "rendersSnippet" || !projects(reference.id))
+		if (
+			reference.kind === "rendersSnippet" ||
+			(reference.kind === "usesLayout" && reference.targetName === "none") ||
+			!projects(reference.id)
+		) {
 			continue;
+		}
 		const to = reference.resolvedDeclarationId ?? unresolvedNodeId(reference);
 		if (!reference.resolvedDeclarationId) {
 			pushNode({

@@ -1,7 +1,52 @@
 import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeFactStore } from "./theme-fact-store.js";
-import type { ThemeFact, ThemeReference } from "./theme-facts.js";
+import type {
+	ThemeDeclaration,
+	ThemeFact,
+	ThemeReference,
+} from "./theme-facts.js";
 import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
+
+/**
+ * Shopify applies `layout/theme.liquid` when a template has no authored
+ * `{% layout %}` tag. Materialize that platform default as a canonical
+ * semantic reference so every dependency and impact query sees one topology.
+ */
+export function withImplicitDefaultLayoutReferences(
+	declarations: ThemeDeclaration[],
+	references: ThemeReference[],
+): ThemeReference[] {
+	const defaultLayout = declarations.find(
+		(declaration) =>
+			declaration.kind === "layout" && declaration.name === "theme",
+	);
+	if (!defaultLayout) return references;
+	const explicitLayoutPaths = new Set(
+		references
+			.filter((reference) => reference.kind === "usesLayout")
+			.map((reference) => reference.fromPath),
+	);
+	const implicit = declarations
+		.filter(
+			(declaration) =>
+				declaration.kind === "template" &&
+				!explicitLayoutPaths.has(declaration.path),
+		)
+		.map(
+			(declaration): ThemeReference => ({
+				id: `ref:usesLayout:${declaration.path}:theme:implicit`,
+				kind: "usesLayout",
+				fromPath: declaration.path,
+				targetKind: "layout",
+				targetName: "theme",
+				resolvedDeclarationId: defaultLayout.id,
+				static: true,
+			}),
+		);
+	return [...references, ...implicit].sort((left, right) =>
+		compareCanonicalStrings(left.id, right.id),
+	);
+}
 
 export type ThemeReferencePassContext = {
 	facts: ThemeFactStore;

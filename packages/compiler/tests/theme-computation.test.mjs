@@ -486,6 +486,10 @@ test("local JavaScript API calls and static GraphQL metafields respect the sourc
 				contents: "{{ content_for_layout }}",
 			},
 			{
+				path: "templates/gift_card.liquid",
+				contents: "{% layout none %}{{ gift_card.balance }}",
+			},
+			{
 				path: "assets/theme.js",
 				contents: `const query = \`query ProductData {
 	product(handle: "example") {
@@ -534,6 +538,18 @@ fetch("/apps/recommendations", {
 	assert.equal(impact.localNetworkAccessCount, 2);
 	assert.deepEqual(impact.affectedSources, ["assets/theme.js"]);
 	assert.deepEqual(impact.affectedPages, ["templates/product.liquid"]);
+	assert.deepEqual(
+		computation.getFileImpact("assets/theme.js").affectedPages,
+		impact.affectedPages,
+	);
+	assert.ok(
+		computation.model.references.some(
+			(reference) =>
+				reference.kind === "usesLayout" &&
+				reference.fromPath === "templates/product.liquid" &&
+				reference.span === undefined,
+		),
+	);
 	assert.equal(impact.certainty, "complete");
 	assert.ok(impact.scope.excluded.includes("remoteAppRuntime"));
 });
@@ -612,6 +628,241 @@ test("metafield impact reports unavailable definitions", () => {
 	assert.equal(impact.snapshot.state, "unknown");
 	assert.equal(impact.certainty, "partial");
 	assert.match(impact.uncertainty[0], /definitions are unavailable/);
+});
+
+test("JavaScript metafield certainty fails closed when source parsing fails", () => {
+	const computation = computeNazareTheme(
+		[{ path: "assets/broken.js", contents: 'fetch("/graphql", {' }],
+		{
+			metafields: {
+				path: ".shopify/metafields.json",
+				contents: JSON.stringify({
+					product: [{ namespace: "custom", key: "subtitle" }],
+				}),
+			},
+		},
+	);
+	const impact = computation.getMetafieldImpact({
+		owner: "product",
+		namespace: "custom",
+		key: "subtitle",
+	});
+	assert.equal(impact.certainty, "partial");
+	assert.equal(impact.uncertainSources[0].path, "assets/broken.js");
+	assert.match(
+		impact.uncertainSources[0].reasons[0],
+		/javascript source analysis failed/,
+	);
+});
+
+test("static GraphQL identifiers require immutable lexical bindings", () => {
+	const query = `query { product(handle: "example") { metafield(namespace: "custom", key: "subtitle") { value } } }`;
+	const computation = computeNazareTheme(
+		[
+			{
+				path: "assets/theme.js",
+				contents: `let query = ${JSON.stringify(query)};
+query = buildQuery();
+fetch("/graphql", { body: JSON.stringify({ query }) });
+const outerQuery = ${JSON.stringify(query)};
+function send(outerQuery) {
+	fetch("/graphql", { body: JSON.stringify({ query: outerQuery }) });
+}`,
+			},
+		],
+		{
+			metafields: {
+				path: ".shopify/metafields.json",
+				contents: JSON.stringify({
+					product: [{ namespace: "custom", key: "subtitle" }],
+				}),
+			},
+		},
+	);
+	assert.equal(computation.model.networkAccesses.length, 2);
+	assert.ok(
+		computation.model.networkAccesses.every(
+			(access) => access.graphql === "dynamic",
+		),
+	);
+	const impact = computation.getMetafieldImpact({
+		owner: "product",
+		namespace: "custom",
+		key: "subtitle",
+	});
+	assert.equal(impact.apiReads.length, 0);
+	assert.equal(impact.certainty, "partial");
+});
+
+test("static GraphQL resolution distinguishes nested duplicate bindings", () => {
+	const productQuery = `query { product(handle: "example") { metafield(namespace: "custom", key: "subtitle") { value } } }`;
+	const articleQuery = `query { article(handle: "example") { metafield(namespace: "custom", key: "subtitle") { value } } }`;
+	const computation = computeNazareTheme(
+		[
+			{
+				path: "assets/theme.js",
+				contents: `{
+	const query = ${JSON.stringify(productQuery)};
+	fetch("/graphql", { body: JSON.stringify({ query }) });
+}
+{
+	const query = ${JSON.stringify(articleQuery)};
+	fetch("/graphql", { body: JSON.stringify({ query }) });
+}`,
+			},
+		],
+		{
+			metafields: {
+				path: ".shopify/metafields.json",
+				contents: JSON.stringify({
+					product: [{ namespace: "custom", key: "subtitle" }],
+					article: [{ namespace: "custom", key: "subtitle" }],
+				}),
+			},
+		},
+	);
+	assert.equal(computation.model.networkAccesses.length, 2);
+	assert.equal(
+		computation.getMetafieldImpact({
+			owner: "product",
+			namespace: "custom",
+			key: "subtitle",
+		}).apiReads.length,
+		1,
+	);
+	assert.equal(
+		computation.getMetafieldImpact({
+			owner: "article",
+			namespace: "custom",
+			key: "subtitle",
+		}).apiReads.length,
+		1,
+	);
+});
+
+test("GraphQL clients require supported binding provenance", () => {
+	const query = `query { product(handle: "example") { metafield(namespace: "custom", key: "subtitle") { value } } }`;
+	const computation = computeNazareTheme(
+		[
+			{
+				path: "assets/theme.js",
+				contents: `import { GraphQLClient } from "graphql-request";
+import { ApolloClient } from "@apollo/client";
+import { createStorefrontApiClient } from "@shopify/storefront-api-client";
+const query = ${JSON.stringify(query)};
+const graphqlRequest = new GraphQLClient("/graphql");
+const apollo = new ApolloClient({});
+const storefront = createStorefrontApiClient({});
+graphqlRequest.request(query);
+graphqlRequest.request(buildQuery());
+apollo.query({ query });
+storefront.request(query);
+database.query({ query });`,
+			},
+		],
+		{
+			metafields: {
+				path: ".shopify/metafields.json",
+				contents: JSON.stringify({
+					product: [{ namespace: "custom", key: "subtitle" }],
+				}),
+			},
+		},
+	);
+	assert.equal(computation.model.networkAccesses.length, 4);
+	assert.equal(
+		computation.model.networkAccesses.filter(
+			(access) => access.graphql === "static",
+		).length,
+		3,
+	);
+	assert.equal(
+		computation.model.networkAccesses.filter(
+			(access) => access.graphql === "dynamic",
+		).length,
+		1,
+	);
+	const impact = computation.getMetafieldImpact({
+		owner: "product",
+		namespace: "custom",
+		key: "subtitle",
+	});
+	assert.equal(impact.apiReads.length, 3);
+	assert.equal(impact.certainty, "partial");
+});
+
+test("GraphQL owner proof clears across unknown nested HasMetafields types", () => {
+	const query = `query {
+	product(handle: "example") {
+		metafield(namespace: "custom", key: "subtitle") { value }
+		media(first: 1) { nodes { ... on MediaImage { metafield(namespace: "custom", key: "image") { value } } } }
+		variants(first: 1) { edges { node { metafield(namespace: "custom", key: "variant_note") { value } } } }
+	}
+	node(id: "gid://shopify/Product/1") { ...ProductFields }
+}
+fragment ProductFields on Product { metafield(namespace: "custom", key: "fragment_note") { value } }`;
+	const computation = computeNazareTheme(
+		[
+			{
+				path: "assets/theme.js",
+				contents: `fetch("/graphql", { body: JSON.stringify({ query: ${JSON.stringify(query)} }) });`,
+			},
+		],
+		{
+			metafields: {
+				path: ".shopify/metafields.json",
+				contents: JSON.stringify({
+					product: [
+						{ namespace: "custom", key: "subtitle" },
+						{ namespace: "custom", key: "image" },
+						{ namespace: "custom", key: "fragment_note" },
+					],
+					variant: [{ namespace: "custom", key: "variant_note" }],
+				}),
+			},
+		},
+	);
+	const access = computation.model.networkAccesses[0];
+	assert.ok(
+		access.metafieldReferences.some(
+			(reference) =>
+				reference.certainty === "exact" &&
+				reference.owner === "product" &&
+				reference.key === "subtitle",
+		),
+	);
+	assert.ok(
+		access.metafieldReferences.some(
+			(reference) =>
+				reference.certainty === "exact" &&
+				reference.owner === "variant" &&
+				reference.key === "variant_note",
+		),
+	);
+	assert.ok(
+		access.metafieldReferences.some(
+			(reference) =>
+				reference.certainty === "partial" &&
+				reference.owner === undefined &&
+				reference.key === "image",
+		),
+	);
+	assert.equal(
+		computation.getMetafieldImpact({
+			owner: "product",
+			namespace: "custom",
+			key: "image",
+		}).certainty,
+		"partial",
+	);
+	assert.equal(
+		computation.getMetafieldImpact({
+			owner: "product",
+			namespace: "custom",
+			key: "fragment_note",
+		}).apiReads.length,
+		1,
+	);
 });
 
 test("incremental JavaScript network facts converge with cold metafield impact", () => {

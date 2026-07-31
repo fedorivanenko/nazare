@@ -185,7 +185,9 @@ export class ThemeComputation {
 		const affectedPages = [
 			...new Set(
 				affectedSources.flatMap((path) =>
-					affectedMetafieldPages(path, this.model, summary, pagePaths),
+					path === "config/settings_data.json"
+						? pagePaths
+						: (summary.affectedPages[path] ?? []),
 				),
 			),
 		].sort(compareCanonicalStrings);
@@ -292,65 +294,6 @@ export class ThemeComputation {
 	}
 }
 
-function affectedMetafieldPages(
-	path: string,
-	model: ThemeSemanticModel,
-	summary: ThemeImpactSummary,
-	pagePaths: string[],
-): string[] {
-	if (path === "config/settings_data.json") return pagePaths;
-	const affected = new Set(summary.affectedPages[path] ?? []);
-	const declarationPathById = new Map(
-		model.declarations.map((declaration) => [declaration.id, declaration.path]),
-	);
-	const directDependents = new Map<string, Set<string>>();
-	for (const reference of model.references) {
-		const targetPath = reference.resolvedDeclarationId
-			? declarationPathById.get(reference.resolvedDeclarationId)
-			: undefined;
-		if (!targetPath) continue;
-		const paths = directDependents.get(targetPath) ?? new Set<string>();
-		paths.add(reference.fromPath);
-		directDependents.set(targetPath, paths);
-	}
-	const dependents = new Set<string>([path]);
-	const pending = [path];
-	while (pending.length > 0) {
-		const current = pending.pop();
-		if (!current) continue;
-		for (const dependent of directDependents.get(current) ?? []) {
-			if (dependents.has(dependent)) continue;
-			dependents.add(dependent);
-			pending.push(dependent);
-		}
-	}
-	const affectedLayouts = new Set(
-		[...dependents].filter((dependent) => dependent.startsWith("layout/")),
-	);
-	if (affectedLayouts.size === 0) return [...affected];
-	for (const page of model.pages) {
-		const explicitLayouts = model.references.filter(
-			(reference) =>
-				reference.kind === "usesLayout" && reference.fromPath === page.path,
-		);
-		if (explicitLayouts.length === 0) {
-			if (affectedLayouts.has("layout/theme.liquid")) affected.add(page.path);
-			continue;
-		}
-		if (
-			explicitLayouts.some((reference) => {
-				const layoutPath = reference.resolvedDeclarationId
-					? declarationPathById.get(reference.resolvedDeclarationId)
-					: undefined;
-				return layoutPath !== undefined && affectedLayouts.has(layoutPath);
-			})
-		) {
-			affected.add(page.path);
-		}
-	}
-	return [...affected];
-}
-
 function metafieldSnapshotUncertainty(
 	schema: ThemeSemanticModel["metafieldSchema"],
 	issues: Diagnostic[],
@@ -395,7 +338,6 @@ function metafieldUncertainSources(
 	for (const access of model.networkAccesses) {
 		if (
 			access.graphql === "none" ||
-			networkAccessExactlyMatches(access, identity) ||
 			!networkAccessCouldMatch(access, identity)
 		) {
 			continue;
@@ -413,13 +355,16 @@ function metafieldUncertainSources(
 		addUncertainty(reasonsByPath, path, issue.message);
 	}
 	for (const source of model.sourceAnalyses) {
-		if (!source.path.endsWith(".liquid")) continue;
+		if (!sourceLanguageCanReadMetafields(source.language)) continue;
 		if (source.completeness === "failed") {
 			addUncertainty(
 				reasonsByPath,
 				source.path,
-				"Source analysis failed and may hide metafield reads",
+				`${source.language} source analysis failed and may hide metafield reads`,
 			);
+		}
+		if (source.language !== "liquid" && source.language !== "nazare-liquid") {
+			continue;
 		}
 		for (const reason of source.uncertainty) {
 			if (
@@ -436,6 +381,16 @@ function metafieldUncertainSources(
 			reasons: [...reasons].sort(compareCanonicalStrings),
 		}))
 		.sort((a, b) => compareCanonicalStrings(a.path, b.path));
+}
+
+function sourceLanguageCanReadMetafields(
+	language: ThemeSemanticModel["sourceAnalyses"][number]["language"],
+): boolean {
+	return (
+		language === "liquid" ||
+		language === "nazare-liquid" ||
+		language === "javascript"
+	);
 }
 
 function networkAccessExactlyMatches(

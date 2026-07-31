@@ -38,8 +38,7 @@ export function analyzeThemeScriptNetwork(
 ): ThemeScriptNetworkAnalysis {
 	const facts: ThemeFact[] = [];
 	const uncertainty: ThemeSourceUncertainty[] = [];
-	const strings = collectStaticStrings(program);
-	const xhrBindings = collectXmlHttpRequestBindings(program);
+	const bindings = new JavaScriptBindingResolver(program);
 
 	walkJavaScript(program, (node) => {
 		if (node.type !== "CallExpression") return;
@@ -56,37 +55,45 @@ export function analyzeThemeScriptNetwork(
 		let optionsNode: JavaScriptNode | undefined;
 		let queryNode: JavaScriptNode | undefined;
 
-		if (directName === "fetch" || method === "fetch") {
+		if (
+			(directName === "fetch" && !bindings.hasBinding("fetch", call.start)) ||
+			(method === "fetch" &&
+				isGlobalMemberCall(callee, ["window", "self", "globalThis"]))
+		) {
 			transport = "fetch";
 			endpointNode = args[0];
 			optionsNode = args[1];
 		} else if (
 			method === "open" &&
 			callee &&
-			isXmlHttpRequestCall(callee, xhrBindings)
+			isXmlHttpRequestCall(callee, bindings, call.start)
 		) {
 			transport = "xmlHttpRequest";
 			endpointNode = args[1];
-		} else if (method === "sendBeacon") {
+		} else if (
+			method === "sendBeacon" &&
+			isGlobalMemberCall(callee, ["navigator"])
+		) {
 			transport = "sendBeacon";
 			endpointNode = args[0];
 			optionsNode = args[1];
 		} else if (
-			method === "query" ||
-			method === "request" ||
-			method === "mutate"
+			method &&
+			callee?.type === "MemberExpression" &&
+			isSupportedGraphqlClientMethod(
+				bindings.graphqlClientKind(asNode(callee.object), call.start),
+				method,
+			)
 		) {
 			queryNode = graphqlClientQueryNode(args, method);
-			const candidate = staticString(queryNode, strings);
-			if (!candidate || !looksLikeGraphql(candidate)) return;
 			transport = "graphqlClient";
 		} else return;
 
-		const endpoint = staticString(endpointNode, strings);
-		const methodName = requestMethod(transport, args, optionsNode, strings);
+		const endpoint = staticString(endpointNode, bindings);
+		const methodName = requestMethod(transport, args, optionsNode, bindings);
 		const queryText =
-			staticString(queryNode, strings) ??
-			graphqlQueryFromRequest(endpoint, optionsNode, strings);
+			staticString(queryNode, bindings) ??
+			graphqlQueryFromRequest(endpoint, optionsNode, bindings);
 		const endpointLooksGraphql =
 			endpoint?.toLowerCase().includes("graphql") === true;
 		let graphql: Extract<ThemeFact, { kind: "accessesNetwork" }>["graphql"] =
@@ -109,7 +116,8 @@ export function analyzeThemeScriptNetwork(
 			}
 		} else if (
 			endpointLooksGraphql ||
-			requestMayContainGraphql(optionsNode, strings)
+			transport === "graphqlClient" ||
+			requestMayContainGraphql(optionsNode, bindings)
 		) {
 			graphql = "dynamic";
 			pushUncertainty(
@@ -144,52 +152,30 @@ export function analyzeThemeScriptNetwork(
 	}
 }
 
-function collectStaticStrings(program: Program): Map<string, string> {
-	const candidates = new Map<string, Set<string>>();
-	walkJavaScript(program, (node) => {
-		if (node.type !== "VariableDeclarator") return;
-		const name = identifierName(asNode(node.id));
-		const value = literalString(asNode(node.init));
-		if (!name || value === undefined) return;
-		const values = candidates.get(name) ?? new Set<string>();
-		values.add(value);
-		candidates.set(name, values);
-	});
-	return new Map(
-		[...candidates]
-			.filter(([, values]) => values.size === 1)
-			.map(([name, values]) => [name, [...values][0]]),
-	);
-}
-
-function collectXmlHttpRequestBindings(program: Program): Set<string> {
-	const result = new Set<string>();
-	walkJavaScript(program, (node) => {
-		if (node.type !== "VariableDeclarator") return;
-		const name = identifierName(asNode(node.id));
-		const init = asNode(node.init);
-		if (
-			name &&
-			init?.type === "NewExpression" &&
-			identifierName(asNode(init.callee)) === "XMLHttpRequest"
-		) {
-			result.add(name);
-		}
-	});
-	return result;
-}
-
 function isXmlHttpRequestCall(
 	callee: JavaScriptNode,
-	bindings: ReadonlySet<string>,
+	bindings: JavaScriptBindingResolver,
+	offset: number,
 ): boolean {
 	if (callee.type !== "MemberExpression") return false;
 	const object = asNode(callee.object);
 	if (object?.type === "NewExpression") {
-		return identifierName(asNode(object.callee)) === "XMLHttpRequest";
+		return (
+			identifierName(asNode(object.callee)) === "XMLHttpRequest" &&
+			!bindings.hasBinding("XMLHttpRequest", object.start)
+		);
 	}
-	const name = identifierName(object);
-	return name !== undefined && bindings.has(name);
+	return bindings.isXmlHttpRequest(object, offset);
+}
+
+function isGlobalMemberCall(
+	callee: JavaScriptNode | undefined,
+	globalNames: string[],
+): boolean {
+	return (
+		callee?.type === "MemberExpression" &&
+		globalNames.includes(identifierName(asNode(callee.object)) ?? "")
+	);
 }
 
 function graphqlClientQueryNode(
@@ -207,7 +193,7 @@ function graphqlClientQueryNode(
 function graphqlQueryFromRequest(
 	endpoint: string | undefined,
 	options: JavaScriptNode | undefined,
-	strings: ReadonlyMap<string, string>,
+	bindings: JavaScriptBindingResolver,
 ): string | undefined {
 	if (endpoint) {
 		try {
@@ -222,10 +208,10 @@ function graphqlQueryFromRequest(
 	}
 	if (options?.type !== "ObjectExpression") return undefined;
 	const direct = objectPropertyValue(options, "query");
-	const directValue = staticString(direct, strings);
+	const directValue = staticString(direct, bindings);
 	if (directValue !== undefined) return directValue;
 	const body = objectPropertyValue(options, "body");
-	const bodyValue = staticString(body, strings);
+	const bodyValue = staticString(body, bindings);
 	if (bodyValue !== undefined) {
 		try {
 			const parsed: unknown = JSON.parse(bodyValue);
@@ -250,7 +236,7 @@ function graphqlQueryFromRequest(
 		) {
 			const payload = nodes(body.arguments)[0];
 			if (payload?.type === "ObjectExpression") {
-				return staticString(objectPropertyValue(payload, "query"), strings);
+				return staticString(objectPropertyValue(payload, "query"), bindings);
 			}
 		}
 	}
@@ -261,26 +247,26 @@ function requestMethod(
 	transport: Extract<ThemeFact, { kind: "accessesNetwork" }>["transport"],
 	args: JavaScriptNode[],
 	options: JavaScriptNode | undefined,
-	strings: ReadonlyMap<string, string>,
+	bindings: JavaScriptBindingResolver,
 ): string | undefined {
 	if (transport === "xmlHttpRequest")
-		return staticString(args[0], strings)?.toUpperCase();
+		return staticString(args[0], bindings)?.toUpperCase();
 	if (transport !== "fetch" || options?.type !== "ObjectExpression")
 		return undefined;
 	return staticString(
 		objectPropertyValue(options, "method"),
-		strings,
+		bindings,
 	)?.toUpperCase();
 }
 
 function requestMayContainGraphql(
 	options: JavaScriptNode | undefined,
-	strings: ReadonlyMap<string, string>,
+	bindings: JavaScriptBindingResolver,
 ): boolean {
 	if (options?.type !== "ObjectExpression") return false;
 	if (objectPropertyValue(options, "query") !== undefined) return true;
 	const body = objectPropertyValue(options, "body");
-	const bodyValue = staticString(body, strings);
+	const bodyValue = staticString(body, bindings);
 	if (bodyValue !== undefined) {
 		return looksLikeGraphql(bodyValue) || /["']query["']\s*:/.test(bodyValue);
 	}
@@ -323,21 +309,24 @@ function collectGraphqlMetafieldReferences(
 	): void {
 		for (const selection of selectionSet.selections) {
 			if (selection.kind === Kind.FIELD) {
-				const nextOwner = graphqlOwner(selection.name.value) ?? owner;
 				if (selection.name.value === "metafield") {
-					references.push(referenceFromMetafield(selection, nextOwner));
+					references.push(referenceFromMetafield(selection, owner));
 				} else if (selection.name.value === "metafields") {
-					references.push(...referencesFromMetafields(selection, nextOwner));
+					references.push(...referencesFromMetafields(selection, owner));
 				}
 				if (selection.selectionSet) {
-					walkSelectionSet(selection.selectionSet, nextOwner, activeFragments);
+					walkSelectionSet(
+						selection.selectionSet,
+						ownerAfterField(selection.name.value, owner),
+						activeFragments,
+					);
 				}
 				continue;
 			}
 			if (selection.kind === Kind.INLINE_FRAGMENT) {
 				walkSelectionSet(
 					selection.selectionSet,
-					graphqlOwner(selection.typeCondition?.name.value) ?? owner,
+					graphqlOwner(selection.typeCondition?.name.value),
 					activeFragments,
 				);
 				continue;
@@ -349,7 +338,7 @@ function collectGraphqlMetafieldReferences(
 			const next = new Set(activeFragments).add(name);
 			walkSelectionSet(
 				fragment.selectionSet,
-				graphqlOwner(fragment.typeCondition.name.value) ?? owner,
+				graphqlOwner(fragment.typeCondition.name.value),
 				next,
 			);
 		}
@@ -362,12 +351,9 @@ function referenceFromMetafield(
 ): ThemeNetworkMetafieldReference {
 	const namespace = stringArgument(field, "namespace");
 	const key = stringArgument(field, "key");
-	return {
-		owner,
-		namespace,
-		key,
-		certainty: owner && namespace && key ? "exact" : "partial",
-	};
+	return owner && namespace && key
+		? { certainty: "exact", owner, namespace, key }
+		: { certainty: "partial", owner, namespace, key };
 }
 
 function referencesFromMetafields(
@@ -384,12 +370,9 @@ function referencesFromMetafields(
 		if (value.kind !== Kind.OBJECT) return { owner, certainty: "partial" };
 		const namespace = stringObjectField(value, "namespace");
 		const key = stringObjectField(value, "key");
-		return {
-			owner,
-			namespace,
-			key,
-			certainty: owner && namespace && key ? "exact" : "partial",
-		};
+		return owner && namespace && key
+			? { certainty: "exact" as const, owner, namespace, key }
+			: { certainty: "partial" as const, owner, namespace, key };
 	});
 }
 
@@ -412,39 +395,77 @@ function stringValue(value: ValueNode | undefined): string | undefined {
 	return value?.kind === Kind.STRING ? value.value : undefined;
 }
 
-function graphqlOwner(name: string | undefined): string | undefined {
+type SupportedGraphqlMetafieldOwner =
+	| "article"
+	| "blog"
+	| "collection"
+	| "company"
+	| "company_location"
+	| "customer"
+	| "location"
+	| "market"
+	| "order"
+	| "page"
+	| "product"
+	| "shop"
+	| "variant";
+
+const GRAPHQL_OWNER_ALIASES = {
+	article: "article",
+	articles: "article",
+	blog: "blog",
+	blogs: "blog",
+	collection: "collection",
+	collections: "collection",
+	company: "company",
+	companies: "company",
+	companylocation: "company_location",
+	companylocations: "company_location",
+	customer: "customer",
+	customers: "customer",
+	location: "location",
+	locations: "location",
+	market: "market",
+	markets: "market",
+	order: "order",
+	orders: "order",
+	page: "page",
+	pages: "page",
+	product: "product",
+	products: "product",
+	productvariant: "variant",
+	productvariants: "variant",
+	shop: "shop",
+	variant: "variant",
+	variants: "variant",
+} as const satisfies Readonly<Record<string, SupportedGraphqlMetafieldOwner>>;
+
+const GRAPHQL_TRANSPARENT_OWNER_FIELDS = new Set(["edges", "node", "nodes"]);
+
+/**
+ * Owner proof is deliberately schema-free and narrow. A recognized Shopify
+ * root/type establishes owner. Only connection wrappers preserve it. Any
+ * unknown nested field or type condition clears owner, preventing an outer
+ * product from being assigned to nested MediaImage or other HasMetafields data.
+ */
+function ownerAfterField(
+	fieldName: string,
+	owner: string | undefined,
+): string | undefined {
+	return (
+		graphqlOwner(fieldName) ??
+		(GRAPHQL_TRANSPARENT_OWNER_FIELDS.has(fieldName) ? owner : undefined)
+	);
+}
+
+function graphqlOwner(
+	name: string | undefined,
+): SupportedGraphqlMetafieldOwner | undefined {
 	if (!name) return undefined;
 	const normalized = name.replace(/[^A-Za-z]/g, "").toLowerCase();
-	const owners: Record<string, string> = {
-		article: "article",
-		articles: "article",
-		blog: "blog",
-		blogs: "blog",
-		collection: "collection",
-		collections: "collection",
-		company: "company",
-		companies: "company",
-		companylocation: "company_location",
-		companylocations: "company_location",
-		customer: "customer",
-		customers: "customer",
-		location: "location",
-		locations: "location",
-		market: "market",
-		markets: "market",
-		order: "order",
-		orders: "order",
-		page: "page",
-		pages: "page",
-		product: "product",
-		products: "product",
-		productvariant: "variant",
-		productvariants: "variant",
-		shop: "shop",
-		variant: "variant",
-		variants: "variant",
-	};
-	return owners[normalized];
+	return Object.hasOwn(GRAPHQL_OWNER_ALIASES, normalized)
+		? GRAPHQL_OWNER_ALIASES[normalized as keyof typeof GRAPHQL_OWNER_ALIASES]
+		: undefined;
 }
 
 function dedupeReferences(
@@ -477,14 +498,348 @@ function objectPropertyValue(
 	return undefined;
 }
 
+type GraphqlClientKind = "graphql-request" | "apollo" | "shopify-storefront";
+
+type JavaScriptBinding = {
+	name: string;
+	scopeStart: number;
+	scopeEnd: number;
+	scopeDepth: number;
+	declarationStart: number;
+	hoisted: boolean;
+	kind: "const" | "let" | "var" | "parameter" | "function" | "class" | "import";
+	staticValue?: string;
+	written: boolean;
+	importSource?: string;
+	importedName?: string;
+	graphqlClientKind?: GraphqlClientKind;
+	xmlHttpRequest?: boolean;
+	initializer?: JavaScriptNode;
+};
+
+/**
+ * Minimal lexical binding model for proofs used by network analysis. Exact
+ * strings require one visible immutable `const` binding with no writes.
+ * GraphQL clients require explicit supported import plus construction:
+ * `GraphQLClient` from `graphql-request`, `ApolloClient` from `@apollo/client`,
+ * or `createStorefrontApiClient` from `@shopify/storefront-api-client`.
+ */
+class JavaScriptBindingResolver {
+	private readonly byName = new Map<string, JavaScriptBinding[]>();
+
+	constructor(program: Program) {
+		const root = program as JavaScriptNode;
+		walkJavaScript(program, (node, parent, ancestors) => {
+			if (node.type === "ImportDeclaration") {
+				const source = literalString(asNode(node.source));
+				for (const specifier of nodes(node.specifiers)) {
+					const local = identifierName(asNode(specifier.local));
+					if (!local) continue;
+					const importedName =
+						specifier.type === "ImportSpecifier"
+							? identifierName(asNode(specifier.imported))
+							: specifier.type === "ImportDefaultSpecifier"
+								? "default"
+								: "*";
+					this.add(local, root, 0, node.start, "import", true, {
+						importSource: source,
+						importedName,
+					});
+				}
+				return;
+			}
+			if (isFunction(node)) {
+				for (const parameter of nodes(node.params)) {
+					for (const name of bindingNames(parameter)) {
+						this.add(
+							name,
+							node,
+							ancestors.length,
+							node.start,
+							"parameter",
+							true,
+						);
+					}
+				}
+				const ownName =
+					node.type === "FunctionExpression"
+						? identifierName(asNode(node.id))
+						: undefined;
+				if (ownName) {
+					this.add(
+						ownName,
+						node,
+						ancestors.length,
+						node.start,
+						"function",
+						true,
+					);
+				}
+			}
+			if (node.type === "FunctionDeclaration") {
+				const name = identifierName(asNode(node.id));
+				const scope = lexicalScope(ancestors.slice(0, -1), root);
+				if (name)
+					this.add(name, scope.node, scope.depth, node.start, "function", true);
+			}
+			if (node.type === "ClassDeclaration") {
+				const name = identifierName(asNode(node.id));
+				const scope = lexicalScope(ancestors.slice(0, -1), root);
+				if (name)
+					this.add(name, scope.node, scope.depth, node.start, "class", false);
+			}
+			if (node.type !== "VariableDeclarator") return;
+			const declaration =
+				parent?.type === "VariableDeclaration" ? parent : undefined;
+			const declarationKind = declaration?.kind;
+			if (
+				declarationKind !== "const" &&
+				declarationKind !== "let" &&
+				declarationKind !== "var"
+			) {
+				return;
+			}
+			const scope =
+				declarationKind === "var"
+					? functionScope(ancestors.slice(0, -1), root)
+					: lexicalScope(ancestors.slice(0, -1), root);
+			const initializer = asNode(node.init);
+			for (const name of bindingNames(asNode(node.id))) {
+				this.add(
+					name,
+					scope.node,
+					scope.depth,
+					node.start,
+					declarationKind,
+					declarationKind === "var",
+					{
+						initializer,
+						staticValue:
+							declarationKind === "const"
+								? literalString(initializer)
+								: undefined,
+					},
+				);
+			}
+		});
+		this.collectWrites(program);
+		this.resolveConstructedBindings();
+	}
+
+	hasBinding(name: string, offset: number): boolean {
+		return this.resolve(name, offset) !== undefined;
+	}
+
+	staticString(node: JavaScriptNode | undefined): string | undefined {
+		const name = identifierName(node);
+		if (!name || !node) return undefined;
+		const binding = this.resolve(name, node.start);
+		return binding?.kind === "const" && !binding.written
+			? binding.staticValue
+			: undefined;
+	}
+
+	graphqlClientKind(
+		node: JavaScriptNode | undefined,
+		offset: number,
+	): GraphqlClientKind | undefined {
+		const name = identifierName(node);
+		if (!name) return undefined;
+		const binding = this.resolve(name, offset);
+		return binding && !binding.written ? binding.graphqlClientKind : undefined;
+	}
+
+	isXmlHttpRequest(node: JavaScriptNode | undefined, offset: number): boolean {
+		const name = identifierName(node);
+		if (!name) return false;
+		const binding = this.resolve(name, offset);
+		return binding?.xmlHttpRequest === true && !binding.written;
+	}
+
+	private add(
+		name: string,
+		scope: JavaScriptNode,
+		scopeDepth: number,
+		declarationStart: number,
+		kind: JavaScriptBinding["kind"],
+		hoisted: boolean,
+		extra: Partial<JavaScriptBinding> = {},
+	): void {
+		const binding: JavaScriptBinding = {
+			name,
+			scopeStart: scope.start,
+			scopeEnd: scope.end,
+			scopeDepth,
+			declarationStart,
+			hoisted,
+			kind,
+			written: false,
+			...extra,
+		};
+		const bindings = this.byName.get(name) ?? [];
+		bindings.push(binding);
+		this.byName.set(name, bindings);
+	}
+
+	private resolve(name: string, offset: number): JavaScriptBinding | undefined {
+		const visible = (this.byName.get(name) ?? []).filter(
+			(binding) =>
+				offset >= binding.scopeStart &&
+				offset <= binding.scopeEnd &&
+				(binding.hoisted || binding.declarationStart <= offset),
+		);
+		if (visible.length === 0) return undefined;
+		const deepest = Math.max(...visible.map((binding) => binding.scopeDepth));
+		const candidates = visible.filter(
+			(binding) => binding.scopeDepth === deepest,
+		);
+		return candidates.length === 1 ? candidates[0] : undefined;
+	}
+
+	private collectWrites(program: Program): void {
+		walkJavaScript(program, (node) => {
+			let target: JavaScriptNode | undefined;
+			if (node.type === "AssignmentExpression") target = asNode(node.left);
+			else if (node.type === "UpdateExpression") target = asNode(node.argument);
+			else return;
+			const name = identifierName(target);
+			if (!name || !target) return;
+			const binding = this.resolve(name, target.start);
+			if (binding) binding.written = true;
+		});
+	}
+
+	private resolveConstructedBindings(): void {
+		for (const bindings of this.byName.values()) {
+			for (const binding of bindings) {
+				if (binding.kind !== "const" || binding.written) continue;
+				const initializer = binding.initializer;
+				if (!initializer) continue;
+				if (initializer.type === "NewExpression") {
+					const importedConstructor = this.resolveImportedBinding(
+						asNode(initializer.callee),
+						initializer.start,
+					);
+					if (
+						importedConstructor?.importSource === "graphql-request" &&
+						importedConstructor.importedName === "GraphQLClient"
+					) {
+						binding.graphqlClientKind = "graphql-request";
+					} else if (
+						importedConstructor?.importSource === "@apollo/client" &&
+						importedConstructor.importedName === "ApolloClient"
+					) {
+						binding.graphqlClientKind = "apollo";
+					} else if (
+						identifierName(asNode(initializer.callee)) === "XMLHttpRequest" &&
+						!this.hasBinding("XMLHttpRequest", initializer.start)
+					) {
+						binding.xmlHttpRequest = true;
+					}
+				}
+				if (initializer.type === "CallExpression") {
+					const factory = this.resolveImportedBinding(
+						asNode(initializer.callee),
+						initializer.start,
+					);
+					if (
+						factory?.importSource === "@shopify/storefront-api-client" &&
+						factory.importedName === "createStorefrontApiClient"
+					) {
+						binding.graphqlClientKind = "shopify-storefront";
+					}
+				}
+			}
+		}
+	}
+
+	private resolveImportedBinding(
+		node: JavaScriptNode | undefined,
+		offset: number,
+	): JavaScriptBinding | undefined {
+		const name = identifierName(node);
+		if (!name) return undefined;
+		const binding = this.resolve(name, offset);
+		return binding?.kind === "import" ? binding : undefined;
+	}
+}
+
+function isSupportedGraphqlClientMethod(
+	kind: GraphqlClientKind | undefined,
+	method: string,
+): boolean {
+	if (kind === "graphql-request" || kind === "shopify-storefront") {
+		return method === "request";
+	}
+	return kind === "apollo" && (method === "query" || method === "mutate");
+}
+
+function isFunction(node: JavaScriptNode): boolean {
+	return (
+		node.type === "FunctionDeclaration" ||
+		node.type === "FunctionExpression" ||
+		node.type === "ArrowFunctionExpression"
+	);
+}
+
+function lexicalScope(
+	ancestors: JavaScriptNode[],
+	root: JavaScriptNode,
+): { node: JavaScriptNode; depth: number } {
+	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+		const node = ancestors[index];
+		if (
+			node.type === "BlockStatement" ||
+			node.type === "Program" ||
+			node.type === "ForStatement" ||
+			node.type === "ForInStatement" ||
+			node.type === "ForOfStatement" ||
+			node.type === "SwitchStatement"
+		) {
+			return { node, depth: index };
+		}
+	}
+	return { node: root, depth: 0 };
+}
+
+function functionScope(
+	ancestors: JavaScriptNode[],
+	root: JavaScriptNode,
+): { node: JavaScriptNode; depth: number } {
+	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+		const node = ancestors[index];
+		if (isFunction(node) || node.type === "Program") {
+			return { node, depth: index };
+		}
+	}
+	return { node: root, depth: 0 };
+}
+
+function bindingNames(node: JavaScriptNode | undefined): string[] {
+	if (!node) return [];
+	const name = identifierName(node);
+	if (name) return [name];
+	if (node.type === "RestElement") return bindingNames(asNode(node.argument));
+	if (node.type === "AssignmentPattern") return bindingNames(asNode(node.left));
+	if (node.type === "ArrayPattern")
+		return nodes(node.elements).flatMap(bindingNames);
+	if (node.type === "ObjectPattern") {
+		return nodes(node.properties).flatMap((property) =>
+			property.type === "RestElement"
+				? bindingNames(asNode(property.argument))
+				: bindingNames(asNode(property.value)),
+		);
+	}
+	return [];
+}
+
 function staticString(
 	node: JavaScriptNode | undefined,
-	strings: ReadonlyMap<string, string>,
+	bindings: JavaScriptBindingResolver,
 ): string | undefined {
 	const literal = literalString(node);
 	if (literal !== undefined) return literal;
-	const name = identifierName(node);
-	return name ? strings.get(name) : undefined;
+	return bindings.staticString(node);
 }
 
 function literalString(node: JavaScriptNode | undefined): string | undefined {

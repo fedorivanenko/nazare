@@ -47,6 +47,7 @@ import {
 import {
 	createThemeReferencePass,
 	type ThemeReferencePassContext,
+	withImplicitDefaultLayoutReferences,
 } from "./theme-reference-pass.js";
 import { resolveThemeDeclarationsAndReferences } from "./theme-resolution-pass.js";
 import { ThemeSchemaIndex } from "./theme-schema-index.js";
@@ -177,7 +178,10 @@ export function buildThemeSemanticModel(
 	);
 	modelIssues.push(...resolution.issues);
 	const byKindName = resolution.declarationByKey;
-	const references = resolution.references;
+	const references = withImplicitDefaultLayoutReferences(
+		declarations,
+		resolution.references,
+	);
 
 	const schemaIndex = new ThemeSchemaIndex({
 		declarations,

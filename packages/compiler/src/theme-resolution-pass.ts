@@ -98,7 +98,13 @@ function resolutionIssues(
 	reference: ThemeReference,
 	context: ThemeIncrementalResolutionContext,
 ): Diagnostic[] {
-	if (!reference.static || reference.resolvedDeclarationId) return [];
+	if (
+		!reference.static ||
+		reference.resolvedDeclarationId ||
+		isLayoutOptOut(reference)
+	) {
+		return [];
+	}
 	const candidates = referenceTargetKeys(reference).flatMap((key) => [
 		...(context.declarationsByKey.get(key)?.values() ?? []),
 	]);
@@ -157,6 +163,9 @@ export function resolveThemeDeclarationsAndReferences(
 
 	const issues = duplicateDeclarationIssues(declarations);
 	const resolvedReferences = references.map((reference) => {
+		if (isLayoutOptOut(reference)) {
+			return withResolvedDeclaration(reference, undefined);
+		}
 		const candidates = referenceCandidates(reference, declarationsByKey);
 		const declaration = candidates.length === 1 ? candidates[0] : undefined;
 		if (!reference.static || declaration) {
@@ -188,6 +197,10 @@ export function resolveThemeDeclarationsAndReferences(
 		declarationIdsByKey,
 		issues,
 	};
+}
+
+function isLayoutOptOut(reference: ThemeReference): boolean {
+	return reference.kind === "usesLayout" && reference.targetName === "none";
 }
 
 function indexDeclarations(

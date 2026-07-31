@@ -157,6 +157,7 @@ import {
 import {
 	createThemeReferencePass,
 	type ThemeReferencePassContext,
+	withImplicitDefaultLayoutReferences,
 } from "./theme-reference-pass.js";
 import {
 	createThemeResolutionPass,
@@ -1253,9 +1254,10 @@ function evidenceInputsForSource(
 	const inputs = state.dataFlowInputs.get(path);
 	const derived = state.derivedDataFlow.get(path);
 	return {
-		references: [...state.resolvedReferencesById.values()].filter(
-			(reference) => reference.fromPath === path,
-		),
+		references: withImplicitDefaultLayoutReferences(
+			allDeclarations(state.declarations),
+			[...state.resolvedReferencesById.values()],
+		).filter((reference) => reference.fromPath === path),
 		sectionInstances: instances?.sectionInstances ?? [],
 		blockInstances: instances?.blockInstances ?? [],
 		localeReferences: locales?.localeReferences ?? [],
@@ -1639,9 +1641,9 @@ function modelWithCollectedRecords(
 		files.push(...result.files.values());
 		declarations.push(...result.declarations);
 	}
-	const references = [...resolvedReferencesById.values()].sort((a, b) =>
-		compareCanonicalStrings(a.id, b.id),
-	);
+	const references = withImplicitDefaultLayoutReferences(declarations, [
+		...resolvedReferencesById.values(),
+	]);
 	const schemaSettings = [...schemaSettingsBySource.keys()]
 		.sort((a, b) => compareCanonicalStrings(a, b))
 		.map((path) => schemaSettingsBySource.get(path))

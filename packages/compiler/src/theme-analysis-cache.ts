@@ -537,14 +537,22 @@ function isOptionalMetafieldOwnerSetting(value: unknown): boolean {
 function isNetworkMetafieldReferences(value: unknown): boolean {
 	return (
 		Array.isArray(value) &&
-		value.every(
-			(reference) =>
-				isRecord(reference) &&
+		value.every((reference) => {
+			if (!isRecord(reference)) return false;
+			if (reference.certainty === "exact") {
+				return (
+					isString(reference.owner) &&
+					isString(reference.namespace) &&
+					isString(reference.key)
+				);
+			}
+			return (
+				reference.certainty === "partial" &&
 				isOptionalString(reference.owner) &&
 				isOptionalString(reference.namespace) &&
-				isOptionalString(reference.key) &&
-				(reference.certainty === "exact" || reference.certainty === "partial"),
-		)
+				isOptionalString(reference.key)
+			);
+		})
 	);
 }
 

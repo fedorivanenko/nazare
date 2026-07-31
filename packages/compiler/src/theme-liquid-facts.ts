@@ -115,7 +115,7 @@ export function collectPlainLiquidThemeFacts(
 				static: staticReference,
 				span: at,
 			});
-		} else if (dependency.kind === "layout" && targetName !== "none") {
+		} else if (dependency.kind === "layout") {
 			facts.push({
 				kind: "usesLayout",
 				fromPath: path,

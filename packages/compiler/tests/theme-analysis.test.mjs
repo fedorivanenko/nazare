@@ -77,7 +77,9 @@ test("persisted inspection validates facts and impact projections", () => {
 		{ path: "assets/theme.css", contents: ".card {}" },
 		{
 			path: "assets/theme.js",
-			contents: 'document.querySelector(".card")',
+			contents: `document.querySelector(".card");
+const query = \`query { product(handle: "example") { metafield(namespace: "custom", key: "subtitle") { value } } }\`;
+fetch("/graphql", { body: JSON.stringify({ query }) });`,
 		},
 	];
 	const graph = inspectNazareTheme(files, { cache });
@@ -128,6 +130,29 @@ test("persisted inspection validates facts and impact projections", () => {
 	assert.throws(
 		() => parsePersistedThemeInspection(malformedJavaScriptOwner),
 		/invalid cache entry for "assets\/theme.js"/,
+	);
+
+	const malformedExactMetafield = JSON.parse(serialized);
+	const exactReference = malformedExactMetafield.entries[
+		"assets/theme.js"
+	].facts
+		.find((fact) => fact.kind === "accessesNetwork")
+		.metafieldReferences.find((reference) => reference.certainty === "exact");
+	delete exactReference.key;
+	assert.throws(
+		() => parsePersistedThemeInspection(malformedExactMetafield),
+		/invalid cache entry for "assets\/theme.js"/,
+	);
+
+	const validPartialMetafield = JSON.parse(serialized);
+	const partialReference = validPartialMetafield.entries[
+		"assets/theme.js"
+	].facts.find((fact) => fact.kind === "accessesNetwork")
+		.metafieldReferences[0];
+	partialReference.certainty = "partial";
+	delete partialReference.owner;
+	assert.doesNotThrow(() =>
+		parsePersistedThemeInspection(validPartialMetafield),
 	);
 
 	const malformedImpact = JSON.parse(serialized);

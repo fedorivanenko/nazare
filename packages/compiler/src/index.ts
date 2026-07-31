@@ -376,6 +376,7 @@ export {
 	createThemeReferencePass,
 	referenceTargetKeys,
 	type ThemeReferencePassContext,
+	withImplicitDefaultLayoutReferences,
 } from "./theme-reference-pass.js";
 export {
 	createThemeResolutionPass,
