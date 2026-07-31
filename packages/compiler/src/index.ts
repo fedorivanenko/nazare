@@ -180,6 +180,7 @@ export {
 export {
 	ThemeComputation,
 	type ThemeFileImpact,
+	type ThemeMetafieldImpact,
 	type ThemeRenderOccurrence,
 } from "./theme-computation.js";
 export { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
@@ -312,7 +313,11 @@ export {
 	type ThemeLocalePassResult,
 	type ThemeLocaleRecord,
 } from "./theme-locale-pass.js";
-export { ThemeMetafieldIndex } from "./theme-metafield-index.js";
+export {
+	type ThemeMetafieldIdentity,
+	ThemeMetafieldIndex,
+	type ThemeMetafieldQueryResult,
+} from "./theme-metafield-index.js";
 export {
 	createThemeMetafieldPass,
 	type ThemeMetafieldPassContext,

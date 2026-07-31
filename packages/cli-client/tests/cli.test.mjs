@@ -838,6 +838,71 @@ test("cli: inspect impact answers what a file can affect", async () => {
 	);
 });
 
+test("cli: inspect metafield reports definition, readers, and affected pages", async () => {
+	await withProject(
+		{
+			".shopify/metafields.json": JSON.stringify({
+				product: [
+					{
+						namespace: "custom",
+						key: "subtitle",
+						type: { name: "single_line_text_field" },
+					},
+				],
+			}),
+			"templates/product.json": JSON.stringify({
+				sections: { main: { type: "main" } },
+			}),
+			"sections/main.liquid": "{{ product.metafields.custom.subtitle }}",
+		},
+		async (cwd) => {
+			const text = await runCli(
+				cwd,
+				"inspect",
+				"metafield",
+				"product.custom.subtitle",
+				".",
+			);
+			assert.equal(text.status, 0, text.stderr);
+			assert.match(text.stdout, /Metafield: product\.custom\.subtitle/);
+			assert.match(text.stdout, /Definition: single_line_text_field/);
+			assert.match(text.stdout, /- sections\/main\.liquid \(1 read\)/);
+			assert.match(text.stdout, /- templates\/product\.json/);
+			assert.match(text.stdout, /Certainty: complete/);
+
+			const json = await runCli(
+				cwd,
+				"inspect",
+				"metafield",
+				"product.custom.subtitle",
+				".",
+				"--format",
+				"json",
+			);
+			assert.equal(json.status, 0, json.stderr);
+			const impact = JSON.parse(json.stdout);
+			assert.equal(impact.version, 1);
+			assert.equal(impact.definition.type, "single_line_text_field");
+			assert.deepEqual(impact.affectedSources, ["sections/main.liquid"]);
+			assert.deepEqual(impact.affectedPages, ["templates/product.json"]);
+			assert.equal(impact.snapshot.state, "present");
+			assert.equal(impact.certainty, "complete");
+			assert.deepEqual(impact.uncertainty, []);
+			assert.deepEqual(impact.uncertainSources, []);
+
+			const malformed = await runCli(
+				cwd,
+				"inspect",
+				"metafield",
+				"custom.subtitle",
+				".",
+			);
+			assert.equal(malformed.status, 1);
+			assert.match(malformed.stderr, /expected owner\.namespace\.key/);
+		},
+	);
+});
+
 test("cli: warm impact cache preserves analysis error status", async () => {
 	await withProject(
 		{

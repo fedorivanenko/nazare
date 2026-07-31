@@ -9,7 +9,7 @@ export const INSPECT_VIEWS = [
 	"dump",
 ] as const;
 
-export const INSPECT_THEME_QUERIES = ["impact"] as const;
+export const INSPECT_THEME_QUERIES = ["impact", "metafield"] as const;
 
 export const PREVIEW_VERBS = [
 	"serve",
@@ -186,6 +186,8 @@ export function printHelp(output: Output = console): void {
   nazare inspect theme [dir]         semantic graph for a whole theme
                                      dir defaults to nazare.theme.json build.sourceRoot
   nazare inspect impact <file> [dir] change impact for one theme-relative file
+  nazare inspect metafield <owner.namespace.key> [dir]
+                                     metafield readers and affected pages
   nazare graph-server [dir]          serve graph queries over newline-delimited JSON stdio
 
 Preview:
@@ -276,6 +278,7 @@ Options:
   nazare inspect <${INSPECT_VIEWS.join("|")}> <file>
   nazare inspect theme [dir] [--format json|text|dot]
   nazare inspect impact <theme-file> [dir] [--format text|json]
+  nazare inspect metafield <owner.namespace.key> [dir] [--format text|json]
 
 Views:
   ast, ir, graph, schema   inspect one compiler projection
@@ -286,6 +289,8 @@ Views:
 Theme queries:
   impact                  show direct dependencies, dependents, affected pages,
                           usage, diagnostics, and analysis uncertainty for one file
+  metafield               show definition, static readers, affected pages, snapshot
+                          state, and analysis uncertainty for one metafield
 
 Options:
   --strictness loose|strict
