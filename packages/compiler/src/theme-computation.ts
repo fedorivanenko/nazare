@@ -34,6 +34,10 @@ export type ThemeRenderOccurrence = {
 
 export type ThemeMetafieldImpact = {
 	version: 1;
+	scope: {
+		included: ["liquid", "shopifyJsonDynamicSources"];
+		excluded: ["javascript", "graphql"];
+	};
 	identity: ThemeMetafieldIdentity;
 	definition: ThemeSemanticModel["metafieldDefinitions"][number] | null;
 	reads: ThemeSemanticModel["metafieldReads"];
@@ -144,10 +148,13 @@ export class ThemeComputation {
 	getMetafieldImpact(identity: ThemeMetafieldIdentity): ThemeMetafieldImpact {
 		const query = this.getMetafieldIndex().query(identity);
 		const summary = this.getImpactSummary();
+		const pagePaths = this.model.pages.map((page) => page.path);
 		const affectedPages = [
 			...new Set(
-				query.affectedSources.flatMap(
-					(path) => summary.affectedPages[path] ?? [],
+				query.affectedSources.flatMap((path) =>
+					path === "config/settings_data.json"
+						? pagePaths
+						: (summary.affectedPages[path] ?? []),
 				),
 			),
 		].sort(compareCanonicalStrings);
@@ -155,9 +162,13 @@ export class ThemeComputation {
 			this.model.metafieldSchema,
 			this.model.issues,
 		);
-		const uncertainSources = metafieldUncertainSources(this.model);
+		const uncertainSources = metafieldUncertainSources(this.model, identity);
 		return {
 			version: 1,
+			scope: {
+				included: ["liquid", "shopifyJsonDynamicSources"],
+				excluded: ["javascript", "graphql"],
+			},
 			identity: query.identity,
 			definition: query.definition ?? null,
 			reads: query.reads,
@@ -271,6 +282,7 @@ function metafieldSnapshotUncertainty(
 
 function metafieldUncertainSources(
 	model: ThemeSemanticModel,
+	identity: ThemeMetafieldIdentity,
 ): Array<{ path: string; reasons: string[] }> {
 	const reasonsByPath = new Map<string, Set<string>>();
 	const indexedAccessIds = new Set(
@@ -278,6 +290,13 @@ function metafieldUncertainSources(
 	);
 	for (const access of model.dataAccesses) {
 		if (!isMetafieldAccess(access) || indexedAccessIds.has(access.id)) continue;
+		if (
+			access.object !== "unknown" &&
+			access.object !== "metafields" &&
+			access.object !== identity.owner
+		) {
+			continue;
+		}
 		addUncertainty(
 			reasonsByPath,
 			access.fromPath,
@@ -300,7 +319,10 @@ function metafieldUncertainSources(
 			);
 		}
 		for (const reason of source.uncertainty) {
-			if (reason.toLowerCase().includes("metafield")) {
+			if (
+				reason.toLowerCase().includes("metafield") &&
+				!reason.startsWith("Dynamic metafield path ")
+			) {
 				addUncertainty(reasonsByPath, source.path, reason);
 			}
 		}

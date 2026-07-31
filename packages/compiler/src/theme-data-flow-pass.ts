@@ -221,6 +221,9 @@ export function deriveRenderArgumentDataAccesses(
 					fromPath: targetPath,
 					object: argument.sourceObject,
 					propertyPath: propertyPath || undefined,
+					hasDynamicPathSegments:
+						(input.dynamicPropertyPaths ?? []).includes(inputPropertyPath) ||
+						undefined,
 					expression,
 					origin: "renderArgument",
 					sourceRenderArgumentId: argument.id,
@@ -334,6 +337,7 @@ export function collectThemeDataFlowInputs(
 				fromPath: fact.fromPath,
 				name: fact.name,
 				propertyPath: fact.propertyPath,
+				hasDynamicPathSegments: fact.hasDynamicPathSegments,
 				expression: fact.expression,
 				usage: fact.usage,
 				span: fact.span,
@@ -353,6 +357,8 @@ export function collectThemeDataFlowInputs(
 				fromPath: fact.fromPath,
 				object: fact.object,
 				propertyPath: fact.propertyPath,
+				hasDynamicPathSegments: fact.hasDynamicPathSegments,
+				metafieldOwnerSetting: fact.metafieldOwnerSetting,
 				expression: fact.expression,
 				conditional: fact.conditional,
 				span: fact.span,

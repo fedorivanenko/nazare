@@ -306,6 +306,8 @@ function isThemeFact(value: unknown): value is ThemeFact {
 				isString(value.fromPath) &&
 				isString(value.object) &&
 				isOptionalString(value.propertyPath) &&
+				isOptionalBoolean(value.hasDynamicPathSegments) &&
+				isOptionalMetafieldOwnerSetting(value.metafieldOwnerSetting) &&
 				isString(value.expression) &&
 				isOptionalBoolean(value.conditional) &&
 				isOptionalSpan(value.span)
@@ -326,6 +328,7 @@ function isThemeFact(value: unknown): value is ThemeFact {
 				isString(value.fromPath) &&
 				isString(value.name) &&
 				isOptionalString(value.propertyPath) &&
+				isOptionalBoolean(value.hasDynamicPathSegments) &&
 				isString(value.expression) &&
 				(value.usage === "expression" || value.usage === "renderArgument") &&
 				isOptionalSpan(value.span)
@@ -495,6 +498,26 @@ function isBoolean(value: unknown): value is boolean {
 
 function isOptionalString(value: unknown): boolean {
 	return value === undefined || isString(value);
+}
+
+function isOptionalMetafieldOwnerSetting(value: unknown): boolean {
+	if (value === undefined) return true;
+	if (!isRecord(value)) return false;
+	if (value.settingObject !== "section" && value.settingObject !== "block") {
+		return false;
+	}
+	if (!isString(value.settingId)) return false;
+	if (value.resolution === "sourceDeclaration") {
+		return (
+			value.sectionInstanceId === undefined &&
+			value.blockInstanceId === undefined
+		);
+	}
+	if (value.resolution !== "jsonInstance") return false;
+	if (!isString(value.sectionInstanceId)) return false;
+	return value.settingObject === "block"
+		? isString(value.blockInstanceId)
+		: value.blockInstanceId === undefined;
 }
 
 function isOptionalBoolean(value: unknown): boolean {

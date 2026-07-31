@@ -1,7 +1,15 @@
 import type { Diagnostic } from "@nazare/core";
 import { compareCanonicalStrings } from "./canonical-order.js";
 import type { ThemeMetafieldSnapshot } from "./theme-external-types.js";
-import type { ThemeDataAccessRecord } from "./theme-facts.js";
+import type {
+	ThemeBlockInstanceRecord,
+	ThemeBlockRecord,
+	ThemeBlockSettingRecord,
+	ThemeDataAccessRecord,
+	ThemeDeclaration,
+	ThemeSectionInstanceRecord,
+	ThemeSettingRecord,
+} from "./theme-facts.js";
 
 export type { ThemeMetafieldSnapshot } from "./theme-external-types.js";
 
@@ -31,6 +39,115 @@ export type ThemeMetafieldAnalysis = {
 	path: string;
 	pulledAt?: string;
 };
+
+const RESOURCE_SETTING_OWNER_TYPES = new Set([
+	"article",
+	"blog",
+	"collection",
+	"page",
+	"product",
+]);
+
+export function resolveMetafieldOwnerSettings(
+	dataAccesses: ThemeDataAccessRecord[],
+	context: {
+		declarations: ThemeDeclaration[];
+		settings: ThemeSettingRecord[];
+		blocks: ThemeBlockRecord[];
+		blockSettings: ThemeBlockSettingRecord[];
+		sectionInstances: ThemeSectionInstanceRecord[];
+		blockInstances: ThemeBlockInstanceRecord[];
+	},
+): ThemeDataAccessRecord[] {
+	const declarationPathById = new Map(
+		context.declarations.map((record) => [record.id, record.path]),
+	);
+	const sectionByInstance = new Map(
+		context.sectionInstances.map((record) => [
+			`${record.templatePath}\0${record.instanceId}`,
+			record,
+		]),
+	);
+	const blockByInstance = new Map(
+		context.blockInstances.map((record) => [
+			`${record.ownerPath}\0${record.sectionInstanceId}\0${record.instanceId}`,
+			record,
+		]),
+	);
+	const blockById = new Map(
+		context.blocks.map((record) => [record.id, record]),
+	);
+	return dataAccesses.map((access) => {
+		const ownerSetting = access.metafieldOwnerSetting;
+		if (!ownerSetting) return access;
+		let settingType: string | undefined;
+		if (ownerSetting.resolution === "sourceDeclaration") {
+			settingType =
+				ownerSetting.settingObject === "section"
+					? context.settings.find(
+							(setting) =>
+								setting.path === access.fromPath &&
+								setting.settingId === ownerSetting.settingId,
+						)?.settingType
+					: uniqueSettingType(
+							context.blockSettings
+								.filter(
+									(setting) =>
+										setting.path === access.fromPath &&
+										setting.settingId === ownerSetting.settingId,
+								)
+								.map((setting) => setting.settingType),
+						);
+		} else {
+			const section = sectionByInstance.get(
+				`${access.fromPath}\0${ownerSetting.sectionInstanceId}`,
+			);
+			const sectionPath = section?.resolvedDeclarationId
+				? declarationPathById.get(section.resolvedDeclarationId)
+				: undefined;
+			if (ownerSetting.settingObject === "section") {
+				settingType = context.settings.find(
+					(setting) =>
+						setting.path === sectionPath &&
+						setting.settingId === ownerSetting.settingId,
+				)?.settingType;
+			} else {
+				const block = blockByInstance.get(
+					`${access.fromPath}\0${ownerSetting.sectionInstanceId}\0${ownerSetting.blockInstanceId}`,
+				);
+				const resolvedBlock = block?.resolvedBlockId
+					? blockById.get(block.resolvedBlockId)
+					: undefined;
+				const blockPath = resolvedBlock?.path ?? sectionPath;
+				const blockType = resolvedBlock?.blockType ?? block?.blockType;
+				settingType = context.blockSettings.find(
+					(setting) =>
+						setting.path === blockPath &&
+						setting.blockType === blockType &&
+						setting.settingId === ownerSetting.settingId,
+				)?.settingType;
+			}
+		}
+		const owner = settingType?.toLowerCase();
+		if (!owner || !RESOURCE_SETTING_OWNER_TYPES.has(owner)) {
+			return { ...access, hasDynamicPathSegments: true };
+		}
+		return {
+			...access,
+			object: owner,
+			expression: access.propertyPath
+				? `${owner}.${access.propertyPath}`
+				: owner,
+		};
+	});
+}
+
+function uniqueSettingType(
+	values: Array<string | undefined>,
+): string | undefined {
+	const types = [...new Set(values.filter((value) => value !== undefined))];
+	return types.length === 1 ? types[0] : undefined;
+}
 
 export type ThemeMetafieldDefinitionCollection = Pick<
 	ThemeMetafieldAnalysis,
@@ -162,7 +279,16 @@ export function analyzeMetafields(
 	snapshot: ThemeMetafieldSnapshot | undefined,
 	dataAccesses: ThemeDataAccessRecord[],
 ): ThemeMetafieldAnalysis {
-	const collection = collectMetafieldDefinitions(snapshot);
+	return analyzeCollectedMetafields(
+		collectMetafieldDefinitions(snapshot),
+		dataAccesses,
+	);
+}
+
+export function analyzeCollectedMetafields(
+	collection: ThemeMetafieldDefinitionCollection,
+	dataAccesses: ThemeDataAccessRecord[],
+): ThemeMetafieldAnalysis {
 	if (collection.state === "invalid") {
 		return { ...collection, reads: [] };
 	}
@@ -171,7 +297,7 @@ export function analyzeMetafields(
 		collectMetafieldReads(dataAccesses),
 	);
 	const issues: Diagnostic[] = reads
-		.filter((read) => snapshot && !read.definitionId)
+		.filter((read) => collection.state === "present" && !read.definitionId)
 		.map((read) => ({
 			severity: "warning" as const,
 			code: "THEME_METAFIELD_UNRESOLVED",
@@ -196,7 +322,7 @@ export function metafieldDefinitionId(
 function metafieldPath(
 	access: ThemeDataAccessRecord,
 ): { owner: string; namespace: string; key: string } | undefined {
-	if (!access.propertyPath) return undefined;
+	if (access.hasDynamicPathSegments || !access.propertyPath) return undefined;
 	const parts = access.propertyPath.split(".");
 	const offset = access.object === "metafields" ? 0 : 1;
 	if (access.object !== "metafields" && parts[0] !== "metafields")

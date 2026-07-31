@@ -115,6 +115,7 @@ export function deriveThemeExpectedInputs(
 		path: string,
 		name: string,
 		propertyPath: string | undefined,
+		hasDynamicPathSegments: boolean,
 		evidenceId: string,
 		origin: ThemeExpectedInputRecord["origin"],
 	): void => {
@@ -127,6 +128,11 @@ export function deriveThemeExpectedInputs(
 					...(propertyPath ? [propertyPath] : []),
 				]),
 			].sort((a, b) => compareCanonicalStrings(a, b));
+			if (propertyPath && hasDynamicPathSegments) {
+				existing.dynamicPropertyPaths = [
+					...new Set([...(existing.dynamicPropertyPaths ?? []), propertyPath]),
+				].sort((a, b) => compareCanonicalStrings(a, b));
+			}
 			existing.evidenceIds = [
 				...new Set([...existing.evidenceIds, evidenceId]),
 			];
@@ -143,7 +149,14 @@ export function deriveThemeExpectedInputs(
 		}
 		byId.set(
 			id,
-			reconciledInput(path, name, origin, [evidenceId], propertyPath),
+			reconciledInput(
+				path,
+				name,
+				origin,
+				[evidenceId],
+				propertyPath,
+				hasDynamicPathSegments,
+			),
 		);
 	};
 	/**
@@ -157,6 +170,7 @@ export function deriveThemeExpectedInputs(
 		origin: ThemeExpectedInputRecord["origin"],
 		evidenceIds: string[],
 		propertyPath?: string,
+		hasDynamicPathSegments = false,
 	): ThemeExpectedInputRecord => {
 		const declared = declaredByPathAndName.get(`${path}:${name}`);
 		const inferred = inferredRequirement(path, name, origin);
@@ -176,6 +190,9 @@ export function deriveThemeExpectedInputs(
 			origin,
 			declaredType: declared?.paramType,
 			propertyPaths: propertyPath ? [propertyPath] : [],
+			...(propertyPath && hasDynamicPathSegments
+				? { dynamicPropertyPaths: [propertyPath] }
+				: {}),
 			evidenceIds: declared
 				? [
 						...evidenceIds,
@@ -193,6 +210,7 @@ export function deriveThemeExpectedInputs(
 			access.fromPath,
 			access.object,
 			access.propertyPath,
+			access.hasDynamicPathSegments === true,
 			access.id,
 			"ambientShopifyContext",
 		);
@@ -203,6 +221,7 @@ export function deriveThemeExpectedInputs(
 			read.fromPath,
 			read.name,
 			read.propertyPath,
+			read.hasDynamicPathSegments === true,
 			read.id,
 			"freeVariable",
 		);

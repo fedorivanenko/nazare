@@ -118,6 +118,35 @@ endfor
 	);
 });
 
+test("Liquid access paths distinguish quoted and dynamic bracket segments", () => {
+	const source = `{{ product.metafields.custom['2nd_description'].value }}
+{{ product.metafields.custom[metafield_key] }}`;
+	const document = parseSourceDocument(
+		registry,
+		"metafields.liquid",
+		"liquid",
+		source,
+	);
+	assert.deepEqual(document.issues, []);
+	const facts = liquidSyntaxFacts(document);
+	assert.deepEqual(
+		facts.reads.map((read) => ({
+			path: read.path,
+			hasDynamicPathSegments: read.hasDynamicPathSegments,
+		})),
+		[
+			{
+				path: ["metafields", "custom", "2nd_description", "value"],
+				hasDynamicPathSegments: undefined,
+			},
+			{
+				path: ["metafields", "custom", "metafield_key"],
+				hasDynamicPathSegments: true,
+			},
+		],
+	);
+});
+
 test("invalid CST never produces authoritative facts", () => {
 	const document = parseSourceDocument(
 		registry,

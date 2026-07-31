@@ -47,14 +47,19 @@ export function collectJsonThemeFacts(
 	if (path === "config/settings_schema.json") {
 		collectSettingsSchemaFacts(path, parsed, facts, issues);
 	}
-	if (path === "config/settings_data.json" && !isRecord(parsed)) {
-		issues.push(
-			invalidJsonShape(
-				path,
-				"THEME_SETTINGS_DATA_INVALID_ROOT",
-				"Settings data root must be an object",
-			),
-		);
+	if (path === "config/settings_data.json") {
+		if (!isRecord(parsed)) {
+			issues.push(
+				invalidJsonShape(
+					path,
+					"THEME_SETTINGS_DATA_INVALID_ROOT",
+					"Settings data root must be an object",
+				),
+			);
+		} else {
+			collectSettingsDataInstances(path, parsed, facts, issues);
+			collectJsonSettingMetafieldSources(path, contents, facts, issues);
+		}
 	}
 	if (issues.some((issue) => issue.severity === "error")) {
 		return { facts: [], issues };
@@ -201,6 +206,34 @@ function collectTemplateFacts(
 			);
 			continue;
 		}
+		facts.push({
+			kind: "containsSection",
+			fromPath: path,
+			targetName: section.type,
+			static: true,
+		});
+		facts.push({
+			kind: "sectionInstance",
+			templatePath: path,
+			instanceId,
+			sectionType: section.type,
+			static: true,
+		});
+		collectBlockInstances(path, instanceId, section.blocks, facts, issues);
+	}
+}
+
+function collectSettingsDataInstances(
+	path: string,
+	parsed: Record<string, unknown>,
+	facts: ThemeFact[],
+	issues: Diagnostic[],
+): void {
+	const current = parsed.current;
+	if (!isRecord(current) || !isRecord(current.sections)) return;
+	for (const [instanceId, section] of Object.entries(current.sections)) {
+		if (!isRecord(section)) continue;
+		if (typeof section.type !== "string" || section.type.length === 0) continue;
 		facts.push({
 			kind: "containsSection",
 			fromPath: path,
@@ -399,8 +432,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 const LIQUID_OUTPUT_EXPRESSION = /^\s*\{\{\s*(.*?)\s*\}\}\s*$/;
+const LIQUID_OUTPUT_OCCURRENCE = /\{\{[\s\S]*?\}\}/g;
 const METAFIELD_DYNAMIC_SOURCE_PATH =
-	/^([A-Za-z_][A-Za-z0-9_]*)\.metafields\.([A-Za-z0-9_$:-]+)(?:\.([A-Za-z0-9_-]+)|\[\s*(["'])([^"'\\]+)\4\s*\])$/;
+	/^([A-Za-z_][A-Za-z0-9_]*(?:\.settings\.[A-Za-z_][A-Za-z0-9_]*)?)\.metafields\.([A-Za-z0-9_$:-]+)(?:\.([A-Za-z0-9_-]+)|\[\s*(["'])([^"'\\]+)\4\s*\])$/;
 const METAFIELD_DYNAMIC_SOURCE_SUFFIX = /(?:\.value|\s*\|\s*metafield_tag)$/;
 
 function collectJsonSettingMetafieldSources(
@@ -415,38 +449,72 @@ function collectJsonSettingMetafieldSources(
 		if (
 			node.type !== "string" ||
 			typeof node.value !== "string" ||
-			!isTemplateSettingValue(node)
+			!isSupportedJsonSettingValue(path, node)
 		) {
 			return;
 		}
 		const value = node.value;
-		const dynamicSource = parseMetafieldDynamicSource(value);
-		if (!dynamicSource) {
-			if (looksLikeMetafieldDynamicSource(value)) {
-				issues.push({
-					severity: "warning",
-					code: "THEME_JSON_METAFIELD_SOURCE_INVALID",
-					message: `Unsupported metafield dynamic source ${JSON.stringify(value)} in ${path}; expected {{ owner.metafields.namespace.key }}`,
-					phase: "parse",
-					span: jsonStringValueSpan(path, contents, node),
-				});
+		const outputs = [...value.matchAll(LIQUID_OUTPUT_OCCURRENCE)];
+		let sawMetafieldSyntax = false;
+		for (const output of outputs) {
+			if (!output[0].includes(".metafields")) continue;
+			sawMetafieldSyntax = true;
+			const dynamicSource = parseMetafieldDynamicSource(output[0]);
+			const start = output.index;
+			const end = start + output[0].length;
+			if (!dynamicSource) {
+				issues.push(
+					invalidJsonMetafieldSource(
+						path,
+						output[0],
+						jsonStringValueSpan(path, contents, node, start, end),
+					),
+				);
+				continue;
 			}
-			return;
+			const ownerSetting = dynamicSource.ownerSetting
+				? metafieldOwnerSetting(node, dynamicSource.ownerSetting)
+				: undefined;
+			if (dynamicSource.ownerSetting && !ownerSetting) {
+				issues.push(
+					invalidJsonMetafieldSource(
+						path,
+						output[0],
+						jsonStringValueSpan(path, contents, node, start, end),
+					),
+				);
+				continue;
+			}
+			facts.push({
+				kind: "readsShopifyData",
+				fromPath: path,
+				object: dynamicSource.owner,
+				propertyPath: `metafields.${dynamicSource.namespace}.${dynamicSource.key}`,
+				metafieldOwnerSetting: ownerSetting,
+				expression: `${dynamicSource.owner}.metafields.${dynamicSource.namespace}.${dynamicSource.key}`,
+				span: jsonStringValueSpan(path, contents, node, start, end),
+			});
 		}
-		facts.push({
-			kind: "readsShopifyData",
-			fromPath: path,
-			object: dynamicSource.owner,
-			propertyPath: `metafields.${dynamicSource.namespace}.${dynamicSource.key}`,
-			expression: `${dynamicSource.owner}.metafields.${dynamicSource.namespace}.${dynamicSource.key}`,
-			span: jsonStringValueSpan(path, contents, node),
-		});
+		if (!sawMetafieldSyntax && looksLikeMetafieldDynamicSource(value)) {
+			issues.push(
+				invalidJsonMetafieldSource(
+					path,
+					value,
+					jsonStringValueSpan(path, contents, node, 0, value.length),
+				),
+			);
+		}
 	});
 }
 
-function parseMetafieldDynamicSource(
-	value: string,
-): { owner: string; namespace: string; key: string } | undefined {
+function parseMetafieldDynamicSource(value: string):
+	| {
+			owner: string;
+			namespace: string;
+			key: string;
+			ownerSetting?: { settingObject: "section" | "block"; settingId: string };
+	  }
+	| undefined {
 	const output = LIQUID_OUTPUT_EXPRESSION.exec(value);
 	if (!output) return undefined;
 	const expression = output[1].trim();
@@ -456,10 +524,56 @@ function parseMetafieldDynamicSource(
 			expression.replace(METAFIELD_DYNAMIC_SOURCE_SUFFIX, "").trim(),
 		);
 	if (!match) return undefined;
+	const ownerParts = match[1].split(".");
+	const ownerSetting =
+		ownerParts.length === 3 &&
+		(ownerParts[0] === "section" || ownerParts[0] === "block") &&
+		ownerParts[1] === "settings"
+			? {
+					settingObject:
+						ownerParts[0] === "section"
+							? ("section" as const)
+							: ("block" as const),
+					settingId: ownerParts[2],
+				}
+			: undefined;
+	if (ownerParts.length !== 1 && !ownerSetting) return undefined;
 	return {
-		owner: match[1],
+		owner: ownerSetting ? "unknown" : match[1],
 		namespace: match[2],
 		key: match[3] ?? match[5],
+		ownerSetting,
+	};
+}
+
+function metafieldOwnerSetting(
+	node: JsonNode,
+	owner: { settingObject: "section" | "block"; settingId: string },
+):
+	| {
+			settingObject: "section" | "block";
+			settingId: string;
+			resolution: "jsonInstance";
+			sectionInstanceId: string;
+			blockInstanceId?: string;
+	  }
+	| undefined {
+	const path = getNodePath(node);
+	const sectionsIndex = path.indexOf("sections");
+	const sectionInstanceId = path[sectionsIndex + 1];
+	if (sectionsIndex < 0 || typeof sectionInstanceId !== "string")
+		return undefined;
+	if (owner.settingObject === "section") {
+		return { ...owner, resolution: "jsonInstance", sectionInstanceId };
+	}
+	const blocksIndex = path.indexOf("blocks", sectionsIndex + 2);
+	const blockInstanceId = path[blocksIndex + 1];
+	if (blocksIndex < 0 || typeof blockInstanceId !== "string") return undefined;
+	return {
+		...owner,
+		resolution: "jsonInstance",
+		sectionInstanceId,
+		blockInstanceId,
 	};
 }
 
@@ -468,8 +582,16 @@ function walkJsonTree(node: JsonNode, visit: (node: JsonNode) => void): void {
 	for (const child of node.children ?? []) walkJsonTree(child, visit);
 }
 
-function isTemplateSettingValue(node: JsonNode): boolean {
+function isSupportedJsonSettingValue(
+	filePath: string,
+	node: JsonNode,
+): boolean {
 	const path = getNodePath(node);
+	if (filePath === "config/settings_data.json") {
+		if (path[0] !== "current") return false;
+		if (path.length === 2 && path[1] !== "sections") return true;
+		return path.includes("settings") && path.at(-2) === "settings";
+	}
 	if (path.length < 4 || path[0] !== "sections") return false;
 	const settingsIndex = path.length - 2;
 	if (path[settingsIndex] !== "settings") return false;
@@ -486,21 +608,53 @@ function looksLikeMetafieldDynamicSource(value: string): boolean {
 	);
 }
 
+function invalidJsonMetafieldSource(
+	path: string,
+	value: string,
+	span: ReturnType<typeof spanFromOffsets>,
+): Diagnostic {
+	return {
+		severity: "warning",
+		code: "THEME_JSON_METAFIELD_SOURCE_INVALID",
+		message: `Unsupported metafield dynamic source ${JSON.stringify(value)} in ${path}; expected {{ owner.metafields.namespace.key }}`,
+		phase: "parse",
+		span,
+	};
+}
+
 function jsonStringValueSpan(
 	path: string,
 	contents: string,
 	node: JsonNode,
+	decodedStart: number,
+	decodedEnd: number,
 ): ReturnType<typeof spanFromOffsets> {
 	const source = contents.slice(node.offset, node.offset + node.length);
-	const expressionStart = source.indexOf("{{");
-	const expressionEnd = source.lastIndexOf("}}");
-	const start =
-		expressionStart >= 0 ? node.offset + expressionStart : node.offset;
-	const end =
-		expressionEnd >= expressionStart
-			? node.offset + expressionEnd + 2
-			: node.offset + node.length;
-	return spanFromOffsets(contents, path, { start, end });
+	return spanFromOffsets(contents, path, {
+		start: node.offset + rawJsonStringOffset(source, decodedStart),
+		end: node.offset + rawJsonStringOffset(source, decodedEnd),
+	});
+}
+
+function rawJsonStringOffset(source: string, decodedIndex: number): number {
+	let rawIndex = 1;
+	let decodedOffset = 0;
+	while (rawIndex < source.length - 1 && decodedOffset < decodedIndex) {
+		if (source[rawIndex] !== "\\") {
+			rawIndex += 1;
+			decodedOffset += 1;
+			continue;
+		}
+		if (source[rawIndex + 1] === "u") rawIndex += 6;
+		else rawIndex += 2;
+		decodedOffset += 1;
+	}
+	if (decodedOffset !== decodedIndex) {
+		throw new Error(
+			`Decoded JSON string offset ${decodedIndex} is out of range`,
+		);
+	}
+	return rawIndex;
 }
 
 function invalidJsonShape(

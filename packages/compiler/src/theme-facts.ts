@@ -139,6 +139,18 @@ export type ThemeBehaviorFact = {
 	  }
 );
 
+export type ThemeMetafieldOwnerSetting = {
+	settingObject: "section" | "block";
+	settingId: string;
+} & (
+	| { resolution: "sourceDeclaration" }
+	| {
+			resolution: "jsonInstance";
+			sectionInstanceId: string;
+			blockInstanceId?: string;
+	  }
+);
+
 export type ThemeFact =
 	| { kind: "file"; path: string; fileKind: ThemeFileKind }
 	| {
@@ -278,6 +290,8 @@ export type ThemeFact =
 			fromPath: string;
 			object: string;
 			propertyPath?: string;
+			hasDynamicPathSegments?: boolean;
+			metafieldOwnerSetting?: ThemeMetafieldOwnerSetting;
 			expression: string;
 			/** True when the read is reachable only inside a branch or loop. */
 			conditional?: boolean;
@@ -302,6 +316,7 @@ export type ThemeFact =
 			fromPath: string;
 			name: string;
 			propertyPath?: string;
+			hasDynamicPathSegments?: boolean;
 			expression: string;
 			usage: "expression" | "renderArgument";
 			span?: SourceSpan;
@@ -510,6 +525,8 @@ export type ThemeDataAccessRecord = {
 	fromPath: string;
 	object: string;
 	propertyPath?: string;
+	hasDynamicPathSegments?: boolean;
+	metafieldOwnerSetting?: ThemeMetafieldOwnerSetting;
 	expression: string;
 	origin?: "direct" | "renderArgument";
 	sourceRenderArgumentId?: string;
@@ -537,6 +554,7 @@ export type ThemeVariableReadRecord = {
 	fromPath: string;
 	name: string;
 	propertyPath?: string;
+	hasDynamicPathSegments?: boolean;
 	expression: string;
 	usage: "expression" | "renderArgument";
 	span?: SourceSpan;
@@ -589,6 +607,7 @@ export type ThemeExpectedInputRecord = {
 	/** Declared type from `@param {type} name`, when the author gave one. */
 	declaredType?: string;
 	propertyPaths: string[];
+	dynamicPropertyPaths?: string[];
 	evidenceIds: string[];
 };
 
