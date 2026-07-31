@@ -41,7 +41,10 @@ import {
 	type ThemeDeclarationPassRecord,
 	type ThemeDeclarationPassResult,
 } from "./theme-declaration-pass.js";
-import { ThemeDiagnosticStore } from "./theme-diagnostic-store.js";
+import {
+	sortThemeDiagnostics,
+	ThemeDiagnosticStore,
+} from "./theme-diagnostic-store.js";
 import {
 	createThemeEvidencePass,
 	type ThemeEvidenceInputs,
@@ -581,14 +584,14 @@ export class ThemeProgram {
 			},
 		);
 		const themeCheckPolicy = parseThemeCheckPolicy(this.options.themeCheck);
-		const ownedIssues = [
+		const ownedIssues = sortThemeDiagnostics([
 			...deriveOwnedSemanticIssues(
 				collectedBaseModel,
 				collection,
 				analysis.issues,
 			),
 			...themeCheckPolicy.issues,
-		];
+		]);
 		const collectedModel = {
 			...collectedBaseModel,
 			issues: ownedIssues,

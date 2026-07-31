@@ -73,6 +73,29 @@ test("batch and program agree on the canonical theme", () => {
 	assertProgramEqualsCold(new ThemeProgram(files, options), files, options);
 });
 
+test("batch and program deduplicate references that share one stable ID", () => {
+	const files = [
+		{
+			path: "templates/index.json",
+			contents: JSON.stringify({
+				sections: {
+					first: { type: "featured-collection" },
+					second: { type: "featured-collection" },
+				},
+				order: ["first", "second"],
+			}),
+		},
+		{
+			path: "sections/featured-collection.liquid",
+			contents: '{% schema %}{"name":"Featured collection"}{% endschema %}',
+		},
+	];
+	const program = new ThemeProgram(files);
+	assertProgramEqualsCold(program, files);
+	assert.equal(program.getModel().references.length, 1);
+	assert.equal(program.getModel().sectionInstances.length, 2);
+});
+
 test("incremental edits converge on the cold canonical graph", () => {
 	const files = canonicalFiles();
 	const program = new ThemeProgram(files, options);

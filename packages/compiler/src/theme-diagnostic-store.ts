@@ -1,4 +1,27 @@
 import type { Diagnostic } from "@nazare/core";
+import { compareCanonicalStrings } from "./canonical-order.js";
+
+export function sortThemeDiagnostics(
+	diagnostics: Iterable<Diagnostic>,
+): Diagnostic[] {
+	return [...diagnostics].sort(compareThemeDiagnostics);
+}
+
+function compareThemeDiagnostics(a: Diagnostic, b: Diagnostic): number {
+	const aSpan = a.span;
+	const bSpan = b.span;
+	return (
+		compareCanonicalStrings(aSpan?.file ?? "", bSpan?.file ?? "") ||
+		(aSpan?.start.line ?? -1) - (bSpan?.start.line ?? -1) ||
+		(aSpan?.start.column ?? -1) - (bSpan?.start.column ?? -1) ||
+		(aSpan?.end.line ?? -1) - (bSpan?.end.line ?? -1) ||
+		(aSpan?.end.column ?? -1) - (bSpan?.end.column ?? -1) ||
+		compareCanonicalStrings(a.phase ?? "", b.phase ?? "") ||
+		compareCanonicalStrings(a.severity, b.severity) ||
+		compareCanonicalStrings(a.code, b.code) ||
+		compareCanonicalStrings(a.message, b.message)
+	);
+}
 
 export type ThemeDiagnosticOwner = {
 	pass: string;

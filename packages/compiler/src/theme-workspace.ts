@@ -12,6 +12,7 @@ import {
 } from "./resolver.js";
 import { parseThemeCheckPolicy } from "./theme-check-policy.js";
 import { ThemeComputation } from "./theme-computation.js";
+import { sortThemeDiagnostics } from "./theme-diagnostic-store.js";
 import {
 	partitionExcludedThemeFiles,
 	themeExclusionIssues,
@@ -328,7 +329,10 @@ function analyzeNormalizedThemeFiles(
 			issues: options.memo.projectedModel.issues,
 		};
 	}
-	const projectedIssues = [...baseModel.issues, ...themeCheckPolicy.issues];
+	const projectedIssues = sortThemeDiagnostics([
+		...baseModel.issues,
+		...themeCheckPolicy.issues,
+	]);
 	const ir: ThemeSemanticModel = {
 		...baseModel,
 		themeCheck: {
