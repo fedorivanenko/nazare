@@ -61,6 +61,65 @@ test("computation owns direct queries and lazily projects the public graph", () 
 	assert.ok(computation.getEvidence(referenceId).length > 0);
 });
 
+test("metafield impact joins definitions, readers, and affected pages", () => {
+	const computation = computeNazareTheme(
+		[
+			{
+				path: "templates/product.json",
+				contents: JSON.stringify({ sections: { main: { type: "main" } } }),
+			},
+			{
+				path: "sections/main.liquid",
+				contents: "{{ product.metafields.custom.subtitle }}",
+			},
+		],
+		{
+			metafields: {
+				path: ".shopify/metafields.json",
+				contents: JSON.stringify({
+					product: [
+						{
+							namespace: "custom",
+							key: "subtitle",
+							type: "single_line_text_field",
+						},
+					],
+				}),
+			},
+		},
+	);
+	const impact = computation.getMetafieldImpact({
+		owner: "product",
+		namespace: "custom",
+		key: "subtitle",
+	});
+	assert.equal(impact.definition.type, "single_line_text_field");
+	assert.deepEqual(impact.affectedSources, ["sections/main.liquid"]);
+	assert.deepEqual(impact.affectedPages, ["templates/product.json"]);
+	assert.equal(impact.certainty, "complete");
+	assert.deepEqual(impact.uncertainty, []);
+	assert.deepEqual(impact.uncertainSources, []);
+});
+
+test("metafield impact reports unavailable definitions and unresolved reads", () => {
+	const computation = computeNazareTheme([
+		{
+			path: "snippets/card.liquid",
+			contents: "{{ product.metafields[namespace][key] }}",
+		},
+	]);
+	const impact = computation.getMetafieldImpact({
+		owner: "product",
+		namespace: "custom",
+		key: "subtitle",
+	});
+	assert.equal(impact.definition, null);
+	assert.equal(impact.snapshot.state, "unknown");
+	assert.equal(impact.certainty, "partial");
+	assert.match(impact.uncertainty[0], /definitions are unavailable/);
+	assert.match(impact.uncertainSources[0].reasons[0], /dynamic segment/);
+});
+
 test("ThemeProgram keeps graph projection lazy until a graph caller opts in", () => {
 	const program = new ThemeProgram(files);
 	const changed = files.map((file) =>

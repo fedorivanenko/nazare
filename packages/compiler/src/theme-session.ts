@@ -27,6 +27,7 @@ import {
 import {
 	ThemeComputation,
 	type ThemeFileImpact,
+	type ThemeMetafieldImpact,
 	type ThemeRenderOccurrence,
 } from "./theme-computation.js";
 import { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
@@ -108,7 +109,10 @@ import {
 	type ThemeLocalePassResult,
 	type ThemeLocaleRecord,
 } from "./theme-locale-pass.js";
-import { ThemeMetafieldIndex } from "./theme-metafield-index.js";
+import {
+	type ThemeMetafieldIdentity,
+	ThemeMetafieldIndex,
+} from "./theme-metafield-index.js";
 import {
 	createThemeMetafieldPass,
 	type ThemeMetafieldPassContext,
@@ -395,6 +399,10 @@ export class ThemeProgram {
 
 	getFileImpact(path: string): ThemeFileImpact | undefined {
 		return this.getQueryComputation().getFileImpact(path);
+	}
+
+	getMetafieldImpact(identity: ThemeMetafieldIdentity): ThemeMetafieldImpact {
+		return this.getQueryComputation().getMetafieldImpact(identity);
 	}
 
 	queryBehavior(

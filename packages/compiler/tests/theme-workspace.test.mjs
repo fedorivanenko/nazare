@@ -187,6 +187,25 @@ test("metafield index serves reads by definition", () => {
 		"metafield:product:custom:unused",
 	]);
 	assert.equal(index.getBrokenReadIds().length, 1);
+	const resolved = index.query({
+		owner: "product",
+		namespace: "custom",
+		key: "subtitle",
+	});
+	assert.equal(resolved.definition.id, definition.id);
+	assert.equal(resolved.reads.length, 1);
+	assert.deepEqual(resolved.affectedSources, ["snippets/card.liquid"]);
+	const unresolved = index.query({
+		owner: "product",
+		namespace: "custom",
+		key: "missing",
+	});
+	assert.equal(unresolved.definition, undefined);
+	assert.equal(unresolved.reads.length, 1);
+	assert.throws(
+		() => index.query({ owner: "product", namespace: "custom", key: "" }),
+		/Metafield key is required/,
+	);
 });
 
 test("resolver index serves declaration dependents", () => {

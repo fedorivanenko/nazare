@@ -18,6 +18,10 @@ import type {
 import type { ThemeFileKind } from "./theme-file-classifier.js";
 import { themeGraphFromModel } from "./theme-graph-output.js";
 import { impactSummary } from "./theme-impact.js";
+import {
+	type ThemeMetafieldIdentity,
+	ThemeMetafieldIndex,
+} from "./theme-metafield-index.js";
 
 export type ThemeRenderOccurrence = {
 	id: string;
@@ -26,6 +30,19 @@ export type ThemeRenderOccurrence = {
 	targetName?: string;
 	invocationKind: "render" | "include";
 	span?: ThemeSemanticModel["renderSites"][number]["span"];
+};
+
+export type ThemeMetafieldImpact = {
+	version: 1;
+	identity: ThemeMetafieldIdentity;
+	definition: ThemeSemanticModel["metafieldDefinitions"][number] | null;
+	reads: ThemeSemanticModel["metafieldReads"];
+	affectedSources: string[];
+	affectedPages: string[];
+	snapshot: ThemeSemanticModel["metafieldSchema"];
+	certainty: "complete" | "partial";
+	uncertainty: string[];
+	uncertainSources: Array<{ path: string; reasons: string[] }>;
 };
 
 export type ThemeFileImpact = {
@@ -56,6 +73,7 @@ export class ThemeComputation {
 	private readonly issuesByPath: Map<string, Diagnostic[]>;
 	private readonly dynamicTargetKinds: Set<string>;
 	private behaviorIndexValue: ThemeBehaviorIndex | undefined;
+	private metafieldIndexValue: ThemeMetafieldIndex | undefined;
 	private impactSummaryValue: ThemeImpactSummary | undefined;
 	private unusedFilesValue: Set<string> | undefined;
 	private graphValue: InspectNazareThemeResult | undefined;
@@ -121,6 +139,42 @@ export class ThemeComputation {
 			affectedPages: summary.affectedPages[path] ?? [],
 			issues: this.issuesByPath.get(path) ?? [],
 		};
+	}
+
+	getMetafieldImpact(identity: ThemeMetafieldIdentity): ThemeMetafieldImpact {
+		const query = this.getMetafieldIndex().query(identity);
+		const summary = this.getImpactSummary();
+		const affectedPages = [
+			...new Set(
+				query.affectedSources.flatMap(
+					(path) => summary.affectedPages[path] ?? [],
+				),
+			),
+		].sort(compareCanonicalStrings);
+		const uncertainty = metafieldSnapshotUncertainty(
+			this.model.metafieldSchema,
+		);
+		const uncertainSources = metafieldUncertainSources(this.model);
+		return {
+			version: 1,
+			identity: query.identity,
+			definition: query.definition ?? null,
+			reads: query.reads,
+			affectedSources: query.affectedSources,
+			affectedPages,
+			snapshot: { ...this.model.metafieldSchema },
+			certainty:
+				uncertainty.length > 0 || uncertainSources.length > 0
+					? "partial"
+					: "complete",
+			uncertainty,
+			uncertainSources,
+		};
+	}
+
+	private getMetafieldIndex(): ThemeMetafieldIndex {
+		this.metafieldIndexValue ??= new ThemeMetafieldIndex(this.model);
+		return this.metafieldIndexValue;
 	}
 
 	queryBehavior(
@@ -194,6 +248,91 @@ export class ThemeComputation {
 		});
 		return this.graphValue;
 	}
+}
+
+function metafieldSnapshotUncertainty(
+	schema: ThemeSemanticModel["metafieldSchema"],
+): string[] {
+	switch (schema.state) {
+		case "present":
+			return [];
+		case "unknown":
+			return [`Metafield definitions are unavailable at ${schema.path}`];
+		case "invalid":
+			return [`Metafield definitions are invalid at ${schema.path}`];
+		default:
+			return assertNever(schema.state);
+	}
+}
+
+function metafieldUncertainSources(
+	model: ThemeSemanticModel,
+): Array<{ path: string; reasons: string[] }> {
+	const reasonsByPath = new Map<string, Set<string>>();
+	const indexedAccessIds = new Set(
+		model.metafieldReads.map((read) => read.dataAccessId),
+	);
+	for (const access of model.dataAccesses) {
+		if (!isMetafieldAccess(access) || indexedAccessIds.has(access.id)) continue;
+		addUncertainty(
+			reasonsByPath,
+			access.fromPath,
+			"Dynamic metafield access cannot be assigned to a static owner.namespace.key",
+		);
+	}
+	for (const read of model.metafieldReads) {
+		if (read.definitionId) continue;
+		addUncertainty(
+			reasonsByPath,
+			read.fromPath,
+			`Unresolved metafield read ${read.owner}.${read.namespace}.${read.key} may contain a dynamic segment`,
+		);
+	}
+	for (const source of model.sourceAnalyses) {
+		if (!source.path.endsWith(".liquid")) continue;
+		if (source.completeness === "complete" && source.uncertainty.length === 0)
+			continue;
+		if (source.uncertainty.length === 0) {
+			addUncertainty(
+				reasonsByPath,
+				source.path,
+				`Source analysis is ${source.completeness}`,
+			);
+		}
+		for (const reason of source.uncertainty) {
+			addUncertainty(reasonsByPath, source.path, reason);
+		}
+	}
+	return [...reasonsByPath]
+		.map(([path, reasons]) => ({
+			path,
+			reasons: [...reasons].sort(compareCanonicalStrings),
+		}))
+		.sort((a, b) => compareCanonicalStrings(a.path, b.path));
+}
+
+function isMetafieldAccess(
+	access: ThemeSemanticModel["dataAccesses"][number],
+): boolean {
+	return (
+		access.object === "metafields" ||
+		access.propertyPath === "metafields" ||
+		access.propertyPath?.startsWith("metafields.") === true
+	);
+}
+
+function addUncertainty(
+	reasonsByPath: Map<string, Set<string>>,
+	path: string,
+	reason: string,
+): void {
+	const reasons = reasonsByPath.get(path) ?? new Set<string>();
+	reasons.add(reason);
+	reasonsByPath.set(path, reasons);
+}
+
+function assertNever(value: never): never {
+	throw new Error(`Unhandled metafield schema state: ${String(value)}`);
 }
 
 function issuesByPath(issues: Diagnostic[]): Map<string, Diagnostic[]> {

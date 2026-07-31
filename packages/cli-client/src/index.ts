@@ -33,6 +33,8 @@ import type {
 	ThemeAnalysisCache,
 	ThemeFileImpact,
 	ThemeInputFile,
+	ThemeMetafieldIdentity,
+	ThemeMetafieldImpact,
 } from "@nazare/compiler";
 import {
 	collectThemeInputFiles,
@@ -596,18 +598,36 @@ async function runInspectThemeQuery(
 	cliOptions: CliOptions,
 	output: Output,
 ): Promise<number> {
-	const [query, path, dirArg, ...extra] = cliOptions.positionals;
-	if (query !== "impact" || !path || extra.length > 0) {
+	const [query, ...arguments_] = cliOptions.positionals;
+	switch (query) {
+		case "impact":
+			return runInspectFileImpact(projectRoot, arguments_, cliOptions, output);
+		case "metafield":
+			return runInspectMetafieldImpact(
+				projectRoot,
+				arguments_,
+				cliOptions,
+				output,
+			);
+		default:
+			throw new Error(`Unhandled theme inspection query: ${String(query)}`);
+	}
+}
+
+async function runInspectFileImpact(
+	projectRoot: string,
+	arguments_: string[],
+	cliOptions: CliOptions,
+	output: Output,
+): Promise<number> {
+	const [path, dirArg, ...extra] = arguments_;
+	if (!path || extra.length > 0) {
 		output.error(
 			"Usage: nazare inspect impact <theme-relative-file> [dir] --format text|json",
 		);
 		return 1;
 	}
-	const format = cliOptions.format ?? "text";
-	if (format !== "json" && format !== "text") {
-		output.error(`Unsupported impact format ${format}; expected text or json`);
-		return 1;
-	}
+	const format = inspectQueryFormat("impact", cliOptions);
 	const prepared = await prepareThemeInspection(
 		projectRoot,
 		dirArg,
@@ -644,6 +664,63 @@ async function runInspectThemeQuery(
 			: renderThemeFileImpact(impact),
 	);
 	return hasErrors(computation.model.issues) ? 1 : 0;
+}
+
+async function runInspectMetafieldImpact(
+	projectRoot: string,
+	arguments_: string[],
+	cliOptions: CliOptions,
+	output: Output,
+): Promise<number> {
+	const [identifier, dirArg, ...extra] = arguments_;
+	if (!identifier || extra.length > 0) {
+		output.error(
+			"Usage: nazare inspect metafield <owner.namespace.key> [dir] --format text|json",
+		);
+		return 1;
+	}
+	const identity = parseMetafieldIdentity(identifier);
+	const format = inspectQueryFormat("metafield", cliOptions);
+	const prepared = await prepareThemeInspection(
+		projectRoot,
+		dirArg,
+		cliOptions,
+		output,
+	);
+	const computation = await computePreparedThemeInspection(prepared);
+	const impact = computation.getMetafieldImpact(identity);
+	output.log(
+		format === "json"
+			? JSON.stringify({ root: computation.model.root, ...impact }, null, 2)
+			: renderMetafieldImpact(impact),
+	);
+	return hasErrors(computation.model.issues) ? 1 : 0;
+}
+
+function inspectQueryFormat(
+	query: "impact" | "metafield",
+	cliOptions: CliOptions,
+): "json" | "text" {
+	const format = cliOptions.format ?? "text";
+	if (format !== "json" && format !== "text") {
+		throw new Error(
+			`Unsupported ${query} format ${format}; expected text or json`,
+		);
+	}
+	return format;
+}
+
+function parseMetafieldIdentity(identifier: string): ThemeMetafieldIdentity {
+	const parts = identifier.split(".");
+	if (
+		parts.length !== 3 ||
+		parts.some((part) => part.length === 0 || part.trim() !== part)
+	) {
+		throw new Error(
+			`Invalid metafield identifier ${JSON.stringify(identifier)}; expected owner.namespace.key`,
+		);
+	}
+	return { owner: parts[0], namespace: parts[1], key: parts[2] };
 }
 
 type PreparedThemeInspection = {
@@ -795,6 +872,47 @@ function renderThemeFileImpact(impact: ThemeFileImpact): string {
 		lines.push(`Issues (${impact.issues.length}):`);
 		for (const issue of impact.issues) {
 			lines.push(`- [${issue.severity}] ${issue.code}: ${issue.message}`);
+		}
+	}
+	return lines.join("\n");
+}
+
+function renderMetafieldImpact(impact: ThemeMetafieldImpact): string {
+	const identifier = `${impact.identity.owner}.${impact.identity.namespace}.${impact.identity.key}`;
+	const definition = impact.definition
+		? impact.definition.type
+			? `${impact.definition.type} (${impact.definition.id})`
+			: impact.definition.id
+		: "not found";
+	const pulledAt = impact.snapshot.pulledAt
+		? ` · pulled ${impact.snapshot.pulledAt}`
+		: "";
+	const lines = [
+		`Metafield: ${identifier}`,
+		`Definition: ${definition}`,
+		`Snapshot: ${impact.snapshot.state} · ${impact.snapshot.path}${pulledAt}`,
+		`Certainty: ${impact.certainty}`,
+	];
+	const readCountByPath = new Map<string, number>();
+	for (const read of impact.reads) {
+		readCountByPath.set(
+			read.fromPath,
+			(readCountByPath.get(read.fromPath) ?? 0) + 1,
+		);
+	}
+	const readers = impact.affectedSources.map((path) => {
+		const count = readCountByPath.get(path) ?? 0;
+		return `${path} (${count} ${count === 1 ? "read" : "reads"})`;
+	});
+	appendInspectList(lines, "Readers", readers);
+	appendInspectList(lines, "Affected pages", impact.affectedPages);
+	appendInspectList(lines, "Uncertainty", impact.uncertainty);
+	if (impact.uncertainSources.length === 0) {
+		lines.push("Uncertain sources: none");
+	} else {
+		lines.push(`Uncertain sources (${impact.uncertainSources.length}):`);
+		for (const source of impact.uncertainSources) {
+			lines.push(`- ${source.path}: ${source.reasons.join("; ")}`);
 		}
 	}
 	return lines.join("\n");
