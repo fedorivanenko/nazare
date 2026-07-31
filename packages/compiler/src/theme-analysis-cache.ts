@@ -372,7 +372,10 @@ function isThemeBehaviorFact(value: Record<string, unknown>): boolean {
 		!isString(value.fromPath) ||
 		!isString(value.name) ||
 		!isString(value.extractor) ||
-		!isOptionalSpan(value.span)
+		!isOptionalSpan(value.span) ||
+		(value.extractor === "javascript-ast"
+			? !isJavaScriptOwner(value.javaScriptOwner)
+			: value.javaScriptOwner !== undefined)
 	) {
 		return false;
 	}
@@ -394,6 +397,23 @@ function isThemeBehaviorFact(value: Record<string, unknown>): boolean {
 		return ["defines", "uses"].includes(String(value.operation));
 	}
 	return false;
+}
+
+function isJavaScriptOwner(value: unknown): boolean {
+	if (!isRecord(value)) return false;
+	return (
+		["function", "method", "anonymousFunction", "module"].includes(
+			String(value.kind),
+		) &&
+		isString(value.id) &&
+		(value.name === undefined || isString(value.name)) &&
+		Array.isArray(value.exports) &&
+		value.exports.every((kind) => kind === "named" || kind === "default") &&
+		new Set(value.exports).size === value.exports.length &&
+		(value.exports.length !== 2 ||
+			(value.exports[0] === "default" && value.exports[1] === "named")) &&
+		isOptionalSpan(value.span)
+	);
 }
 
 function isThemeSourceLanguage(value: unknown): boolean {

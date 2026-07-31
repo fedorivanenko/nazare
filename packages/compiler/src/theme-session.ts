@@ -1,6 +1,16 @@
+import { isDeepStrictEqual } from "node:util";
 import type { Diagnostic } from "@nazare/core";
 import { compareCanonicalStrings } from "./canonical-order.js";
-import { collectThemeBehavior } from "./theme-behavior.js";
+import {
+	collectThemeBehavior,
+	type ThemeBehaviorCollection,
+} from "./theme-behavior.js";
+import type {
+	ThemeBehaviorConnectionsResult,
+	ThemeBehaviorQuery,
+	ThemeBehaviorQueryResult,
+	ThemeBehaviorQueryRole,
+} from "./theme-behavior-index.js";
 import {
 	createThemeCapabilityPass,
 	type ThemeCapabilityPassContext,
@@ -14,6 +24,11 @@ import {
 	createThemeClassificationPass,
 	type ThemeClassificationPassContext,
 } from "./theme-classification-pass.js";
+import {
+	ThemeComputation,
+	type ThemeFileImpact,
+	type ThemeRenderOccurrence,
+} from "./theme-computation.js";
 import { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 import {
 	createThemeDataFlowFixedPointPass,
@@ -32,7 +47,10 @@ import {
 	type ThemeDeclarationPassRecord,
 	type ThemeDeclarationPassResult,
 } from "./theme-declaration-pass.js";
-import { ThemeDiagnosticStore } from "./theme-diagnostic-store.js";
+import {
+	sortThemeDiagnostics,
+	ThemeDiagnosticStore,
+} from "./theme-diagnostic-store.js";
 import {
 	createThemeEvidencePass,
 	type ThemeEvidenceInputs,
@@ -76,6 +94,7 @@ import {
 	THEME_GRAPH_METAFIELD_SCHEMA_OWNER,
 	ThemeGraphStore,
 } from "./theme-graph-store.js";
+import { impactSummary, ThemeAffectedPageIndex } from "./theme-impact.js";
 import { ThemeImpactIndex } from "./theme-impact-index.js";
 import {
 	createThemeInstancePass,
@@ -149,7 +168,13 @@ import { analyzeNazareTheme } from "./theme-workspace.js";
 
 export const THEME_PROGRAM_DEFAULTS = Object.freeze({
 	incrementalValidationInterval: 0,
+	graphProjection: "lazy" as const,
 });
+
+export type ThemeProgramOptions = InspectNazareThemeOptions & {
+	/** Materialize and incrementally maintain the public graph after every edit. */
+	graphProjection?: "lazy" | "eager";
+};
 
 export type ThemeUpdateTelemetry = {
 	filesParsed: number;
@@ -163,7 +188,7 @@ export type ThemeUpdateTelemetry = {
 
 export type ThemeGraphUpdate = {
 	revision: number;
-	graph: InspectNazareThemeResult;
+	graph?: InspectNazareThemeResult;
 	changedPaths: string[];
 	changedSemanticRecordIds: string[];
 	invalidatedNodeIds: string[];
@@ -186,6 +211,8 @@ export class ThemeProgram {
 	private readonly memo = {} as ThemeAnalysisMemo;
 	private factStore: ThemeFactStore;
 	private factIndex: ThemeFactIndex;
+	private frontendIssues: Diagnostic[];
+	private behaviorCollection: ThemeBehaviorCollection;
 	private readonly collectionScheduler = createCollectionScheduler();
 	private declarationResultsBySource = new Map<
 		string,
@@ -227,18 +254,23 @@ export class ThemeProgram {
 	private evidenceBySource = new Map<string, ThemeEvidenceRecord[]>();
 	private semanticStore: ThemeSemanticStore;
 	private metafieldIndex: ThemeMetafieldIndex;
-	private impactIndex: ThemeImpactIndex;
-	private graph: InspectNazareThemeResult;
-	private graphStore: ThemeGraphStore;
+	private affectedPageIndex: ThemeAffectedPageIndex;
+	private impactIndex: ThemeImpactIndex | undefined;
+	private graph: InspectNazareThemeResult | undefined;
+	private graphStore: ThemeGraphStore | undefined;
+	private graphProjectionActive: boolean;
 	private externalFingerprint: string;
+	private queryComputation: ThemeComputation | undefined;
 	private revision = 0;
 
-	constructor(
-		files: ThemeInputFile[],
-		options: InspectNazareThemeOptions = {},
-	) {
+	constructor(files: ThemeInputFile[], options: ThemeProgramOptions = {}) {
+		const {
+			graphProjection = THEME_PROGRAM_DEFAULTS.graphProjection,
+			...analysisOptions
+		} = options;
+		this.graphProjectionActive = graphProjection === "eager";
 		const incrementalValidationInterval =
-			options.incrementalValidationInterval ??
+			analysisOptions.incrementalValidationInterval ??
 			THEME_PROGRAM_DEFAULTS.incrementalValidationInterval;
 		if (
 			!Number.isSafeInteger(incrementalValidationInterval) ||
@@ -249,7 +281,7 @@ export class ThemeProgram {
 			);
 		}
 		this.options = {
-			...options,
+			...analysisOptions,
 			incrementalValidationInterval,
 			cache: this.cache,
 			memo: this.memo,
@@ -264,6 +296,7 @@ export class ThemeProgram {
 		const analysis = analyzeNazareTheme(this.files(), this.options);
 		this.factStore = new ThemeFactStore(analysis.facts);
 		this.factIndex = new ThemeFactIndex(analysis.facts);
+		this.frontendIssues = analysis.issues;
 		const collection = runCollectionPasses(
 			this.collectionScheduler,
 			this.factStore,
@@ -272,6 +305,7 @@ export class ThemeProgram {
 			this.options.metafields,
 		);
 		this.applyCollectionState(collection);
+		this.behaviorCollection = collectThemeBehavior(this.factStore.all());
 		const collectedModel = modelWithCollectedRecords(
 			analysis.ir,
 			collection.declarations,
@@ -285,21 +319,24 @@ export class ThemeProgram {
 			collection.capabilitySignals,
 			collection.capabilities,
 			collection.classifications,
-			this.factStore.all(),
+			this.behaviorCollection,
+			collection.evidenceBySource,
 		);
 		const model = collectedModel;
 		this.evidenceBySource = evidenceRecordsBySource(model.evidence);
 		this.semanticStore = new ThemeSemanticStore(model);
 		this.metafieldIndex = new ThemeMetafieldIndex(model);
-		const indexedGraph = graphWithIndexedImpact(this.semanticStore.getModel());
-		this.graph = indexedGraph.graph;
-		this.graphStore = new ThemeGraphStore(this.graph);
-		this.graphStore.replaceOwnership(this.semanticStore.getModel());
-		this.impactIndex = indexedGraph.index;
+		this.affectedPageIndex = new ThemeAffectedPageIndex(
+			this.semanticStore.getModel(),
+		);
+		if (this.graphProjectionActive) this.materializeGraphProjection();
 		this.externalFingerprint = fingerprintExternalArtifacts(this.options);
 	}
 
 	getGraph(): InspectNazareThemeResult {
+		this.graphProjectionActive = true;
+		this.materializeGraphProjection();
+		if (!this.graph) throw new Error("Graph projection did not materialize");
 		return this.graph;
 	}
 
@@ -312,19 +349,73 @@ export class ThemeProgram {
 	}
 
 	getDependencies(nodeId: string): string[] {
-		return this.impactIndex.getDependencies(nodeId);
+		return this.getImpactIndex().getDependencies(nodeId);
 	}
 
 	getDependents(nodeId: string): string[] {
-		return this.impactIndex.getDependents(nodeId);
+		return this.getImpactIndex().getDependents(nodeId);
 	}
 
 	getAffectedPages(nodeId: string): string[] {
-		return this.impactIndex.getAffectedPages(nodeId);
+		return this.getImpactIndex().getAffectedPages(nodeId);
 	}
 
 	getMetafieldAffectedSources(definitionId: string): string[] {
 		return this.metafieldIndex.getAffectedSources(definitionId);
+	}
+
+	private materializeGraphProjection(): void {
+		if (this.graph && this.graphStore && this.impactIndex) return;
+		const computation = this.getQueryComputation();
+		this.graph = computation.toInspectGraph();
+		this.graphStore = new ThemeGraphStore(this.graph);
+		this.graphStore.replaceOwnership(this.semanticStore.getModel());
+		this.impactIndex = new ThemeImpactIndex(this.graph);
+	}
+
+	private getImpactIndex(): ThemeImpactIndex {
+		this.graphProjectionActive = true;
+		this.materializeGraphProjection();
+		if (!this.impactIndex) throw new Error("Impact index did not materialize");
+		return this.impactIndex;
+	}
+
+	private getQueryComputation(): ThemeComputation {
+		this.queryComputation ??= new ThemeComputation(
+			{
+				ir: this.semanticStore.getModel(),
+				artifacts: [],
+				facts: this.factStore.all(),
+				issues: this.semanticStore.getModel().issues,
+			},
+			{ impactSummary: this.impactIndex?.toSummary() },
+		);
+		return this.queryComputation;
+	}
+
+	getFileImpact(path: string): ThemeFileImpact | undefined {
+		return this.getQueryComputation().getFileImpact(path);
+	}
+
+	queryBehavior(
+		query: ThemeBehaviorQuery,
+		role: ThemeBehaviorQueryRole,
+	): ThemeBehaviorQueryResult {
+		return this.getQueryComputation().queryBehavior(query, role);
+	}
+
+	getBehaviorConnections(
+		path: string,
+	): ThemeBehaviorConnectionsResult | undefined {
+		return this.getQueryComputation().getBehaviorConnections(path);
+	}
+
+	getRenderOccurrences(path: string): ThemeRenderOccurrence[] {
+		return this.getQueryComputation().getRenderOccurrences(path);
+	}
+
+	getEvidence(recordId: string): ThemeSemanticModel["evidence"] {
+		return this.getQueryComputation().getEvidence(recordId);
 	}
 
 	updateFile(file: ThemeInputFile): ThemeGraphUpdate {
@@ -402,26 +493,94 @@ export class ThemeProgram {
 			...this.options,
 			factsOnly: true,
 		});
-		const nextFactStore = new ThemeFactStore(this.factStore.all());
+		const nextFactStore = this.factStore.fork();
+		const nextFactIndex = this.factIndex.fork();
 		for (const path of factChangedPaths) {
 			const facts = analysis.facts.filter(
 				(fact) => themeFactSourcePath(fact) === path,
 			);
 			nextFactStore.replaceFile(path, facts);
+			nextFactIndex.replaceFileFacts(path, facts);
 		}
-		const nextFactIndex = new ThemeFactIndex(nextFactStore.all());
+		const snapshotChanges = metafieldSnapshotChanges(
+			changedPaths,
+			this.metafieldResult.current,
+			this.options.metafields,
+		);
+		if (
+			changedPaths.length === factChangedPaths.length &&
+			changedPaths.every((path) => factChangedPaths.includes(path)) &&
+			snapshotChanges.length === 0 &&
+			isDeepStrictEqual(analysis.issues, this.frontendIssues) &&
+			factChangedPaths.every((path) =>
+				isDeepStrictEqual(
+					this.factStore.getFile(path),
+					nextFactStore.getFile(path),
+				),
+			)
+		) {
+			this.frontendIssues = analysis.issues;
+			this.revision += 1;
+			const invalidatedNodeIds = this.factIndex.dependentsOfFiles(changedPaths);
+			if (this.graphProjectionActive) {
+				const graph = this.getGraph();
+				return diffGraphs(
+					this.revision,
+					graph,
+					graph,
+					changedPaths,
+					invalidatedNodeIds,
+					[],
+					changedPaths.flatMap((path) =>
+						this.getImpactIndex().getAffectedPages(path),
+					),
+					{
+						filesParsed: factChangedPaths.length,
+						passKeysProcessed: 0,
+						semanticRecordsReplaced: 0,
+						outputsEmitted: 0,
+						elapsedMs: telemetryNow() - startedAt,
+						peakMemoryBytes: Math.max(memoryAtStart, telemetryMemory()),
+					},
+				);
+			}
+			return {
+				revision: this.revision,
+				changedPaths,
+				changedSemanticRecordIds: [],
+				invalidatedNodeIds,
+				affectedPages: this.affectedPageIndex.getAffectedPages(changedPaths),
+				addedNodeIds: [],
+				removedNodeIds: [],
+				changedNodeIds: [],
+				addedEdgeIds: [],
+				removedEdgeIds: [],
+				changedEdgeIds: [],
+				telemetry: {
+					filesParsed: factChangedPaths.length,
+					passKeysProcessed: 0,
+					semanticRecordsReplaced: 0,
+					graphRecordsReplaced: 0,
+					outputsEmitted: 0,
+					elapsedMs: telemetryNow() - startedAt,
+					peakMemoryBytes: Math.max(memoryAtStart, telemetryMemory()),
+				},
+			};
+		}
 		const collection = runCollectionPasses(
 			this.collectionScheduler,
 			nextFactStore,
 			this.collectionState(),
 			factChangedPaths,
 			this.options.metafields,
-			metafieldSnapshotChanges(
-				changedPaths,
-				this.metafieldResult.current,
-				this.options.metafields,
-			),
+			snapshotChanges,
 		);
+		const nextBehaviorCollection = replaceThemeBehaviorSources(
+			this.behaviorCollection,
+			nextFactStore,
+			factChangedPaths,
+		);
+		const previousCollection = this.collectionState();
 		const collectedBaseModel = modelWithCollectedRecords(
 			analysis.ir,
 			collection.declarations,
@@ -435,33 +594,25 @@ export class ThemeProgram {
 			collection.capabilitySignals,
 			collection.capabilities,
 			collection.classifications,
-			nextFactStore.all(),
+			nextBehaviorCollection,
+			collection.evidenceBySource,
+			{
+				model: this.semanticStore.getModel(),
+				collection: previousCollection,
+				behavior: this.behaviorCollection,
+			},
 		);
 		const themeCheckPolicy = parseThemeCheckPolicy(this.options.themeCheck);
-		const ownedIssues = [
+		const ownedIssues = sortThemeDiagnostics([
 			...deriveOwnedSemanticIssues(
 				collectedBaseModel,
 				collection,
 				analysis.issues,
 			),
 			...themeCheckPolicy.issues,
-		];
+		]);
 		const collectedModel = {
 			...collectedBaseModel,
-			evidence: [
-				...[...collection.evidenceBySource.values()]
-					.flat()
-					.filter(
-						(evidence) =>
-							evidence.kind !== "behavior" &&
-							evidence.kind !== "localeTranslation",
-					),
-				...collectedBaseModel.evidence.filter(
-					(evidence) =>
-						evidence.kind === "behavior" ||
-						evidence.kind === "localeTranslation",
-				),
-			].sort((a, b) => compareCanonicalStrings(a.id, b.id)),
 			issues: ownedIssues,
 			themeCheck: {
 				path: themeCheckPolicy.path,
@@ -470,7 +621,16 @@ export class ThemeProgram {
 		};
 		const transaction = this.semanticStore.beginUpdate(collectedModel);
 		const semanticUpdate = transaction.update;
-		const nextMetafieldIndex = new ThemeMetafieldIndex(semanticUpdate.model);
+		const previousModel = this.semanticStore.getModel();
+		const nextMetafieldIndex =
+			previousModel.metafieldDefinitions ===
+				semanticUpdate.model.metafieldDefinitions &&
+			previousModel.metafieldReads === semanticUpdate.model.metafieldReads
+				? this.metafieldIndex
+				: new ThemeMetafieldIndex(semanticUpdate.model);
+		const nextAffectedPageIndex = this.affectedPageIndex.update(
+			semanticUpdate.model,
+		);
 		const changedSemanticIds = [
 			...semanticUpdate.addedRecordIds,
 			...semanticUpdate.changedRecordIds,
@@ -478,6 +638,107 @@ export class ThemeProgram {
 		];
 		if (changedPaths.includes(".shopify/metafields.json")) {
 			changedSemanticIds.push(THEME_GRAPH_METAFIELD_SCHEMA_OWNER);
+		}
+		const metafieldDefinitionIds = new Set([
+			...this.semanticStore
+				.getModel()
+				.metafieldDefinitions.map((definition) => definition.id),
+			...semanticUpdate.model.metafieldDefinitions.map(
+				(definition) => definition.id,
+			),
+		]);
+		const changedMetafieldDefinitionIds = changedSemanticIds.filter((id) =>
+			metafieldDefinitionIds.has(id),
+		);
+		const changedRecordIds = new Set(changedSemanticIds);
+		const resolverDependents = semanticUpdate.model.references
+			.filter(
+				(reference) =>
+					reference.resolvedDeclarationId &&
+					changedRecordIds.has(reference.resolvedDeclarationId),
+			)
+			.map((reference) => reference.fromPath)
+			.sort();
+		const invalidatedNodeIds = [
+			...nextFactIndex.dependentsOfFiles(changedPaths),
+			...resolverDependents,
+		];
+		validateStagedRecordReachability(semanticUpdate.model);
+
+		if (!this.graphProjectionActive) {
+			const affectedKeys = [...changedPaths, ...changedMetafieldDefinitionIds];
+			const previousAffectedPages =
+				this.affectedPageIndex.getAffectedPages(affectedKeys);
+			const nextComputation = new ThemeComputation({
+				ir: semanticUpdate.model,
+				artifacts: [],
+				facts: nextFactStore.all(),
+				issues: semanticUpdate.model.issues,
+			});
+			const affectedPages = [
+				...new Set([
+					...previousAffectedPages,
+					...nextAffectedPageIndex.getAffectedPages(affectedKeys),
+				]),
+			].sort(compareCanonicalStrings);
+			if (
+				shouldRunCanonicalValidation(
+					this.options.incrementalValidationInterval,
+					this.revision + 1,
+				)
+			) {
+				const validationGraph = nextComputation.toInspectGraph();
+				validateStagedProgram({
+					graph: validationGraph,
+					factStore: nextFactStore,
+					factIndex: nextFactIndex,
+					diagnostics: collection.diagnostics,
+					analysisFacts: analysis.facts,
+					factChangedPaths,
+				});
+				validateCanonicalProgram(
+					this.files(),
+					this.options,
+					semanticUpdate.model,
+					validationGraph,
+				);
+			}
+			transaction.commit();
+			this.factStore = nextFactStore;
+			this.factIndex = nextFactIndex;
+			this.frontendIssues = analysis.issues;
+			this.behaviorCollection = nextBehaviorCollection;
+			this.applyCollectionState(collection);
+			this.metafieldIndex = nextMetafieldIndex;
+			this.affectedPageIndex = nextAffectedPageIndex;
+			this.queryComputation = nextComputation;
+			this.revision += 1;
+			return {
+				revision: this.revision,
+				changedPaths,
+				changedSemanticRecordIds: semanticUpdate.changedRecordIds,
+				invalidatedNodeIds: [...new Set(invalidatedNodeIds)].sort(),
+				affectedPages,
+				addedNodeIds: [],
+				removedNodeIds: [],
+				changedNodeIds: [],
+				addedEdgeIds: [],
+				removedEdgeIds: [],
+				changedEdgeIds: [],
+				telemetry: {
+					filesParsed: factChangedPaths.length,
+					passKeysProcessed: collection.processedPassKeys,
+					semanticRecordsReplaced: changedSemanticIds.length,
+					graphRecordsReplaced: 0,
+					outputsEmitted: 0,
+					elapsedMs: telemetryNow() - startedAt,
+					peakMemoryBytes: Math.max(memoryAtStart, telemetryMemory()),
+				},
+			};
+		}
+
+		if (!previous || !this.graphStore || !this.impactIndex) {
+			throw new Error("Eager graph projection state is incomplete");
 		}
 		const nextGraphStore = this.graphStore.fork();
 		const selectedSemanticIds =
@@ -508,35 +769,14 @@ export class ThemeProgram {
 		nextGraphStore.replaceOwnership(semanticUpdate.model);
 		const nextImpactIndex = this.impactIndex.fork();
 		nextImpactIndex.applyGraph(nextGraph);
-		nextGraph.impact = nextImpactIndex.toSummary();
+		nextGraph.impact = impactSummary(semanticUpdate.model);
 		nextGraphStore.applyGraph(nextGraph);
-		const metafieldDefinitionIds = new Set([
-			...this.semanticStore
-				.getModel()
-				.metafieldDefinitions.map((definition) => definition.id),
-			...semanticUpdate.model.metafieldDefinitions.map(
-				(definition) => definition.id,
-			),
-		]);
-		const changedMetafieldDefinitionIds = changedSemanticIds.filter((id) =>
-			metafieldDefinitionIds.has(id),
-		);
 		const metafieldAffectedPages = changedMetafieldDefinitionIds.flatMap(
 			(id) => [
-				...this.impactIndex.getAffectedPages(id),
+				...(this.impactIndex?.getAffectedPages(id) ?? []),
 				...nextImpactIndex.getAffectedPages(id),
 			],
 		);
-		const changedRecordIds = new Set(changedSemanticIds);
-		const resolverDependents = semanticUpdate.model.references
-			.filter(
-				(reference) =>
-					reference.resolvedDeclarationId &&
-					changedRecordIds.has(reference.resolvedDeclarationId),
-			)
-			.map((reference) => reference.fromPath)
-			.sort();
-		validateStagedRecordReachability(semanticUpdate.model);
 		if (
 			shouldRunCanonicalValidation(
 				this.options.incrementalValidationInterval,
@@ -561,25 +801,26 @@ export class ThemeProgram {
 		transaction.commit();
 		this.factStore = nextFactStore;
 		this.factIndex = nextFactIndex;
+		this.frontendIssues = analysis.issues;
+		this.behaviorCollection = nextBehaviorCollection;
 		this.applyCollectionState(collection);
 		this.metafieldIndex = nextMetafieldIndex;
+		this.affectedPageIndex = nextAffectedPageIndex;
 		this.graph = nextGraph;
 		this.graphStore = nextGraphStore;
 		this.impactIndex = nextImpactIndex;
+		this.queryComputation = undefined;
 		this.revision += 1;
 		return diffGraphs(
 			this.revision,
 			previous,
 			this.graph,
 			changedPaths,
-			[
-				...this.factIndex.dependentsOfFiles(changedPaths),
-				...resolverDependents,
-			],
+			invalidatedNodeIds,
 			semanticUpdate.changedRecordIds,
 			[
 				...changedPaths.flatMap((path) =>
-					this.impactIndex.getAffectedPages(path),
+					nextImpactIndex.getAffectedPages(path),
 				),
 				...metafieldAffectedPages,
 			],
@@ -638,15 +879,32 @@ export class ThemeProgram {
 	}
 
 	private emptyUpdate(changedPaths: string[]): ThemeGraphUpdate {
-		return diffGraphs(
-			this.revision,
-			this.graph,
-			this.graph,
+		if (this.graphProjectionActive) {
+			const graph = this.getGraph();
+			return diffGraphs(this.revision, graph, graph, changedPaths, [], [], []);
+		}
+		return {
+			revision: this.revision,
 			changedPaths,
-			[],
-			[],
-			[],
-		);
+			changedSemanticRecordIds: [],
+			invalidatedNodeIds: [],
+			affectedPages: [],
+			addedNodeIds: [],
+			removedNodeIds: [],
+			changedNodeIds: [],
+			addedEdgeIds: [],
+			removedEdgeIds: [],
+			changedEdgeIds: [],
+			telemetry: {
+				filesParsed: 0,
+				passKeysProcessed: 0,
+				semanticRecordsReplaced: 0,
+				graphRecordsReplaced: 0,
+				outputsEmitted: 0,
+				elapsedMs: 0,
+				peakMemoryBytes: telemetryMemory(),
+			},
+		};
 	}
 
 	private files(): ThemeInputFile[] {
@@ -773,6 +1031,7 @@ function runCollectionPasses(
 ): ThemeCollectionState {
 	const state = cloneCollectionState(previous);
 	let derivedSnapshot: Map<string, ThemeDerivedDataFlowResult> | undefined;
+	let renderDependencies: ThemeRenderDependencyIndex | undefined;
 	const context: ThemeCollectionContext = {
 		facts,
 		resultsBySource: state.declarations,
@@ -813,11 +1072,13 @@ function runCollectionPasses(
 			renderArgument: renderArgumentId,
 		},
 		get renderDependencies() {
+			if (renderDependencies) return renderDependencies;
 			const inputs = allDataFlowInputs(state.dataFlowInputs);
-			return new ThemeRenderDependencyIndex(
+			renderDependencies = new ThemeRenderDependencyIndex(
 				allDeclarations(state.declarations),
 				inputs.renderSiteFacts,
 			);
+			return renderDependencies;
 		},
 		recomputeDataFlowGroup(paths) {
 			derivedSnapshot ??= deriveDataFlowSnapshot(state);
@@ -1154,21 +1415,66 @@ function deriveDataFlowSnapshot(
 		declarations,
 		inputs.variableReads,
 	);
-	const paths = new Set([
-		...expectedInputs.map((record) => record.path),
-		...renderSites.map((record) => record.fromPath),
-		...dataAccesses.map((record) => record.fromPath),
-	]);
-	return new Map(
-		[...paths].sort().map((path) => [
-			path,
-			{
-				expectedInputs: expectedInputs.filter((record) => record.path === path),
-				renderSites: renderSites.filter((record) => record.fromPath === path),
-				dataAccesses: dataAccesses.filter((record) => record.fromPath === path),
-			},
-		]),
+	const snapshot = new Map<string, ThemeDerivedDataFlowResult>();
+	const resultFor = (path: string): ThemeDerivedDataFlowResult => {
+		const existing = snapshot.get(path);
+		if (existing) return existing;
+		const created: ThemeDerivedDataFlowResult = {
+			expectedInputs: [],
+			renderSites: [],
+			dataAccesses: [],
+		};
+		snapshot.set(path, created);
+		return created;
+	};
+	for (const record of expectedInputs)
+		resultFor(record.path).expectedInputs.push(record);
+	for (const record of renderSites)
+		resultFor(record.fromPath).renderSites.push(record);
+	for (const record of dataAccesses)
+		resultFor(record.fromPath).dataAccesses.push(record);
+	return snapshot;
+}
+
+function replaceThemeBehaviorSources(
+	previous: ThemeBehaviorCollection,
+	facts: ThemeFactStore,
+	changedPaths: string[],
+): ThemeBehaviorCollection {
+	const changed = new Set(changedPaths);
+	const replacement = collectThemeBehavior(
+		changedPaths.flatMap((path) => facts.getFile(path)),
 	);
+	const previousChangedRecords = previous.records.filter((record) =>
+		changed.has(record.fromPath),
+	);
+	const previousChangedAnalyses = previous.sourceAnalyses.filter((record) =>
+		changed.has(record.path),
+	);
+	if (
+		isDeepStrictEqual(previousChangedRecords, replacement.records) &&
+		isDeepStrictEqual(previousChangedAnalyses, replacement.sourceAnalyses)
+	) {
+		return previous;
+	}
+	const records = [
+		...previous.records.filter((record) => !changed.has(record.fromPath)),
+		...replacement.records,
+	].sort((a, b) => compareCanonicalStrings(a.id, b.id));
+	return {
+		records,
+		sourceAnalyses: [
+			...previous.sourceAnalyses.filter((record) => !changed.has(record.path)),
+			...replacement.sourceAnalyses,
+		].sort((a, b) => compareCanonicalStrings(a.id, b.id)),
+		evidence: records.map((record) => ({
+			id: record.id,
+			kind: "behavior" as const,
+			file: record.fromPath,
+			span: record.span,
+			extractor: record.extractor,
+		})),
+	};
 }
 
 function modelWithCollectedRecords(
@@ -1184,8 +1490,123 @@ function modelWithCollectedRecords(
 	capabilitySignalsBySource: Map<string, ThemeCapabilitySignalRecord[]>,
 	capabilitiesBySource: Map<string, ThemeCapabilityRecord[]>,
 	classificationsBySource: Map<string, ThemeClassificationRecord[]>,
-	facts: ThemeFact[],
+	behavior: ThemeBehaviorCollection,
+	evidenceBySource: Map<string, ThemeEvidenceRecord[]>,
+	reuse?: {
+		model: ThemeSemanticModel;
+		collection: ThemeCollectionState;
+		behavior: ThemeBehaviorCollection;
+	},
 ): ThemeSemanticModel {
+	if (
+		reuse &&
+		sameMapProjections(
+			reuse.collection.declarations,
+			declarationsBySource,
+			(result) => result.declarations,
+		) &&
+		sameMapValues(
+			reuse.collection.resolvedReferencesById,
+			resolvedReferencesById,
+		) &&
+		sameMapValues(reuse.collection.schemaSettings, schemaSettingsBySource) &&
+		sameMapValues(reuse.collection.instances, instancesBySource) &&
+		sameMapValues(reuse.collection.locales, localesBySource) &&
+		isDeepStrictEqual(reuse.collection.metafields.current, metafields) &&
+		sameMapValues(
+			reuse.collection.capabilitySignals,
+			capabilitySignalsBySource,
+		) &&
+		sameMapValues(reuse.collection.capabilities, capabilitiesBySource) &&
+		sameMapValues(reuse.collection.classifications, classificationsBySource) &&
+		reuse.behavior === behavior
+	) {
+		const dataFlowInputs = [...dataFlowInputsBySource.values()];
+		const derivedDataFlow = [...derivedDataFlowBySource.values()];
+		const inputDataAccessesUnchanged = sameMapProjections(
+			reuse.collection.dataFlowInputs,
+			dataFlowInputsBySource,
+			(result) => result.dataAccesses,
+		);
+		const derivedDataAccessesUnchanged = sameMapProjections(
+			reuse.collection.derivedDataFlow,
+			derivedDataFlowBySource,
+			(result) => result.dataAccesses,
+		);
+		return {
+			...model,
+			files: [...declarationsBySource.keys()]
+				.sort((a, b) => compareCanonicalStrings(a, b))
+				.flatMap((path) => [
+					...(declarationsBySource.get(path)?.files.values() ?? []),
+				]),
+			pages: reuse.model.pages,
+			declarations: reuse.model.declarations,
+			references: reuse.model.references,
+			schemas: reuse.model.schemas,
+			settings: reuse.model.settings,
+			blocks: reuse.model.blocks,
+			blockSettings: reuse.model.blockSettings,
+			settingReads: reuse.model.settingReads,
+			sectionInstances: reuse.model.sectionInstances,
+			blockInstances: reuse.model.blockInstances,
+			localeKeys: reuse.model.localeKeys,
+			localeTranslations: reuse.model.localeTranslations,
+			localeReferences: reuse.model.localeReferences,
+			dataAccesses:
+				inputDataAccessesUnchanged && derivedDataAccessesUnchanged
+					? reuse.model.dataAccesses
+					: uniqueById([
+							...dataFlowInputs.flatMap((result) => result.dataAccesses),
+							...derivedDataFlow.flatMap((result) => result.dataAccesses),
+						]),
+			variableReads: sameMapProjections(
+				reuse.collection.dataFlowInputs,
+				dataFlowInputsBySource,
+				(result) => result.variableReads,
+			)
+				? reuse.model.variableReads
+				: uniqueById(dataFlowInputs.flatMap((result) => result.variableReads)),
+			renderArguments: sameMapProjections(
+				reuse.collection.dataFlowInputs,
+				dataFlowInputsBySource,
+				(result) => result.renderArguments,
+			)
+				? reuse.model.renderArguments
+				: uniqueById(
+						dataFlowInputs.flatMap((result) => result.renderArguments),
+					),
+			expectedInputs: sameMapProjections(
+				reuse.collection.derivedDataFlow,
+				derivedDataFlowBySource,
+				(result) => result.expectedInputs,
+			)
+				? reuse.model.expectedInputs
+				: uniqueById(
+						derivedDataFlow.flatMap((result) => result.expectedInputs),
+					),
+			renderSites: sameMapProjections(
+				reuse.collection.derivedDataFlow,
+				derivedDataFlowBySource,
+				(result) => result.renderSites,
+			)
+				? reuse.model.renderSites
+				: uniqueById(derivedDataFlow.flatMap((result) => result.renderSites)),
+			metafieldDefinitions: reuse.model.metafieldDefinitions,
+			metafieldReads: reuse.model.metafieldReads,
+			metafieldSchema: reuse.model.metafieldSchema,
+			capabilitySignals: reuse.model.capabilitySignals,
+			capabilities: reuse.model.capabilities,
+			classifications: reuse.model.classifications,
+			behavior: reuse.model.behavior,
+			sourceAnalyses: reuse.model.sourceAnalyses,
+			evidence: replaceEvidenceSources(
+				reuse.model.evidence,
+				reuse.collection.evidenceBySource,
+				evidenceBySource,
+			),
+		};
+	}
 	const files: ThemeFileRecord[] = [];
 	const declarations: ThemeDeclaration[] = [];
 	for (const path of [...declarationsBySource.keys()].sort((a, b) =>
@@ -1242,7 +1663,6 @@ function modelWithCollectedRecords(
 		instances.flatMap((result) => result.sectionInstances),
 		instances.flatMap((result) => result.blockInstances),
 	);
-	const behavior = collectThemeBehavior(facts);
 	return {
 		...model,
 		files,
@@ -1304,10 +1724,13 @@ function modelWithCollectedRecords(
 		behavior: behavior.records,
 		sourceAnalyses: behavior.sourceAnalyses,
 		evidence: uniqueById([
-			...model.evidence.filter(
-				(evidence) =>
-					evidence.kind !== "behavior" && evidence.kind !== "localeTranslation",
-			),
+			...[...evidenceBySource.values()]
+				.flat()
+				.filter(
+					(evidence) =>
+						evidence.kind !== "behavior" &&
+						evidence.kind !== "localeTranslation",
+				),
 			...behavior.evidence,
 			...locales
 				.flatMap((result) => result.localeTranslations)
@@ -1320,6 +1743,63 @@ function modelWithCollectedRecords(
 				})),
 		]),
 	};
+}
+
+function sameMapProjections<Key, Value, Projection>(
+	left: ReadonlyMap<Key, Value>,
+	right: ReadonlyMap<Key, Value>,
+	project: (value: Value) => Projection,
+): boolean {
+	if (left.size !== right.size) return false;
+	for (const [key, value] of left) {
+		const other = right.get(key);
+		if (
+			other === undefined ||
+			(value !== other && !isDeepStrictEqual(project(value), project(other)))
+		) {
+			return false;
+		}
+	}
+	return true;
+}
+
+function sameMapValues<Key, Value>(
+	left: ReadonlyMap<Key, Value>,
+	right: ReadonlyMap<Key, Value>,
+): boolean {
+	if (left.size !== right.size) return false;
+	for (const [key, value] of left) {
+		const other = right.get(key);
+		if (other !== value && !isDeepStrictEqual(other, value)) return false;
+	}
+	return true;
+}
+
+function replaceEvidenceSources(
+	previous: ThemeEvidenceRecord[],
+	oldBySource: ReadonlyMap<string, ThemeEvidenceRecord[]>,
+	nextBySource: ReadonlyMap<string, ThemeEvidenceRecord[]>,
+): ThemeEvidenceRecord[] {
+	const changedSources = new Set<string>();
+	for (const path of new Set([...oldBySource.keys(), ...nextBySource.keys()])) {
+		if (oldBySource.get(path) !== nextBySource.get(path))
+			changedSources.add(path);
+	}
+	if (changedSources.size === 0) return previous;
+	return [
+		...previous.filter(
+			(record) =>
+				record.kind === "behavior" ||
+				record.kind === "localeTranslation" ||
+				!changedSources.has(record.file),
+		),
+		...[...changedSources].flatMap((path) =>
+			(nextBySource.get(path) ?? []).filter(
+				(record) =>
+					record.kind !== "behavior" && record.kind !== "localeTranslation",
+			),
+		),
+	].sort((a, b) => compareCanonicalStrings(a.id, b.id));
 }
 
 function uniqueById<RecordValue extends { id: string }>(

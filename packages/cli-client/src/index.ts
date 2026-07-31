@@ -27,6 +27,7 @@ import { fileURLToPath } from "node:url";
 // runtime. Its values are loaded by the commands that need them — see below.
 import type {
 	compileNazareArtifact,
+	computeNazareTheme,
 	inspectNazareTheme,
 	PersistedThemeInspection,
 	ThemeAnalysisCache,
@@ -629,20 +630,20 @@ async function runInspectThemeQuery(
 		return hasErrors(prepared.persisted.issues) ? 1 : 0;
 	}
 
-	const inspected = await analyzePreparedThemeInspection(prepared);
-	const impact = (await compiler()).getThemeFileImpact(inspected, path);
+	const computation = await computePreparedThemeInspection(prepared);
+	const impact = computation.getFileImpact(path);
 	if (!impact) {
 		output.error(
-			`Theme file ${path} was not found under inspected root ${inspected.root}`,
+			`Theme file ${path} was not found under inspected root ${computation.model.root}`,
 		);
 		return 1;
 	}
 	output.log(
 		format === "json"
-			? JSON.stringify({ root: inspected.root, ...impact }, null, 2)
+			? JSON.stringify({ root: computation.model.root, ...impact }, null, 2)
 			: renderThemeFileImpact(impact),
 	);
-	return themeInspectionStatus(inspected);
+	return hasErrors(computation.model.issues) ? 1 : 0;
 }
 
 type PreparedThemeInspection = {
@@ -738,11 +739,11 @@ async function prepareThemeInspection(
 	};
 }
 
-async function analyzePreparedThemeInspection(
+async function computePreparedThemeInspection(
 	prepared: PreparedThemeInspection,
-): Promise<ReturnType<typeof inspectNazareTheme>> {
+): Promise<ReturnType<typeof computeNazareTheme>> {
 	const compilerModule = await compiler();
-	const inspected = compilerModule.inspectNazareTheme(prepared.files, {
+	const computation = compilerModule.computeNazareTheme(prepared.files, {
 		root: prepared.root,
 		strictness: prepared.strictness,
 		cache: prepared.factCache,
@@ -752,27 +753,25 @@ async function analyzePreparedThemeInspection(
 	});
 	if (prepared.persisted?.inputFingerprint !== prepared.inputFingerprint) {
 		const impacts: Record<string, ThemeFileImpact> = Object.create(null);
-		const projected = compilerModule.getThemeFileImpacts(inspected);
-		for (const file of inspected.nodes) {
-			if (file.kind !== "file") continue;
-			const impact = projected.get(file.path);
-			if (!impact) {
-				throw new Error(
-					`Compiler did not produce impact projection for ${file.path}`,
-				);
-			}
-			impacts[file.path] = impact;
+		for (const [path, impact] of computation.getFileImpacts()) {
+			impacts[path] = impact;
 		}
 		await mkdir(dirname(prepared.cachePath), { recursive: true });
 		await writePersistedThemeInspection(prepared.cachePath, {
 			inputFingerprint: prepared.inputFingerprint,
 			root: prepared.root,
-			issues: inspected.issues,
+			issues: computation.model.issues,
 			impacts,
 			factCache: prepared.factCache,
 		});
 	}
-	return inspected;
+	return computation;
+}
+
+async function analyzePreparedThemeInspection(
+	prepared: PreparedThemeInspection,
+): Promise<ReturnType<typeof inspectNazareTheme>> {
+	return (await computePreparedThemeInspection(prepared)).toInspectGraph();
 }
 
 function themeInspectionStatus(

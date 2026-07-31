@@ -104,12 +104,21 @@ export type ThemeSourceLanguage =
 
 export type ThemeDomHookKind = "class" | "id" | "attribute";
 
+export type ThemeJavaScriptOwner = {
+	kind: "function" | "method" | "anonymousFunction" | "module";
+	name?: string;
+	exports: Array<"named" | "default">;
+	id: string;
+	span?: SourceSpan;
+};
+
 export type ThemeBehaviorFact = {
 	kind: "behavior";
 	fromPath: string;
 	name: string;
 	span?: SourceSpan;
 	extractor: string;
+	javaScriptOwner?: ThemeJavaScriptOwner;
 } & (
 	| {
 			subjectKind: "domHook";

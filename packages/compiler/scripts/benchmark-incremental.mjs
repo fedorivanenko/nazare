@@ -8,7 +8,7 @@ const REPOSITORY_ROOT = resolve(
 	dirname(fileURLToPath(import.meta.url)),
 	"../../..",
 );
-const BENCHMARK_SCHEMA_VERSION = 1;
+const BENCHMARK_SCHEMA_VERSION = 2;
 const EDIT_VARIANT_COUNT = 2;
 const EMPTY_ASSET_CONTENTS = "";
 const DEFAULT_CORPUS_PATH = "fixtures/canonical-theme";
@@ -17,6 +17,8 @@ const DEFAULT_ITERATIONS = 10;
 const DEFAULT_WARMUPS = 3;
 const DEFAULT_SCALE_FACTORS = [1, 2, 4];
 const DEFAULT_MAX_GROWTH_RATIO = 6;
+const DEFAULT_GRAPH_PROJECTION = "lazy";
+const DEFAULT_EDIT_KIND = "semantic";
 const CLONED_DIRECTORIES = new Set(["blocks", "sections", "snippets"]);
 const CONTENT_FILE_PATTERNS = [
 	/\.nz\.liquid$/,
@@ -61,6 +63,8 @@ export function parseArguments(
 		warmups: DEFAULT_WARMUPS,
 		scaleFactors: [...DEFAULT_SCALE_FACTORS],
 		maxGrowthRatio: DEFAULT_MAX_GROWTH_RATIO,
+		graphProjection: DEFAULT_GRAPH_PROJECTION,
+		editKind: DEFAULT_EDIT_KIND,
 	};
 	for (let index = 0; index < argumentsList.length; index += 1) {
 		const argument = argumentsList[index];
@@ -77,6 +81,10 @@ export function parseArguments(
 			options.scaleFactors = parseScaleFactors(requiredValue(argument, value));
 		} else if (argument === "--max-growth-ratio") {
 			options.maxGrowthRatio = positiveNumber(argument, value);
+		} else if (argument === "--graph-projection") {
+			options.graphProjection = graphProjection(argument, value);
+		} else if (argument === "--edit-kind") {
+			options.editKind = editKind(argument, value);
 		} else {
 			throw new Error(`Unknown argument ${argument}`);
 		}
@@ -95,20 +103,26 @@ function benchmarkIncrementalUpdates(ThemeProgram, options) {
 	const samples = options.scaleFactors.map((scaleFactor) => {
 		const files = scaleCorpus(baseFiles, scaleFactor);
 		const coldStart = performance.now();
-		const program = new ThemeProgram(files);
+		const program = new ThemeProgram(files, {
+			graphProjection: options.graphProjection,
+		});
 		const coldMs = performance.now() - coldStart;
 		for (let index = 0; index < options.warmups; index += 1) {
-			program.updateFile(editVariant(editFile, index));
+			program.updateFile(editVariant(editFile, index, options.editKind));
 		}
 		const edits = [];
 		const telemetry = [];
 		for (let index = 0; index < options.iterations; index += 1) {
 			const startedAt = performance.now();
 			const update = program.updateFile(
-				editVariant(editFile, options.warmups + index),
+				editVariant(editFile, options.warmups + index, options.editKind),
 			);
 			edits.push(performance.now() - startedAt);
-			assertSingleFileEditTelemetry(update.telemetry, options.editPath);
+			assertSingleFileEditTelemetry(
+				update.telemetry,
+				options.editPath,
+				options.editKind,
+			);
 			telemetry.push(update.telemetry);
 		}
 		return {
@@ -140,6 +154,8 @@ function benchmarkIncrementalUpdates(ThemeProgram, options) {
 			warmups: options.warmups,
 			scaleFactors: options.scaleFactors,
 			maxGrowthRatio: options.maxGrowthRatio,
+			graphProjection: options.graphProjection,
+			editKind: options.editKind,
 			inputIoTimed: false,
 			assetContentsLoaded: false,
 			scaledDirectories: [...CLONED_DIRECTORIES].sort(compareAscii),
@@ -218,11 +234,13 @@ function readCorpusFiles(corpusRoot) {
 	return files.sort((left, right) => compareAscii(left.path, right.path));
 }
 
-function editVariant(file, sequence) {
-	return {
-		...file,
-		contents: `${file.contents}\n{% comment %} incremental benchmark ${sequence % EDIT_VARIANT_COUNT} {% endcomment %}`,
-	};
+function editVariant(file, sequence, kind) {
+	const variant = sequence % EDIT_VARIANT_COUNT;
+	const suffix =
+		kind === "semantic"
+			? `{{ benchmark_incremental_input_${variant} }}`
+			: `{% comment %} incremental benchmark ${variant} {% endcomment %}`;
+	return { ...file, contents: `${file.contents}\n${suffix}` };
 }
 
 function clonedPath(path, copy) {
@@ -231,10 +249,15 @@ function clonedPath(path, copy) {
 	return `${stem}-benchmark-copy-${copy}${extension}`;
 }
 
-function assertSingleFileEditTelemetry(telemetry, editPath) {
+function assertSingleFileEditTelemetry(telemetry, editPath, editKind) {
 	if (telemetry.filesParsed !== 1) {
 		throw new Error(
 			`Single-file edit of ${editPath} parsed ${telemetry.filesParsed} files; expected exactly 1`,
+		);
+	}
+	if (editKind === "semantic" && telemetry.semanticRecordsReplaced === 0) {
+		throw new Error(
+			`Semantic edit of ${editPath} replaced no semantic records`,
 		);
 	}
 }
@@ -287,6 +310,22 @@ function nonNegativeInteger(argument, value) {
 	const parsed = Number(requiredValue(argument, value));
 	if (!Number.isSafeInteger(parsed) || parsed < 0) {
 		throw new Error(`${argument} expects a non-negative integer`);
+	}
+	return parsed;
+}
+
+function editKind(argument, value) {
+	const parsed = requiredValue(argument, value);
+	if (parsed !== "semantic" && parsed !== "syntax-neutral") {
+		throw new Error(`${argument} expects semantic or syntax-neutral`);
+	}
+	return parsed;
+}
+
+function graphProjection(argument, value) {
+	const parsed = requiredValue(argument, value);
+	if (parsed !== "lazy" && parsed !== "eager") {
+		throw new Error(`${argument} expects lazy or eager`);
 	}
 	return parsed;
 }

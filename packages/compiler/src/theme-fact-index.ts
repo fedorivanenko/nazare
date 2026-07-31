@@ -27,6 +27,17 @@ export class ThemeFactIndex {
 		for (const [path, bucket] of byFile) this.addFileFacts(path, bucket);
 	}
 
+	fork(): ThemeFactIndex {
+		const fork = new ThemeFactIndex();
+		copySetMap(this.declarationsByKey, fork.declarationsByKey);
+		copySetMap(this.dependentsByKey, fork.dependentsByKey);
+		copySetMap(this.declarationKeysByPath, fork.declarationKeysByPath);
+		for (const [path, entries] of this.entriesByFile) {
+			fork.entriesByFile.set(path, entries);
+		}
+		return fork;
+	}
+
 	replaceFileFacts(path: string, facts: ThemeFact[]): void {
 		assertFactPaths(path, facts);
 		this.removeFileFacts(path);
@@ -109,6 +120,13 @@ export class ThemeFactIndex {
 		}
 		this.entriesByFile.delete(path);
 	}
+}
+
+function copySetMap(
+	source: Map<string, Set<string>>,
+	target: Map<string, Set<string>>,
+): void {
+	for (const [key, values] of source) target.set(key, new Set(values));
 }
 
 function assertFactPaths(path: string, facts: ThemeFact[]): void {

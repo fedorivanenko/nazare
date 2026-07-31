@@ -136,17 +136,6 @@ export class ThemeGraphStore {
 				throw new Error(`Graph edge delta references missing edge ${id}`);
 			this.edgesById.set(id, edge);
 		}
-		const views = { ...graph.views };
-		for (const key of Object.keys(graph.views) as Array<
-			keyof InspectNazareThemeResult["views"]
-		>) {
-			if (sameRecord(this.graph.views[key], graph.views[key])) {
-				(views as Record<string, unknown>)[key] = this.graph.views[key];
-			}
-		}
-		const previousEvidenceById = new Map(
-			this.graph.evidence.map((record) => [record.id, record]),
-		);
 		this.graph = {
 			...graph,
 			nodes: [...this.nodesById.values()].sort((a, b) =>
@@ -155,11 +144,6 @@ export class ThemeGraphStore {
 			edges: [...this.edgesById.values()].sort((a, b) =>
 				compareCanonicalStrings(a.id, b.id),
 			),
-			evidence: graph.evidence.map((record) => {
-				const previous = previousEvidenceById.get(record.id);
-				return previous && sameRecord(previous, record) ? previous : record;
-			}),
-			views,
 			issues: sameRecord(this.graph.issues, graph.issues)
 				? this.graph.issues
 				: graph.issues,
@@ -324,7 +308,6 @@ function uniqueRecordIds(
 function validateGraphRecords(graph: InspectNazareThemeResult): void {
 	const nodeIds = uniqueRecordIds(graph.nodes, "graph node");
 	uniqueRecordIds(graph.edges, "graph edge");
-	const evidenceIds = uniqueRecordIds(graph.evidence, "graph evidence");
 	for (const edge of graph.edges) {
 		if (!nodeIds.has(edge.from)) {
 			throw new Error(
@@ -334,18 +317,14 @@ function validateGraphRecords(graph: InspectNazareThemeResult): void {
 		if (!nodeIds.has(edge.to)) {
 			throw new Error(`Graph edge ${edge.id} has missing to node ${edge.to}`);
 		}
-		validateEvidenceIds(edge, evidenceIds, `Graph edge ${edge.id}`);
+		validateEvidenceIds(edge, `Graph edge ${edge.id}`);
 	}
 	for (const node of graph.nodes) {
-		validateEvidenceIds(node, evidenceIds, `Graph node ${node.id}`);
+		validateEvidenceIds(node, `Graph node ${node.id}`);
 	}
 }
 
-function validateEvidenceIds(
-	record: object,
-	evidenceIds: Set<string>,
-	owner: string,
-): void {
+function validateEvidenceIds(record: object, owner: string): void {
 	if (!("evidenceIds" in record) || record.evidenceIds === undefined) return;
 	if (!Array.isArray(record.evidenceIds)) {
 		throw new Error(`${owner} evidenceIds must be an array`);
@@ -353,9 +332,6 @@ function validateEvidenceIds(
 	for (const evidenceId of record.evidenceIds) {
 		if (typeof evidenceId !== "string") {
 			throw new Error(`${owner} has a non-string evidence id`);
-		}
-		if (!evidenceIds.has(evidenceId)) {
-			throw new Error(`${owner} has missing evidence ${evidenceId}`);
 		}
 	}
 }

@@ -66,7 +66,14 @@ class ThemeBuildState {
 		}
 		this.importGraph = new ThemeImportGraph(this.files());
 		this.semanticSession =
-			semanticProgram ?? new ThemeProgram(this.files(), this.options);
+			semanticProgram ??
+			new ThemeProgram(this.files(), {
+				...this.options,
+				graphProjection: "eager",
+			});
+		// Build updates still expose graph deltas. Supplying a lazy semantic
+		// program opts it into graph projection at this explicit boundary.
+		this.semanticSession.getGraph();
 		this.build = buildNazareThemeWorkspace(this.files(), this.options);
 		for (const artifact of this.build.artifacts) {
 			if (artifact.emitted)

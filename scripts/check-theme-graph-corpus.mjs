@@ -11,11 +11,6 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-	compareToBaseline,
-	report,
-	scoreGraph,
-} from "./check-doc-contract-agreement.mjs";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -28,8 +23,6 @@ const manifestPath = join(
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 const options = parseArguments(process.argv.slice(2));
 const failures = [];
-
-const agreementScores = {};
 
 for (const [slug, expected] of Object.entries(manifest.themes)) {
 	if (options.only.size > 0 && !options.only.has(slug)) continue;
@@ -46,21 +39,9 @@ for (const [slug, expected] of Object.entries(manifest.themes)) {
 		console.log(
 			`PASS ${slug}: ${graph.nodes.length} nodes, ${graph.edges.length} edges, ${graph.issues.length} issues`,
 		);
-		const score = scoreGraph(graph);
-		if (score.declared > 0) agreementScores[slug] = score;
 	} catch (error) {
 		failures.push(`${slug}: ${error instanceof Error ? error.message : String(error)}`);
 		console.error(`FAIL ${failures.at(-1)}`);
-	}
-}
-
-// Declarations override inference in the graph, so inference quality is not
-// observable in the output of a documented file. Score it here or it rots.
-if (Object.keys(agreementScores).length > 0) {
-	console.log("\nDeclared-vs-inferred requiredness agreement:");
-	for (const [slug, score] of Object.entries(agreementScores)) {
-		report(slug, score);
-		failures.push(...compareToBaseline(slug, score));
 	}
 }
 
@@ -171,8 +152,8 @@ function expandHome(path) {
 }
 
 function checkGraph(slug, graph, expected) {
-	assert(graph.version === 3, `expected graph version 3, got ${graph.version}`);
-	for (const collection of ["nodes", "edges", "evidence", "issues"]) {
+	assert(graph.version === 5, `expected graph version 5, got ${graph.version}`);
+	for (const collection of ["nodes", "edges", "issues"]) {
 		assert(Array.isArray(graph[collection]), `missing ${collection} array`);
 	}
 	for (const [collection, minimum] of Object.entries(expected.minimums)) {
@@ -183,7 +164,6 @@ function checkGraph(slug, graph, expected) {
 	}
 
 	const nodesById = uniqueIndex(graph.nodes, "node");
-	const evidenceById = uniqueIndex(graph.evidence, "evidence");
 	uniqueIndex(graph.edges, "edge");
 	assertCanonicalOrder(graph.nodes, "nodes");
 	assertCanonicalOrder(graph.edges, "edges");
@@ -192,27 +172,12 @@ function checkGraph(slug, graph, expected) {
 		assert(nodesById.has(edge.from), `edge ${edge.id} has missing source ${edge.from}`);
 		assert(nodesById.has(edge.to), `edge ${edge.id} has missing target ${edge.to}`);
 	}
-	for (const record of [...graph.nodes, ...graph.edges]) {
-		for (const evidenceId of record.evidenceIds ?? []) {
-			assert(
-				evidenceById.has(evidenceId),
-				`${record.id} cites missing evidence ${evidenceId}`,
-			);
-		}
-	}
-	for (const node of graph.nodes.filter((item) =>
-		["classification", "capability"].includes(item.kind),
-	)) {
-		assert(node.evidenceIds?.length > 0, `${node.id} has no supporting evidence`);
-	}
-
 	for (const id of expected.requiredNodeIds) {
 		assert(nodesById.has(id), `required node missing: ${id}`);
 	}
 	for (const matcher of expected.requiredEdges) {
 		const edge = graph.edges.find((candidate) => matches(candidate, matcher));
 		assert(edge, `required edge missing: ${JSON.stringify(matcher)}`);
-		assert(edge.evidenceIds?.length > 0, `required edge ${edge.id} has no evidence`);
 	}
 	for (const query of expected.impact) {
 		if (query.dependency) {
@@ -250,15 +215,8 @@ function checkGraph(slug, graph, expected) {
 		const count = graph.issues.filter((issue) => issue.code === code).length;
 		assert(count <= maximum, `${code} count ${count} exceeds ${maximum}`);
 	}
-	for (const view of [
-		"themeStructure",
-		"shopifyData",
-		"storefrontArchitecture",
-		"configuration",
-		"changeImpact",
-	]) {
-		assert(graph.views?.[view], `missing ${view} view`);
-	}
+	assert(graph.evidence === undefined, "structural graph embeds evidence");
+	assert(graph.views === undefined, "structural graph embeds precomputed views");
 	assert(slug.length > 0, "theme slug missing");
 }
 

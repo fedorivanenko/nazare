@@ -112,6 +112,24 @@ test("persisted inspection validates facts and impact projections", () => {
 		/invalid cache entry for "assets\/theme.js"/,
 	);
 
+	const missingJavaScriptOwner = JSON.parse(serialized);
+	delete missingJavaScriptOwner.entries["assets/theme.js"].facts.find(
+		(fact) => fact.kind === "behavior",
+	).javaScriptOwner;
+	assert.throws(
+		() => parsePersistedThemeInspection(missingJavaScriptOwner),
+		/invalid cache entry for "assets\/theme.js"/,
+	);
+
+	const malformedJavaScriptOwner = JSON.parse(serialized);
+	malformedJavaScriptOwner.entries["assets/theme.js"].facts.find(
+		(fact) => fact.kind === "behavior",
+	).javaScriptOwner.exports = ["named", "default"];
+	assert.throws(
+		() => parsePersistedThemeInspection(malformedJavaScriptOwner),
+		/invalid cache entry for "assets\/theme.js"/,
+	);
+
 	const malformedImpact = JSON.parse(serialized);
 	malformedImpact.impacts["assets/theme.js"].usage = "probably-used";
 	assert.throws(

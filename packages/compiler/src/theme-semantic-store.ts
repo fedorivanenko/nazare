@@ -10,6 +10,9 @@ const NON_RECORD_MODEL_KEYS = new Set<keyof ThemeSemanticModel>([
 	"issues",
 ]);
 
+type RecordGroups = Map<string, unknown[]>;
+type RecordGroupsByField = Map<keyof ThemeSemanticModel, RecordGroups>;
+
 export type ThemeSemanticUpdate = {
 	model: ThemeSemanticModel;
 	addedRecordIds: string[];
@@ -21,10 +24,14 @@ export class ThemeSemanticStore {
 	private model: ThemeSemanticModel;
 	private readonly recordsById = new Map<string, unknown>();
 	private readonly recordIdsBySourcePath = new Map<string, Set<string>>();
+	private recordGroupsById: RecordGroups;
+	private recordGroupsByField: RecordGroupsByField;
 
 	constructor(model: ThemeSemanticModel) {
 		this.model = canonicalizeSemanticModel(model);
-		this.indexModel(this.model);
+		this.recordGroupsByField = groupRecordsByField(this.model);
+		this.recordGroupsById = combineFieldGroups(this.recordGroupsByField);
+		this.indexRecordGroups(this.recordGroupsById);
 	}
 
 	getModel(): ThemeSemanticModel {
@@ -43,36 +50,46 @@ export class ThemeSemanticStore {
 		return new ThemeSemanticTransaction(
 			this,
 			this.model,
+			this.recordGroupsById,
+			this.recordGroupsByField,
 			mergeSemanticModels(this.model, next),
 		);
 	}
 
-	commit(update: ThemeSemanticUpdate): ThemeSemanticUpdate {
+	commit(
+		update: ThemeSemanticUpdate,
+		nextGroups: RecordGroups,
+		nextGroupsByField: RecordGroupsByField,
+	): ThemeSemanticUpdate {
 		this.model = update.model;
 		for (const id of [...update.removedRecordIds, ...update.changedRecordIds]) {
-			const previous = this.recordsById.get(id);
-			if (previous)
+			for (const previous of this.recordGroupsById.get(id) ?? []) {
 				removeSourceIndex(this.recordIdsBySourcePath, id, sourcePath(previous));
+			}
 			this.recordsById.delete(id);
 		}
-		const updatedRecordIds = new Set([
-			...update.addedRecordIds,
-			...update.changedRecordIds,
-		]);
-		for (const record of records(update.model)) {
-			if (!updatedRecordIds.has(record.id)) continue;
-			this.recordsById.set(record.id, record);
-			const path = sourcePath(record);
-			if (path) addSourceIndex(this.recordIdsBySourcePath, path, record.id);
+		for (const id of [...update.addedRecordIds, ...update.changedRecordIds]) {
+			const records = nextGroups.get(id) ?? [];
+			const representative = records.at(-1);
+			if (representative) this.recordsById.set(id, representative);
+			for (const record of records) {
+				const path = sourcePath(record);
+				if (path) addSourceIndex(this.recordIdsBySourcePath, path, id);
+			}
 		}
+		this.recordGroupsById = nextGroups;
+		this.recordGroupsByField = nextGroupsByField;
 		return update;
 	}
 
-	private indexModel(model: ThemeSemanticModel): void {
-		for (const record of records(model)) {
-			this.recordsById.set(record.id, record);
-			const path = sourcePath(record);
-			if (path) addSourceIndex(this.recordIdsBySourcePath, path, record.id);
+	private indexRecordGroups(groups: Map<string, unknown[]>): void {
+		for (const [id, records] of groups) {
+			const representative = records.at(-1);
+			if (representative) this.recordsById.set(id, representative);
+			for (const record of records) {
+				const path = sourcePath(record);
+				if (path) addSourceIndex(this.recordIdsBySourcePath, path, id);
+			}
 		}
 	}
 }
@@ -81,26 +98,61 @@ export class ThemeSemanticTransaction {
 	readonly update: ThemeSemanticUpdate;
 	private committed = false;
 
+	private readonly nextGroups: RecordGroups;
+	private readonly nextGroupsByField: RecordGroupsByField;
+
 	constructor(
 		private readonly store: ThemeSemanticStore,
-		previous: ThemeSemanticModel,
+		previousModel: ThemeSemanticModel,
+		old: RecordGroups,
+		oldByField: RecordGroupsByField,
 		model: ThemeSemanticModel,
 	) {
-		const old = groupRecordsById(previous);
-		const next = groupRecordsById(model);
-		const addedRecordIds = [...next.keys()].filter((id) => !old.has(id)).sort();
-		const removedRecordIds = [...old.keys()]
-			.filter((id) => !next.has(id))
+		const nextByField = new Map(oldByField);
+		const next = new Map(old);
+		const affectedIds = new Set<string>();
+		for (const [key, value] of recordArrays(model)) {
+			const previousValue = previousModel[key];
+			if (value === previousValue || !Array.isArray(previousValue)) continue;
+			const fieldAffectedIds = changedIds(previousValue, value);
+			if (fieldAffectedIds.size === 0) continue;
+			const previousGroups = oldByField.get(key) ?? new Map();
+			const currentGroups = groupSelectedRecords(value, fieldAffectedIds);
+			const nextFieldGroups = new Map(previousGroups);
+			for (const id of fieldAffectedIds) {
+				affectedIds.add(id);
+				const previousRecords = previousGroups.get(id) ?? [];
+				const currentRecords = currentGroups.get(id) ?? [];
+				const retained = removeRecordOccurrences(
+					next.get(id) ?? [],
+					previousRecords,
+				);
+				const replacement = [...retained, ...currentRecords];
+				if (replacement.length === 0) next.delete(id);
+				else next.set(id, replacement);
+				if (currentRecords.length === 0) nextFieldGroups.delete(id);
+				else nextFieldGroups.set(id, currentRecords);
+			}
+			nextByField.set(key, nextFieldGroups);
+		}
+		this.nextGroups = next;
+		this.nextGroupsByField = nextByField;
+		const addedRecordIds = [...affectedIds]
+			.filter((id) => !old.has(id) && next.has(id))
 			.sort();
-		const changedRecordIds = [...next.entries()]
-			.filter(([id, groupedRecords]) => {
+		const removedRecordIds = [...affectedIds]
+			.filter((id) => old.has(id) && !next.has(id))
+			.sort();
+		const changedRecordIds = [...affectedIds]
+			.filter((id) => {
 				const previousRecords = old.get(id);
+				const nextRecords = next.get(id);
 				return (
 					previousRecords !== undefined &&
-					!sameRecords(previousRecords, groupedRecords)
+					nextRecords !== undefined &&
+					!sameRecords(previousRecords, nextRecords)
 				);
 			})
-			.map(([id]) => id)
 			.sort();
 		this.update = { model, addedRecordIds, removedRecordIds, changedRecordIds };
 	}
@@ -109,7 +161,11 @@ export class ThemeSemanticTransaction {
 		if (this.committed)
 			throw new Error("Semantic transaction already committed");
 		this.committed = true;
-		return this.store.commit(this.update);
+		return this.store.commit(
+			this.update,
+			this.nextGroups,
+			this.nextGroupsByField,
+		);
 	}
 }
 
@@ -136,25 +192,66 @@ function canonicalizeSemanticModel(
 	const canonical: ThemeSemanticModel = { ...model };
 	for (const key of Object.keys(model) as Array<keyof ThemeSemanticModel>) {
 		const value = model[key];
-		if (!Array.isArray(value) || !value.every(identified)) continue;
-		const sorted = [...value].sort((a, b) =>
-			identified(a) && identified(b) ? compareCanonicalStrings(a.id, b.id) : 0,
-		);
-		const unchanged = sorted.every((record, index) => record === value[index]);
-		if (!unchanged) (canonical[key] as unknown[]) = sorted;
+		if (!Array.isArray(value)) continue;
+		let previousId: string | undefined;
+		let canonicalOrder = true;
+		for (const record of value) {
+			if (!identified(record)) {
+				canonicalOrder = true;
+				previousId = undefined;
+				break;
+			}
+			if (
+				previousId !== undefined &&
+				compareCanonicalStrings(previousId, record.id) > 0
+			) {
+				canonicalOrder = false;
+				break;
+			}
+			previousId = record.id;
+		}
+		if (!canonicalOrder) {
+			(canonical[key] as unknown[]) = [...value].sort((a, b) =>
+				identified(a) && identified(b)
+					? compareCanonicalStrings(a.id, b.id)
+					: 0,
+			);
+		}
 	}
 	return canonical;
 }
 
 function shareRecords(previous: unknown[], current: unknown[]): unknown[] {
+	if (
+		previous.length === current.length &&
+		current.every((record, index) => record === previous[index])
+	) {
+		return previous;
+	}
 	const previousById = new Map<string, unknown>();
 	for (const record of previous)
 		if (identified(record)) previousById.set(record.id, record);
-	return current.map((record) => {
+	const shared = current.map((record) => {
 		if (!identified(record)) return record;
 		const old = previousById.get(record.id);
 		return old !== undefined && sameRecord(old, record) ? old : record;
 	});
+	return previous.length === shared.length &&
+		shared.every((record, index) => record === previous[index])
+		? previous
+		: shared;
+}
+
+function removeRecordOccurrences(
+	current: unknown[],
+	removed: unknown[],
+): unknown[] {
+	const retained = [...current];
+	for (const record of removed) {
+		const index = retained.indexOf(record);
+		if (index >= 0) retained.splice(index, 1);
+	}
+	return retained;
 }
 
 function sameRecords(previous: unknown[], next: unknown[]): boolean {
@@ -168,9 +265,73 @@ function sameRecord(previous: unknown, next: unknown): boolean {
 	return previous === next || isDeepStrictEqual(previous, next);
 }
 
-function groupRecordsById(model: ThemeSemanticModel): Map<string, unknown[]> {
-	const grouped = new Map<string, unknown[]>();
-	for (const record of records(model)) {
+function groupRecordsByField(model: ThemeSemanticModel): RecordGroupsByField {
+	return new Map(
+		recordArrays(model).map(([key, value]) => [key, groupRecords(value)]),
+	);
+}
+
+function combineFieldGroups(byField: RecordGroupsByField): RecordGroups {
+	const combined: RecordGroups = new Map();
+	for (const groups of byField.values()) {
+		for (const [id, records] of groups) {
+			combined.set(id, [...(combined.get(id) ?? []), ...records]);
+		}
+	}
+	return combined;
+}
+
+function changedIds(previous: unknown[], current: unknown[]): Set<string> {
+	let prefix = 0;
+	while (
+		prefix < previous.length &&
+		prefix < current.length &&
+		sameRecord(previous[prefix], current[prefix])
+	) {
+		prefix += 1;
+	}
+	let previousEnd = previous.length;
+	let currentEnd = current.length;
+	while (
+		previousEnd > prefix &&
+		currentEnd > prefix &&
+		sameRecord(previous[previousEnd - 1], current[currentEnd - 1])
+	) {
+		previousEnd -= 1;
+		currentEnd -= 1;
+	}
+	const ids = new Set<string>();
+	for (const record of previous.slice(prefix, previousEnd)) {
+		if (identified(record)) ids.add(record.id);
+	}
+	for (const record of current.slice(prefix, currentEnd)) {
+		if (identified(record)) ids.add(record.id);
+	}
+	return ids;
+}
+
+function groupSelectedRecords(
+	records: unknown[],
+	selectedIds: ReadonlySet<string>,
+): RecordGroups {
+	const grouped: RecordGroups = new Map();
+	for (const record of records) {
+		if (!identified(record) || !selectedIds.has(record.id)) continue;
+		const values = grouped.get(record.id);
+		if (values) values.push(record);
+		else grouped.set(record.id, [record]);
+	}
+	return grouped;
+}
+
+function groupRecords(records: unknown[]): RecordGroups {
+	const grouped: RecordGroups = new Map();
+	for (const record of records) {
+		if (!identified(record) || record.id.length === 0) {
+			throw new Error(
+				"Semantic model record field contains a record without an id",
+			);
+		}
 		const values = grouped.get(record.id) ?? [];
 		values.push(record);
 		grouped.set(record.id, values);
@@ -178,21 +339,17 @@ function groupRecordsById(model: ThemeSemanticModel): Map<string, unknown[]> {
 	return grouped;
 }
 
-function records(model: ThemeSemanticModel): Array<{ id: string }> {
-	const result: Array<{ id: string }> = [];
-	for (const [key, value] of Object.entries(model)) {
-		if (NON_RECORD_MODEL_KEYS.has(key as keyof ThemeSemanticModel)) continue;
+function recordArrays(
+	model: ThemeSemanticModel,
+): Array<[keyof ThemeSemanticModel, unknown[]]> {
+	const result: Array<[keyof ThemeSemanticModel, unknown[]]> = [];
+	for (const [rawKey, value] of Object.entries(model)) {
+		const key = rawKey as keyof ThemeSemanticModel;
+		if (NON_RECORD_MODEL_KEYS.has(key)) continue;
 		if (!Array.isArray(value)) {
-			throw new Error(`Semantic model field ${key} must be a record array`);
+			throw new Error(`Semantic model field ${rawKey} must be a record array`);
 		}
-		for (const record of value) {
-			if (!identified(record) || record.id.length === 0) {
-				throw new Error(
-					`Semantic model field ${key} contains a record without an id`,
-				);
-			}
-			result.push(record);
-		}
+		result.push([key, value]);
 	}
 	return result;
 }

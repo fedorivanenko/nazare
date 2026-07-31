@@ -35,7 +35,7 @@ mkdir -p "$out/packages" "$out/bin"
 
 pnpm -s typecheck
 
-cp package.json pnpm-lock.yaml pnpm-workspace.yaml LICENSE README.md "$out/"
+cp package.json pnpm-lock.yaml pnpm-workspace.yaml LICENSE "$out/"
 cp -R patches "$out/patches"
 printf '%s\n' "$version" > "$out/VERSION"
 for pkg in source source-cli; do

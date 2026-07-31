@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
 	analyzeThemeSource,
+	computeNazareTheme,
 	getThemeFileImpact,
 	inspectNazareTheme,
 	ThemeProgram,
@@ -47,53 +48,28 @@ const context = {
 };
 
 test("theme compiler links Liquid, CSS, and JavaScript behavior", () => {
-	const graph = inspectNazareTheme(files);
-	const node = (kind, name) =>
-		graph.nodes.find(
-			(candidate) => candidate.kind === kind && candidate.name === name,
+	const program = new ThemeProgram(files);
+	const graph = program.getGraph();
+	const behavior = program.getModel().behavior;
+	const hasBehavior = (subjectKind, name, operation) =>
+		behavior.some(
+			(record) =>
+				record.subjectKind === subjectKind &&
+				record.name === name &&
+				record.operation === operation,
 		);
 
-	assert.ok(node("domHook", "card"));
-	assert.ok(node("domHook", "data-product-id"));
-	assert.ok(node("domHook", "is-active"));
-	assert.ok(node("customProperty", "--card-accent"));
-	assert.ok(node("customEvent", "card:ready"));
-	assert.ok(node("customElement", "product-card"));
-
-	for (const kind of [
-		"emitsHook",
-		"selectsHook",
-		"queriesHook",
-		"mutatesHook",
-		"definesCustomProperty",
-		"readsCustomProperty",
-		"dispatchesEvent",
-		"listensForEvent",
-		"definesCustomElement",
-		"usesCustomElement",
-	]) {
-		assert.ok(
-			graph.edges.some((edge) => edge.kind === kind),
-			kind,
-		);
-	}
+	assert.ok(hasBehavior("domHook", "card", "emits"));
+	assert.ok(hasBehavior("domHook", "data-product-id", "queries"));
+	assert.ok(hasBehavior("domHook", "data-state", "mutates"));
+	assert.ok(hasBehavior("customProperty", "--card-accent", "defines"));
+	assert.ok(hasBehavior("customEvent", "card:ready", "dispatches"));
+	assert.ok(hasBehavior("customEvent", "card:ready", "listens"));
+	assert.ok(hasBehavior("customElement", "product-card", "defines"));
+	assert.ok(hasBehavior("customElement", "product-card", "uses"));
 
 	const scriptImpact = getThemeFileImpact(graph, "assets/theme.js");
 	assert.ok(scriptImpact.dependencies.includes("assets/cart.js"));
-	assert.ok(
-		graph.edges.some(
-			(edge) =>
-				edge.kind === "queriesHook" &&
-				edge.to === "dom-hook:attribute:data-product-id",
-		),
-	);
-	assert.ok(
-		graph.edges.some(
-			(edge) =>
-				edge.kind === "mutatesHook" &&
-				edge.to === "dom-hook:attribute:data-state",
-		),
-	);
 
 	const impact = getThemeFileImpact(graph, "snippets/card.liquid");
 	assert.deepEqual(impact.dependents, [
@@ -102,6 +78,129 @@ test("theme compiler links Liquid, CSS, and JavaScript behavior", () => {
 		"templates/index.liquid",
 	]);
 	assert.deepEqual(impact.affectedPages, ["templates/index.liquid"]);
+});
+
+test("behavior queries connect hooks to JavaScript function owners", () => {
+	const program = new ThemeProgram([
+		{
+			path: "snippets/card.liquid",
+			contents:
+				'<div id="product-card-root" data-product-card class="product-card exported-later"></div>',
+		},
+		{
+			path: "assets/card.js",
+			contents: `export function initializeProductCard() {
+	return document.querySelector('[data-product-card]');
+}
+const activateCard = () => document.querySelector('.product-card');
+export default class CardController {
+	mount() { return document.getElementById('product-card-root'); }
+}
+function initializeExportedLater() {
+	return document.querySelector('.exported-later');
+}
+export { initializeExportedLater };`,
+		},
+	]);
+	const attribute = {
+		subjectKind: "domHook",
+		hookKind: "attribute",
+		name: "data-product-card",
+	};
+	const producers = program.queryBehavior(attribute, "producers").usages;
+	const consumers = program.queryBehavior(attribute, "consumers").usages;
+	assert.equal(producers.length, 1);
+	assert.equal(producers[0].fromPath, "snippets/card.liquid");
+	assert.equal(consumers.length, 1);
+	assert.equal(consumers[0].fromPath, "assets/card.js");
+	assert.deepEqual(
+		{
+			kind: consumers[0].javaScriptOwner.kind,
+			name: consumers[0].javaScriptOwner.name,
+			exports: consumers[0].javaScriptOwner.exports,
+		},
+		{ kind: "function", name: "initializeProductCard", exports: ["named"] },
+	);
+	assert.equal(consumers[0].javaScriptOwner.span.file, "assets/card.js");
+	const classConsumer = program.queryBehavior(
+		{
+			subjectKind: "domHook",
+			hookKind: "class",
+			name: "product-card",
+		},
+		"consumers",
+	).usages[0];
+	assert.equal(classConsumer.javaScriptOwner.name, "activateCard");
+	const idConsumer = program.queryBehavior(
+		{
+			subjectKind: "domHook",
+			hookKind: "id",
+			name: "product-card-root",
+		},
+		"consumers",
+	).usages[0];
+	assert.deepEqual(
+		{
+			kind: idConsumer.javaScriptOwner.kind,
+			name: idConsumer.javaScriptOwner.name,
+			exports: idConsumer.javaScriptOwner.exports,
+		},
+		{ kind: "method", name: "mount", exports: [] },
+	);
+	const laterExport = program.queryBehavior(
+		{
+			subjectKind: "domHook",
+			hookKind: "class",
+			name: "exported-later",
+		},
+		"consumers",
+	).usages[0].javaScriptOwner;
+	assert.deepEqual(
+		{ name: laterExport.name, exports: laterExport.exports },
+		{ name: "initializeExportedLater", exports: ["named"] },
+	);
+	const connections = program.getBehaviorConnections("snippets/card.liquid");
+	assert.equal(connections.certainty, "complete");
+	assert.ok(
+		connections.connections.some((connection) =>
+			connection.consumers.some(
+				(record) => record.javaScriptOwner?.name === "initializeProductCard",
+			),
+		),
+	);
+	assert.throws(
+		() =>
+			program.queryBehavior(
+				{
+					subjectKind: "customEvent",
+					hookKind: "attribute",
+					name: "card:ready",
+				},
+				"all",
+			),
+		/hookKind is valid only when subjectKind is domHook/,
+	);
+	assert.throws(
+		() =>
+			program.queryBehavior(
+				{
+					subjectKind: "domHook",
+					hookKind: "unknown",
+					name: "product-card",
+				},
+				"all",
+			),
+		/Invalid DOM hook kind: unknown/,
+	);
+	assert.throws(
+		() => program.queryBehavior(attribute, "unknown"),
+		/Invalid behavior query role: unknown/,
+	);
+	assert.equal(program.getGraph().version, 5);
+	assert.equal(
+		program.getGraph().nodes.some((node) => node.kind === "domHook"),
+		false,
+	);
 });
 
 test("behavior consumers do not make unreachable Liquid files used", () => {
@@ -175,6 +274,25 @@ test("dynamic markup and script selectors expose explicit uncertainty", () => {
 			code,
 		);
 	}
+	const program = new ThemeProgram([
+		{ path: "snippets/card.liquid", contents: '<div class="card"></div>' },
+		{
+			path: "assets/theme.js",
+			contents: "document.querySelector(selector);",
+		},
+	]);
+	const query = program.queryBehavior(
+		{ subjectKind: "domHook", hookKind: "class", name: "card" },
+		"all",
+	);
+	assert.equal(query.certainty, "partial");
+	assert.ok(
+		query.uncertainSources.some(
+			(source) =>
+				source.path === "assets/theme.js" &&
+				source.uncertainty.some((message) => message.includes("Dynamic")),
+		),
+	);
 });
 
 test("malformed CSS and JavaScript fail their source frontends", () => {
@@ -221,5 +339,6 @@ test("behavior graph updates converge with a cold theme compile", () => {
 	);
 	program.updateFile(updated.find((file) => file.path === "assets/theme.js"));
 
+	assert.deepEqual(program.getModel(), computeNazareTheme(updated).model);
 	assert.deepEqual(program.getGraph(), inspectNazareTheme(updated));
 });

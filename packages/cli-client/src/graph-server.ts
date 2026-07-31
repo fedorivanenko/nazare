@@ -4,9 +4,9 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import {
-	getThemeFileImpact,
 	getThemeNode,
 	summarizeThemeGraph,
+	type ThemeBehaviorQuery,
 	ThemeBuildSession,
 	type ThemeInputFile,
 	ThemeProgram,
@@ -110,6 +110,18 @@ export async function serveThemeGraph(
 	}
 	stopWatching?.();
 }
+
+const NON_DOM_BEHAVIOR_SUBJECT_KINDS = [
+	"customProperty",
+	"customEvent",
+	"customElement",
+] as const;
+const BEHAVIOR_SUBJECT_KINDS = [
+	"domHook",
+	...NON_DOM_BEHAVIOR_SUBJECT_KINDS,
+] as const;
+const DOM_HOOK_KINDS = ["class", "id", "attribute"] as const;
+const BEHAVIOR_QUERY_ROLES = ["all", "producers", "consumers"] as const;
 
 const SUPPORTED_MCP_PROTOCOL_VERSIONS = [
 	"2025-11-25",
@@ -241,13 +253,30 @@ async function handleRequest(
 		setWatcher(() => undefined);
 		return { watching: false };
 	}
-	const graph = session.getGraph();
-	if (request.method === "summary") return summarizeThemeGraph(graph);
 	if (request.method === "fileImpact") {
 		return (
-			getThemeFileImpact(graph, requiredString(request.params, "path")) ?? null
+			session.getFileImpact(requiredString(request.params, "path")) ?? null
 		);
 	}
+	if (request.method === "renderOccurrences") {
+		return session.getRenderOccurrences(requiredString(request.params, "path"));
+	}
+	if (request.method === "behaviorUsages") {
+		const query = behaviorQueryParams(request.params);
+		const role = requiredEnum(request.params, "role", BEHAVIOR_QUERY_ROLES);
+		return session.queryBehavior(query, role);
+	}
+	if (request.method === "behaviorConnections") {
+		const path = requiredString(request.params, "path");
+		const connections = session.getBehaviorConnections(path);
+		if (!connections) throw new RpcError(-32602, `Unknown theme path: ${path}`);
+		return connections;
+	}
+	if (request.method === "evidence") {
+		return session.getEvidence(requiredString(request.params, "recordId"));
+	}
+	const graph = session.getGraph();
+	if (request.method === "summary") return summarizeThemeGraph(graph);
 	if (
 		["node", "dependencies", "dependents", "affectedPages"].includes(
 			request.method,
@@ -397,7 +426,12 @@ async function loadProgramState(
 		".shopify/metafields.json",
 	);
 	const themeCheck = await optionalFile(projectRoot, ".theme-check.yml");
-	const program = new ThemeProgram(files, { exclude, metafields, themeCheck });
+	const program = new ThemeProgram(files, {
+		exclude,
+		metafields,
+		themeCheck,
+		graphProjection: "eager",
+	});
 	return {
 		program,
 		buildSession: new ThemeBuildSession(files, {}, program),
@@ -487,8 +521,7 @@ function validateToolArguments(
 	name: string,
 	args: Record<string, unknown> | undefined,
 ): void {
-	const allowedKeys =
-		name === "summary" ? [] : name === "fileImpact" ? ["path"] : ["nodeId"];
+	const allowedKeys = toolArgumentKeys(name);
 	const unknownKeys = Object.keys(args ?? {}).filter(
 		(key) => !allowedKeys.includes(key),
 	);
@@ -498,6 +531,65 @@ function validateToolArguments(
 			`Unknown tool argument: ${unknownKeys.sort()[0]}`,
 		);
 	}
+}
+
+function toolArgumentKeys(name: string): string[] {
+	switch (name) {
+		case "summary":
+			return [];
+		case "node":
+		case "dependencies":
+		case "dependents":
+		case "affectedPages":
+			return ["nodeId"];
+		case "fileImpact":
+		case "renderOccurrences":
+		case "behaviorConnections":
+			return ["path"];
+		case "behaviorUsages":
+			return ["subjectKind", "hookKind", "name", "role"];
+		case "evidence":
+			return ["recordId"];
+		default:
+			throw new RpcError(-32602, `Unknown tool: ${name}`);
+	}
+}
+
+function behaviorQueryParams(
+	params: Record<string, unknown> | undefined,
+): ThemeBehaviorQuery {
+	const subjectKind = requiredEnum(
+		params,
+		"subjectKind",
+		BEHAVIOR_SUBJECT_KINDS,
+	);
+	const name = requiredString(params, "name");
+	if (subjectKind !== "domHook") {
+		if (params?.hookKind !== undefined) {
+			throw new RpcError(
+				-32602,
+				"hookKind is valid only when subjectKind is domHook",
+			);
+		}
+		return { subjectKind, name };
+	}
+	return {
+		subjectKind,
+		name,
+		hookKind: requiredEnum(params, "hookKind", DOM_HOOK_KINDS),
+	};
+}
+
+function requiredEnum<const Values extends readonly string[]>(
+	params: Record<string, unknown> | undefined,
+	key: string,
+	values: Values,
+): Values[number] {
+	const value = requiredString(params, key);
+	if (!values.includes(value)) {
+		throw new RpcError(-32602, `Invalid ${key}: ${value}`);
+	}
+	return value;
 }
 
 function requiredFile(
@@ -538,6 +630,40 @@ function graphTools(): {
 		required: ["path"],
 		additionalProperties: false,
 	};
+	const behavior = {
+		type: "object",
+		properties: {
+			subjectKind: {
+				type: "string",
+				enum: BEHAVIOR_SUBJECT_KINDS,
+			},
+			hookKind: { type: "string", enum: DOM_HOOK_KINDS },
+			name: { type: "string" },
+			role: { type: "string", enum: BEHAVIOR_QUERY_ROLES },
+		},
+		required: ["subjectKind", "name", "role"],
+		additionalProperties: false,
+		oneOf: [
+			{
+				properties: { subjectKind: { const: "domHook" } },
+				required: ["hookKind"],
+			},
+			{
+				properties: {
+					subjectKind: {
+						enum: NON_DOM_BEHAVIOR_SUBJECT_KINDS,
+					},
+				},
+				not: { required: ["hookKind"] },
+			},
+		],
+	};
+	const recordId = {
+		type: "object",
+		properties: { recordId: { type: "string" } },
+		required: ["recordId"],
+		additionalProperties: false,
+	};
 	return [
 		{
 			name: "summary",
@@ -565,6 +691,29 @@ function graphTools(): {
 			description:
 				"Explain one theme file's usage, dependencies, dependents, affected pages, diagnostics, and uncertainty.",
 			inputSchema: path,
+		},
+		{
+			name: "renderOccurrences",
+			description:
+				"Get source render/include occurrences where a file is caller or target.",
+			inputSchema: path,
+		},
+		{
+			name: "behaviorUsages",
+			description:
+				"Find producers, consumers, JavaScript owners, and explicit analysis uncertainty for a behavior subject.",
+			inputSchema: behavior,
+		},
+		{
+			name: "behaviorConnections",
+			description:
+				"Find typed cross-language behavior connections and explicit analysis uncertainty for one source file.",
+			inputSchema: path,
+		},
+		{
+			name: "evidence",
+			description: "Get semantic evidence on demand by record ID.",
+			inputSchema: recordId,
 		},
 	];
 }

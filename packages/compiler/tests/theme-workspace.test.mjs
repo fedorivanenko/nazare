@@ -249,17 +249,6 @@ test("graph store applies stable-ID records transactionally", () => {
 		/ownership is unavailable; call replaceOwnership\(\)/,
 	);
 	assert.strictEqual(staged.getNode(cardId), card);
-	const viewStore = committed.fork();
-	const configurationView = viewStore.getGraph().views.configuration;
-	viewStore.applyGraph(
-		inspectNazareTheme([
-			{ path: "snippets/card.liquid", contents: "Updated card" },
-		]),
-	);
-	assert.strictEqual(
-		viewStore.getGraph().views.configuration,
-		configurationView,
-	);
 	assert.equal(committed.getNode("file:snippets/tile.liquid"), undefined);
 	assert.ok(delta.addedNodeIds.includes("file:snippets/tile.liquid"));
 	assert.deepEqual(staged.getGraph(), second);
@@ -334,13 +323,6 @@ test("graph store applies stable-ID records transactionally", () => {
 	assert.throws(
 		() => validationStore.applyGraph(missingEndpoint),
 		/missing to node missing:node/,
-	);
-	assert.strictEqual(validationStore.getGraph(), previousGraph);
-	const missingEvidence = structuredClone(first);
-	missingEvidence.edges[0].evidenceIds = ["missing:evidence"];
-	assert.throws(
-		() => validationStore.applyGraph(missingEvidence),
-		/missing evidence missing:evidence/,
 	);
 	assert.strictEqual(validationStore.getGraph(), previousGraph);
 	const malformedEvidence = structuredClone(first);
@@ -448,6 +430,12 @@ test("fact index replaces declarations and dependents transactionally", () => {
 		"sections/main.liquid",
 		"snippets/card.liquid",
 	]);
+	const fork = index.fork();
+	fork.replaceFileFacts("sections/main.liquid", []);
+	assert.deepEqual(fork.getDependents("snippet:card"), []);
+	assert.deepEqual(index.getDependents("snippet:card"), [
+		"sections/main.liquid",
+	]);
 	index.replaceFileFacts("sections/main.liquid", []);
 	assert.deepEqual(index.getDependents("snippet:card"), []);
 	assert.throws(
@@ -475,6 +463,10 @@ test("fact store replaces only one source bucket", () => {
 		},
 		{ kind: "file", path: "b.liquid", fileKind: "other" },
 	]);
+	const fork = store.fork();
+	fork.replaceFile("a.liquid", []);
+	assert.equal(fork.getFile("a.liquid").length, 0);
+	assert.equal(store.getFile("a.liquid").length, 2);
 	store.replaceFile("a.liquid", [
 		{ kind: "file", path: "a.liquid", fileKind: "other" },
 	]);
@@ -801,11 +793,15 @@ test("workspace scheduler replaces data-flow inputs by source", () => {
 	session.updateFile(snippet);
 	assert.deepEqual(session.getGraph(), inspectNazareTheme(files));
 	assert.equal(
-		session.getGraph().nodes.some((node) => node.id.includes(":title")),
+		session
+			.getModel()
+			.renderArguments.some((argument) => argument.argumentName === "title"),
 		true,
 	);
 	assert.equal(
-		session.getGraph().nodes.some((node) => node.id.includes(":subtitle")),
+		session
+			.getModel()
+			.expectedInputs.some((input) => input.name === "subtitle"),
 		true,
 	);
 });
@@ -971,7 +967,10 @@ test("ThemeProgram owns committed incremental workspace state", () => {
 		contents: "Updated",
 	});
 	assert.equal(update.revision, 1);
-	assert.notStrictEqual(program.getGraph(), committed);
+	assert.strictEqual(program.getGraph(), committed);
+	assert.equal(update.telemetry.passKeysProcessed, 0);
+	assert.equal(update.telemetry.semanticRecordsReplaced, 0);
+	assert.equal(update.telemetry.graphRecordsReplaced, 0);
 	assert.deepEqual(
 		program.getModel(),
 		analyzeNazareTheme([{ path: "snippets/card.liquid", contents: "Updated" }])
@@ -1067,7 +1066,7 @@ test("inspectNazareTheme keeps unresolved references navigable", () => {
 	);
 });
 
-test("semantic graph connects pages, blocks, render sites, settings, and layouts", () => {
+test("structural graph connects pages, blocks, render sites, settings, and layouts", () => {
 	const graph = inspectNazareTheme([
 		{ path: "layout/theme.liquid", contents: "{{ content_for_layout }}" },
 		{
@@ -1096,18 +1095,14 @@ test("semantic graph connects pages, blocks, render sites, settings, and layouts
 		"pageContainsSectionInstance",
 		"sectionInstanceContainsBlockInstance",
 		"instanceOfBlock",
-		"invokes",
-		"resolvesRenderTarget",
-		"hasArgument",
-		"satisfiesInput",
-		"argumentReadsSetting",
+		"renders",
+		"readsSetting",
 	]) {
 		assert.ok(
 			graph.edges.some((edge) => edge.kind === kind),
 			kind,
 		);
 	}
-	assert.ok(graph.nodes.some((node) => node.kind === "renderSite"));
 	assert.ok(graph.nodes.some((node) => node.kind === "themeBlock"));
 	assert.ok(graph.nodes.some((node) => node.kind === "blockInstance"));
 });

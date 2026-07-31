@@ -34,12 +34,17 @@ export function parseJavaScript(source: string): JavaScriptParseResult {
 
 export function walkJavaScript(
 	program: Program,
-	visit: (node: JavaScriptNode, parent: JavaScriptNode | undefined) => void,
+	visit: (
+		node: JavaScriptNode,
+		parent: JavaScriptNode | undefined,
+		ancestors: JavaScriptNode[],
+	) => void,
 ): void {
 	fullAncestor(program, (node, _state, ancestors) => {
 		visit(
 			node as JavaScriptNode,
 			ancestors.at(-2) as JavaScriptNode | undefined,
+			ancestors as JavaScriptNode[],
 		);
 	});
 }

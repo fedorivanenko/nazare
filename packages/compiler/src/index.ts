@@ -144,6 +144,15 @@ export {
 	serializePersistedThemeInspection,
 } from "./theme-analysis-cache.js";
 export {
+	type ThemeBehaviorConnection,
+	type ThemeBehaviorConnectionsResult,
+	ThemeBehaviorIndex,
+	type ThemeBehaviorQuery,
+	type ThemeBehaviorQueryResult,
+	type ThemeBehaviorQueryRole,
+	type ThemeBehaviorUncertainSource,
+} from "./theme-behavior-index.js";
+export {
 	ThemeBuildSession,
 	type ThemeBuildUpdate,
 } from "./theme-build-session.js";
@@ -168,6 +177,11 @@ export {
 	deriveThemeClassifications,
 	type ThemeClassificationPassContext,
 } from "./theme-classification-pass.js";
+export {
+	ThemeComputation,
+	type ThemeFileImpact,
+	type ThemeRenderOccurrence,
+} from "./theme-computation.js";
 export { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 export {
 	collectThemeDataFlowInputs,
@@ -251,6 +265,7 @@ export type {
 	ThemeGraphViews,
 	ThemeImpactSummary,
 	ThemeInputFile,
+	ThemeJavaScriptOwner,
 	ThemeLocaleKeyRecord,
 	ThemeLocaleReferenceRecord,
 	ThemeLocaleTranslationRecord,
@@ -344,7 +359,6 @@ export {
 	getThemeFileImpacts,
 	getThemeNode,
 	summarizeThemeGraph,
-	type ThemeFileImpact,
 	type ThemeGraphSummary,
 	themeGraphToDot,
 } from "./theme-queries.js";
@@ -382,6 +396,7 @@ export {
 	THEME_PROGRAM_DEFAULTS,
 	type ThemeGraphUpdate,
 	ThemeProgram,
+	type ThemeProgramOptions,
 	type ThemeUpdateTelemetry,
 	ThemeWorkspaceSession,
 } from "./theme-session.js";
@@ -407,6 +422,7 @@ export {
 export {
 	analyzeNazareTheme,
 	buildNazareThemeWorkspace,
+	computeNazareTheme,
 	inspectNazareTheme,
 	THEME_ANALYSIS_DEFAULTS,
 	THEME_BUILD_DEFAULTS,

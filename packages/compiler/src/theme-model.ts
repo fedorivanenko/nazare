@@ -12,6 +12,7 @@ import {
 	type ThemeDeclarationPassContext,
 	type ThemeDeclarationPassRecord,
 } from "./theme-declaration-pass.js";
+import { sortThemeDiagnostics } from "./theme-diagnostic-store.js";
 import { deriveThemeEvidenceRecords } from "./theme-evidence-pass.js";
 import {
 	deriveThemeExpectedInputs,
@@ -60,6 +61,7 @@ function collectScheduledDeclarationAndReferenceRecords(facts: ThemeFact[]): {
 		facts: factStore,
 		resultsBySource: new Map(),
 		referencesBySource: new Map(),
+		referencesById: new Map(),
 		ids: { file: fileId, declaration: declarationId },
 		id: referenceId,
 	};
@@ -90,9 +92,9 @@ function collectScheduledDeclarationAndReferenceRecords(facts: ThemeFact[]): {
 		for (const [filePath, file] of result.files) files.set(filePath, file);
 		declarations.push(...result.declarations);
 	}
-	const references = [...context.referencesBySource.keys()]
-		.sort((a, b) => compareCanonicalStrings(a, b))
-		.flatMap((path) => context.referencesBySource.get(path) ?? []);
+	const references = [...(context.referencesById?.values() ?? [])].sort(
+		(a, b) => compareCanonicalStrings(a.id, b.id),
+	);
 	return { files, declarations, references };
 }
 
@@ -345,7 +347,7 @@ export function buildThemeSemanticModel(
 				extractor: "theme-json-facts",
 			})),
 		]).sort((a, b) => compareCanonicalStrings(a.id, b.id)),
-		issues: modelIssues,
+		issues: sortThemeDiagnostics(modelIssues),
 	};
 	assertThemeSemanticModel(model);
 	return model;

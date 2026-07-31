@@ -58,8 +58,17 @@ test("no-op, edit, dependency, and snapshot updates report deterministic work", 
 	assert.equal(plainEdit.telemetry.filesParsed, 1);
 	assert.ok(plainEdit.telemetry.passKeysProcessed > 0);
 	assert.ok(plainEdit.telemetry.semanticRecordsReplaced > 0);
-	assert.ok(plainEdit.telemetry.graphRecordsReplaced > 0);
+	assert.equal(plainEdit.telemetry.graphRecordsReplaced, 0);
+	assert.equal(plainEdit.graph, undefined);
 	assert.equal(plainEdit.telemetry.outputsEmitted, 0);
+
+	const eagerProgram = new ThemeProgram(files, { graphProjection: "eager" });
+	const eagerEdit = eagerProgram.updateFile({
+		path: "sections/product.liquid",
+		contents: "{{ product.title }}",
+	});
+	assert.ok(eagerEdit.telemetry.graphRecordsReplaced > 0);
+	assert.ok(eagerEdit.graph);
 
 	const build = new ThemeBuildSession(files);
 	const unrelated = build.updateFile({

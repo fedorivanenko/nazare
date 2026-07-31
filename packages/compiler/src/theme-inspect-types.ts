@@ -1,5 +1,4 @@
 import type { Diagnostic } from "@nazare/core";
-import type { ThemeEvidenceRecord } from "./theme-evidence-types.js";
 import type {
 	SemanticThemeGraphEdge,
 	SemanticThemeGraphNode,
@@ -35,17 +34,15 @@ export type ThemeImpactSummary = {
 };
 
 export interface InspectNazareThemeResult {
-	version: 3;
+	version: 5;
 	root: string;
 	nodes: SemanticThemeGraphNode[];
 	edges: SemanticThemeGraphEdge[];
-	evidence: ThemeEvidenceRecord[];
 	impact: ThemeImpactSummary;
 	metafields: ThemeMetafieldQueries;
 	themeCheck: {
 		path: string;
 		ignoredChecks: string[];
 	};
-	views: ThemeGraphViews;
 	issues: Diagnostic[];
 }

@@ -12,7 +12,6 @@ export function assertProgramEqualsCold(program, files, options = {}) {
 	assert.deepEqual(program.getModel(), coldAnalysis.ir);
 	assert.deepEqual(program.getFacts(), coldAnalysis.facts);
 	assert.deepEqual(program.getGraph(), coldGraph);
-	assert.deepEqual(program.getGraph().evidence, coldGraph.evidence);
 	assert.deepEqual(program.getModel().issues, coldAnalysis.ir.issues);
 	const coldImpact = new ThemeImpactIndex(coldGraph);
 	for (const node of coldGraph.nodes) {
