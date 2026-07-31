@@ -373,7 +373,9 @@ function isThemeBehaviorFact(value: Record<string, unknown>): boolean {
 		!isString(value.name) ||
 		!isString(value.extractor) ||
 		!isOptionalSpan(value.span) ||
-		!isOptionalJavaScriptOwner(value.javaScriptOwner)
+		(value.extractor === "javascript-ast"
+			? !isJavaScriptOwner(value.javaScriptOwner)
+			: value.javaScriptOwner !== undefined)
 	) {
 		return false;
 	}
@@ -397,8 +399,7 @@ function isThemeBehaviorFact(value: Record<string, unknown>): boolean {
 	return false;
 }
 
-function isOptionalJavaScriptOwner(value: unknown): boolean {
-	if (value === undefined) return true;
+function isJavaScriptOwner(value: unknown): boolean {
 	if (!isRecord(value)) return false;
 	return (
 		["function", "method", "anonymousFunction", "module"].includes(
@@ -406,7 +407,11 @@ function isOptionalJavaScriptOwner(value: unknown): boolean {
 		) &&
 		isString(value.id) &&
 		(value.name === undefined || isString(value.name)) &&
-		(value.exported === undefined || typeof value.exported === "boolean") &&
+		Array.isArray(value.exports) &&
+		value.exports.every((kind) => kind === "named" || kind === "default") &&
+		new Set(value.exports).size === value.exports.length &&
+		(value.exports.length !== 2 ||
+			(value.exports[0] === "default" && value.exports[1] === "named")) &&
 		isOptionalSpan(value.span)
 	);
 }

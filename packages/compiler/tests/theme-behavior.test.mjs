@@ -85,7 +85,7 @@ test("behavior queries connect hooks to JavaScript function owners", () => {
 		{
 			path: "snippets/card.liquid",
 			contents:
-				'<div id="product-card-root" data-product-card class="product-card"></div>',
+				'<div id="product-card-root" data-product-card class="product-card exported-later"></div>',
 		},
 		{
 			path: "assets/card.js",
@@ -93,9 +93,13 @@ test("behavior queries connect hooks to JavaScript function owners", () => {
 	return document.querySelector('[data-product-card]');
 }
 const activateCard = () => document.querySelector('.product-card');
-class CardController {
+export default class CardController {
 	mount() { return document.getElementById('product-card-root'); }
-}`,
+}
+function initializeExportedLater() {
+	return document.querySelector('.exported-later');
+}
+export { initializeExportedLater };`,
 		},
 	]);
 	const attribute = {
@@ -103,8 +107,8 @@ class CardController {
 		hookKind: "attribute",
 		name: "data-product-card",
 	};
-	const producers = program.getBehaviorProducers(attribute);
-	const consumers = program.getBehaviorConsumers(attribute);
+	const producers = program.queryBehavior(attribute, "producers").usages;
+	const consumers = program.queryBehavior(attribute, "consumers").usages;
 	assert.equal(producers.length, 1);
 	assert.equal(producers[0].fromPath, "snippets/card.liquid");
 	assert.equal(consumers.length, 1);
@@ -113,37 +117,84 @@ class CardController {
 		{
 			kind: consumers[0].javaScriptOwner.kind,
 			name: consumers[0].javaScriptOwner.name,
-			exported: consumers[0].javaScriptOwner.exported,
+			exports: consumers[0].javaScriptOwner.exports,
 		},
-		{ kind: "function", name: "initializeProductCard", exported: true },
+		{ kind: "function", name: "initializeProductCard", exports: ["named"] },
 	);
 	assert.equal(consumers[0].javaScriptOwner.span.file, "assets/card.js");
-	const classConsumer = program.getBehaviorConsumers({
-		subjectKind: "domHook",
-		hookKind: "class",
-		name: "product-card",
-	})[0];
+	const classConsumer = program.queryBehavior(
+		{
+			subjectKind: "domHook",
+			hookKind: "class",
+			name: "product-card",
+		},
+		"consumers",
+	).usages[0];
 	assert.equal(classConsumer.javaScriptOwner.name, "activateCard");
-	const idConsumer = program.getBehaviorConsumers({
-		subjectKind: "domHook",
-		hookKind: "id",
-		name: "product-card-root",
-	})[0];
+	const idConsumer = program.queryBehavior(
+		{
+			subjectKind: "domHook",
+			hookKind: "id",
+			name: "product-card-root",
+		},
+		"consumers",
+	).usages[0];
 	assert.deepEqual(
 		{
 			kind: idConsumer.javaScriptOwner.kind,
 			name: idConsumer.javaScriptOwner.name,
+			exports: idConsumer.javaScriptOwner.exports,
 		},
-		{ kind: "method", name: "mount" },
+		{ kind: "method", name: "mount", exports: [] },
 	);
+	const laterExport = program.queryBehavior(
+		{
+			subjectKind: "domHook",
+			hookKind: "class",
+			name: "exported-later",
+		},
+		"consumers",
+	).usages[0].javaScriptOwner;
+	assert.deepEqual(
+		{ name: laterExport.name, exports: laterExport.exports },
+		{ name: "initializeExportedLater", exports: ["named"] },
+	);
+	const connections = program.getBehaviorConnections("snippets/card.liquid");
+	assert.equal(connections.certainty, "complete");
 	assert.ok(
-		program
-			.getBehaviorConnections("snippets/card.liquid")
-			.some((connection) =>
-				connection.related.some(
-					(record) => record.javaScriptOwner?.name === "initializeProductCard",
-				),
+		connections.connections.some((connection) =>
+			connection.consumers.some(
+				(record) => record.javaScriptOwner?.name === "initializeProductCard",
 			),
+		),
+	);
+	assert.throws(
+		() =>
+			program.queryBehavior(
+				{
+					subjectKind: "customEvent",
+					hookKind: "attribute",
+					name: "card:ready",
+				},
+				"all",
+			),
+		/hookKind is valid only when subjectKind is domHook/,
+	);
+	assert.throws(
+		() =>
+			program.queryBehavior(
+				{
+					subjectKind: "domHook",
+					hookKind: "unknown",
+					name: "product-card",
+				},
+				"all",
+			),
+		/Invalid DOM hook kind: unknown/,
+	);
+	assert.throws(
+		() => program.queryBehavior(attribute, "unknown"),
+		/Invalid behavior query role: unknown/,
 	);
 	assert.equal(program.getGraph().version, 5);
 	assert.equal(
@@ -223,6 +274,25 @@ test("dynamic markup and script selectors expose explicit uncertainty", () => {
 			code,
 		);
 	}
+	const program = new ThemeProgram([
+		{ path: "snippets/card.liquid", contents: '<div class="card"></div>' },
+		{
+			path: "assets/theme.js",
+			contents: "document.querySelector(selector);",
+		},
+	]);
+	const query = program.queryBehavior(
+		{ subjectKind: "domHook", hookKind: "class", name: "card" },
+		"all",
+	);
+	assert.equal(query.certainty, "partial");
+	assert.ok(
+		query.uncertainSources.some(
+			(source) =>
+				source.path === "assets/theme.js" &&
+				source.uncertainty.some((message) => message.includes("Dynamic")),
+		),
+	);
 });
 
 test("malformed CSS and JavaScript fail their source frontends", () => {

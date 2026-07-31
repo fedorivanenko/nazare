@@ -107,7 +107,7 @@ export type ThemeDomHookKind = "class" | "id" | "attribute";
 export type ThemeJavaScriptOwner = {
 	kind: "function" | "method" | "anonymousFunction" | "module";
 	name?: string;
-	exported?: boolean;
+	exports: Array<"named" | "default">;
 	id: string;
 	span?: SourceSpan;
 };

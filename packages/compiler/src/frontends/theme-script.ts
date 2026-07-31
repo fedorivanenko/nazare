@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import type { Diagnostic } from "@nazare/core";
+import type { Program } from "acorn";
 import selectorParser from "postcss-selector-parser";
 import {
 	type JavaScriptNode,
@@ -40,6 +41,7 @@ export function analyzeThemeScript(
 		};
 	}
 	const program = parsed.program;
+	const exportsByBinding = collectExportKinds(program);
 
 	const facts: ThemeFact[] = [];
 	const issues: Diagnostic[] = [];
@@ -309,25 +311,19 @@ export function analyzeThemeScript(
 			if (!isFunctionNode(node)) continue;
 			const parent = ancestors[index - 1];
 			const named = functionOwnerName(node, parent);
-			const location = `${node.start}:${node.end}`;
 			return {
 				kind: named.kind,
 				name: named.name,
-				exported: ancestors
-					.slice(0, index)
-					.some(
-						(ancestor) =>
-							ancestor.type === "ExportNamedDeclaration" ||
-							ancestor.type === "ExportDefaultDeclaration",
-					),
-				id: `javascript-owner:${encodeURIComponent(path)}:${location}:${encodeURIComponent(named.name ?? "anonymous")}`,
+				exports: ownerExports(node, ancestors, named.name, exportsByBinding),
+				id: javaScriptOwnerId(path, node, named.name),
 				span: nodeSpan(node),
 			};
 		}
 		return {
 			kind: "module",
 			name: path,
-			id: `javascript-owner:${encodeURIComponent(path)}:module`,
+			exports: [],
+			id: javaScriptModuleOwnerId(path),
 		};
 	}
 
@@ -342,6 +338,126 @@ export function analyzeThemeScript(
 	function nodeSpan(node: JavaScriptNode) {
 		return spanFromOffsets(source, path, { start: node.start, end: node.end });
 	}
+}
+
+type JavaScriptExportKind = ThemeJavaScriptOwner["exports"][number];
+
+function javaScriptOwnerId(
+	path: string,
+	node: JavaScriptNode,
+	name: string | undefined,
+): string {
+	const encodedPath = encodeURIComponent(path);
+	const encodedName = encodeURIComponent(name ?? "anonymous");
+	return `javascript-owner:${encodedPath}:${node.start}:${node.end}:${encodedName}`;
+}
+
+function javaScriptModuleOwnerId(path: string): string {
+	return `javascript-owner:${encodeURIComponent(path)}:module`;
+}
+
+function collectExportKinds(
+	program: Program,
+): Map<string, Set<JavaScriptExportKind>> {
+	const exportsByBinding = new Map<string, Set<JavaScriptExportKind>>();
+	const add = (name: string | undefined, kind: JavaScriptExportKind): void => {
+		if (!name) return;
+		const kinds = exportsByBinding.get(name) ?? new Set();
+		kinds.add(kind);
+		exportsByBinding.set(name, kinds);
+	};
+	walkJavaScript(program, (node) => {
+		if (node.type === "ExportNamedDeclaration") {
+			for (const name of declarationBindingNames(asNode(node.declaration)))
+				add(name, "named");
+			if (!node.source) {
+				for (const specifier of nodes(node.specifiers)) {
+					const exportedName = propertyName(asNode(specifier.exported));
+					add(
+						propertyName(asNode(specifier.local)),
+						exportedName === "default" ? "default" : "named",
+					);
+				}
+			}
+		}
+		if (node.type === "ExportDefaultDeclaration") {
+			const declaration = asNode(node.declaration);
+			for (const name of declarationBindingNames(declaration))
+				add(name, "default");
+			if (declaration?.type === "Identifier")
+				add(identifierName(declaration), "default");
+		}
+	});
+	return exportsByBinding;
+}
+
+function declarationBindingNames(
+	declaration: JavaScriptNode | undefined,
+): string[] {
+	if (!declaration) return [];
+	if (
+		declaration.type === "FunctionDeclaration" ||
+		declaration.type === "ClassDeclaration"
+	) {
+		const name = identifierName(asNode(declaration.id));
+		return name ? [name] : [];
+	}
+	if (declaration.type !== "VariableDeclaration") return [];
+	return nodes(declaration.declarations).flatMap((declarator) =>
+		bindingNames(asNode(declarator.id)),
+	);
+}
+
+function bindingNames(pattern: JavaScriptNode | undefined): string[] {
+	if (!pattern) return [];
+	switch (pattern.type) {
+		case "Identifier":
+			if (typeof pattern.name !== "string") {
+				throw new Error("JavaScript identifier binding is missing its name");
+			}
+			return [pattern.name];
+		case "RestElement":
+			return bindingNames(asNode(pattern.argument));
+		case "AssignmentPattern":
+			return bindingNames(asNode(pattern.left));
+		case "ArrayPattern":
+			return nodes(pattern.elements).flatMap(bindingNames);
+		case "ObjectPattern":
+			return nodes(pattern.properties).flatMap((property) =>
+				property.type === "RestElement"
+					? bindingNames(asNode(property.argument))
+					: bindingNames(asNode(property.value)),
+			);
+		default:
+			throw new Error(
+				`Unsupported JavaScript binding pattern: ${pattern.type}`,
+			);
+	}
+}
+
+function ownerExports(
+	ownerNode: JavaScriptNode,
+	ancestors: JavaScriptNode[],
+	ownerName: string | undefined,
+	exportsByBinding: ReadonlyMap<string, ReadonlySet<JavaScriptExportKind>>,
+): JavaScriptExportKind[] {
+	const kinds = new Set(ownerName ? exportsByBinding.get(ownerName) : []);
+	for (const ancestor of ancestors) {
+		if (
+			ancestor.type === "ExportDefaultDeclaration" &&
+			asNode(ancestor.declaration) === ownerNode
+		) {
+			kinds.add("default");
+		}
+	}
+	return [...kinds].sort(compareExportKinds);
+}
+
+function compareExportKinds(
+	left: JavaScriptExportKind,
+	right: JavaScriptExportKind,
+): number {
+	return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function isFunctionNode(node: JavaScriptNode): boolean {
@@ -366,8 +482,7 @@ function functionOwnerName(
 		if (name) return { kind: "function", name };
 	}
 	if (parent?.type === "MethodDefinition" || parent?.type === "Property") {
-		const name = propertyName(asNode(parent.key));
-		if (name) return { kind: "method", name };
+		return { kind: "method", name: propertyName(asNode(parent.key)) };
 	}
 	if (parent?.type === "AssignmentExpression") {
 		const left = asNode(parent.left);

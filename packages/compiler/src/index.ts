@@ -144,6 +144,15 @@ export {
 	serializePersistedThemeInspection,
 } from "./theme-analysis-cache.js";
 export {
+	type ThemeBehaviorConnection,
+	type ThemeBehaviorConnectionsResult,
+	ThemeBehaviorIndex,
+	type ThemeBehaviorQuery,
+	type ThemeBehaviorQueryResult,
+	type ThemeBehaviorQueryRole,
+	type ThemeBehaviorUncertainSource,
+} from "./theme-behavior-index.js";
+export {
 	ThemeBuildSession,
 	type ThemeBuildUpdate,
 } from "./theme-build-session.js";
@@ -169,8 +178,6 @@ export {
 	type ThemeClassificationPassContext,
 } from "./theme-classification-pass.js";
 export {
-	type ThemeBehaviorConnection,
-	type ThemeBehaviorQuery,
 	ThemeComputation,
 	type ThemeFileImpact,
 	type ThemeRenderOccurrence,

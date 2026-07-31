@@ -111,6 +111,18 @@ export async function serveThemeGraph(
 	stopWatching?.();
 }
 
+const NON_DOM_BEHAVIOR_SUBJECT_KINDS = [
+	"customProperty",
+	"customEvent",
+	"customElement",
+] as const;
+const BEHAVIOR_SUBJECT_KINDS = [
+	"domHook",
+	...NON_DOM_BEHAVIOR_SUBJECT_KINDS,
+] as const;
+const DOM_HOOK_KINDS = ["class", "id", "attribute"] as const;
+const BEHAVIOR_QUERY_ROLES = ["all", "producers", "consumers"] as const;
+
 const SUPPORTED_MCP_PROTOCOL_VERSIONS = [
 	"2025-11-25",
 	"2025-03-26",
@@ -251,19 +263,14 @@ async function handleRequest(
 	}
 	if (request.method === "behaviorUsages") {
 		const query = behaviorQueryParams(request.params);
-		const role = optionalEnum(request.params, "role", [
-			"all",
-			"producers",
-			"consumers",
-		]);
-		if (role === "producers") return session.getBehaviorProducers(query);
-		if (role === "consumers") return session.getBehaviorConsumers(query);
-		return session.getBehaviorUsages(query);
+		const role = requiredEnum(request.params, "role", BEHAVIOR_QUERY_ROLES);
+		return session.queryBehavior(query, role);
 	}
 	if (request.method === "behaviorConnections") {
-		return session.getBehaviorConnections(
-			requiredString(request.params, "path"),
-		);
+		const path = requiredString(request.params, "path");
+		const connections = session.getBehaviorConnections(path);
+		if (!connections) throw new RpcError(-32602, `Unknown theme path: ${path}`);
+		return connections;
 	}
 	if (request.method === "evidence") {
 		return session.getEvidence(requiredString(request.params, "recordId"));
@@ -514,18 +521,7 @@ function validateToolArguments(
 	name: string,
 	args: Record<string, unknown> | undefined,
 ): void {
-	const allowedKeys =
-		name === "summary"
-			? []
-			: name === "fileImpact" ||
-					name === "renderOccurrences" ||
-					name === "behaviorConnections"
-				? ["path"]
-				: name === "behaviorUsages"
-					? ["subjectKind", "hookKind", "name", "role"]
-					: name === "evidence"
-						? ["recordId"]
-						: ["nodeId"];
+	const allowedKeys = toolArgumentKeys(name);
 	const unknownKeys = Object.keys(args ?? {}).filter(
 		(key) => !allowedKeys.includes(key),
 	);
@@ -537,21 +533,50 @@ function validateToolArguments(
 	}
 }
 
+function toolArgumentKeys(name: string): string[] {
+	switch (name) {
+		case "summary":
+			return [];
+		case "node":
+		case "dependencies":
+		case "dependents":
+		case "affectedPages":
+			return ["nodeId"];
+		case "fileImpact":
+		case "renderOccurrences":
+		case "behaviorConnections":
+			return ["path"];
+		case "behaviorUsages":
+			return ["subjectKind", "hookKind", "name", "role"];
+		case "evidence":
+			return ["recordId"];
+		default:
+			throw new RpcError(-32602, `Unknown tool: ${name}`);
+	}
+}
+
 function behaviorQueryParams(
 	params: Record<string, unknown> | undefined,
 ): ThemeBehaviorQuery {
-	const subjectKind = requiredEnum(params, "subjectKind", [
-		"domHook",
-		"customProperty",
-		"customEvent",
-		"customElement",
-	]);
+	const subjectKind = requiredEnum(
+		params,
+		"subjectKind",
+		BEHAVIOR_SUBJECT_KINDS,
+	);
 	const name = requiredString(params, "name");
-	if (subjectKind !== "domHook") return { subjectKind, name };
+	if (subjectKind !== "domHook") {
+		if (params?.hookKind !== undefined) {
+			throw new RpcError(
+				-32602,
+				"hookKind is valid only when subjectKind is domHook",
+			);
+		}
+		return { subjectKind, name };
+	}
 	return {
 		subjectKind,
 		name,
-		hookKind: requiredEnum(params, "hookKind", ["class", "id", "attribute"]),
+		hookKind: requiredEnum(params, "hookKind", DOM_HOOK_KINDS),
 	};
 }
 
@@ -563,19 +588,6 @@ function requiredEnum<const Values extends readonly string[]>(
 	const value = requiredString(params, key);
 	if (!values.includes(value)) {
 		throw new RpcError(-32602, `Invalid ${key}: ${value}`);
-	}
-	return value;
-}
-
-function optionalEnum<const Values extends readonly string[]>(
-	params: Record<string, unknown> | undefined,
-	key: string,
-	values: Values,
-): Values[number] | undefined {
-	const value = params?.[key];
-	if (value === undefined) return undefined;
-	if (typeof value !== "string" || !values.includes(value)) {
-		throw new RpcError(-32602, `Invalid ${key}: ${String(value)}`);
 	}
 	return value;
 }
@@ -623,14 +635,28 @@ function graphTools(): {
 		properties: {
 			subjectKind: {
 				type: "string",
-				enum: ["domHook", "customProperty", "customEvent", "customElement"],
+				enum: BEHAVIOR_SUBJECT_KINDS,
 			},
-			hookKind: { type: "string", enum: ["class", "id", "attribute"] },
+			hookKind: { type: "string", enum: DOM_HOOK_KINDS },
 			name: { type: "string" },
-			role: { type: "string", enum: ["all", "producers", "consumers"] },
+			role: { type: "string", enum: BEHAVIOR_QUERY_ROLES },
 		},
-		required: ["subjectKind", "name"],
+		required: ["subjectKind", "name", "role"],
 		additionalProperties: false,
+		oneOf: [
+			{
+				properties: { subjectKind: { const: "domHook" } },
+				required: ["hookKind"],
+			},
+			{
+				properties: {
+					subjectKind: {
+						enum: NON_DOM_BEHAVIOR_SUBJECT_KINDS,
+					},
+				},
+				not: { required: ["hookKind"] },
+			},
+		],
 	};
 	const recordId = {
 		type: "object",
@@ -675,13 +701,13 @@ function graphTools(): {
 		{
 			name: "behaviorUsages",
 			description:
-				"Find producers, consumers, and JavaScript function owners for a DOM hook, custom event, custom property, or custom element.",
+				"Find producers, consumers, JavaScript owners, and explicit analysis uncertainty for a behavior subject.",
 			inputSchema: behavior,
 		},
 		{
 			name: "behaviorConnections",
 			description:
-				"Find cross-language behavior relationships connected to one source file.",
+				"Find typed cross-language behavior connections and explicit analysis uncertainty for one source file.",
 			inputSchema: path,
 		},
 		{

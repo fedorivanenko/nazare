@@ -206,10 +206,50 @@ test("graph server queries cross-language behavior and JavaScript owners", async
 			},
 		]);
 		assert.equal(
-			usages.result[0].javaScriptOwner.name,
+			usages.result.usages[0].javaScriptOwner.name,
 			"initializeProductCard",
 		);
-		assert.equal(connections.result[0].related[0].fromPath, "assets/card.js");
+		assert.equal(usages.result.role, "consumers");
+		assert.equal(usages.result.certainty, "complete");
+		assert.equal(
+			connections.result.connections[0].consumers[0].fromPath,
+			"assets/card.js",
+		);
+		const invalid = await runServer(root, [
+			{
+				id: 3,
+				method: "behaviorUsages",
+				params: {
+					subjectKind: "domHook",
+					hookKind: "attribute",
+					name: "data-product-card",
+				},
+			},
+			{
+				id: 4,
+				method: "behaviorUsages",
+				params: {
+					subjectKind: "customEvent",
+					hookKind: "attribute",
+					name: "card:ready",
+					role: "consumers",
+				},
+			},
+			{
+				id: 5,
+				method: "behaviorConnections",
+				params: { path: "missing.js" },
+			},
+		]);
+		assert.equal(invalid[0].error.code, -32602);
+		assert.equal(invalid[0].error.message, "Missing string parameter role");
+		assert.equal(invalid[1].error.code, -32602);
+		assert.equal(
+			invalid[1].error.message,
+			"hookKind is valid only when subjectKind is domHook",
+		);
+		assert.equal(invalid[2].error.code, -32602);
+		assert.equal(invalid[2].error.message, "Unknown theme path: missing.js");
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

@@ -5,6 +5,12 @@ import {
 	collectThemeBehavior,
 	type ThemeBehaviorCollection,
 } from "./theme-behavior.js";
+import type {
+	ThemeBehaviorConnectionsResult,
+	ThemeBehaviorQuery,
+	ThemeBehaviorQueryResult,
+	ThemeBehaviorQueryRole,
+} from "./theme-behavior-index.js";
 import {
 	createThemeCapabilityPass,
 	type ThemeCapabilityPassContext,
@@ -19,8 +25,6 @@ import {
 	type ThemeClassificationPassContext,
 } from "./theme-classification-pass.js";
 import {
-	type ThemeBehaviorConnection,
-	type ThemeBehaviorQuery,
 	ThemeComputation,
 	type ThemeFileImpact,
 	type ThemeRenderOccurrence,
@@ -393,23 +397,16 @@ export class ThemeProgram {
 		return this.getQueryComputation().getFileImpact(path);
 	}
 
-	getBehaviorUsages(query: ThemeBehaviorQuery): ThemeSemanticModel["behavior"] {
-		return this.getQueryComputation().getBehaviorUsages(query);
-	}
-
-	getBehaviorProducers(
+	queryBehavior(
 		query: ThemeBehaviorQuery,
-	): ThemeSemanticModel["behavior"] {
-		return this.getQueryComputation().getBehaviorProducers(query);
+		role: ThemeBehaviorQueryRole,
+	): ThemeBehaviorQueryResult {
+		return this.getQueryComputation().queryBehavior(query, role);
 	}
 
-	getBehaviorConsumers(
-		query: ThemeBehaviorQuery,
-	): ThemeSemanticModel["behavior"] {
-		return this.getQueryComputation().getBehaviorConsumers(query);
-	}
-
-	getBehaviorConnections(path: string): ThemeBehaviorConnection[] {
+	getBehaviorConnections(
+		path: string,
+	): ThemeBehaviorConnectionsResult | undefined {
 		return this.getQueryComputation().getBehaviorConnections(path);
 	}
 
