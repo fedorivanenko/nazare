@@ -50,6 +50,7 @@ export type LiquidSyntaxLocalBinding = {
 export type LiquidSyntaxLookup = {
 	root: string;
 	path: string[];
+	hasDynamicPathSegments?: boolean;
 	range: SourceRange;
 };
 
@@ -706,15 +707,56 @@ function childFieldName(
 
 function accessPath(
 	node: Parser.SyntaxNode,
-): { root: string; path: string[] } | undefined {
-	if (node.type === "identifier") return { root: node.text.trim(), path: [] };
+):
+	| { root: string; path: string[]; hasDynamicPathSegments?: boolean }
+	| undefined {
+	if (node.type === "identifier") {
+		return {
+			root: node.text.trim(),
+			path: [],
+		};
+	}
 	if (node.type !== "access") return undefined;
 	const receiver = requiredField(node, "receiver");
 	const property = requiredField(node, "property");
 	const parent = accessPath(receiver);
-	return parent
-		? { root: parent.root, path: [...parent.path, property.text.trim()] }
-		: undefined;
+	if (!parent) return undefined;
+	const bracketAccess = node.children.some(
+		(child) => !child.isNamed && child.type === "[",
+	);
+	const stringProperty = property.type === "string";
+	return {
+		root: parent.root,
+		path: [
+			...parent.path,
+			stringProperty
+				? decodeLiquidString(property.text.trim())
+				: property.text.trim(),
+		],
+		...(parent.hasDynamicPathSegments || (bracketAccess && !stringProperty)
+			? { hasDynamicPathSegments: true }
+			: {}),
+	};
+}
+
+function decodeLiquidString(value: string): string {
+	const quote = value[0];
+	if ((quote !== '"' && quote !== "'") || value.at(-1) !== quote) {
+		throw new Error(
+			`Malformed Liquid string property ${JSON.stringify(value)}`,
+		);
+	}
+	let decoded = "";
+	for (let index = 1; index < value.length - 1; index += 1) {
+		const character = value[index];
+		if (character === "\\" && index + 1 < value.length - 1) {
+			index += 1;
+			decoded += value[index];
+		} else {
+			decoded += character;
+		}
+	}
+	return decoded;
 }
 
 function hasRawAncestor(ancestorTypes: readonly string[]): boolean {

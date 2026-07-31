@@ -8,11 +8,20 @@
 import type { ThemeEvidenceStrength } from "./theme-evidence-strength.js";
 
 export const SHOPIFY_DATA_OBJECTS = new Set([
+	"article",
+	"blog",
+	"company",
+	"company_location",
 	"product",
 	"variant",
 	"collection",
 	"cart",
 	"customer",
+	"location",
+	"market",
+	"order",
+	"page",
+	"shop",
 	"search",
 	"recommendations",
 	"localization",

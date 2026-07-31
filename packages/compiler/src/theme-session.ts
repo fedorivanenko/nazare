@@ -119,8 +119,10 @@ import {
 	type ThemeMetafieldRecord,
 } from "./theme-metafield-pass.js";
 import {
+	analyzeCollectedMetafields,
 	collectMetafieldDefinitions,
 	metafieldJoinKey,
+	resolveMetafieldOwnerSettings,
 	type ThemeMetafieldAnalysis,
 } from "./theme-metafields.js";
 import {
@@ -1671,8 +1673,30 @@ function modelWithCollectedRecords(
 		instances.flatMap((result) => result.sectionInstances),
 		instances.flatMap((result) => result.blockInstances),
 	);
+	const dataAccesses = resolveMetafieldOwnerSettings(
+		uniqueById([
+			...dataFlowInputs.flatMap((result) => result.dataAccesses),
+			...derivedDataAccesses,
+		]),
+		{
+			declarations,
+			settings,
+			blocks,
+			blockSettings,
+			sectionInstances: resolvedInstances.sectionInstances,
+			blockInstances: resolvedInstances.blockInstances,
+		},
+	);
+	const resolvedMetafields = analyzeCollectedMetafields(
+		metafields,
+		dataAccesses,
+	);
 	return {
 		...model,
+		issues: [
+			...model.issues.filter((issue) => !isMetafieldDiagnostic(issue)),
+			...resolvedMetafields.issues,
+		],
 		files,
 		pages: declarations
 			.filter((declaration) => declaration.kind === "template")
@@ -1701,10 +1725,7 @@ function modelWithCollectedRecords(
 		localeReferences: schemaIndex.resolveLocaleReferences(
 			locales.flatMap((result) => result.localeReferences),
 		).records,
-		dataAccesses: uniqueById([
-			...dataFlowInputs.flatMap((result) => result.dataAccesses),
-			...derivedDataAccesses,
-		]),
+		dataAccesses,
 		variableReads: uniqueById(
 			dataFlowInputs.flatMap((result) => result.variableReads),
 		),
@@ -1717,12 +1738,12 @@ function modelWithCollectedRecords(
 		renderSites: uniqueById(
 			derivedDataFlow.flatMap((result) => result.renderSites),
 		),
-		metafieldDefinitions: metafields.definitions,
-		metafieldReads: metafields.reads,
+		metafieldDefinitions: resolvedMetafields.definitions,
+		metafieldReads: resolvedMetafields.reads,
 		metafieldSchema: {
-			state: metafields.state,
-			path: metafields.path,
-			pulledAt: metafields.pulledAt ?? null,
+			state: resolvedMetafields.state,
+			path: resolvedMetafields.path,
+			pulledAt: resolvedMetafields.pulledAt ?? null,
 		},
 		capabilitySignals: uniqueById(
 			[...capabilitySignalsBySource.values()].flat(),
@@ -1751,6 +1772,13 @@ function modelWithCollectedRecords(
 				})),
 		]),
 	};
+}
+
+function isMetafieldDiagnostic(issue: Diagnostic): boolean {
+	return (
+		issue.code.startsWith("THEME_METAFIELD_") ||
+		issue.code.startsWith("THEME_METAFIELDS_")
+	);
 }
 
 function sameMapProjections<Key, Value, Projection>(

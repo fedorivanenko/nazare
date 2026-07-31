@@ -88,7 +88,12 @@ export function collectTreeSitterSourceThemeFacts(
 	);
 	const visibleBinding = (name: string, at: number): Binding | undefined =>
 		bindings.visibleAt(name, at);
-	const resolve = (root: string, pathParts: string[], at: number) => {
+	const resolve = (
+		root: string,
+		pathParts: string[],
+		hasDynamicPathSegments = false,
+		at: number,
+	) => {
 		let object = root;
 		let resolvedPath = [...pathParts];
 		for (let depth = 0; depth < 8; depth += 1) {
@@ -97,7 +102,7 @@ export function collectTreeSitterSourceThemeFacts(
 			resolvedPath = [...binding.alias.path, ...resolvedPath];
 			object = binding.alias.root;
 		}
-		return { object, path: resolvedPath };
+		return { object, path: resolvedPath, hasDynamicPathSegments };
 	};
 	const insideBranch = (at: number): boolean =>
 		branchBodies.some((body) => at >= body.start && at <= body.end);
@@ -117,22 +122,44 @@ export function collectTreeSitterSourceThemeFacts(
 
 	for (const read of liquid.reads) {
 		const at = span(read.range);
-		const resolved = resolve(read.root, read.path, read.range.start);
+		const resolved = resolve(
+			read.root,
+			read.path,
+			read.hasDynamicPathSegments,
+			read.range.start,
+		);
 		const propertyPath =
 			resolved.path.length > 0 ? resolved.path.join(".") : undefined;
+		if (
+			resolved.hasDynamicPathSegments &&
+			(resolved.object === "metafields" || resolved.path.includes("metafields"))
+		) {
+			uncertainty.push({
+				code: "THEME_DYNAMIC_METAFIELD_PATH",
+				message: `Dynamic metafield path ${read.expression} cannot be assigned to one owner.namespace.key`,
+				span: at,
+			});
+		}
 		for (const rule of lookupCapabilityRules) {
 			if (rule.matches(resolved.object, propertyPath ?? "")) {
 				pushCapability(rule.capability, rule.evidenceStrength, at);
 			}
 		}
-		if (SHOPIFY_DATA_OBJECTS.has(resolved.object)) {
+		const ownerSetting = liquidMetafieldOwnerSetting(
+			resolved.object,
+			resolved.path,
+		);
+		if (ownerSetting || SHOPIFY_DATA_OBJECTS.has(resolved.object)) {
+			const semanticPath = ownerSetting?.propertyPath ?? propertyPath;
 			facts.push({
 				kind: "readsShopifyData",
 				fromPath: path,
-				object: resolved.object,
-				propertyPath,
-				expression: propertyPath
-					? `${resolved.object}.${propertyPath}`
+				object: ownerSetting ? "unknown" : resolved.object,
+				propertyPath: semanticPath,
+				hasDynamicPathSegments: resolved.hasDynamicPathSegments || undefined,
+				metafieldOwnerSetting: ownerSetting?.owner,
+				expression: semanticPath
+					? `${ownerSetting ? "unknown" : resolved.object}.${semanticPath}`
 					: resolved.object,
 				conditional: insideBranch(read.range.start),
 				span: at,
@@ -141,11 +168,24 @@ export function collectTreeSitterSourceThemeFacts(
 			!LIQUID_GLOBAL_NAMES.has(resolved.object) &&
 			!visibleBinding(resolved.object, read.range.start)
 		) {
+			if (resolved.path.includes("metafields")) {
+				facts.push({
+					kind: "readsShopifyData",
+					fromPath: path,
+					object: "unknown",
+					propertyPath,
+					hasDynamicPathSegments: true,
+					expression: read.expression,
+					conditional: insideBranch(read.range.start),
+					span: at,
+				});
+			}
 			facts.push({
 				kind: "readsFreeVariable",
 				fromPath: path,
 				name: resolved.object,
 				propertyPath,
+				hasDynamicPathSegments: resolved.hasDynamicPathSegments || undefined,
 				expression: propertyPath
 					? `${resolved.object}.${propertyPath}`
 					: resolved.object,
@@ -172,7 +212,7 @@ export function collectTreeSitterSourceThemeFacts(
 	const defaulted = new Set(
 		liquid.guards
 			.filter((guard) => guard.via === "default")
-			.map((guard) => resolve(guard.name, [], guard.range.start).object),
+			.map((guard) => resolve(guard.name, [], false, guard.range.start).object),
 	);
 	const guardProxyTargets = new Map<string, Set<string>>();
 	for (const conditional of liquid.conditionals) {
@@ -192,7 +232,7 @@ export function collectTreeSitterSourceThemeFacts(
 					guard.range.start >= conditional.range.start &&
 					guard.range.end <= primary.start,
 			)
-			.map((guard) => resolve(guard.name, [], guard.range.start).object);
+			.map((guard) => resolve(guard.name, [], false, guard.range.start).object);
 		for (const [name, value] of primaryBooleans) {
 			if (value !== true || alternateBooleans.get(name) === true) continue;
 			guardProxyTargets.set(name, new Set(conditionTargets));
@@ -203,7 +243,7 @@ export function collectTreeSitterSourceThemeFacts(
 	for (const guard of liquid.guards.filter(
 		(candidate) => candidate.via === "guard",
 	)) {
-		const resolvedGuard = resolve(guard.name, [], guard.range.start);
+		const resolvedGuard = resolve(guard.name, [], false, guard.range.start);
 		const directName =
 			resolvedGuard.path.length === 0 ? resolvedGuard.object : guard.name;
 		const names = new Set([
@@ -248,13 +288,26 @@ export function collectTreeSitterSourceThemeFacts(
 			.filter((read) => {
 				if (safeInitializations.has(read.range.start)) return false;
 				if (read.inCondition) return false;
-				const name = resolve(read.root, read.path, read.range.start).object;
+				const name = resolve(
+					read.root,
+					read.path,
+					read.hasDynamicPathSegments,
+					read.range.start,
+				).object;
 				return !(guardRanges.get(name) ?? []).some(
 					(range) =>
 						read.range.start >= range.start && read.range.end <= range.end,
 				);
 			})
-			.map((read) => resolve(read.root, read.path, read.range.start).object),
+			.map(
+				(read) =>
+					resolve(
+						read.root,
+						read.path,
+						read.hasDynamicPathSegments,
+						read.range.start,
+					).object,
+			),
 	);
 	for (const name of new Set([...guarded, ...defaulted])) {
 		if (unguarded.has(name) && !defaulted.has(name)) continue;
@@ -322,6 +375,33 @@ export function collectTreeSitterSourceThemeFacts(
 		}
 	}
 	return { facts, issues: [], uncertainty };
+}
+
+function liquidMetafieldOwnerSetting(
+	object: string,
+	path: string[],
+):
+	| {
+			owner: {
+				settingObject: "section" | "block";
+				settingId: string;
+				resolution: "sourceDeclaration";
+			};
+			propertyPath: string;
+	  }
+	| undefined {
+	if (object !== "section" && object !== "block") return undefined;
+	if (path[0] !== "settings" || !path[1] || path[2] !== "metafields") {
+		return undefined;
+	}
+	return {
+		owner: {
+			settingObject: object,
+			settingId: path[1],
+			resolution: "sourceDeclaration",
+		},
+		propertyPath: path.slice(2).join("."),
+	};
 }
 
 function booleanBindingsIn(

@@ -98,6 +98,19 @@ test("external artifact replay matrix equals cold rebuilds", () => {
 			path: "sections/product.liquid",
 			contents: "{{ product.metafields.custom.subtitle }}",
 		},
+		{
+			path: "templates/product.json",
+			contents: JSON.stringify({
+				sections: {
+					main: {
+						type: "product",
+						settings: {
+							source: "{{ product.metafields.custom.subtitle }}",
+						},
+					},
+				},
+			}),
+		},
 		{ path: "snippets/card.liquid", contents: "{% render 'missing' %}" },
 	];
 	let options = {};

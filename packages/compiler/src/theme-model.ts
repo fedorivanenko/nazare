@@ -35,6 +35,7 @@ import { collectThemeInstances } from "./theme-instance-pass.js";
 import { collectThemeLocales } from "./theme-locale-pass.js";
 import {
 	analyzeMetafields,
+	resolveMetafieldOwnerSettings,
 	type ThemeMetafieldSnapshot,
 } from "./theme-metafields.js";
 import {
@@ -233,6 +234,18 @@ export function buildThemeSemanticModel(
 			variableReads,
 		),
 	);
+	const resolvedMetafieldDataAccesses = resolveMetafieldOwnerSettings(
+		dataAccesses,
+		{
+			declarations,
+			settings,
+			blocks,
+			blockSettings,
+			sectionInstances,
+			blockInstances,
+		},
+	);
+	dataAccesses.splice(0, dataAccesses.length, ...resolvedMetafieldDataAccesses);
 	const metafields = analyzeMetafields(options.metafields, dataAccesses);
 	modelIssues.push(...metafields.issues);
 	const capabilities = inferCapabilities(dataAccesses, capabilitySignals);

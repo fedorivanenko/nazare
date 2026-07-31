@@ -889,6 +889,7 @@ function renderMetafieldImpact(impact: ThemeMetafieldImpact): string {
 		: "";
 	const lines = [
 		`Metafield: ${identifier}`,
+		"Scope: Liquid and Shopify JSON dynamic sources; JavaScript and GraphQL excluded",
 		`Definition: ${definition}`,
 		`Snapshot: ${impact.snapshot.state} · ${impact.snapshot.path}${pulledAt}`,
 		`Certainty: ${impact.certainty}`,
