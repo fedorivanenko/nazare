@@ -506,6 +506,17 @@ function isString(value: unknown): value is string {
 	return typeof value === "string";
 }
 
+function isNonEmptyUnpaddedString(value: unknown): value is string {
+	return isString(value) && value.length > 0 && value === value.trim();
+}
+
+function hasOnlyKeys(
+	value: Record<string, unknown>,
+	allowed: ReadonlySet<string>,
+): boolean {
+	return Object.keys(value).every((key) => allowed.has(key));
+}
+
 function isBoolean(value: unknown): value is boolean {
 	return typeof value === "boolean";
 }
@@ -534,23 +545,38 @@ function isOptionalMetafieldOwnerSetting(value: unknown): boolean {
 		: value.blockInstanceId === undefined;
 }
 
+const NETWORK_METAFIELD_REFERENCE_KEYS = new Set([
+	"certainty",
+	"owner",
+	"namespace",
+	"key",
+]);
+
 function isNetworkMetafieldReferences(value: unknown): boolean {
 	return (
 		Array.isArray(value) &&
 		value.every((reference) => {
-			if (!isRecord(reference)) return false;
+			if (
+				!isRecord(reference) ||
+				!hasOnlyKeys(reference, NETWORK_METAFIELD_REFERENCE_KEYS)
+			) {
+				return false;
+			}
 			if (reference.certainty === "exact") {
 				return (
-					isString(reference.owner) &&
-					isString(reference.namespace) &&
-					isString(reference.key)
+					Object.keys(reference).length === 4 &&
+					isNonEmptyUnpaddedString(reference.owner) &&
+					isNonEmptyUnpaddedString(reference.namespace) &&
+					isNonEmptyUnpaddedString(reference.key)
 				);
 			}
 			return (
 				reference.certainty === "partial" &&
-				isOptionalString(reference.owner) &&
-				isOptionalString(reference.namespace) &&
-				isOptionalString(reference.key)
+				(reference.owner === undefined ||
+					isNonEmptyUnpaddedString(reference.owner)) &&
+				(reference.namespace === undefined ||
+					isNonEmptyUnpaddedString(reference.namespace)) &&
+				(reference.key === undefined || isNonEmptyUnpaddedString(reference.key))
 			);
 		})
 	);

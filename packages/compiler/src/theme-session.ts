@@ -156,8 +156,8 @@ import {
 } from "./theme-pass-scheduler.js";
 import {
 	createThemeReferencePass,
+	materializeShopifyDefaultLayoutReferences,
 	type ThemeReferencePassContext,
-	withImplicitDefaultLayoutReferences,
 } from "./theme-reference-pass.js";
 import {
 	createThemeResolutionPass,
@@ -1254,9 +1254,10 @@ function evidenceInputsForSource(
 	const inputs = state.dataFlowInputs.get(path);
 	const derived = state.derivedDataFlow.get(path);
 	return {
-		references: withImplicitDefaultLayoutReferences(
+		references: materializeShopifyDefaultLayoutReferences(
 			allDeclarations(state.declarations),
 			[...state.resolvedReferencesById.values()],
+			referenceId,
 		).filter((reference) => reference.fromPath === path),
 		sectionInstances: instances?.sectionInstances ?? [],
 		blockInstances: instances?.blockInstances ?? [],
@@ -1641,9 +1642,11 @@ function modelWithCollectedRecords(
 		files.push(...result.files.values());
 		declarations.push(...result.declarations);
 	}
-	const references = withImplicitDefaultLayoutReferences(declarations, [
-		...resolvedReferencesById.values(),
-	]);
+	const references = materializeShopifyDefaultLayoutReferences(
+		declarations,
+		[...resolvedReferencesById.values()],
+		referenceId,
+	);
 	const schemaSettings = [...schemaSettingsBySource.keys()]
 		.sort((a, b) => compareCanonicalStrings(a, b))
 		.map((path) => schemaSettingsBySource.get(path))

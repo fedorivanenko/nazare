@@ -144,6 +144,25 @@ fetch("/graphql", { body: JSON.stringify({ query }) });`,
 		/invalid cache entry for "assets\/theme.js"/,
 	);
 
+	for (const mutate of [
+		(reference) => {
+			reference.namespace = "";
+		},
+		(reference) => {
+			reference.unexpected = true;
+		},
+	]) {
+		const malformedMetafield = JSON.parse(serialized);
+		const reference = malformedMetafield.entries["assets/theme.js"].facts
+			.find((fact) => fact.kind === "accessesNetwork")
+			.metafieldReferences.find((candidate) => candidate.certainty === "exact");
+		mutate(reference);
+		assert.throws(
+			() => parsePersistedThemeInspection(malformedMetafield),
+			/invalid cache entry for "assets\/theme.js"/,
+		);
+	}
+
 	const validPartialMetafield = JSON.parse(serialized);
 	const partialReference = validPartialMetafield.entries[
 		"assets/theme.js"

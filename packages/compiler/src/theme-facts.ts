@@ -395,29 +395,76 @@ export type ThemeDeclaration = {
 	componentKind?: string;
 };
 
-export type ThemeReference = {
+type ThemeReferenceBase = {
 	id: string;
-	kind:
-		| "rendersSnippet"
-		| "containsSection"
-		| "containsSectionGroup"
-		| "usesLayout"
-		| "referencesAsset"
-		| "importsComponent";
 	fromPath: string;
-	targetKind:
-		| "snippet"
-		| "section"
-		| "sectionGroup"
-		| "layout"
-		| "asset"
-		| "component";
-	targetName?: string;
-	targetPath?: string;
 	resolvedDeclarationId?: string;
 	static: boolean;
 	span?: SourceSpan;
 };
+
+type AuthoredThemeReference = ThemeReferenceBase & {
+	provenance: "authored";
+};
+
+/**
+ * Structural references use discriminated target shapes. Layout selection is
+ * explicit: authored name, authored opt-out, or Shopify's platform default.
+ */
+export type ThemeReference =
+	| (AuthoredThemeReference & {
+			kind: "rendersSnippet";
+			targetKind: "snippet";
+			targetName?: string;
+	  })
+	| (AuthoredThemeReference & {
+			kind: "containsSection";
+			targetKind: "section";
+			targetName?: string;
+	  })
+	| (AuthoredThemeReference & {
+			kind: "containsSectionGroup";
+			targetKind: "sectionGroup";
+			targetName?: string;
+	  })
+	| (AuthoredThemeReference & {
+			kind: "usesLayout";
+			targetKind: "layout";
+			layoutSelection: "named";
+			targetName?: string;
+	  })
+	| (AuthoredThemeReference & {
+			kind: "usesLayout";
+			targetKind: "layout";
+			layoutSelection: "none";
+			static: true;
+	  })
+	| (ThemeReferenceBase & {
+			kind: "usesLayout";
+			targetKind: "layout";
+			layoutSelection: "shopifyDefault";
+			provenance: "shopifyDefault";
+			targetName: "theme";
+			static: true;
+	  })
+	| (AuthoredThemeReference & {
+			kind: "referencesAsset";
+			targetKind: "asset";
+			targetName?: string;
+	  })
+	| (AuthoredThemeReference & {
+			kind: "importsComponent";
+			targetKind: "component";
+			targetName: string;
+			targetPath?: string;
+			static: true;
+	  });
+
+export type ThemeReferenceWithoutId = ThemeReference extends infer Reference
+	? Reference extends ThemeReference
+		? Omit<Reference, "id">
+		: never
+	: never;
 
 export type ThemeSchemaRecord = {
 	id: string;
@@ -676,7 +723,7 @@ export type ThemeRenderSiteRecord = {
 };
 
 export interface ThemeSemanticModel {
-	version: 3;
+	version: 4;
 	root: string;
 	files: ThemeFileRecord[];
 	declarations: ThemeDeclaration[];

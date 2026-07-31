@@ -26,6 +26,7 @@ import type {
 	ThemeFileRecord,
 	ThemePageRecord,
 	ThemeReference,
+	ThemeReferenceWithoutId,
 	ThemeRenderArgumentRecord,
 	ThemeRenderSiteRecord,
 	ThemeSemanticModel,
@@ -46,8 +47,10 @@ import {
 } from "./theme-pass-scheduler.js";
 import {
 	createThemeReferencePass,
+	materializeShopifyDefaultLayoutReferences,
 	type ThemeReferencePassContext,
-	withImplicitDefaultLayoutReferences,
+	themeReferenceTargetName,
+	themeReferenceTargetPath,
 } from "./theme-reference-pass.js";
 import { resolveThemeDeclarationsAndReferences } from "./theme-resolution-pass.js";
 import { ThemeSchemaIndex } from "./theme-schema-index.js";
@@ -172,16 +175,19 @@ export function buildThemeSemanticModel(
 	);
 
 	const modelIssues = [...issues];
+	const referencesWithShopifyDefaults =
+		materializeShopifyDefaultLayoutReferences(
+			declarations,
+			collectedReferences,
+			referenceId,
+		);
 	const resolution = resolveThemeDeclarationsAndReferences(
 		declarations,
-		collectedReferences,
+		referencesWithShopifyDefaults,
 	);
 	modelIssues.push(...resolution.issues);
 	const byKindName = resolution.declarationByKey;
-	const references = withImplicitDefaultLayoutReferences(
-		declarations,
-		resolution.references,
-	);
+	const references = resolution.references;
 
 	const schemaIndex = new ThemeSchemaIndex({
 		declarations,
@@ -279,7 +285,7 @@ export function buildThemeSemanticModel(
 	modelIssues.push(...settingResolution.issues, ...localeResolution.issues);
 
 	const model: ThemeSemanticModel = {
-		version: 3,
+		version: 4,
 		root: options.root ?? ".",
 		files: [...files.values()].sort((a, b) =>
 			compareCanonicalStrings(a.path, b.path),
@@ -618,8 +624,8 @@ export function deriveThemeInputDiagnostics(
 	return issues;
 }
 
-export function referenceId(reference: Omit<ThemeReference, "id">): string {
-	return `ref:${reference.kind}:${reference.fromPath}:${reference.targetPath ?? reference.targetName ?? "dynamic"}:${occurrenceSuffix(reference.span)}`;
+export function referenceId(reference: ThemeReferenceWithoutId): string {
+	return `ref:${reference.kind}:${reference.fromPath}:${themeReferenceTargetPath(reference) ?? themeReferenceTargetName(reference) ?? "dynamic"}:${occurrenceSuffix(reference.span)}`;
 }
 
 function dedupeById<T extends { id: string }>(items: T[]): T[] {

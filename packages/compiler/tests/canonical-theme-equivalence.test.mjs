@@ -92,7 +92,13 @@ test("batch and program deduplicate references that share one stable ID", () => 
 	];
 	const program = new ThemeProgram(files);
 	assertProgramEqualsCold(program, files);
-	assert.equal(program.getModel().references.length, 1);
+	assert.equal(
+		program
+			.getModel()
+			.references.filter((reference) => reference.kind === "containsSection")
+			.length,
+		1,
+	);
 	assert.equal(program.getModel().sectionInstances.length, 2);
 });
 

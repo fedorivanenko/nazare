@@ -4,6 +4,7 @@ import type {
 	ThemeDeclaration,
 	ThemeFact,
 	ThemeReference,
+	ThemeReferenceWithoutId,
 } from "./theme-facts.js";
 import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
 
@@ -12,38 +13,44 @@ import type { IncrementalPass, PassChange } from "./theme-pass-scheduler.js";
  * `{% layout %}` tag. Materialize that platform default as a canonical
  * semantic reference so every dependency and impact query sees one topology.
  */
-export function withImplicitDefaultLayoutReferences(
+export function materializeShopifyDefaultLayoutReferences(
 	declarations: ThemeDeclaration[],
 	references: ThemeReference[],
+	id: (reference: ThemeReferenceWithoutId) => string,
 ): ThemeReference[] {
-	const defaultLayout = declarations.find(
+	const defaultLayouts = declarations.filter(
 		(declaration) =>
 			declaration.kind === "layout" && declaration.name === "theme",
 	);
-	if (!defaultLayout) return references;
+	const resolvedDefaultLayoutId =
+		defaultLayouts.length === 1 ? defaultLayouts[0]?.id : undefined;
 	const explicitLayoutPaths = new Set(
 		references
 			.filter((reference) => reference.kind === "usesLayout")
 			.map((reference) => reference.fromPath),
 	);
-	const implicit = declarations
+	const shopifyDefaults = declarations
 		.filter(
 			(declaration) =>
 				declaration.kind === "template" &&
 				!explicitLayoutPaths.has(declaration.path),
 		)
-		.map(
-			(declaration): ThemeReference => ({
-				id: `ref:usesLayout:${declaration.path}:theme:implicit`,
+		.map((declaration): ThemeReference => {
+			const input: ThemeReferenceWithoutId = {
 				kind: "usesLayout",
 				fromPath: declaration.path,
 				targetKind: "layout",
 				targetName: "theme",
-				resolvedDeclarationId: defaultLayout.id,
+				layoutSelection: "shopifyDefault",
+				provenance: "shopifyDefault",
 				static: true,
-			}),
-		);
-	return [...references, ...implicit].sort((left, right) =>
+			};
+			if (resolvedDefaultLayoutId) {
+				input.resolvedDeclarationId = resolvedDefaultLayoutId;
+			}
+			return { id: id(input), ...input };
+		});
+	return [...references, ...shopifyDefaults].sort((left, right) =>
 		compareCanonicalStrings(left.id, right.id),
 	);
 }
@@ -53,7 +60,7 @@ export type ThemeReferencePassContext = {
 	referencesBySource: Map<string, ThemeReference[]>;
 	referencesById?: Map<string, ThemeReference>;
 	referencesByTargetKey?: Map<string, Map<string, ThemeReference>>;
-	id(reference: Omit<ThemeReference, "id">): string;
+	id(reference: ThemeReferenceWithoutId): string;
 };
 
 export function createThemeReferencePass(): IncrementalPass<
@@ -105,18 +112,33 @@ export function createThemeReferencePass(): IncrementalPass<
 	};
 }
 
+export function themeReferenceTargetName(
+	reference: ThemeReference | ThemeReferenceWithoutId,
+): string | undefined {
+	return reference.kind === "usesLayout" && reference.layoutSelection === "none"
+		? undefined
+		: reference.targetName;
+}
+
+export function themeReferenceTargetPath(
+	reference: ThemeReference | ThemeReferenceWithoutId,
+): string | undefined {
+	return reference.kind === "importsComponent"
+		? reference.targetPath
+		: undefined;
+}
+
 export function referenceTargetKeys(reference: ThemeReference): string[] {
-	if (reference.targetPath) {
-		return [`${reference.targetKind}:${reference.targetPath}`];
+	const targetPath = themeReferenceTargetPath(reference);
+	if (targetPath) {
+		return [`${reference.targetKind}:${targetPath}`];
 	}
-	if (!reference.targetName) return [];
+	const targetName = themeReferenceTargetName(reference);
+	if (!targetName) return [];
 	if (reference.kind === "referencesAsset") {
-		return [
-			`asset:${reference.targetName}`,
-			`asset:assets/${reference.targetName}`,
-		];
+		return [`asset:${targetName}`, `asset:assets/${targetName}`];
 	}
-	return [`${reference.targetKind}:${reference.targetName}`];
+	return [`${reference.targetKind}:${targetName}`];
 }
 
 function addReferenceToIndexes(
@@ -149,7 +171,7 @@ function removeReferenceFromIndexes(
 
 export function collectThemeReferences(
 	facts: ThemeFact[],
-	id: (reference: Omit<ThemeReference, "id">) => string,
+	id: (reference: ThemeReferenceWithoutId) => string,
 ): ThemeReference[] {
 	const references: ThemeReference[] = [];
 	for (const fact of facts) {
@@ -162,10 +184,11 @@ export function collectThemeReferences(
 
 function referenceFromFact(
 	fact: ThemeFact,
-): Omit<ThemeReference, "id"> | undefined {
+): ThemeReferenceWithoutId | undefined {
 	if (fact.kind === "rendersSnippet") {
 		return {
 			kind: "rendersSnippet",
+			provenance: "authored",
 			fromPath: fact.fromPath,
 			targetKind: "snippet",
 			targetName: fact.targetName,
@@ -176,6 +199,7 @@ function referenceFromFact(
 	if (fact.kind === "containsSection") {
 		return {
 			kind: "containsSection",
+			provenance: "authored",
 			fromPath: fact.fromPath,
 			targetKind: "section",
 			targetName: fact.targetName,
@@ -186,6 +210,7 @@ function referenceFromFact(
 	if (fact.kind === "containsSectionGroup") {
 		return {
 			kind: "containsSectionGroup",
+			provenance: "authored",
 			fromPath: fact.fromPath,
 			targetKind: "sectionGroup",
 			targetName: fact.targetName,
@@ -194,18 +219,31 @@ function referenceFromFact(
 		};
 	}
 	if (fact.kind === "usesLayout") {
-		return {
-			kind: "usesLayout",
-			fromPath: fact.fromPath,
-			targetKind: "layout",
-			targetName: fact.targetName,
-			static: fact.static,
-			span: fact.span,
-		};
+		return fact.targetName === "none"
+			? {
+					kind: "usesLayout",
+					provenance: "authored",
+					layoutSelection: "none",
+					fromPath: fact.fromPath,
+					targetKind: "layout",
+					static: true,
+					span: fact.span,
+				}
+			: {
+					kind: "usesLayout",
+					provenance: "authored",
+					layoutSelection: "named",
+					fromPath: fact.fromPath,
+					targetKind: "layout",
+					targetName: fact.targetName,
+					static: fact.static,
+					span: fact.span,
+				};
 	}
 	if (fact.kind === "referencesAsset") {
 		return {
 			kind: "referencesAsset",
+			provenance: "authored",
 			fromPath: fact.fromPath,
 			targetKind: "asset",
 			targetName: fact.targetName,
@@ -216,6 +254,7 @@ function referenceFromFact(
 	if (fact.kind === "importsComponent") {
 		return {
 			kind: "importsComponent",
+			provenance: "authored",
 			fromPath: fact.fromPath,
 			targetKind: "component",
 			targetName: fact.localName,

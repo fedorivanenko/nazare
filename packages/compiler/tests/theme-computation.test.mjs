@@ -542,16 +542,67 @@ fetch("/apps/recommendations", {
 		computation.getFileImpact("assets/theme.js").affectedPages,
 		impact.affectedPages,
 	);
-	assert.ok(
-		computation.model.references.some(
-			(reference) =>
-				reference.kind === "usesLayout" &&
-				reference.fromPath === "templates/product.liquid" &&
-				reference.span === undefined,
-		),
+	assert.deepEqual(
+		computation.model.references
+			.filter((reference) => reference.kind === "usesLayout")
+			.map((reference) => ({
+				path: reference.fromPath,
+				selection: reference.layoutSelection,
+				provenance: reference.provenance,
+				target: reference.targetName,
+			})),
+		[
+			{
+				path: "templates/gift_card.liquid",
+				selection: "none",
+				provenance: "authored",
+				target: undefined,
+			},
+			{
+				path: "templates/page.liquid",
+				selection: "named",
+				provenance: "authored",
+				target: "alternate",
+			},
+			{
+				path: "templates/product.liquid",
+				selection: "shopifyDefault",
+				provenance: "shopifyDefault",
+				target: "theme",
+			},
+		],
 	);
 	assert.equal(impact.certainty, "complete");
 	assert.ok(impact.scope.excluded.includes("remoteAppRuntime"));
+});
+
+test("missing Shopify default layouts remain explicit unresolved relations", () => {
+	const computation = computeNazareTheme([
+		{ path: "templates/product.liquid", contents: "{{ product.title }}" },
+	]);
+	assert.deepEqual(
+		computation.model.references.map((reference) => ({
+			kind: reference.kind,
+			selection: reference.layoutSelection,
+			provenance: reference.provenance,
+			resolved: reference.resolvedDeclarationId,
+		})),
+		[
+			{
+				kind: "usesLayout",
+				selection: "shopifyDefault",
+				provenance: "shopifyDefault",
+				resolved: undefined,
+			},
+		],
+	);
+	assert.ok(
+		computation.model.issues.some(
+			(issue) =>
+				issue.code === "THEME_UNRESOLVED_REFERENCE" &&
+				issue.message.includes("layout reference theme"),
+		),
+	);
 });
 
 test("dynamic local GraphQL payloads are explicit metafield uncertainty", () => {
@@ -667,6 +718,11 @@ fetch("/graphql", { body: JSON.stringify({ query }) });
 const outerQuery = ${JSON.stringify(query)};
 function send(outerQuery) {
 	fetch("/graphql", { body: JSON.stringify({ query: outerQuery }) });
+}
+function shadowGlobals(fetch, window, navigator, JSON) {
+	fetch("/graphql", { body: JSON.stringify({ query: outerQuery }) });
+	window.fetch("/graphql");
+	navigator.sendBeacon("/graphql", outerQuery);
 }`,
 			},
 		],
@@ -755,6 +811,9 @@ const apollo = new ApolloClient({});
 const storefront = createStorefrontApiClient({});
 graphqlRequest.request(query);
 graphqlRequest.request(buildQuery());
+graphqlRequest.request("not a GraphQL document");
+const transformedQuery = transform\`query { product(handle: "example") { metafield(namespace: "custom", key: "subtitle") { value } } }\`;
+graphqlRequest.request(transformedQuery);
 apollo.query({ query });
 storefront.request(query);
 database.query({ query });`,
@@ -769,7 +828,7 @@ database.query({ query });`,
 			},
 		},
 	);
-	assert.equal(computation.model.networkAccesses.length, 4);
+	assert.equal(computation.model.networkAccesses.length, 6);
 	assert.equal(
 		computation.model.networkAccesses.filter(
 			(access) => access.graphql === "static",
@@ -779,6 +838,12 @@ database.query({ query });`,
 	assert.equal(
 		computation.model.networkAccesses.filter(
 			(access) => access.graphql === "dynamic",
+		).length,
+		2,
+	);
+	assert.equal(
+		computation.model.networkAccesses.filter(
+			(access) => access.graphql === "invalid",
 		).length,
 		1,
 	);

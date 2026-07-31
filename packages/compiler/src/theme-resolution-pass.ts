@@ -101,7 +101,7 @@ function resolutionIssues(
 	if (
 		!reference.static ||
 		reference.resolvedDeclarationId ||
-		isLayoutOptOut(reference)
+		(reference.kind === "usesLayout" && reference.layoutSelection === "none")
 	) {
 		return [];
 	}
@@ -163,7 +163,10 @@ export function resolveThemeDeclarationsAndReferences(
 
 	const issues = duplicateDeclarationIssues(declarations);
 	const resolvedReferences = references.map((reference) => {
-		if (isLayoutOptOut(reference)) {
+		if (
+			reference.kind === "usesLayout" &&
+			reference.layoutSelection === "none"
+		) {
 			return withResolvedDeclaration(reference, undefined);
 		}
 		const candidates = referenceCandidates(reference, declarationsByKey);
@@ -197,10 +200,6 @@ export function resolveThemeDeclarationsAndReferences(
 		declarationIdsByKey,
 		issues,
 	};
-}
-
-function isLayoutOptOut(reference: ThemeReference): boolean {
-	return reference.kind === "usesLayout" && reference.targetName === "none";
 }
 
 function indexDeclarations(
@@ -255,27 +254,13 @@ function referenceCandidates(
 	reference: ThemeReference,
 	declarationsByKey: Map<string, ThemeDeclaration[]>,
 ): ThemeDeclaration[] {
-	for (const key of referenceKeys(reference)) {
+	for (const key of referenceTargetKeys(reference)) {
 		const candidates = deduplicateDeclarations(
 			declarationsByKey.get(key) ?? [],
 		);
 		if (candidates.length > 0) return candidates;
 	}
 	return [];
-}
-
-function referenceKeys(reference: ThemeReference): string[] {
-	if (reference.targetPath) {
-		return [`${reference.targetKind}:${reference.targetPath}`];
-	}
-	if (!reference.targetName) return [];
-	if (reference.kind === "referencesAsset") {
-		return [
-			`asset:${reference.targetName}`,
-			`asset:assets/${reference.targetName}`,
-		];
-	}
-	return [`${reference.targetKind}:${reference.targetName}`];
 }
 
 function withResolvedDeclaration(

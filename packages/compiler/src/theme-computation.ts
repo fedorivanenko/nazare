@@ -14,6 +14,7 @@ import type {
 	ThemeFileRecord,
 	ThemeImpactSummary,
 	ThemeSemanticModel,
+	ThemeSourceLanguage,
 } from "./theme-facts.js";
 import type { ThemeFileKind } from "./theme-file-classifier.js";
 import { themeGraphFromModel } from "./theme-graph-output.js";
@@ -355,7 +356,8 @@ function metafieldUncertainSources(
 		addUncertainty(reasonsByPath, path, issue.message);
 	}
 	for (const source of model.sourceAnalyses) {
-		if (!sourceLanguageCanReadMetafields(source.language)) continue;
+		const policy = METAFIELD_ANALYSIS_POLICY[source.language];
+		if (!policy.canReadMetafields) continue;
 		if (source.completeness === "failed") {
 			addUncertainty(
 				reasonsByPath,
@@ -363,9 +365,7 @@ function metafieldUncertainSources(
 				`${source.language} source analysis failed and may hide metafield reads`,
 			);
 		}
-		if (source.language !== "liquid" && source.language !== "nazare-liquid") {
-			continue;
-		}
+		if (!policy.reportsMetafieldUncertainty) continue;
 		for (const reason of source.uncertainty) {
 			if (
 				reason.toLowerCase().includes("metafield") &&
@@ -383,15 +383,27 @@ function metafieldUncertainSources(
 		.sort((a, b) => compareCanonicalStrings(a.path, b.path));
 }
 
-function sourceLanguageCanReadMetafields(
-	language: ThemeSemanticModel["sourceAnalyses"][number]["language"],
-): boolean {
-	return (
-		language === "liquid" ||
-		language === "nazare-liquid" ||
-		language === "javascript"
-	);
-}
+const METAFIELD_ANALYSIS_POLICY = {
+	"nazare-liquid": {
+		canReadMetafields: true,
+		reportsMetafieldUncertainty: true,
+	},
+	liquid: { canReadMetafields: true, reportsMetafieldUncertainty: true },
+	javascript: {
+		canReadMetafields: true,
+		reportsMetafieldUncertainty: false,
+	},
+	json: { canReadMetafields: true, reportsMetafieldUncertainty: true },
+	css: { canReadMetafields: false, reportsMetafieldUncertainty: false },
+	asset: { canReadMetafields: false, reportsMetafieldUncertainty: false },
+	other: { canReadMetafields: false, reportsMetafieldUncertainty: false },
+} as const satisfies Record<
+	ThemeSourceLanguage,
+	{
+		canReadMetafields: boolean;
+		reportsMetafieldUncertainty: boolean;
+	}
+>;
 
 function networkAccessExactlyMatches(
 	access: ThemeSemanticModel["networkAccesses"][number],

@@ -48,6 +48,10 @@ export function analyzeThemeScriptNetwork(
 		const directName = identifierName(callee);
 		const method =
 			callee?.type === "MemberExpression" ? memberName(callee) : undefined;
+		const graphqlClientKind =
+			callee?.type === "MemberExpression"
+				? bindings.graphqlClientKind(asNode(callee.object), call.start)
+				: undefined;
 		let transport:
 			| Extract<ThemeFact, { kind: "accessesNetwork" }>["transport"]
 			| undefined;
@@ -56,9 +60,15 @@ export function analyzeThemeScriptNetwork(
 		let queryNode: JavaScriptNode | undefined;
 
 		if (
-			(directName === "fetch" && !bindings.hasBinding("fetch", call.start)) ||
+			(directName === "fetch" &&
+				!bindings.hasLexicalBinding("fetch", call.start)) ||
 			(method === "fetch" &&
-				isGlobalMemberCall(callee, ["window", "self", "globalThis"]))
+				isUnshadowedGlobalMemberCall(
+					callee,
+					["window", "self", "globalThis"],
+					bindings,
+					call.start,
+				))
 		) {
 			transport = "fetch";
 			endpointNode = args[0];
@@ -72,20 +82,17 @@ export function analyzeThemeScriptNetwork(
 			endpointNode = args[1];
 		} else if (
 			method === "sendBeacon" &&
-			isGlobalMemberCall(callee, ["navigator"])
+			isUnshadowedGlobalMemberCall(callee, ["navigator"], bindings, call.start)
 		) {
 			transport = "sendBeacon";
 			endpointNode = args[0];
 			optionsNode = args[1];
 		} else if (
 			method &&
-			callee?.type === "MemberExpression" &&
-			isSupportedGraphqlClientMethod(
-				bindings.graphqlClientKind(asNode(callee.object), call.start),
-				method,
-			)
+			graphqlClientKind &&
+			isSupportedGraphqlClientMethod(graphqlClientKind, method)
 		) {
-			queryNode = graphqlClientQueryNode(args, method);
+			queryNode = graphqlClientQueryNode(args, graphqlClientKind);
 			transport = "graphqlClient";
 		} else return;
 
@@ -106,13 +113,12 @@ export function analyzeThemeScriptNetwork(
 				graphql = "static";
 				metafieldReferences = collectGraphqlMetafieldReferences(document);
 			} catch {
-				if (looksLikeGraphql(queryText) || endpointLooksGraphql) {
-					graphql = "invalid";
-					pushUncertainty(
-						"Static GraphQL request could not be parsed; metafield impact is partial",
-						call,
-					);
-				}
+				graphql = "invalid";
+				pushUncertainty(
+					"THEME_INVALID_GRAPHQL_REQUEST",
+					"Static GraphQL request could not be parsed; metafield impact is partial",
+					call,
+				);
 			}
 		} else if (
 			endpointLooksGraphql ||
@@ -121,6 +127,7 @@ export function analyzeThemeScriptNetwork(
 		) {
 			graphql = "dynamic";
 			pushUncertainty(
+				"THEME_DYNAMIC_GRAPHQL_REQUEST",
 				"Dynamic local GraphQL payload prevents exact metafield request analysis",
 				call,
 			);
@@ -143,9 +150,13 @@ export function analyzeThemeScriptNetwork(
 		return spanFromOffsets(source, path, { start: node.start, end: node.end });
 	}
 
-	function pushUncertainty(message: string, node: JavaScriptNode): void {
+	function pushUncertainty(
+		code: "THEME_DYNAMIC_GRAPHQL_REQUEST" | "THEME_INVALID_GRAPHQL_REQUEST",
+		message: string,
+		node: JavaScriptNode,
+	): void {
 		uncertainty.push({
-			code: "THEME_DYNAMIC_GRAPHQL_REQUEST",
+			code,
 			message,
 			span: nodeSpan(node),
 		});
@@ -162,32 +173,39 @@ function isXmlHttpRequestCall(
 	if (object?.type === "NewExpression") {
 		return (
 			identifierName(asNode(object.callee)) === "XMLHttpRequest" &&
-			!bindings.hasBinding("XMLHttpRequest", object.start)
+			!bindings.hasLexicalBinding("XMLHttpRequest", object.start)
 		);
 	}
 	return bindings.isXmlHttpRequest(object, offset);
 }
 
-function isGlobalMemberCall(
+function isUnshadowedGlobalMemberCall(
 	callee: JavaScriptNode | undefined,
 	globalNames: string[],
+	bindings: JavaScriptBindingResolver,
+	offset: number,
 ): boolean {
+	if (callee?.type !== "MemberExpression") return false;
+	const objectName = identifierName(asNode(callee.object));
 	return (
-		callee?.type === "MemberExpression" &&
-		globalNames.includes(identifierName(asNode(callee.object)) ?? "")
+		objectName !== undefined &&
+		globalNames.includes(objectName) &&
+		!bindings.hasLexicalBinding(objectName, offset)
 	);
 }
 
 function graphqlClientQueryNode(
 	args: JavaScriptNode[],
-	method: string,
+	kind: GraphqlClientKind,
 ): JavaScriptNode | undefined {
-	if (method === "request") return args[0];
+	const specification = graphqlClientSpecification(kind);
+	if (!specification) return undefined;
 	const first = args[0];
+	if (specification.payload === "documentArgument") return first;
 	return first?.type === "ObjectExpression"
 		? (objectPropertyValue(first, "query") ??
 				objectPropertyValue(first, "mutation"))
-		: first;
+		: undefined;
 }
 
 function graphqlQueryFromRequest(
@@ -195,16 +213,11 @@ function graphqlQueryFromRequest(
 	options: JavaScriptNode | undefined,
 	bindings: JavaScriptBindingResolver,
 ): string | undefined {
-	if (endpoint) {
-		try {
-			const query = new URL(
-				endpoint,
-				"https://nazare.invalid",
-			).searchParams.get("query");
-			if (query) return query;
-		} catch {
-			// Endpoint is still valid network evidence even when not URL-parseable.
-		}
+	if (endpoint && URL.canParse(endpoint, "https://nazare.invalid")) {
+		const query = new URL(endpoint, "https://nazare.invalid").searchParams.get(
+			"query",
+		);
+		if (query) return query;
 	}
 	if (options?.type !== "ObjectExpression") return undefined;
 	const direct = objectPropertyValue(options, "query");
@@ -232,6 +245,7 @@ function graphqlQueryFromRequest(
 		if (
 			callee?.type === "MemberExpression" &&
 			identifierName(asNode(callee.object)) === "JSON" &&
+			!bindings.hasLexicalBinding("JSON", callee.start) &&
 			memberName(callee) === "stringify"
 		) {
 			const payload = nodes(body.arguments)[0];
@@ -275,6 +289,7 @@ function requestMayContainGraphql(
 	if (
 		callee?.type !== "MemberExpression" ||
 		identifierName(asNode(callee.object)) !== "JSON" ||
+		bindings.hasLexicalBinding("JSON", callee.start) ||
 		memberName(callee) !== "stringify"
 	) {
 		return false;
@@ -392,7 +407,10 @@ function stringObjectField(
 }
 
 function stringValue(value: ValueNode | undefined): string | undefined {
-	return value?.kind === Kind.STRING ? value.value : undefined;
+	if (value?.kind !== Kind.STRING) return undefined;
+	return value.value.length > 0 && value.value === value.value.trim()
+		? value.value
+		: undefined;
 }
 
 type SupportedGraphqlMetafieldOwner =
@@ -499,6 +517,43 @@ function objectPropertyValue(
 }
 
 type GraphqlClientKind = "graphql-request" | "apollo" | "shopify-storefront";
+type GraphqlClientConstruction = "constructor" | "factory";
+
+type GraphqlClientBindingSpec = {
+	kind: GraphqlClientKind;
+	importSource: string;
+	importedName: string;
+	construction: GraphqlClientConstruction;
+	methods: readonly string[];
+	payload: "documentArgument" | "operationOptions";
+};
+
+const SUPPORTED_GRAPHQL_CLIENT_BINDINGS: readonly GraphqlClientBindingSpec[] = [
+	{
+		kind: "graphql-request",
+		importSource: "graphql-request",
+		importedName: "GraphQLClient",
+		construction: "constructor",
+		methods: ["request"],
+		payload: "documentArgument",
+	},
+	{
+		kind: "apollo",
+		importSource: "@apollo/client",
+		importedName: "ApolloClient",
+		construction: "constructor",
+		methods: ["query", "mutate"],
+		payload: "operationOptions",
+	},
+	{
+		kind: "shopify-storefront",
+		importSource: "@shopify/storefront-api-client",
+		importedName: "createStorefrontApiClient",
+		construction: "factory",
+		methods: ["request"],
+		payload: "documentArgument",
+	},
+];
 
 type JavaScriptBinding = {
 	name: string;
@@ -626,8 +681,10 @@ class JavaScriptBindingResolver {
 		this.resolveConstructedBindings();
 	}
 
-	hasBinding(name: string, offset: number): boolean {
-		return this.resolve(name, offset) !== undefined;
+	hasLexicalBinding(name: string, offset: number): boolean {
+		return (this.byName.get(name) ?? []).some(
+			(binding) => offset >= binding.scopeStart && offset <= binding.scopeEnd,
+		);
 	}
 
 	staticString(node: JavaScriptNode | undefined): string | undefined {
@@ -720,19 +777,13 @@ class JavaScriptBindingResolver {
 						asNode(initializer.callee),
 						initializer.start,
 					);
+					binding.graphqlClientKind = graphqlClientKindForBinding(
+						importedConstructor,
+						"constructor",
+					);
 					if (
-						importedConstructor?.importSource === "graphql-request" &&
-						importedConstructor.importedName === "GraphQLClient"
-					) {
-						binding.graphqlClientKind = "graphql-request";
-					} else if (
-						importedConstructor?.importSource === "@apollo/client" &&
-						importedConstructor.importedName === "ApolloClient"
-					) {
-						binding.graphqlClientKind = "apollo";
-					} else if (
 						identifierName(asNode(initializer.callee)) === "XMLHttpRequest" &&
-						!this.hasBinding("XMLHttpRequest", initializer.start)
+						!this.hasLexicalBinding("XMLHttpRequest", initializer.start)
 					) {
 						binding.xmlHttpRequest = true;
 					}
@@ -742,12 +793,10 @@ class JavaScriptBindingResolver {
 						asNode(initializer.callee),
 						initializer.start,
 					);
-					if (
-						factory?.importSource === "@shopify/storefront-api-client" &&
-						factory.importedName === "createStorefrontApiClient"
-					) {
-						binding.graphqlClientKind = "shopify-storefront";
-					}
+					binding.graphqlClientKind = graphqlClientKindForBinding(
+						factory,
+						"factory",
+					);
 				}
 			}
 		}
@@ -764,14 +813,32 @@ class JavaScriptBindingResolver {
 	}
 }
 
+function graphqlClientKindForBinding(
+	binding: JavaScriptBinding | undefined,
+	construction: GraphqlClientConstruction,
+): GraphqlClientKind | undefined {
+	if (!binding?.importSource || !binding.importedName) return undefined;
+	return SUPPORTED_GRAPHQL_CLIENT_BINDINGS.find(
+		(specification) =>
+			specification.importSource === binding.importSource &&
+			specification.importedName === binding.importedName &&
+			specification.construction === construction,
+	)?.kind;
+}
+
+function graphqlClientSpecification(
+	kind: GraphqlClientKind,
+): GraphqlClientBindingSpec | undefined {
+	return SUPPORTED_GRAPHQL_CLIENT_BINDINGS.find(
+		(specification) => specification.kind === kind,
+	);
+}
+
 function isSupportedGraphqlClientMethod(
-	kind: GraphqlClientKind | undefined,
+	kind: GraphqlClientKind,
 	method: string,
 ): boolean {
-	if (kind === "graphql-request" || kind === "shopify-storefront") {
-		return method === "request";
-	}
-	return kind === "apollo" && (method === "query" || method === "mutate");
+	return graphqlClientSpecification(kind)?.methods.includes(method) === true;
 }
 
 function isFunction(node: JavaScriptNode): boolean {
@@ -846,10 +913,8 @@ function literalString(node: JavaScriptNode | undefined): string | undefined {
 	if (!node) return undefined;
 	if (node.type === "Literal" && typeof node.value === "string")
 		return node.value;
-	const template =
-		node.type === "TaggedTemplateExpression" ? asNode(node.quasi) : node;
+	const template = node;
 	if (
-		!template ||
 		template.type !== "TemplateLiteral" ||
 		nodes(template.expressions).length > 0
 	)

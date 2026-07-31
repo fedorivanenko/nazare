@@ -9,6 +9,10 @@ import type {
 } from "./theme-facts.js";
 import { impactSummary } from "./theme-impact.js";
 import { blockId, blockInstanceId, fileId, schemaId } from "./theme-model.js";
+import {
+	themeReferenceTargetName,
+	themeReferenceTargetPath,
+} from "./theme-reference-pass.js";
 
 export function shareThemeGraphRecords(
 	previous: InspectNazareThemeResult,
@@ -550,7 +554,8 @@ export function themeGraphFromModel(
 	for (const reference of model.references) {
 		if (
 			reference.kind === "rendersSnippet" ||
-			(reference.kind === "usesLayout" && reference.targetName === "none") ||
+			(reference.kind === "usesLayout" &&
+				reference.layoutSelection === "none") ||
 			!projects(reference.id)
 		) {
 			continue;
@@ -561,7 +566,9 @@ export function themeGraphFromModel(
 				id: to,
 				kind: "unresolved",
 				targetKind: reference.targetKind,
-				name: reference.targetName ?? reference.targetPath,
+				name:
+					themeReferenceTargetName(reference) ??
+					themeReferenceTargetPath(reference),
 			});
 		}
 		if (reference.kind === "containsSection") {
@@ -761,5 +768,5 @@ function assertGraphIntegrity(
 }
 
 function unresolvedNodeId(reference: ThemeReference): string {
-	return `unresolved:${reference.targetKind}:${reference.targetPath ?? reference.targetName ?? reference.id}`;
+	return `unresolved:${reference.targetKind}:${themeReferenceTargetPath(reference) ?? themeReferenceTargetName(reference) ?? reference.id}`;
 }

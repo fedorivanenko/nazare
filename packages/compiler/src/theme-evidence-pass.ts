@@ -154,7 +154,10 @@ export function deriveThemeEvidenceRecords(
 					: ("dependency" as const),
 			file: reference.fromPath,
 			span: reference.span,
-			extractor: "theme-liquid-dependencies",
+			extractor:
+				reference.provenance === "shopifyDefault"
+					? "shopify-platform-defaults"
+					: "theme-liquid-dependencies",
 		})),
 		...records.localeReferences.map((reference) => ({
 			id: reference.id,
