@@ -175,6 +175,44 @@ test("graph server supports MCP tools and build updates", async () => {
 	}
 });
 
+test("graph server serves demand-driven ProjectSession query products", async () => {
+	const root = await mkdtemp(join(tmpdir(), "nazare-product-query-server-"));
+	try {
+		await mkdir(join(root, "sections"));
+		await mkdir(join(root, "snippets"));
+		await writeFile(join(root, "sections/main.liquid"), "{% render 'card' %}");
+		await writeFile(join(root, "snippets/card.liquid"), "<span>Card</span>");
+		const responses = await runServer(root, [
+			{ id: 1, method: "projectModel" },
+			{ id: 2, method: "projectGraph" },
+			{ id: 3, method: "impact", params: { path: "snippets/card.liquid" } },
+			{
+				id: 4,
+				method: "unusedFiles",
+				params: { roots: ["sections/main.liquid"] },
+			},
+			{
+				id: 5,
+				method: "updateFile",
+				params: { path: "sections/main.liquid", contents: "<main />" },
+			},
+			{ id: 6, method: "projectGraph" },
+		]);
+
+		assert.equal(responses[0].result.version, 1);
+		assert.equal(responses[1].result.version, 1);
+		assert.equal(responses[1].result.graph.edges.length, 1);
+		assert.deepEqual(
+			responses[2].result.affected.map((file) => file.path),
+			["sections/main.liquid", "snippets/card.liquid"],
+		);
+		assert.deepEqual(responses[3].result.files, []);
+		assert.equal(responses[5].result.graph.edges.length, 0);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test("graph server queries cross-language behavior and JavaScript owners", async () => {
 	const root = await mkdtemp(join(tmpdir(), "nazare-behavior-server-"));
 	try {

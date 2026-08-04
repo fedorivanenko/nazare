@@ -68,6 +68,9 @@ importers:
       '@nazare/source-cli':
         specifier: workspace:^
         version: link:../source-cli
+      '@nazare/target-shopify':
+        specifier: workspace:^
+        version: link:../target-shopify
       '@nazare/theme':
         specifier: workspace:^
         version: link:../theme

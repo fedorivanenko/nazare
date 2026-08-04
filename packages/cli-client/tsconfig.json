@@ -11,6 +11,7 @@
     { "path": "../preview" },
     { "path": "../registry" },
     { "path": "../source-cli" },
-    { "path": "../theme" }
+    { "path": "../theme" },
+    { "path": "../target-shopify" }
   ]
 }

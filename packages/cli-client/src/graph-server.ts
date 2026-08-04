@@ -16,6 +16,7 @@ import {
 	isInspectThemeFile,
 	readInspectExcludePatterns,
 } from "./inspect-input.js";
+import { ShopifyQuerySession } from "./shopify-query-session.js";
 
 export type ThemeGraphServerOptions = {
 	projectRoot: string;
@@ -39,6 +40,7 @@ export async function serveThemeGraph(
 	const initial = await loadProgramState(root, options.projectRoot);
 	let session = initial.program;
 	let buildSession = initial.buildSession;
+	let querySession = initial.querySession;
 	let stopWatching: (() => void) | undefined;
 	let mcpInitialized = false;
 	const readline = createInterface({ input, crlfDelay: Infinity });
@@ -91,6 +93,10 @@ export async function serveThemeGraph(
 				() => buildSession,
 				(next) => {
 					buildSession = next;
+				},
+				() => querySession,
+				(next) => {
+					querySession = next;
 				},
 				(next) => {
 					stopWatching?.();
@@ -154,6 +160,8 @@ async function handleRequest(
 	setSession: (session: ThemeProgram) => void,
 	getBuildSession: () => ThemeBuildSession,
 	setBuildSession: (session: ThemeBuildSession) => void,
+	getQuerySession: () => ShopifyQuerySession,
+	setQuerySession: (session: ShopifyQuerySession) => void,
 	setWatcher: (stop: () => void) => void,
 	notify: (update: unknown) => void,
 	debounceMs: number,
@@ -186,6 +194,8 @@ async function handleRequest(
 				setSession,
 				getBuildSession,
 				setBuildSession,
+				getQuerySession,
+				setQuerySession,
 				setWatcher,
 				notify,
 				debounceMs,
@@ -220,21 +230,48 @@ async function handleRequest(
 		const state = await loadProgramState(root, projectRoot);
 		setSession(state.program);
 		setBuildSession(state.buildSession);
+		setQuerySession(state.querySession);
 		return state.program.getGraph();
 	}
 	const session = getSession();
+	const querySession = getQuerySession();
+	if (request.method === "projectModel") return querySession.projectModel();
+	if (request.method === "projectGraph") return querySession.projectGraph();
+	if (request.method === "impact") {
+		return querySession.impact([requiredString(request.params, "path")]);
+	}
+	if (request.method === "behaviorIndex") {
+		return querySession.behaviorIndex({
+			behaviorKind: optionalString(request.params, "behaviorKind"),
+		});
+	}
+	if (request.method === "metafieldIndex") {
+		return querySession.metafieldIndex({
+			ownerType: optionalString(request.params, "ownerType"),
+			namespace: optionalString(request.params, "namespace"),
+		});
+	}
+	if (request.method === "unusedFiles") {
+		return querySession.unusedFiles(requiredStrings(request.params, "roots"));
+	}
 	if (request.method === "build") return getBuildSession().getBuild();
 	if (request.method === "updateFile") {
 		const file = requiredFile(request.params);
-		return getBuildSession().updateFile(file).graphUpdate;
+		const result = getBuildSession().updateFile(file).graphUpdate;
+		await querySession.updateFile(file);
+		return result;
 	}
 	if (request.method === "buildUpdate") {
 		const file = requiredFile(request.params);
-		return getBuildSession().updateFile(file);
+		const result = getBuildSession().updateFile(file);
+		await querySession.updateFile(file);
+		return result;
 	}
 	if (request.method === "removeFile") {
 		const path = requiredString(request.params, "path");
-		return getBuildSession().removeFile(path).graphUpdate;
+		const result = getBuildSession().removeFile(path).graphUpdate;
+		await querySession.removeFile(path);
+		return result;
 	}
 	if (request.method === "watch") {
 		setWatcher(
@@ -243,6 +280,7 @@ async function handleRequest(
 				projectRoot,
 				getSession,
 				getBuildSession,
+				getQuerySession,
 				notify,
 				debounceMs,
 			),
@@ -300,6 +338,7 @@ function startWatcher(
 	projectRoot: string,
 	getSession: () => ThemeProgram,
 	getBuildSession: () => ThemeBuildSession,
+	getQuerySession: () => ShopifyQuerySession,
 	notify: (update: unknown) => void,
 	debounceMs: number,
 ): () => void {
@@ -352,6 +391,7 @@ function startWatcher(
 				const contents = await readFile(join(root, relativePath), "utf8");
 				const file = { path: relativePath, contents };
 				const buildUpdate = getBuildSession().updateFile(file);
+				await getQuerySession().updateFile(file);
 				const graphUpdate = buildUpdate.graphUpdate;
 				if (closed) return;
 				if (graphUpdate.changedPaths.length > 0) {
@@ -363,6 +403,7 @@ function startWatcher(
 			} catch (error) {
 				if (!isNotFound(error)) throw error;
 				const buildUpdate = getBuildSession().removeFile(relativePath);
+				await getQuerySession().removeFile(relativePath);
 				const graphUpdate = buildUpdate.graphUpdate;
 				if (closed) return;
 				if (graphUpdate.changedPaths.length > 0) {
@@ -418,6 +459,7 @@ async function loadProgramState(
 ): Promise<{
 	program: ThemeProgram;
 	buildSession: ThemeBuildSession;
+	querySession: ShopifyQuerySession;
 }> {
 	const files = await collectThemeInputFiles(root, projectRoot);
 	const exclude = await readInspectExcludePatterns(projectRoot);
@@ -435,6 +477,7 @@ async function loadProgramState(
 	return {
 		program,
 		buildSession: new ThemeBuildSession(files, {}, program),
+		querySession: await ShopifyQuerySession.create(files),
 	};
 }
 
@@ -536,7 +579,17 @@ function validateToolArguments(
 function toolArgumentKeys(name: string): string[] {
 	switch (name) {
 		case "summary":
+		case "projectModel":
+		case "projectGraph":
 			return [];
+		case "impact":
+			return ["path"];
+		case "behaviorIndex":
+			return ["behaviorKind"];
+		case "metafieldIndex":
+			return ["ownerType", "namespace"];
+		case "unusedFiles":
+			return ["roots"];
 		case "node":
 		case "dependencies":
 		case "dependents":
@@ -603,6 +656,27 @@ function requiredFile(
 	return { path, contents };
 }
 
+function optionalString(
+	params: Record<string, unknown> | undefined,
+	key: string,
+): string | null {
+	const value = params?.[key];
+	if (value === undefined || value === null) return null;
+	if (typeof value !== "string" || value.length === 0)
+		throw new RpcError(-32602, `Invalid string parameter ${key}`);
+	return value;
+}
+
+function requiredStrings(
+	params: Record<string, unknown> | undefined,
+	key: string,
+): string[] {
+	const value = params?.[key];
+	if (!Array.isArray(value) || value.some((item) => typeof item !== "string"))
+		throw new RpcError(-32602, `Missing string-array parameter ${key}`);
+	return value;
+}
+
 function requiredString(
 	params: Record<string, unknown> | undefined,
 	key: string,
@@ -665,6 +739,54 @@ function graphTools(): {
 		additionalProperties: false,
 	};
 	return [
+		{
+			name: "projectModel",
+			description: "Get versioned Shopify project semantic model.",
+			inputSchema: { type: "object", additionalProperties: false },
+		},
+		{
+			name: "projectGraph",
+			description: "Get lazily materialized Shopify project graph.",
+			inputSchema: { type: "object", additionalProperties: false },
+		},
+		{
+			name: "impact",
+			description: "Get transitive impact for one changed project path.",
+			inputSchema: path,
+		},
+		{
+			name: "behaviorIndex",
+			description: "Get versioned behavior records and evidence.",
+			inputSchema: {
+				type: "object",
+				properties: { behaviorKind: { type: "string" } },
+				additionalProperties: false,
+			},
+		},
+		{
+			name: "metafieldIndex",
+			description: "Get versioned metafield records and evidence.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					ownerType: { type: "string" },
+					namespace: { type: "string" },
+				},
+				additionalProperties: false,
+			},
+		},
+		{
+			name: "unusedFiles",
+			description: "Get files unreachable from supplied root paths.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					roots: { type: "array", items: { type: "string" } },
+				},
+				required: ["roots"],
+				additionalProperties: false,
+			},
+		},
 		{
 			name: "summary",
 			description: "Summarize the current theme graph.",
