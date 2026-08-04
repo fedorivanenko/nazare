@@ -240,14 +240,15 @@ analysis-plan.ts
 - [x] Introduce stable `ProjectFileId { workspace, package, path }`.
 - [ ] Replace absolute-path identity with project-relative identity.
 - [x] Implement lazy filesystem `InputProvider`.
-- [ ] Model config, Theme Check, metafield snapshots, and remote data as input providers.
+- [x] Model revisioned external project data through generic input providers.
+- [ ] Add concrete config, Theme Check, metafield snapshot, and remote-data providers.
 - [x] Build one coalesced filesystem watcher per session.
-- [ ] Merge external input-provider watchers into the session watcher.
+- [x] Merge external input-provider watchers into the session watcher.
 - [x] Coalesce rapid file events into one change batch.
 - [x] Implement atomic add/change/delete updates.
 - [x] Implement move updates.
-- [ ] Commit a new revision only after internal graph validation.
-- [ ] Ensure stale computations are cancelled and never published.
+- [x] Commit a new revision only after project-session validation.
+- [x] Ensure stale computations are cancelled and never published.
 
 Exit gate:
 

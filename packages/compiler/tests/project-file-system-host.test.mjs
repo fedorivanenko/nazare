@@ -79,7 +79,7 @@ test("filesystem host emits a coalesced change batch", async () => {
 			package: "theme",
 			watchDebounceMs: 20,
 		});
-		const watcher = host.watch()[Symbol.asyncIterator]();
+		const watcher = host.watchFiles()[Symbol.asyncIterator]();
 		const next = watcher.next();
 		await new Promise((resolve) => setTimeout(resolve, 100));
 		await rename(join(root, "before.liquid"), join(root, "after.liquid"));

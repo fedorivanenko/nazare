@@ -17,17 +17,28 @@ export {
 	createFileSystemInputProvider,
 	type ProjectFile,
 } from "./file-system-provider.js";
-export { defineProjectHost, type ProjectHost } from "./host.js";
+export {
+	defineProjectHost,
+	type ExternalProjectInputProvider,
+	type ProjectHost,
+} from "./host.js";
 export {
 	defineInputProvider,
 	type InputChange,
 	type InputProvider,
 	type InputSnapshot,
 } from "./input-provider.js";
+export { mergeAsyncIterables } from "./merged-watcher.js";
 export {
 	createProjectSession,
+	type ExternalProjectInputId,
+	type ExternalProjectInputSnapshot,
+	externalProjectInput,
+	type ProjectChangeBatch,
 	type ProjectSession,
 	type ProjectSessionUpdate,
+	ProjectSessionValidationError,
+	type ProjectSessionValidator,
 	type ProjectSnapshot,
 	projectFileRevisionInput,
 } from "./session.js";

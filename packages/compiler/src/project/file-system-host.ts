@@ -49,7 +49,7 @@ export function createFileSystemProjectHost(options: {
 	return defineProjectHost({
 		files,
 		discover,
-		watch() {
+		watchFiles() {
 			return watchProjectFiles({
 				root,
 				files,
