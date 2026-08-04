@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	createDefaultSourceFrontendRegistry,
 	createProjectSession,
 	createSourceFrontendRegistry,
 	createSourceProductRegistrar,
@@ -83,6 +84,114 @@ async function createSourceSession(sources, calls = { parse: 0, facts: 0 }) {
 	registrar.registerComputations(session.graph);
 	return { session, calls };
 }
+
+test("default frontends classify supported languages and opaque inputs", async () => {
+	const host = createMemoryHost({
+		"component.nz.liquid": "{% import Card from './card.nz.liquid' %}",
+		"theme.liquid": "{% render 'card' %}",
+		"data.json": "{}",
+		"theme.css": ".card { color: red }",
+		"theme.js": "export const value = 1;",
+		"logo.svg": "<svg />",
+		README: "unknown",
+	});
+	const session = await createProjectSession({ host });
+	createSourceProductRegistrar({
+		host,
+		frontends: createDefaultSourceFrontendRegistry(),
+	}).registerComputations(session.graph);
+	const expected = {
+		"component.nz.liquid": "nazare-liquid",
+		"theme.liquid": "liquid",
+		"data.json": "json",
+		"theme.css": "css",
+		"theme.js": "javascript",
+		"logo.svg": "asset",
+		README: "opaque",
+	};
+	for (const [path, language] of Object.entries(expected)) {
+		const classified = await session.get(
+			sourceProducts.classified.product(id(path)),
+		);
+		assert.equal(classified.language, language, path);
+	}
+});
+
+test("default frontends emit neutral language facts and direct dependencies", async () => {
+	const host = createMemoryHost({
+		"component.nz.liquid": "{% import Card from './card.nz.liquid' %}",
+		"card.nz.liquid": "",
+		"theme.liquid": "{% render 'card' %}",
+		"theme.css": ".card { --color: red }",
+	});
+	const session = await createProjectSession({ host });
+	createSourceProductRegistrar({
+		host,
+		frontends: createDefaultSourceFrontendRegistry(),
+	}).registerComputations(session.graph);
+	const nazareFacts = await session.get(
+		sourceProducts.facts.product(id("component.nz.liquid")),
+	);
+	const liquidFacts = await session.get(
+		sourceProducts.facts.product(id("theme.liquid")),
+	);
+	const cssFacts = await session.get(
+		sourceProducts.facts.product(id("theme.css")),
+	);
+
+	assert.equal(
+		nazareFacts.facts.some((fact) => fact.kind === "dependency"),
+		true,
+	);
+	assert.equal(
+		liquidFacts.facts.some((fact) => fact.kind === "liquid.reference"),
+		true,
+	);
+	assert.equal(
+		cssFacts.facts.some((fact) => fact.kind === "source.behavior"),
+		true,
+	);
+	assert.equal(
+		[...nazareFacts.facts, ...liquidFacts.facts, ...cssFacts.facts].some(
+			(fact) => "targetRole" in fact.data,
+		),
+		false,
+	);
+});
+
+test("frontend registry rejects ambiguous non-fallback classification", () => {
+	const frontend = (id) =>
+		defineSourceFrontend({
+			id,
+			version: 1,
+			language: id,
+			accepts: () => true,
+			async parse(file) {
+				return {
+					file,
+					syntax: { value: null },
+					diagnostics: [],
+					uncertainty: [],
+				};
+			},
+			async extractFacts(parsed) {
+				return {
+					file: parsed.file.id,
+					facts: [],
+					diagnostics: [],
+					uncertainty: [],
+				};
+			},
+		});
+	const registry = createSourceFrontendRegistry([
+		frontend("test.one"),
+		frontend("test.two"),
+	]);
+	assert.throws(
+		() => registry.select({ id: id("file.any"), contents: "" }),
+		/Multiple source frontends accept file.any/,
+	);
+});
 
 test("classifies, parses, and extracts target-neutral per-file facts", async () => {
 	const { session, calls } = await createSourceSession({

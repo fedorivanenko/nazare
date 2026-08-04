@@ -1,4 +1,15 @@
 export {
+	assetSourceFrontend,
+	createDefaultSourceFrontendRegistry,
+	cssSourceFrontend,
+	DEFAULT_SOURCE_FRONTENDS,
+	javaScriptSourceFrontend,
+	jsonSourceFrontend,
+	liquidSourceFrontend,
+	nazareLiquidSourceFrontend,
+	opaqueSourceFrontend,
+} from "./default-frontends.js";
+export {
 	type ClassifiedSourceFile,
 	createSourceFrontendRegistry,
 	defineSourceFrontend,

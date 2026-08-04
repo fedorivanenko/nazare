@@ -50,6 +50,7 @@ export type SourceFrontend = {
 	id: string;
 	version: number;
 	language: LanguageId;
+	fallback?: boolean;
 	accepts(file: ProjectFile): boolean;
 	parse(
 		file: ClassifiedSourceFile,
@@ -91,12 +92,24 @@ export function createSourceFrontendRegistry(
 		frontends: stableFrontends,
 		identity: Object.freeze(stableFrontends.map(registrarIdentity)),
 		select(file) {
-			const frontend = stableFrontends.find((candidate) =>
-				candidate.accepts(file),
+			const matches = stableFrontends.filter(
+				(candidate) => !candidate.fallback && candidate.accepts(file),
 			);
-			if (!frontend)
+			if (matches.length > 1) {
+				throw new Error(
+					`Multiple source frontends accept ${file.id.path}: ${matches
+						.map(registrarIdentity)
+						.sort()
+						.join(", ")}`,
+				);
+			}
+			if (matches[0]) return matches[0];
+			const fallback = stableFrontends.find(
+				(candidate) => candidate.fallback && candidate.accepts(file),
+			);
+			if (!fallback)
 				throw new Error(`No source frontend accepts ${file.id.path}`);
-			return frontend;
+			return fallback;
 		},
 		get(id, version) {
 			const frontend = byIdentity.get(`${id}@${version}`);
