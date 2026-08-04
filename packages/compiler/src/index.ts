@@ -163,6 +163,20 @@ export type {
 	PlainLiquidParseMode,
 } from "./plain-liquid.js";
 export {
+	compareProjectFileIds,
+	createFileSystemInputProvider,
+	defineInputProvider,
+	type InputChange,
+	type InputProvider,
+	type InputSnapshot,
+	normalizeProjectPath,
+	type ProjectFile,
+	type ProjectFileId,
+	projectFileId,
+	sameProjectFileId,
+	serializeProjectFileId,
+} from "./project/index.js";
+export {
 	checkDependencies,
 	createDependencyResolver,
 	type DependencyResolver,

@@ -237,9 +237,9 @@ session-update.ts
 analysis-plan.ts
 ```
 
-- [ ] Introduce stable `ProjectFileId { workspace, package, path }`.
+- [x] Introduce stable `ProjectFileId { workspace, package, path }`.
 - [ ] Replace absolute-path identity with project-relative identity.
-- [ ] Implement lazy filesystem `InputProvider`.
+- [x] Implement lazy filesystem `InputProvider`.
 - [ ] Model config, Theme Check, metafield snapshots, and remote data as input providers.
 - [ ] Build one merged watcher per session.
 - [ ] Coalesce rapid file events into one change batch.
