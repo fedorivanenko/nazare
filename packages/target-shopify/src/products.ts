@@ -10,6 +10,7 @@ import {
 	type SourceFact,
 	sourceProducts,
 } from "@nazare/compiler";
+import { registerShopifyResolutionComputations } from "./resolution.js";
 import {
 	classifyShopifyFile,
 	type ShopifyFileRole,
@@ -38,6 +39,7 @@ export type ShopifyReference = {
 	targetRole?: ShopifyFileRole;
 	targetName?: string;
 	targetPath?: string;
+	targetRelative?: boolean;
 	static: boolean;
 };
 
@@ -162,6 +164,8 @@ function registerShopifyComputations(graph: ComputationGraph): void {
 			{ cache: jsonComputationCodec() },
 		),
 	);
+
+	registerShopifyResolutionComputations(graph);
 }
 
 function roleDeclarations(
@@ -202,6 +206,7 @@ function enrichSourceFact(
 			reference(classification, stringValue(fact.data.kind) ?? "dependency", {
 				siteId: fact.id,
 				targetPath,
+				targetRelative: fact.data.relative === true,
 				static: targetPath !== undefined,
 			}),
 		];

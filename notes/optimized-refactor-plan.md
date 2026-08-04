@@ -325,8 +325,9 @@ Do not mechanically move generic scheduler/store utilities; rename and retain th
 - [x] Implement Shopify role classification.
 - [x] Register per-file target fact products.
 - [x] Register per-file declarations and references.
-- [ ] Adapt existing incremental passes into computation products.
-- [ ] Partition records by stable owner/source IDs.
+- [x] Adapt declaration, reference, and resolution passes into computation products.
+- [ ] Adapt remaining incremental passes into computation products.
+- [x] Partition records by stable owner/source IDs.
 - [ ] Model resolution and data flow by affected SCC.
 - [ ] Preserve convergence budgets and diagnostics.
 - [ ] Register target schema, metafield, behavior, capability, classification, and evidence products.

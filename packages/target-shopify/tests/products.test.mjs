@@ -12,6 +12,7 @@ import {
 import {
 	classifyShopifyFile,
 	shopifyProducts,
+	shopifyResolutionProducts,
 	shopifySemanticTarget,
 } from "../dist/index.js";
 
@@ -119,6 +120,89 @@ test("enriches JSON templates and locales downstream from parsing", async () => 
 			.map((declaration) => declaration.name),
 		["general.title", "general.nested.label"],
 	);
+});
+
+test("resolves references through lazy symbol products", async () => {
+	const session = await targetSession({
+		"sections/main.liquid": "{% render 'card' %}",
+		"snippets/card.liquid": "",
+		"snippets/unused.liquid": "",
+	});
+	const resolutions = await session.get(
+		shopifyResolutionProducts.fileResolutions.product({
+			file: id("sections/main.liquid"),
+			files: session.snapshot().fileIds,
+		}),
+	);
+
+	assert.equal(resolutions.length, 1);
+	assert.equal(resolutions[0].status, "resolved");
+	assert.equal(
+		resolutions[0].declarations[0].owner.path,
+		"snippets/card.liquid",
+	);
+});
+
+test("resolves direct relative Nazare imports by stable file identity", async () => {
+	const session = await targetSession({
+		"components/card.nz.liquid": "",
+		"components/entry.nz.liquid": "{% import Card from './card.nz.liquid' %}",
+	});
+	const resolutions = await session.get(
+		shopifyResolutionProducts.fileResolutions.product({
+			file: id("components/entry.nz.liquid"),
+			files: session.snapshot().fileIds,
+		}),
+	);
+
+	assert.equal(resolutions[0].status, "resolved");
+	assert.equal(resolutions[0].targetFiles[0].path, "components/card.nz.liquid");
+});
+
+test("owns missing-reference diagnostics on resolution products", async () => {
+	const session = await targetSession({
+		"sections/main.liquid": "{% render 'missing' %}",
+	});
+	const product = shopifyResolutionProducts.fileResolutions.product({
+		file: id("sections/main.liquid"),
+		files: session.snapshot().fileIds,
+	});
+	const resolutions = await session.get(product);
+	const metadata = await session.graph.metadata(product);
+
+	assert.equal(resolutions[0].status, "missing");
+	assert.equal(metadata.diagnostics[0].code, "SHOPIFY_REFERENCE_NOT_FOUND");
+});
+
+test("preserves dynamic references as explicit uncertainty", async () => {
+	const session = await targetSession({
+		"sections/main.liquid": "{% render snippet_name %}",
+	});
+	const product = shopifyResolutionProducts.fileResolutions.product({
+		file: id("sections/main.liquid"),
+		files: session.snapshot().fileIds,
+	});
+	const resolutions = await session.get(product);
+	const metadata = await session.graph.metadata(product);
+
+	assert.equal(resolutions[0].status, "dynamic");
+	assert.equal(metadata.uncertainty[0].code, "SHOPIFY_DYNAMIC_REFERENCE");
+});
+
+test("symbol queries preserve ambiguous declarations", async () => {
+	const session = await targetSession({
+		"assets/one/icon.svg": "<svg />",
+		"assets/two/icon.svg": "<svg />",
+	});
+	const declarations = await session.get(
+		shopifyResolutionProducts.declarationsBySymbol.product({
+			role: "asset",
+			name: "icon.svg",
+			files: session.snapshot().fileIds,
+		}),
+	);
+	assert.equal(declarations.length, 2);
+	assert.equal(new Set(declarations.map((item) => item.id)).size, 2);
 });
 
 test("target facts retain stable source ownership", async () => {

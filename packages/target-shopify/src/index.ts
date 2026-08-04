@@ -9,6 +9,14 @@ export {
 	shopifySemanticTarget,
 } from "./products.js";
 export {
+	registerShopifyResolutionComputations,
+	type ShopifyReferenceQuery,
+	type ShopifyReferenceResolution,
+	type ShopifyResolutionPlan,
+	type ShopifySymbolQuery,
+	shopifyResolutionProducts,
+} from "./resolution.js";
+export {
 	classifyShopifyFile,
 	type ShopifyFileRole,
 	shopifyResourceName,
