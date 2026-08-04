@@ -131,7 +131,15 @@ export const opaqueSourceFrontend = defineSourceFrontend({
 	fallback: true,
 	accepts: () => true,
 	async parse(file) {
-		return parsed(file, null, []);
+		return {
+			...parsed(file, null, []),
+			uncertainty: [
+				{
+					code: "OPAQUE_SOURCE_UNANALYZED",
+					message: `Opaque source behavior is not analyzed for ${file.id.path}`,
+				},
+			],
+		};
 	},
 	async extractFacts(parsedFile) {
 		return emptyFacts(parsedFile.file);

@@ -164,6 +164,21 @@ export type {
 	PlainLiquidParseMode,
 } from "./plain-liquid.js";
 export {
+	definePortableOutputProvider,
+	type PortableApplicationModel,
+	type PortableApplicationPlan,
+	type PortableAsset,
+	type PortableComponent,
+	type PortableContract,
+	type PortableDataRequirement,
+	type PortableOutput,
+	type PortableRenderEdge,
+	type PortableRenderTree,
+	type PortableRoute,
+	portableApplicationModel,
+	portableOutputCapability,
+} from "./portable-application.js";
+export {
 	coalesceInputChanges,
 	compareProjectFileIds,
 	createFileSystemInputProvider,

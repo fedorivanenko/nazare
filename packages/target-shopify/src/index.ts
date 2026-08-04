@@ -1,4 +1,8 @@
 export {
+	registerShopifyPortableTransform,
+	shopifyPortableTransform,
+} from "./portable-transform.js";
+export {
 	type ShopifyBehavior,
 	type ShopifyDataRead,
 	type ShopifyDeclaration,

@@ -344,14 +344,14 @@ Compiler imports no Shopify package or Shopify-only type.
 
 Prove architecture supports different source and output platforms before migrating all consumers.
 
-- [ ] Define `PortableApplicationModel` with render trees, components, routes, contracts, data requirements, assets, diagnostics, and uncertainty.
-- [ ] Add a Shopify-semantics → portable-model transform product.
-- [ ] Add a fake alternate output capability in tests.
-- [ ] Compose `source: shopifyLiquidSemanticTarget()` with the fake output capability.
-- [ ] Verify changing output capability reuses parse and source-fact products.
-- [ ] Verify output-specific products do not enter Shopify source semantics.
-- [ ] Verify unsupported source behavior remains explicit uncertainty, never guessed output.
-- [ ] Reserve the future Hydrogen shape:
+- [x] Define `PortableApplicationModel` with render trees, components, routes, contracts, data requirements, assets, diagnostics, and uncertainty.
+- [x] Add a Shopify-semantics → portable-model transform product.
+- [x] Add fake alternate output capabilities in tests.
+- [x] Compose `source: shopifySemanticTarget()` with independent output capabilities.
+- [x] Verify changing output capability reuses parse and source-fact products.
+- [x] Verify output-specific products do not enter Shopify source semantics.
+- [x] Verify unsupported source behavior remains explicit uncertainty, never guessed output.
+- [x] Reserve the future Hydrogen shape:
 
 ```text
 Shopify Liquid semantics

@@ -4,15 +4,22 @@ import {
 	createCapabilityRegistry,
 	createDefaultSourceFrontendRegistry,
 	createProjectSession,
+	createSourceFrontendRegistry,
 	createSourceProductRegistrar,
 	defineInputProvider,
+	definePipeline,
+	definePortableOutputProvider,
 	defineProjectHost,
 	fingerprintProductKey,
+	pipelineIdentity,
+	portableApplicationModel,
+	portableOutputCapability,
 	projectFileId,
 } from "@nazare/compiler";
 import {
 	classifyShopifyFile,
 	shopifyGraphProducts,
+	shopifyPortableTransform,
 	shopifyProducts,
 	shopifyResolutionProducts,
 	shopifySemanticCapability,
@@ -47,15 +54,18 @@ function memoryHost(sources) {
 	});
 }
 
-async function targetSession(sources) {
+async function targetSession(
+	sources,
+	frontends = createDefaultSourceFrontendRegistry(),
+) {
 	const host = memoryHost(sources);
 	const session = await createProjectSession({ host });
-	createSourceProductRegistrar({
-		host,
-		frontends: createDefaultSourceFrontendRegistry(),
-	}).registerComputations(session.graph);
+	createSourceProductRegistrar({ host, frontends }).registerComputations(
+		session.graph,
+	);
 	const capabilities = createCapabilityRegistry([shopifySemanticTarget()]);
 	capabilities.registerComputations(session.graph);
+	shopifyPortableTransform().registerComputations(session.graph);
 	return session;
 }
 
@@ -416,6 +426,106 @@ test("owns invalid schema diagnostics on schema product", async () => {
 			(diagnostic) => diagnostic.code === "SHOPIFY_SCHEMA_PARSE_ERROR",
 		),
 		true,
+	);
+});
+
+test("composes Shopify semantics with independent portable outputs", async () => {
+	let parseCalls = 0;
+	const defaults = createDefaultSourceFrontendRegistry();
+	const frontends = createSourceFrontendRegistry(
+		defaults.frontends.map((frontend) => ({
+			...frontend,
+			async parse(file, context) {
+				parseCalls += 1;
+				return frontend.parse(file, context);
+			},
+		})),
+	);
+	const session = await targetSession(
+		{
+			"templates/index.liquid": "{% render 'card' %}",
+			"snippets/card.liquid": "{{ product.metafields.custom.title.value }}",
+			"assets/theme.css": ".card { color: red }",
+			README: "opaque behavior",
+		},
+		frontends,
+	);
+	const plan = {
+		files: session.snapshot().fileIds,
+		roots: [id("templates/index.liquid")],
+	};
+	const compactProvider = definePortableOutputProvider({
+		id: "test.output.compact",
+		version: 1,
+		emit(model) {
+			return {
+				format: "compact",
+				components: model.components.length,
+				routes: model.routes.length,
+			};
+		},
+	});
+	const detailedProvider = definePortableOutputProvider({
+		id: "test.output.detailed",
+		version: 1,
+		emit(model) {
+			return {
+				format: "detailed",
+				assets: model.assets.map((asset) => asset.path),
+				uncertainty: model.uncertainty.map((boundary) => boundary.code),
+			};
+		},
+	});
+	const compactRegistry = createCapabilityRegistry([compactProvider]);
+	const detailedRegistry = createCapabilityRegistry([detailedProvider]);
+	compactRegistry.registerComputations(session.graph);
+	detailedRegistry.registerComputations(session.graph);
+	const semanticBefore = await session.get(
+		shopifyProducts.facts.product(id("templates/index.liquid")),
+	);
+	const compact = compactRegistry.require(portableOutputCapability);
+	const detailed = detailedRegistry.require(portableOutputCapability);
+	const compactResult = await session.get(compact.product(plan));
+	const detailedResult = await session.get(detailed.product(plan));
+	const model = await session.get(portableApplicationModel.product(plan));
+	const semanticAfter = await session.get(
+		shopifyProducts.facts.product(id("templates/index.liquid")),
+	);
+
+	assert.deepEqual(compactResult, {
+		format: "compact",
+		components: 1,
+		routes: 1,
+	});
+	assert.deepEqual(detailedResult, {
+		format: "detailed",
+		assets: ["assets/theme.css"],
+		uncertainty: ["OPAQUE_SOURCE_UNANALYZED"],
+	});
+	assert.equal(model.renderTrees[0].nodes.length, 2);
+	assert.equal(model.dataRequirements.length, 1);
+	assert.equal(parseCalls, 4);
+	assert.equal(semanticAfter, semanticBefore);
+
+	const source = shopifySemanticTarget();
+	const transform = shopifyPortableTransform();
+	const compactPipeline = definePipeline({
+		id: "test.shopify-portable",
+		version: 1,
+		source,
+		transforms: [transform],
+		output: compactRegistry,
+	});
+	const detailedPipeline = definePipeline({
+		id: "test.shopify-portable",
+		version: 1,
+		source,
+		transforms: [transform],
+		output: detailedRegistry,
+	});
+	assert.notDeepEqual(
+		pipelineIdentity(compactPipeline),
+		pipelineIdentity(detailedPipeline),
 	);
 });
 
