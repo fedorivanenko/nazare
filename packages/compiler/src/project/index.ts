@@ -1,3 +1,4 @@
+export { coalesceInputChanges } from "./change-batch.js";
 export {
 	compareProjectFileIds,
 	normalizeProjectPath,
@@ -10,9 +11,17 @@ export {
 	createFileSystemInputProvider,
 	type ProjectFile,
 } from "./file-system-provider.js";
+export { defineProjectHost, type ProjectHost } from "./host.js";
 export {
 	defineInputProvider,
 	type InputChange,
 	type InputProvider,
 	type InputSnapshot,
 } from "./input-provider.js";
+export {
+	createProjectSession,
+	type ProjectSession,
+	type ProjectSessionUpdate,
+	type ProjectSnapshot,
+	projectFileRevisionInput,
+} from "./session.js";

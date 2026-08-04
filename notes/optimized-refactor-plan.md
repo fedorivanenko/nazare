@@ -242,8 +242,9 @@ analysis-plan.ts
 - [x] Implement lazy filesystem `InputProvider`.
 - [ ] Model config, Theme Check, metafield snapshots, and remote data as input providers.
 - [ ] Build one merged watcher per session.
-- [ ] Coalesce rapid file events into one change batch.
-- [ ] Implement add/change/delete/move updates.
+- [x] Coalesce rapid file events into one change batch.
+- [x] Implement atomic add/change/delete updates.
+- [ ] Implement move updates.
 - [ ] Commit a new revision only after internal graph validation.
 - [ ] Ensure stale computations are cancelled and never published.
 
