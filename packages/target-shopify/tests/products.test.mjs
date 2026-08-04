@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
 	createCapabilityRegistry,
+	createComputationGraph,
 	createDefaultSourceFrontendRegistry,
 	createProjectSession,
 	createSourceFrontendRegistry,
@@ -21,6 +22,7 @@ import {
 	shopifyGraphProducts,
 	shopifyPortableTransform,
 	shopifyProducts,
+	shopifyQueryProducts,
 	shopifyResolutionProducts,
 	shopifySemanticCapability,
 	shopifySemanticProducts,
@@ -57,9 +59,10 @@ function memoryHost(sources) {
 async function targetSession(
 	sources,
 	frontends = createDefaultSourceFrontendRegistry(),
+	graph,
 ) {
 	const host = memoryHost(sources);
-	const session = await createProjectSession({ host });
+	const session = await createProjectSession({ host, graph });
 	createSourceProductRegistrar({ host, frontends }).registerComputations(
 		session.graph,
 	);
@@ -527,6 +530,153 @@ test("composes Shopify semantics with independent portable outputs", async () =>
 		pipelineIdentity(compactPipeline),
 		pipelineIdentity(detailedPipeline),
 	);
+});
+
+test("impact queries do not materialize unrelated indexes", async () => {
+	const entries = new Map();
+	const writes = [];
+	const cache = {
+		async read(key) {
+			return entries.get(key);
+		},
+		async write(key, value) {
+			writes.push(key);
+			entries.set(key, value);
+		},
+		async delete(key) {
+			entries.delete(key);
+		},
+	};
+	const graph = createComputationGraph({ cache });
+	const session = await targetSession(
+		{
+			"templates/index.liquid": "{% render 'card' %}",
+			"snippets/card.liquid": "",
+			"assets/theme.css": ".card { color: red }",
+		},
+		createDefaultSourceFrontendRegistry(),
+		graph,
+	);
+	const files = session.snapshot().fileIds;
+	await session.get(
+		shopifyQueryProducts.impact.product({
+			files,
+			changed: [id("snippets/card.liquid")],
+		}),
+	);
+
+	assert.equal(
+		writes.some((key) => key.includes("behavior-index")),
+		false,
+	);
+	assert.equal(
+		writes.some((key) => key.includes("metafield-index")),
+		false,
+	);
+	assert.equal(
+		writes.some((key) => key.includes("render-graph")),
+		false,
+	);
+	await session.get(shopifyQueryProducts.projectGraph.product({ files }));
+	assert.equal(
+		writes.some((key) => key.includes("render-graph")),
+		true,
+	);
+});
+
+test("serves versioned lazy graph, impact, and index queries", async () => {
+	const session = await targetSession({
+		"templates/index.liquid": "{% section 'main' %}",
+		"sections/main.liquid": "{% render 'card' %}",
+		"snippets/card.liquid": "{{ product.metafields.custom.title.value }}",
+		"assets/theme.css": ".card { color: red }",
+	});
+	const files = session.snapshot().fileIds;
+	const impact = await session.get(
+		shopifyQueryProducts.impact.product({
+			files,
+			changed: [id("snippets/card.liquid")],
+		}),
+	);
+	const pages = await session.get(
+		shopifyQueryProducts.affectedPages.product({
+			files,
+			changed: [id("snippets/card.liquid")],
+		}),
+	);
+	const dependencies = await session.get(
+		shopifyQueryProducts.dependencyIndex.product({
+			files,
+			target: id("snippets/card.liquid"),
+		}),
+	);
+	const behavior = await session.get(
+		shopifyQueryProducts.behaviorIndex.product({
+			files,
+			behaviorKind: "domHook",
+		}),
+	);
+	const metafields = await session.get(
+		shopifyQueryProducts.metafieldIndex.product({
+			files,
+			ownerType: "product",
+			namespace: "custom",
+		}),
+	);
+	const projectGraph = await session.get(
+		shopifyQueryProducts.projectGraph.product({ files }),
+	);
+	const unused = await session.get(
+		shopifyQueryProducts.unusedFiles.product({
+			files,
+			roots: [id("templates/index.liquid")],
+		}),
+	);
+
+	assert.equal(impact.version, 1);
+	assert.deepEqual(
+		impact.affected.map((file) => file.path),
+		["sections/main.liquid", "snippets/card.liquid", "templates/index.liquid"],
+	);
+	assert.deepEqual(
+		pages.pages.map((file) => file.path),
+		["templates/index.liquid"],
+	);
+	assert.deepEqual(
+		dependencies.records.map((record) => record.from.path),
+		["sections/main.liquid"],
+	);
+	assert.equal(behavior.records.length > 0, true);
+	assert.equal(
+		behavior.evidence.every((record) => record.kind === "behavior"),
+		true,
+	);
+	assert.deepEqual(
+		metafields.records.map((record) => `${record.namespace}.${record.key}`),
+		["custom.title"],
+	);
+	assert.equal(projectGraph.graph.edges.length, 2);
+	assert.deepEqual(
+		unused.files.map((file) => file.path),
+		["assets/theme.css"],
+	);
+});
+
+test("project-model queries preserve evidence and uncertainty", async () => {
+	const session = await targetSession({
+		"sections/main.liquid": "{% render snippet_name %}",
+	});
+	const result = await session.get(
+		shopifyQueryProducts.projectModel.product({
+			files: session.snapshot().fileIds,
+		}),
+	);
+
+	assert.equal(result.version, 1);
+	assert.equal(result.evidence.length > 0, true);
+	assert.deepEqual(result.uncertainty, [
+		"Dynamic references prevent complete classification",
+	]);
 });
 
 test("target facts retain stable source ownership", async () => {

@@ -11,6 +11,7 @@ import {
 	type SourceFact,
 	sourceProducts,
 } from "@nazare/compiler";
+import { registerShopifyQueryComputations } from "./query-products.js";
 import { registerShopifyGraphComputations } from "./render-graph.js";
 import { registerShopifyResolutionComputations } from "./resolution.js";
 import {
@@ -192,6 +193,7 @@ function registerShopifyComputations(graph: ComputationGraph): void {
 	registerShopifyResolutionComputations(graph);
 	registerShopifyGraphComputations(graph);
 	registerShopifySemanticComputations(graph);
+	registerShopifyQueryComputations(graph);
 }
 
 function roleDeclarations(

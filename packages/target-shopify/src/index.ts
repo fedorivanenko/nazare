@@ -16,6 +16,28 @@ export {
 	shopifySemanticTarget,
 } from "./products.js";
 export {
+	registerShopifyQueryComputations,
+	type ShopifyAffectedPagesResult,
+	type ShopifyBehaviorIndexQuery,
+	type ShopifyBehaviorIndexResult,
+	type ShopifyDependencyIndexQuery,
+	type ShopifyDependencyIndexResult,
+	type ShopifyDependencyRecord,
+	type ShopifyImpactQuery,
+	type ShopifyImpactResult,
+	type ShopifyMetafieldIndexQuery,
+	type ShopifyMetafieldIndexResult,
+	type ShopifyProjectGraphQuery,
+	type ShopifyProjectGraphResult,
+	type ShopifyProjectModelQuery,
+	type ShopifyProjectModelResult,
+	type ShopifyQueryScope,
+	type ShopifyUnusedFilesQuery,
+	type ShopifyUnusedFilesResult,
+	shopifyQueryProducts,
+	type VersionedShopifyQuery,
+} from "./query-products.js";
+export {
 	registerShopifyGraphComputations,
 	type ShopifyFileDataFlow,
 	type ShopifyRenderEdge,

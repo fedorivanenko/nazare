@@ -382,10 +382,10 @@ affected-pages
 unused-files
 ```
 
-- [ ] Preserve lazy materialization: graph and indexes compute only when requested.
-- [ ] Partition indexes where updates can be applied by stable record delta.
-- [ ] Return versioned query outputs.
-- [ ] Preserve uncertainty and evidence in query results.
+- [x] Preserve lazy materialization: graph and indexes compute only when requested.
+- [x] Partition query indexes by stable owner/filter keys and record IDs.
+- [x] Return versioned query outputs.
+- [x] Preserve uncertainty and evidence in query results.
 - [ ] Migrate graph-server requests to `ProjectSession.get(product)`.
 - [ ] Delete `ThemeComputation` and direct query helpers after consumers migrate.
 
