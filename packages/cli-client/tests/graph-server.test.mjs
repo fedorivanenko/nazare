@@ -419,6 +419,42 @@ test("graph server implements MCP lifecycle and JSON-RPC errors", async () => {
 	}
 });
 
+test("watcher revisions external metadata through shared input providers", async () => {
+	const root = await mkdtemp(join(tmpdir(), "nazare-external-watcher-"));
+	let server;
+	try {
+		await writeFile(join(root, "card.nz.liquid"), "<span>Card</span>");
+		server = startLiveServer(root, { watchDebounceMs: 100 });
+		server.send({ id: 1, method: "watch" });
+		await waitFor(
+			() => server.messages.some((message) => message.id === 1),
+			"watch response",
+		);
+		await writeFile(
+			join(root, ".theme-check.yml"),
+			"extends: theme-check:recommended",
+		);
+		await waitFor(
+			() =>
+				server.messages.some(
+					(message) =>
+						message.method === "graph/update" &&
+						typeof message.params.revision === "number",
+				),
+			"external input revision",
+		);
+		const update = server.messages.find(
+			(message) => message.method === "graph/update",
+		);
+		assert.equal(update.params.changedPaths.includes(".theme-check.yml"), true);
+		assert.equal(update.params.revision > 0, true);
+	} finally {
+		server?.close();
+		await server?.done;
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test("watcher debounces events, suppresses no-ops, and orders notifications", async () => {
 	const root = await mkdtemp(join(tmpdir(), "nazare-graph-watcher-"));
 	let server;

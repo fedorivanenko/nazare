@@ -1,11 +1,17 @@
 import {
 	createDefaultSourceFrontendRegistry,
+	createProjectMetadataInputProvider,
 	createProjectSession,
 	createSourceProductRegistrar,
 	defineInputProvider,
 	defineProjectHost,
 	fingerprintProductKey,
+	type InputChange,
+	PROJECT_METADATA_KEYS,
+	type ProductKey,
 	type ProjectFileId,
+	type ProjectMetadataInputProvider,
+	type ProjectMetadataKey,
 	type ProjectSession,
 	projectFileId,
 } from "@nazare/compiler";
@@ -23,21 +29,36 @@ import {
 } from "@nazare/target-shopify";
 
 export type ShopifyQueryInputFile = { path: string; contents: string };
+export type ShopifyQueryExternalInputs = Partial<
+	Readonly<Record<ProjectMetadataKey, ProductKey>>
+>;
+
+export { PROJECT_METADATA_KEYS };
 
 export class ShopifyQuerySession {
 	readonly session: ProjectSession;
 	private readonly files: Map<string, ShopifyQueryInputFile>;
+	private readonly metadata: ProjectMetadataInputProvider;
+	private readonly metadataChanges: AsyncIterator<
+		readonly InputChange<string>[]
+	>;
 
 	private constructor(
 		session: ProjectSession,
 		files: Map<string, ShopifyQueryInputFile>,
+		metadata: ProjectMetadataInputProvider,
 	) {
 		this.session = session;
 		this.files = files;
+		this.metadata = metadata;
+		this.metadataChanges = metadata.provider
+			.watch?.()
+			[Symbol.asyncIterator]() as AsyncIterator<readonly InputChange<string>[]>;
 	}
 
 	static async create(
 		inputs: readonly ShopifyQueryInputFile[],
+		externalInputs: ShopifyQueryExternalInputs = {},
 	): Promise<ShopifyQuerySession> {
 		const files = new Map(inputs.map((file) => [file.path, { ...file }]));
 		const provider = defineInputProvider({
@@ -52,11 +73,13 @@ export class ShopifyQuerySession {
 				};
 			},
 		});
+		const metadata = createProjectMetadataInputProvider(externalInputs);
 		const host = defineProjectHost({
 			files: provider,
 			async discover() {
 				return [...files.keys()].sort().map(fileId);
 			},
+			externalInputs: [metadata],
 		});
 		const session = await createProjectSession({ host });
 		createSourceProductRegistrar({
@@ -64,7 +87,7 @@ export class ShopifyQuerySession {
 			frontends: createDefaultSourceFrontendRegistry(),
 		}).registerComputations(session.graph);
 		shopifySemanticTarget().registerComputations(session.graph);
-		return new ShopifyQuerySession(session, files);
+		return new ShopifyQuerySession(session, files, metadata);
 	}
 
 	async projectModel(): Promise<ShopifyProjectModelResult> {
@@ -141,6 +164,27 @@ export class ShopifyQuerySession {
 				roots: roots.map(fileId),
 			}),
 		);
+	}
+
+	async updateExternalInput(
+		key: ProjectMetadataKey,
+		value: ProductKey | null,
+	): Promise<number> {
+		const change =
+			value === null
+				? this.metadata.remove(key)
+				: this.metadata.set(key, value);
+		if (!change) return this.session.snapshot().revision;
+		const next = await this.metadataChanges.next();
+		if (next.done) throw new Error("Project metadata watcher closed");
+		const update = await this.session.apply({
+			kind: "external",
+			providerId: this.metadata.provider.id,
+			changes: next.value,
+		});
+		if (!update.committed)
+			throw update.error ?? new Error("External query update rejected");
+		return update.revision;
 	}
 
 	async updateFile(file: ShopifyQueryInputFile): Promise<number> {

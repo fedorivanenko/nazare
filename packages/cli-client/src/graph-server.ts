@@ -14,7 +14,10 @@ import {
 	isInspectThemeFile,
 	readInspectExcludePatterns,
 } from "./inspect-input.js";
-import { ShopifyQuerySession } from "./shopify-query-session.js";
+import {
+	PROJECT_METADATA_KEYS,
+	ShopifyQuerySession,
+} from "./shopify-query-session.js";
 
 export type ThemeGraphServerOptions = {
 	projectRoot: string;
@@ -509,13 +512,47 @@ function startWatcher(
 			}
 			return;
 		}
+		const exclude = await readInspectExcludePatterns(projectRoot);
+		const metafields = await optionalFile(
+			projectRoot,
+			".shopify/metafields.json",
+		);
+		const themeCheck = await optionalFile(projectRoot, ".theme-check.yml");
 		const update = await session.updateExternalArtifacts({
-			exclude: await readInspectExcludePatterns(projectRoot),
-			metafields: await optionalFile(projectRoot, ".shopify/metafields.json"),
-			themeCheck: await optionalFile(projectRoot, ".theme-check.yml"),
+			exclude,
+			metafields,
+			themeCheck,
 		});
-		if (!closed && update.changedPaths.length > 0) {
-			notify({ method: "graph/update", params: update });
+		const querySession = getQuerySession();
+		const previousQueryRevision = querySession.session.snapshot().revision;
+		let queryRevision = previousQueryRevision;
+		if (relativePath === "nazare.theme.json") {
+			queryRevision = await querySession.updateExternalInput(
+				PROJECT_METADATA_KEYS.config,
+				{ exclude },
+			);
+		}
+		if (relativePath === ".shopify/metafields.json") {
+			queryRevision = await querySession.updateExternalInput(
+				PROJECT_METADATA_KEYS.metafields,
+				metafields?.contents ?? null,
+			);
+		}
+		if (relativePath === ".theme-check.yml") {
+			queryRevision = await querySession.updateExternalInput(
+				PROJECT_METADATA_KEYS.themeCheck,
+				themeCheck?.contents ?? null,
+			);
+		}
+		if (
+			!closed &&
+			(update.changedPaths.length > 0 ||
+				queryRevision !== previousQueryRevision)
+		) {
+			notify({
+				method: "graph/update",
+				params: { ...update, revision: queryRevision },
+			});
 		}
 	}
 
@@ -571,7 +608,15 @@ async function loadProgramState(
 	return {
 		program,
 		buildSession: new ThemeBuildSession(files, {}, program),
-		querySession: await ShopifyQuerySession.create(files),
+		querySession: await ShopifyQuerySession.create(files, {
+			[PROJECT_METADATA_KEYS.config]: { exclude },
+			...(metafields
+				? { [PROJECT_METADATA_KEYS.metafields]: metafields.contents }
+				: {}),
+			...(themeCheck
+				? { [PROJECT_METADATA_KEYS.themeCheck]: themeCheck.contents }
+				: {}),
+		}),
 	};
 }
 

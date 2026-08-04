@@ -30,6 +30,13 @@ export {
 } from "./input-provider.js";
 export { mergeAsyncIterables } from "./merged-watcher.js";
 export {
+	createProjectMetadataInputProvider,
+	PROJECT_METADATA_KEYS,
+	type ProjectMetadataInputProvider,
+	type ProjectMetadataInputs,
+	type ProjectMetadataKey,
+} from "./metadata-input-provider.js";
+export {
 	createProjectSession,
 	type ExternalProjectInputId,
 	type ExternalProjectInputSnapshot,

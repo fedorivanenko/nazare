@@ -241,7 +241,7 @@ analysis-plan.ts
 - [ ] Replace absolute-path identity with project-relative identity.
 - [x] Implement lazy filesystem `InputProvider`.
 - [x] Model revisioned external project data through generic input providers.
-- [ ] Add concrete config, Theme Check, metafield snapshot, and remote-data providers.
+- [x] Add revisioned config, Theme Check, metafield snapshot, and remote-data metadata inputs.
 - [x] Build one coalesced filesystem watcher per session.
 - [x] Merge external input-provider watchers into the session watcher.
 - [x] Coalesce rapid file events into one change batch.
@@ -387,7 +387,7 @@ unused-files
 - [x] Return versioned query outputs.
 - [x] Preserve uncertainty and evidence in query results.
 - [x] Migrate graph-server query requests through `ProjectSession.get(product)`.
-- [ ] Move graph-server external-input watch notifications to shared providers.
+- [x] Move graph-server external-input watch notifications to shared providers.
 - [ ] Delete `ThemeComputation` and direct query helpers after consumers migrate.
 
 Exit gate:

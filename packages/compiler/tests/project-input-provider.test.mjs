@@ -6,7 +6,9 @@ import test from "node:test";
 import {
 	compareProjectFileIds,
 	createFileSystemInputProvider,
+	createProjectMetadataInputProvider,
 	normalizeProjectPath,
+	PROJECT_METADATA_KEYS,
 	projectFileId,
 	sameProjectFileId,
 	serializeProjectFileId,
@@ -20,6 +22,34 @@ async function withDirectory(run) {
 		await rm(directory, { recursive: true, force: true });
 	}
 }
+
+test("project metadata provider revisions config and external Shopify inputs", async () => {
+	const metadata = createProjectMetadataInputProvider({
+		[PROJECT_METADATA_KEYS.config]: { inspect: { exclude: ["generated/**"] } },
+		[PROJECT_METADATA_KEYS.metafields]: { state: "present", definitions: [] },
+	});
+	assert.deepEqual(await metadata.discover(), [
+		PROJECT_METADATA_KEYS.config,
+		PROJECT_METADATA_KEYS.metafields,
+	]);
+	assert.deepEqual(
+		(await metadata.provider.read(PROJECT_METADATA_KEYS.config)).value,
+		{ inspect: { exclude: ["generated/**"] } },
+	);
+	const watcher = metadata.provider.watch()[Symbol.asyncIterator]();
+	metadata.set(
+		PROJECT_METADATA_KEYS.themeCheck,
+		"extends: theme-check:recommended",
+	);
+	const added = await watcher.next();
+	assert.equal(added.value[0].kind, "added");
+	assert.equal(added.value[0].key, PROJECT_METADATA_KEYS.themeCheck);
+	metadata.remove(PROJECT_METADATA_KEYS.metafields);
+	const removed = await watcher.next();
+	assert.equal(removed.value[0].kind, "removed");
+	metadata.close();
+	assert.equal((await watcher.next()).done, true);
+});
 
 test("project file IDs normalize portable relative paths", () => {
 	const id = projectFileId({
