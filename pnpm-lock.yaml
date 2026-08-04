@@ -144,6 +144,15 @@ importers:
         specifier: workspace:^
         version: link:../source
 
+  packages/target-shopify:
+    dependencies:
+      '@nazare/compiler':
+        specifier: workspace:^
+        version: link:../compiler
+      '@nazare/core':
+        specifier: workspace:^
+        version: link:../core
+
   packages/theme:
     dependencies:
       '@nazare/compiler':

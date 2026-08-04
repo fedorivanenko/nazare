@@ -271,7 +271,7 @@ closure.ts
 
 - [x] Move frontend selection behind `parsedFile(fileId)`.
 - [x] Move parser/fact identities into frontend versions and graph dependency identities.
-- [ ] Split current target-neutral syntax/facts from Shopify enrichment.
+- [x] Split target-neutral syntax/facts from Shopify enrichment products.
 - [x] Make `sourceFacts(fileId)` independent of target.
 - [x] Make `dependencyEdges(fileId)` partitioned by source.
 - [x] Resolve closure by demand from analysis roots.
@@ -322,9 +322,9 @@ packages/compiler/src/emit.ts Shopify-specific emission
 
 Do not mechanically move generic scheduler/store utilities; rename and retain those in compiler.
 
-- [ ] Implement Shopify role classification.
-- [ ] Register per-file target fact products.
-- [ ] Register per-file declarations and references.
+- [x] Implement Shopify role classification.
+- [x] Register per-file target fact products.
+- [x] Register per-file declarations and references.
 - [ ] Adapt existing incremental passes into computation products.
 - [ ] Partition records by stable owner/source IDs.
 - [ ] Model resolution and data flow by affected SCC.
