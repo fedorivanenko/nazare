@@ -11,6 +11,7 @@ import {
 } from "@nazare/compiler";
 import {
 	classifyShopifyFile,
+	shopifyGraphProducts,
 	shopifyProducts,
 	shopifyResolutionProducts,
 	shopifySemanticTarget,
@@ -146,7 +147,8 @@ test("resolves references through lazy symbol products", async () => {
 test("resolves direct relative Nazare imports by stable file identity", async () => {
 	const session = await targetSession({
 		"components/card.nz.liquid": "",
-		"components/entry.nz.liquid": "{% import Card from './card.nz.liquid' %}",
+		"components/entry.nz.liquid":
+			"{% import Card from './card.nz.liquid' %}\n{% render Card { title: 'Hi' } %}",
 	});
 	const resolutions = await session.get(
 		shopifyResolutionProducts.fileResolutions.product({
@@ -155,8 +157,18 @@ test("resolves direct relative Nazare imports by stable file identity", async ()
 		}),
 	);
 
-	assert.equal(resolutions[0].status, "resolved");
-	assert.equal(resolutions[0].targetFiles[0].path, "components/card.nz.liquid");
+	assert.equal(resolutions.length, 2);
+	assert.equal(
+		resolutions.every((resolution) => resolution.status === "resolved"),
+		true,
+	);
+	assert.equal(
+		resolutions.every(
+			(resolution) =>
+				resolution.targetFiles[0].path === "components/card.nz.liquid",
+		),
+		true,
+	);
 });
 
 test("owns missing-reference diagnostics on resolution products", async () => {
@@ -203,6 +215,76 @@ test("symbol queries preserve ambiguous declarations", async () => {
 	);
 	assert.equal(declarations.length, 2);
 	assert.equal(new Set(declarations.map((item) => item.id)).size, 2);
+});
+
+test("partitions render cycles and computes SCC-local data flow", async () => {
+	const session = await targetSession({
+		"snippets/a.liquid": "{% render 'b' %}",
+		"snippets/b.liquid": "{% render 'a' %} {{ settings.color }}",
+	});
+	const graph = await session.get(
+		shopifyGraphProducts.renderGraph.product({
+			files: session.snapshot().fileIds,
+		}),
+	);
+	const reversed = await session.get(
+		shopifyGraphProducts.renderGraph.product({
+			files: [...session.snapshot().fileIds].reverse(),
+		}),
+	);
+	assert.deepEqual(
+		reversed.sccs.map((scc) => scc.id),
+		graph.sccs.map((scc) => scc.id),
+	);
+	const cycle = graph.sccs.find((scc) => scc.nodes.length === 2);
+	assert.ok(cycle);
+	assert.equal(cycle.cyclic, true);
+
+	const flow = await session.get(
+		shopifyGraphProducts.sccDataFlow.product({
+			scc: cycle,
+			maxIterations: 8,
+			maxWork: 100,
+		}),
+	);
+	assert.equal(flow.converged, true);
+	assert.deepEqual(
+		flow.files.map((file) => [
+			file.file.path,
+			file.reads.map((read) => `${read.object}.${read.name}`),
+		]),
+		[
+			["snippets/a.liquid", ["settings.color"]],
+			["snippets/b.liquid", ["settings.color"]],
+		],
+	);
+});
+
+test("bounds SCC data flow and owns convergence diagnostics", async () => {
+	const session = await targetSession({
+		"snippets/a.liquid": "{% render 'b' %}",
+		"snippets/b.liquid": "{% render 'a' %} {{ settings.color }}",
+	});
+	const graph = await session.get(
+		shopifyGraphProducts.renderGraph.product({
+			files: session.snapshot().fileIds,
+		}),
+	);
+	const cycle = graph.sccs.find((scc) => scc.nodes.length === 2);
+	assert.ok(cycle);
+	const product = shopifyGraphProducts.sccDataFlow.product({
+		scc: cycle,
+		maxIterations: 1,
+		maxWork: 100,
+	});
+	const flow = await session.get(product);
+	const metadata = await session.graph.metadata(product);
+
+	assert.equal(flow.converged, false);
+	assert.equal(
+		metadata.diagnostics[0].code,
+		"SHOPIFY_DATA_FLOW_BUDGET_EXCEEDED",
+	);
 });
 
 test("target facts retain stable source ownership", async () => {

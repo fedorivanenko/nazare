@@ -10,6 +10,7 @@ import {
 	type SourceFact,
 	sourceProducts,
 } from "@nazare/compiler";
+import { registerShopifyGraphComputations } from "./render-graph.js";
 import { registerShopifyResolutionComputations } from "./resolution.js";
 import {
 	classifyShopifyFile,
@@ -43,6 +44,14 @@ export type ShopifyReference = {
 	static: boolean;
 };
 
+export type ShopifyDataRead = {
+	kind: "dataRead";
+	id: string;
+	owner: ProjectFileId;
+	object: string;
+	name: string;
+};
+
 export type ShopifyBehavior = {
 	kind: "behavior";
 	id: string;
@@ -53,6 +62,7 @@ export type ShopifyBehavior = {
 export type ShopifyTargetFact =
 	| ShopifyDeclaration
 	| ShopifyReference
+	| ShopifyDataRead
 	| ShopifyBehavior;
 
 export type ShopifyTargetFacts = {
@@ -119,10 +129,11 @@ function registerShopifyComputations(graph: ComputationGraph): void {
 					shopifyProducts.classification.product(file),
 				);
 				const source = await context.get(sourceProducts.facts.product(file));
+				const importPaths = nazareImportPaths(source.facts);
 				const facts: ShopifyTargetFact[] = [
 					...roleDeclarations(classification),
 					...source.facts.flatMap((fact) =>
-						enrichSourceFact(classification, fact),
+						enrichSourceFact(classification, fact, importPaths),
 					),
 				];
 				if (
@@ -166,6 +177,7 @@ function registerShopifyComputations(graph: ComputationGraph): void {
 	);
 
 	registerShopifyResolutionComputations(graph);
+	registerShopifyGraphComputations(graph);
 }
 
 function roleDeclarations(
@@ -187,6 +199,7 @@ function roleDeclarations(
 function enrichSourceFact(
 	classification: ShopifyFileClassification,
 	fact: SourceFact,
+	importPaths: ReadonlyMap<string, string>,
 ): ShopifyTargetFact[] {
 	if (fact.kind === "liquid.reference" && isRecord(fact.data)) {
 		const referenceKind = stringValue(fact.data.kind) ?? "liquid";
@@ -211,6 +224,18 @@ function enrichSourceFact(
 			}),
 		];
 	}
+	if (fact.kind === "nazare.render" && isRecord(fact.data)) {
+		const target = stringValue(fact.data.target);
+		const targetPath = target ? importPaths.get(target) : undefined;
+		return [
+			reference(classification, "nazare-render", {
+				siteId: fact.id,
+				targetPath,
+				targetRelative: true,
+				static: targetPath !== undefined,
+			}),
+		];
+	}
 	if (fact.kind === "nazare.component" && isRecord(fact.data)) {
 		return [
 			declaration(
@@ -219,6 +244,20 @@ function enrichSourceFact(
 				stringValue(fact.data.componentKind) ??
 					shopifyResourceName(classification.file.path),
 			),
+		];
+	}
+	if (fact.kind === "liquid.settings-read" && isRecord(fact.data)) {
+		const object = stringValue(fact.data.object);
+		const name = stringValue(fact.data.name);
+		if (!object || !name) return [];
+		return [
+			{
+				kind: "dataRead",
+				id: targetFactId(classification.file, "data-read", fact.id),
+				owner: classification.file,
+				object,
+				name,
+			},
 		];
 	}
 	if (fact.kind === "source.behavior") {
@@ -232,6 +271,19 @@ function enrichSourceFact(
 		];
 	}
 	return [];
+}
+
+function nazareImportPaths(
+	facts: readonly SourceFact[],
+): ReadonlyMap<string, string> {
+	const imports = new Map<string, string>();
+	for (const fact of facts) {
+		if (fact.kind !== "dependency" || !isRecord(fact.data)) continue;
+		const localName = stringValue(fact.data.localName);
+		const path = stringValue(fact.data.path);
+		if (localName && path) imports.set(localName, path);
+	}
+	return imports;
 }
 
 function jsonTargetFacts(

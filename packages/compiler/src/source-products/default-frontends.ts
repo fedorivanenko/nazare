@@ -26,6 +26,7 @@ const sourceParserRegistry = createDefaultSourceParserRegistry();
 
 export const nazareLiquidSourceFrontend = sourceDocumentFrontend({
 	id: "nazare.source.nazare-liquid",
+	version: 2,
 	language: "nazare-liquid",
 	accepts: (path) => path.endsWith(".nz.liquid"),
 	extract(document, file) {
@@ -36,6 +37,7 @@ export const nazareLiquidSourceFrontend = sourceDocumentFrontend({
 						path: fact.specifier,
 						relative: true,
 						kind: "nazare-import",
+						localName: fact.localName,
 						range: fact.range,
 					})
 				: sourceFact(file, `nazare.${fact.kind}`, fact),
@@ -161,6 +163,7 @@ export function createDefaultSourceFrontendRegistry(): SourceFrontendRegistry {
 
 function sourceDocumentFrontend(input: {
 	id: string;
+	version?: number;
 	language: "liquid" | "nazare-liquid";
 	accepts(path: string): boolean;
 	extract(
@@ -170,7 +173,7 @@ function sourceDocumentFrontend(input: {
 }): SourceFrontend {
 	return defineSourceFrontend({
 		id: input.id,
-		version: 1,
+		version: input.version ?? 1,
 		language: input.language,
 		accepts: (file) => input.accepts(file.id.path),
 		async parse(file) {

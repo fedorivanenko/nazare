@@ -328,8 +328,8 @@ Do not mechanically move generic scheduler/store utilities; rename and retain th
 - [x] Adapt declaration, reference, and resolution passes into computation products.
 - [ ] Adapt remaining incremental passes into computation products.
 - [x] Partition records by stable owner/source IDs.
-- [ ] Model resolution and data flow by affected SCC.
-- [ ] Preserve convergence budgets and diagnostics.
+- [x] Model render resolution and data flow through SCC-local products.
+- [x] Preserve explicit convergence budgets and product-owned diagnostics.
 - [ ] Register target schema, metafield, behavior, capability, classification, and evidence products.
 - [ ] Register capabilities through `CapabilityRegistry`.
 

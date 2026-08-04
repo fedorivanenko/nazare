@@ -1,5 +1,6 @@
 export {
 	type ShopifyBehavior,
+	type ShopifyDataRead,
 	type ShopifyDeclaration,
 	type ShopifyFileClassification,
 	type ShopifyReference,
@@ -8,6 +9,17 @@ export {
 	shopifyProducts,
 	shopifySemanticTarget,
 } from "./products.js";
+export {
+	registerShopifyGraphComputations,
+	type ShopifyFileDataFlow,
+	type ShopifyRenderEdge,
+	type ShopifyRenderGraph,
+	type ShopifyRenderPlan,
+	type ShopifyRenderScc,
+	type ShopifySccDataFlow,
+	type ShopifySccDataFlowPlan,
+	shopifyGraphProducts,
+} from "./render-graph.js";
 export {
 	registerShopifyResolutionComputations,
 	type ShopifyReferenceQuery,
