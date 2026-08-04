@@ -30,7 +30,8 @@ export type CachedComputationDependency =
 
 export type CachedComputation = {
 	value: ProductKey;
-	fingerprint: string;
+	valueFingerprint: string;
+	productFingerprint: string;
 	dependencies: readonly CachedComputationDependency[];
 };
 
@@ -116,7 +117,8 @@ function parseFileSystemEntry(value: unknown): CachedComputation | undefined {
 	if (
 		!isRecord(entry) ||
 		!isProductKey(entry.value) ||
-		!isFingerprint(entry.fingerprint) ||
+		!isFingerprint(entry.valueFingerprint) ||
+		!isFingerprint(entry.productFingerprint) ||
 		!Array.isArray(entry.dependencies) ||
 		!entry.dependencies.every(isCachedDependency)
 	) {
@@ -124,7 +126,8 @@ function parseFileSystemEntry(value: unknown): CachedComputation | undefined {
 	}
 	return {
 		value: entry.value,
-		fingerprint: entry.fingerprint,
+		valueFingerprint: entry.valueFingerprint,
+		productFingerprint: entry.productFingerprint,
 		dependencies: entry.dependencies,
 	};
 }

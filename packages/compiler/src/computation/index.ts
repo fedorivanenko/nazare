@@ -26,6 +26,7 @@ export {
 	type ComputationPriority,
 	type ComputationUncertainty,
 	defineComputation,
+	jsonComputationCodec,
 	productKeyCodec,
 } from "./computation.js";
 export {

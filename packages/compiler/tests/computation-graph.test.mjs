@@ -125,6 +125,48 @@ test("restores content-addressed results after validating direct dependency hash
 	assert.equal(derivedCalls.count, 2);
 });
 
+test("cacheable parents reuse fingerprints from non-serializable dependencies", async () => {
+	const cache = createMemoryComputationCache();
+	let sourceCalls = 0;
+	let derivedCalls = 0;
+	const sourceDefinition = defineProduct({
+		namespace: "test",
+		id: "non-serializable-source",
+		version: 1,
+	});
+	const source = defineComputation(sourceDefinition, async (context) => {
+		sourceCalls++;
+		return { value: await context.input("source"), runtime: new Map() };
+	});
+	const derivedDefinition = defineProduct({
+		namespace: "test",
+		id: "serializable-derived",
+		version: 1,
+	});
+	const derived = defineComputation(
+		derivedDefinition,
+		async (context, key) => {
+			derivedCalls++;
+			return (await context.get(source.product(key))).value;
+		},
+		{ cache: productKeyCodec() },
+	);
+	const evaluate = async () => {
+		const graph = createComputationGraph({ cache });
+		graph.register(source);
+		graph.register(derived);
+		const update = graph.beginUpdate();
+		update.setInput("source", "stable");
+		update.commit();
+		return graph.get(derived.product("file"));
+	};
+
+	assert.equal(await evaluate(), "stable");
+	assert.equal(await evaluate(), "stable");
+	assert.equal(sourceCalls, 2);
+	assert.equal(derivedCalls, 1);
+});
+
 test("aggregates product-owned diagnostics and uncertainty from dependencies", async () => {
 	const graph = createComputationGraph();
 	const sourceDefinition = defineProduct({

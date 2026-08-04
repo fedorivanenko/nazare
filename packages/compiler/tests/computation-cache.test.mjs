@@ -27,7 +27,8 @@ test("filesystem cache round-trips validated computation entries", async () => {
 		const value = { files: ["a.liquid"], valid: true };
 		const entry = {
 			value,
-			fingerprint: fingerprintProductKey(value),
+			valueFingerprint: fingerprintProductKey(value),
+			productFingerprint: fingerprintProductKey("product"),
 			dependencies: [
 				{
 					kind: "input",
@@ -50,7 +51,8 @@ test("filesystem cache removes malformed entries", async () => {
 		const value = "valid";
 		await cache.write("nazare:test@1:key", {
 			value,
-			fingerprint: fingerprintProductKey(value),
+			valueFingerprint: fingerprintProductKey(value),
+			productFingerprint: fingerprintProductKey("product"),
 			dependencies: [],
 		});
 		const files = (await readdir(directory, { recursive: true }))
@@ -108,7 +110,8 @@ test("filesystem cache hashes cache keys into contained paths", async () => {
 		const value = "safe";
 		await cache.write("../../outside/private-source.liquid", {
 			value,
-			fingerprint: fingerprintProductKey(value),
+			valueFingerprint: fingerprintProductKey(value),
+			productFingerprint: fingerprintProductKey("product"),
 			dependencies: [],
 		});
 		const entries = await readdir(directory, { recursive: true });

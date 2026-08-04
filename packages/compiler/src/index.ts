@@ -105,6 +105,7 @@ export {
 	definePipeline,
 	defineProduct,
 	fingerprintProductKey,
+	jsonComputationCodec,
 	type NazarePipeline,
 	ObsoleteComputationRevisionError,
 	type Product,
@@ -208,6 +209,24 @@ export {
 	type ThemeSchemaFromIROptions,
 	themeSchemaFromIR,
 } from "./schema.js";
+export {
+	type ClassifiedSourceFile,
+	createSourceFrontendRegistry,
+	createSourceProductRegistrar,
+	defineSourceFrontend,
+	type LanguageId,
+	type ParsedSourceFile,
+	type ParsedSourceSyntax,
+	type ReachableSourceClosure,
+	type SourceAnalysisPlan,
+	type SourceDependencyEdge,
+	type SourceFact,
+	type SourceFacts,
+	type SourceFrontend,
+	type SourceFrontendContext,
+	type SourceFrontendRegistry,
+	sourceProducts,
+} from "./source-products/index.js";
 export {
 	bindArtifactIR,
 	componentKindFromIR,

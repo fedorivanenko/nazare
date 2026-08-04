@@ -51,6 +51,18 @@ export function defineComputation<Key extends ProductKey, Result>(
 	return Object.freeze({ ...definition, compute, ...options });
 }
 
+export function jsonComputationCodec<Result>(): ComputationCodec<Result> {
+	return {
+		encode(result) {
+			const encoded: unknown = JSON.parse(JSON.stringify(result));
+			return encoded as ProductKey;
+		},
+		decode(value) {
+			return value as Result;
+		},
+	};
+}
+
 export function productKeyCodec<
 	Result extends ProductKey,
 >(): ComputationCodec<Result> {

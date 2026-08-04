@@ -269,12 +269,12 @@ dependency-edges.ts
 closure.ts
 ```
 
-- [ ] Move frontend selection behind `parsedFile(fileId)`.
+- [x] Move frontend selection behind `parsedFile(fileId)`.
 - [ ] Move current parser/fact fingerprints into product versions and dependency identities.
 - [ ] Split current target-neutral syntax/facts from Shopify enrichment.
-- [ ] Make `sourceFacts(fileId)` independent of target.
-- [ ] Make `dependencyEdges(fileId)` partitioned by source.
-- [ ] Resolve closure by demand from analysis roots.
+- [x] Make `sourceFacts(fileId)` independent of target.
+- [x] Make `dependencyEdges(fileId)` partitioned by source.
+- [x] Resolve closure by demand from analysis roots.
 - [ ] Preserve opaque frontend and uncertainty behavior.
 - [ ] Remove whole-scope parsing from command paths.
 

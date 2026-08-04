@@ -320,7 +320,6 @@ class DefaultComputationGraph implements ComputationGraph {
 
 		const dependencies = new Set<string>();
 		const dependencyRecords = new Map<string, CachedComputationDependency>();
-		let dependenciesCacheable = true;
 		const context: ComputationContext = {
 			signal: controller.signal,
 			priority: evaluation.priority,
@@ -336,20 +335,21 @@ class DefaultComputationGraph implements ComputationGraph {
 				);
 				const dependencyNode = this.node(dependency.cacheKey);
 				if (!dependencyNode.fingerprint) {
-					dependenciesCacheable = false;
-				} else {
-					dependencyRecords.set(dependencyId, {
-						kind: "product",
-						product: {
-							namespace: dependency.namespace,
-							id: dependency.id,
-							version: dependency.version,
-							key: dependency.key,
-							cacheKey: dependency.cacheKey,
-						},
-						fingerprint: dependencyNode.fingerprint,
-					});
+					throw new Error(
+						`Dependency did not produce a fingerprint: ${dependency.cacheKey}`,
+					);
 				}
+				dependencyRecords.set(dependencyId, {
+					kind: "product",
+					product: {
+						namespace: dependency.namespace,
+						id: dependency.id,
+						version: dependency.version,
+						key: dependency.key,
+						cacheKey: dependency.cacheKey,
+					},
+					fingerprint: dependencyNode.fingerprint,
+				});
 				return result;
 			},
 			input: async <InputResult>(key: string): Promise<InputResult> => {
@@ -378,17 +378,20 @@ class DefaultComputationGraph implements ComputationGraph {
 		node.value = result;
 		node.hasValue = true;
 		this.replaceMetadata(node, computation, result);
+		const cachedDependencies = [...dependencyRecords.values()];
+		node.fingerprint = fingerprintComputationProduct(
+			product.cacheKey,
+			cachedDependencies,
+		);
 
 		if (computation.cache) {
 			const encoded = computation.cache.encode(result);
-			node.fingerprint = fingerprintProductKey(encoded);
-			if (dependenciesCacheable) {
-				await this.writeCache(product.cacheKey, {
-					value: encoded,
-					fingerprint: node.fingerprint,
-					dependencies: [...dependencyRecords.values()],
-				});
-			}
+			await this.writeCache(product.cacheKey, {
+				value: encoded,
+				valueFingerprint: fingerprintProductKey(encoded),
+				productFingerprint: node.fingerprint,
+				dependencies: cachedDependencies,
+			});
 		}
 
 		return result as Result;
@@ -405,7 +408,14 @@ class DefaultComputationGraph implements ComputationGraph {
 		if (!this.cache || !computation.cache) return { hit: false };
 		const cached = await this.readCache(product.cacheKey);
 		if (!cached) return { hit: false };
-		if (fingerprintProductKey(cached.value) !== cached.fingerprint) {
+		if (fingerprintProductKey(cached.value) !== cached.valueFingerprint) {
+			await this.deleteCache(product.cacheKey);
+			return { hit: false };
+		}
+		if (
+			fingerprintComputationProduct(product.cacheKey, cached.dependencies) !==
+			cached.productFingerprint
+		) {
 			await this.deleteCache(product.cacheKey);
 			return { hit: false };
 		}
@@ -446,7 +456,7 @@ class DefaultComputationGraph implements ComputationGraph {
 		const value = computation.cache.decode(cached.value);
 		this.replaceDependencies(product.cacheKey, node, dependencies);
 		node.value = value;
-		node.fingerprint = cached.fingerprint;
+		node.fingerprint = cached.productFingerprint;
 		node.hasValue = true;
 		this.replaceMetadata(node, computation, value);
 		return { hit: true, value };
@@ -590,6 +600,32 @@ function productIdentity(value: {
 
 function productCacheKey(product: Product<ProductKey, unknown>): string {
 	return `${productIdentity(product)}:${canonicalProductKey(product.key)}`;
+}
+
+function fingerprintComputationProduct(
+	cacheKey: string,
+	dependencies: readonly CachedComputationDependency[],
+): string {
+	const dependencyKeys: ProductKey[] = dependencies.map((dependency) =>
+		dependency.kind === "input"
+			? {
+					kind: "input",
+					key: dependency.key,
+					fingerprint: dependency.fingerprint,
+				}
+			: {
+					kind: "product",
+					key: dependency.product.cacheKey,
+					fingerprint: dependency.fingerprint,
+				},
+	);
+	dependencyKeys.sort((left, right) =>
+		canonicalProductKey(left).localeCompare(canonicalProductKey(right)),
+	);
+	return fingerprintProductKey({
+		product: cacheKey,
+		dependencies: dependencyKeys,
+	});
 }
 
 function inputDependency(key: string): string {
