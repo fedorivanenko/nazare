@@ -330,8 +330,8 @@ Do not mechanically move generic scheduler/store utilities; rename and retain th
 - [x] Partition records by stable owner/source IDs.
 - [x] Model render resolution and data flow through SCC-local products.
 - [x] Preserve explicit convergence budgets and product-owned diagnostics.
-- [ ] Register target schema, metafield, behavior, capability, classification, and evidence products.
-- [ ] Register capabilities through `CapabilityRegistry`.
+- [x] Register target schema, metafield, behavior, capability, classification, and evidence products.
+- [x] Register Shopify semantic capability through `CapabilityRegistry`.
 
 Exit gate:
 

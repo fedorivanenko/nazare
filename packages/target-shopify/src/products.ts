@@ -1,8 +1,9 @@
 import {
+	type CapabilityProvider,
 	type ComputationGraph,
-	type ComputationRegistrar,
+	defineCapability,
+	defineCapabilityProvider,
 	defineComputation,
-	defineComputationRegistrar,
 	defineProduct,
 	fingerprintProductKey,
 	jsonComputationCodec,
@@ -17,6 +18,7 @@ import {
 	type ShopifyFileRole,
 	shopifyResourceName,
 } from "./role.js";
+import { registerShopifySemanticComputations } from "./semantic-products.js";
 
 export type ShopifyFileClassification = {
 	file: ProjectFileId;
@@ -94,11 +96,22 @@ export const shopifyProducts = {
 	}),
 };
 
-export function shopifySemanticTarget(): ComputationRegistrar {
-	return defineComputationRegistrar(
-		{ id: "nazare.target.shopify", version: 1 },
-		registerShopifyComputations,
-	);
+export type ShopifySemanticCapability = {
+	targetId: "shopify";
+	products: typeof shopifyProducts;
+};
+
+export const shopifySemanticCapability =
+	defineCapability<ShopifySemanticCapability>("nazare.semantic.shopify");
+
+export function shopifySemanticTarget(): CapabilityProvider<ShopifySemanticCapability> {
+	return defineCapabilityProvider({
+		capability: shopifySemanticCapability,
+		id: "nazare.target.shopify",
+		version: 1,
+		value: { targetId: "shopify", products: shopifyProducts },
+		registerComputations: registerShopifyComputations,
+	});
 }
 
 function registerShopifyComputations(graph: ComputationGraph): void {
@@ -178,6 +191,7 @@ function registerShopifyComputations(graph: ComputationGraph): void {
 
 	registerShopifyResolutionComputations(graph);
 	registerShopifyGraphComputations(graph);
+	registerShopifySemanticComputations(graph);
 }
 
 function roleDeclarations(

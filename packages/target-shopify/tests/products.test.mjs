@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	createCapabilityRegistry,
 	createDefaultSourceFrontendRegistry,
 	createProjectSession,
 	createSourceProductRegistrar,
@@ -14,6 +15,8 @@ import {
 	shopifyGraphProducts,
 	shopifyProducts,
 	shopifyResolutionProducts,
+	shopifySemanticCapability,
+	shopifySemanticProducts,
 	shopifySemanticTarget,
 } from "../dist/index.js";
 
@@ -51,9 +54,17 @@ async function targetSession(sources) {
 		host,
 		frontends: createDefaultSourceFrontendRegistry(),
 	}).registerComputations(session.graph);
-	shopifySemanticTarget().registerComputations(session.graph);
+	const capabilities = createCapabilityRegistry([shopifySemanticTarget()]);
+	capabilities.registerComputations(session.graph);
 	return session;
 }
+
+test("registers Shopify semantics through CapabilityRegistry", () => {
+	const registry = createCapabilityRegistry([shopifySemanticTarget()]);
+	const capability = registry.require(shopifySemanticCapability);
+	assert.equal(capability.targetId, "shopify");
+	assert.equal(capability.products, shopifyProducts);
+});
 
 test("classifies Shopify roles independently from source language", () => {
 	assert.equal(classifyShopifyFile("sections/main.liquid"), "section");
@@ -284,6 +295,127 @@ test("bounds SCC data flow and owns convergence diagnostics", async () => {
 	assert.equal(
 		metadata.diagnostics[0].code,
 		"SHOPIFY_DATA_FLOW_BUDGET_EXCEEDED",
+	);
+});
+
+test("derives target-owned schema, evidence, capabilities, and classification", async () => {
+	const session = await targetSession({
+		"sections/main.liquid": [
+			"{% render 'card' %}",
+			"{% schema %}",
+			JSON.stringify({
+				name: "Main",
+				settings: [
+					{ id: "heading", type: "text", label: "Heading", default: "Hello" },
+				],
+			}),
+			"{% endschema %}",
+		].join("\n"),
+		"snippets/card.liquid": "",
+	});
+	const file = id("sections/main.liquid");
+	const schema = await session.get(
+		shopifySemanticProducts.schema.product(file),
+	);
+	const evidence = await session.get(
+		shopifySemanticProducts.evidence.product(file),
+	);
+	const capabilities = await session.get(
+		shopifySemanticProducts.capabilities.product(file),
+	);
+	const classification = await session.get(
+		shopifySemanticProducts.classification.product(file),
+	);
+
+	assert.deepEqual(schema.settings, [
+		{
+			id: "heading",
+			type: "text",
+			label: "Heading",
+			defaultValue: "Hello",
+		},
+	]);
+	assert.equal(
+		evidence.some((record) => record.kind === "schema"),
+		true,
+	);
+	assert.equal(
+		capabilities.some((item) => item.capability === "shopify.schema"),
+		true,
+	);
+	assert.deepEqual(classification.classes, ["composed", "configurable"]);
+});
+
+test("derives metafield products and data-driven classification", async () => {
+	const session = await targetSession({
+		"snippets/card.liquid": "{{ product.metafields.custom.subtitle.value }}",
+	});
+	const file = id("snippets/card.liquid");
+	const metafields = await session.get(
+		shopifySemanticProducts.metafields.product(file),
+	);
+	const capabilities = await session.get(
+		shopifySemanticProducts.capabilities.product(file),
+	);
+	const classification = await session.get(
+		shopifySemanticProducts.classification.product(file),
+	);
+
+	assert.deepEqual(
+		metafields.map(({ ownerType, namespace, key, dynamic }) => ({
+			ownerType,
+			namespace,
+			key,
+			dynamic,
+		})),
+		[
+			{
+				ownerType: "product",
+				namespace: "custom",
+				key: "subtitle",
+				dynamic: false,
+			},
+		],
+	);
+	assert.equal(
+		capabilities.some((item) => item.capability === "shopify.metafields"),
+		true,
+	);
+	assert.deepEqual(classification.classes, ["data-driven"]);
+});
+
+test("derives browser behavior capability without Shopify role leakage", async () => {
+	const session = await targetSession({
+		"assets/theme.css": ".card { --accent: red }",
+	});
+	const file = id("assets/theme.css");
+	const behavior = await session.get(
+		shopifySemanticProducts.behavior.product(file),
+	);
+	const classification = await session.get(
+		shopifySemanticProducts.classification.product(file),
+	);
+
+	assert.equal(behavior.length > 0, true);
+	assert.deepEqual(classification.classes, ["interactive"]);
+});
+
+test("owns invalid schema diagnostics on schema product", async () => {
+	const session = await targetSession({
+		"sections/main.liquid": "{% schema %}{ invalid json }{% endschema %}",
+	});
+	const product = shopifySemanticProducts.schema.product(
+		id("sections/main.liquid"),
+	);
+	const schema = await session.get(product);
+	const metadata = await session.graph.metadata(product);
+
+	assert.equal(schema.settings.length, 0);
+	assert.equal(
+		metadata.diagnostics.some(
+			(diagnostic) => diagnostic.code === "SHOPIFY_SCHEMA_PARSE_ERROR",
+		),
+		true,
 	);
 });
 

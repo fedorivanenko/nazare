@@ -1,6 +1,7 @@
 import type { Diagnostic } from "@nazare/core";
 import {
 	createDefaultSourceParserRegistry,
+	type LiquidSyntaxFacts,
 	liquidSyntaxFacts,
 	nazareSyntaxFacts,
 	parseSourceDocument,
@@ -26,7 +27,7 @@ const sourceParserRegistry = createDefaultSourceParserRegistry();
 
 export const nazareLiquidSourceFrontend = sourceDocumentFrontend({
 	id: "nazare.source.nazare-liquid",
-	version: 2,
+	version: 3,
 	language: "nazare-liquid",
 	accepts: (path) => path.endsWith(".nz.liquid"),
 	extract(document, file) {
@@ -42,30 +43,20 @@ export const nazareLiquidSourceFrontend = sourceDocumentFrontend({
 					})
 				: sourceFact(file, `nazare.${fact.kind}`, fact),
 		);
-		facts.push(
-			...syntax.liquid.dependencies.map((dependency) =>
-				sourceFact(file, "liquid.reference", dependency),
-			),
-		);
+		facts.push(...liquidNeutralFacts(syntax.liquid, file));
 		return { facts, diagnostics: [], uncertainty: [] };
 	},
 });
 
 export const liquidSourceFrontend = sourceDocumentFrontend({
 	id: "nazare.source.liquid",
+	version: 2,
 	language: "liquid",
 	accepts: (path) => path.endsWith(".liquid") && !path.endsWith(".nz.liquid"),
 	extract(document, file) {
 		const syntax = liquidSyntaxFacts(document);
 		return {
-			facts: [
-				...syntax.dependencies.map((dependency) =>
-					sourceFact(file, "liquid.reference", dependency),
-				),
-				...syntax.settingsReads.map((read) =>
-					sourceFact(file, "liquid.settings-read", read),
-				),
-			],
+			facts: liquidNeutralFacts(syntax, file),
 			diagnostics: [],
 			uncertainty: syntax.authoritative
 				? []
@@ -244,6 +235,33 @@ function analyzedThemeFrontend(input: {
 			};
 		},
 	});
+}
+
+function liquidNeutralFacts(
+	syntax: LiquidSyntaxFacts,
+	file: ClassifiedSourceFile,
+): SourceFact[] {
+	return [
+		...syntax.dependencies.map((dependency) =>
+			sourceFact(file, "liquid.reference", dependency),
+		),
+		...syntax.settingsReads.map((read) =>
+			sourceFact(file, "liquid.settings-read", read),
+		),
+		...syntax.assetReferences.map((reference) =>
+			sourceFact(file, "liquid.asset-reference", reference),
+		),
+		...syntax.localeReferences.map((reference) =>
+			sourceFact(file, "liquid.locale-reference", reference),
+		),
+		...syntax.renderArguments.map((argument) =>
+			sourceFact(file, "liquid.render-argument", argument),
+		),
+		...syntax.reads.map((read) => sourceFact(file, "liquid.read", read)),
+		...(syntax.schema
+			? [sourceFact(file, "liquid.schema", syntax.schema)]
+			: []),
+	];
 }
 
 function parsed(

@@ -4,9 +4,11 @@ export {
 	type ShopifyDeclaration,
 	type ShopifyFileClassification,
 	type ShopifyReference,
+	type ShopifySemanticCapability,
 	type ShopifyTargetFact,
 	type ShopifyTargetFacts,
 	shopifyProducts,
+	shopifySemanticCapability,
 	shopifySemanticTarget,
 } from "./products.js";
 export {
@@ -33,3 +35,13 @@ export {
 	type ShopifyFileRole,
 	shopifyResourceName,
 } from "./role.js";
+export {
+	registerShopifySemanticComputations,
+	type ShopifyCapability,
+	type ShopifyEvidence,
+	type ShopifyFileClassificationResult,
+	type ShopifyFileSchema,
+	type ShopifyMetafieldRead,
+	type ShopifySchemaSetting,
+	shopifySemanticProducts,
+} from "./semantic-products.js";
