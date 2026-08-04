@@ -386,8 +386,8 @@ unused-files
 - [x] Partition query indexes by stable owner/filter keys and record IDs.
 - [x] Return versioned query outputs.
 - [x] Preserve uncertainty and evidence in query results.
-- [x] Add graph-server product requests through `ProjectSession.get(product)`.
-- [ ] Migrate remaining legacy graph-server requests and watch notifications.
+- [x] Migrate graph-server query requests through `ProjectSession.get(product)`.
+- [ ] Move graph-server external-input watch notifications to shared providers.
 - [ ] Delete `ThemeComputation` and direct query helpers after consumers migrate.
 
 Exit gate:

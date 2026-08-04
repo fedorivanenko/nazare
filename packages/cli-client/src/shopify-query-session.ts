@@ -10,7 +10,9 @@ import {
 	projectFileId,
 } from "@nazare/compiler";
 import {
+	type ShopifyAffectedPagesResult,
 	type ShopifyBehaviorIndexResult,
+	type ShopifyDependencyIndexResult,
 	type ShopifyImpactResult,
 	type ShopifyMetafieldIndexResult,
 	type ShopifyProjectGraphResult,
@@ -77,11 +79,31 @@ export class ShopifyQuerySession {
 		);
 	}
 
+	async dependencyIndex(
+		targetPath: string | null = null,
+	): Promise<ShopifyDependencyIndexResult> {
+		return this.session.get(
+			shopifyQueryProducts.dependencyIndex.product({
+				files: this.fileIds(),
+				target: targetPath ? fileId(targetPath) : null,
+			}),
+		);
+	}
+
 	async impact(paths: readonly string[]): Promise<ShopifyImpactResult> {
 		return this.session.get(
 			shopifyQueryProducts.impact.product({
 				files: this.fileIds(),
 				changed: paths.map(fileId),
+			}),
+		);
+	}
+
+	async affectedPages(path: string): Promise<ShopifyAffectedPagesResult> {
+		return this.session.get(
+			shopifyQueryProducts.affectedPages.product({
+				files: this.fileIds(),
+				changed: [fileId(path)],
 			}),
 		);
 	}

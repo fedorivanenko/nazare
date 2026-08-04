@@ -1,6 +1,7 @@
 import type { Diagnostic } from "@nazare/core";
 import {
 	createDefaultSourceParserRegistry,
+	htmlMarkupFacts,
 	type LiquidSyntaxFacts,
 	liquidSyntaxFacts,
 	nazareSyntaxFacts,
@@ -27,7 +28,7 @@ const sourceParserRegistry = createDefaultSourceParserRegistry();
 
 export const nazareLiquidSourceFrontend = sourceDocumentFrontend({
 	id: "nazare.source.nazare-liquid",
-	version: 3,
+	version: 4,
 	language: "nazare-liquid",
 	accepts: (path) => path.endsWith(".nz.liquid"),
 	extract(document, file) {
@@ -43,29 +44,34 @@ export const nazareLiquidSourceFrontend = sourceDocumentFrontend({
 					})
 				: sourceFact(file, `nazare.${fact.kind}`, fact),
 		);
-		facts.push(...liquidNeutralFacts(syntax.liquid, file));
-		return { facts, diagnostics: [], uncertainty: [] };
+		const markup = htmlNeutralFacts(document, file);
+		facts.push(...liquidNeutralFacts(syntax.liquid, file), ...markup.facts);
+		return { facts, diagnostics: [], uncertainty: markup.uncertainty };
 	},
 });
 
 export const liquidSourceFrontend = sourceDocumentFrontend({
 	id: "nazare.source.liquid",
-	version: 2,
+	version: 3,
 	language: "liquid",
 	accepts: (path) => path.endsWith(".liquid") && !path.endsWith(".nz.liquid"),
 	extract(document, file) {
 		const syntax = liquidSyntaxFacts(document);
+		const markup = htmlNeutralFacts(document, file);
 		return {
-			facts: liquidNeutralFacts(syntax, file),
+			facts: [...liquidNeutralFacts(syntax, file), ...markup.facts],
 			diagnostics: [],
-			uncertainty: syntax.authoritative
-				? []
-				: [
-						{
-							code: "LIQUID_SYNTAX_NOT_AUTHORITATIVE",
-							message: `Liquid syntax facts are incomplete for ${file.id.path}`,
-						},
-					],
+			uncertainty: [
+				...(syntax.authoritative
+					? []
+					: [
+							{
+								code: "LIQUID_SYNTAX_NOT_AUTHORITATIVE",
+								message: `Liquid syntax facts are incomplete for ${file.id.path}`,
+							},
+						]),
+				...markup.uncertainty,
+			],
 		};
 	},
 });
@@ -243,6 +249,30 @@ function analyzedThemeFrontend(input: {
 			};
 		},
 	});
+}
+
+function htmlNeutralFacts(
+	document: SourceDocument,
+	file: ClassifiedSourceFile,
+): Pick<SourceFacts, "facts" | "uncertainty"> {
+	const markup = htmlMarkupFacts(document);
+	return {
+		facts: markup.hooks.map((hook) =>
+			sourceFact(file, "source.behavior", {
+				subjectKind:
+					hook.kind === "customElement" ? "customElement" : "domHook",
+				...(hook.kind === "customElement" ? {} : { hookKind: hook.kind }),
+				operation: hook.kind === "customElement" ? "uses" : "emits",
+				name: hook.name,
+				range: hook.range,
+				extractor: "html-markup",
+			}),
+		),
+		uncertainty: markup.uncertainty.map((boundary) => ({
+			code: "DYNAMIC_HTML_HOOK",
+			message: `Dynamic HTML ${boundary.kind} prevents complete behavior analysis`,
+		})),
+	};
 }
 
 function liquidNeutralFacts(

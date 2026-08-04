@@ -4,13 +4,11 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import {
-	getThemeNode,
-	summarizeThemeGraph,
-	type ThemeBehaviorQuery,
 	ThemeBuildSession,
 	type ThemeInputFile,
 	ThemeProgram,
 } from "@nazare/compiler";
+import type { ShopifyBehavior } from "@nazare/target-shopify";
 import {
 	collectThemeInputFiles,
 	isInspectThemeFile,
@@ -231,9 +229,10 @@ async function handleRequest(
 		setSession(state.program);
 		setBuildSession(state.buildSession);
 		setQuerySession(state.querySession);
-		return state.program.getGraph();
+		return request.method === "inspect"
+			? state.program.getGraph()
+			: state.querySession.projectGraph();
 	}
-	const session = getSession();
 	const querySession = getQuerySession();
 	if (request.method === "projectModel") return querySession.projectModel();
 	if (request.method === "projectGraph") return querySession.projectGraph();
@@ -291,41 +290,136 @@ async function handleRequest(
 		setWatcher(() => undefined);
 		return { watching: false };
 	}
+	if (request.method === "summary") {
+		const model = await querySession.projectModel();
+		return {
+			version: model.version,
+			fileCount: querySession.session.snapshot().fileIds.length,
+			declarationCount: model.declarations.length,
+			referenceCount: model.references.length,
+			evidenceCount: model.evidence.length,
+			uncertaintyCount: model.uncertainty.length,
+		};
+	}
 	if (request.method === "fileImpact") {
-		return (
-			session.getFileImpact(requiredString(request.params, "path")) ?? null
+		const path = requiredString(request.params, "path");
+		const [impact, dependencies] = await Promise.all([
+			querySession.impact([path]),
+			querySession.dependencyIndex(),
+		]);
+		const directDependencies = dependencies.records.filter(
+			(record) => record.from.path === path,
 		);
+		const directDependents = dependencies.records.filter(
+			(record) => record.to.path === path,
+		);
+		return {
+			version: impact.version,
+			path,
+			dependencies: directDependencies.map((record) => record.to.path),
+			dependents: directDependents.map((record) => record.from.path),
+			affectedPages: (await querySession.affectedPages(path)).pages.map(
+				(file) => file.path,
+			),
+			uncertainty: impact.uncertainty,
+		};
 	}
 	if (request.method === "renderOccurrences") {
-		return session.getRenderOccurrences(requiredString(request.params, "path"));
+		const path = requiredString(request.params, "path");
+		const dependencies = await querySession.dependencyIndex();
+		return dependencies.records.filter(
+			(record) => record.from.path === path || record.to.path === path,
+		);
 	}
 	if (request.method === "behaviorUsages") {
 		const query = behaviorQueryParams(request.params);
 		const role = requiredEnum(request.params, "role", BEHAVIOR_QUERY_ROLES);
-		return session.queryBehavior(query, role);
+		const index = await querySession.behaviorIndex({
+			behaviorKind: query.subjectKind,
+		});
+		const usages = index.records
+			.filter((record) => behaviorMatches(record.data, query, role))
+			.map((record) => behaviorUsage(record));
+		return {
+			version: index.version,
+			query,
+			role,
+			usages,
+			certainty: "complete",
+			uncertainty: [],
+			evidence: index.evidence,
+		};
 	}
 	if (request.method === "behaviorConnections") {
 		const path = requiredString(request.params, "path");
-		const connections = session.getBehaviorConnections(path);
-		if (!connections) throw new RpcError(-32602, `Unknown theme path: ${path}`);
-		return connections;
+		if (
+			!querySession.session
+				.snapshot()
+				.fileIds.some((file) => file.path === path)
+		)
+			throw new RpcError(-32602, `Unknown theme path: ${path}`);
+		const index = await querySession.behaviorIndex({ behaviorKind: null });
+		const owned = index.records.filter((record) => record.owner.path === path);
+		const connections = owned.map((record) => {
+			const data = isObject(record.data) ? record.data : {};
+			const matching = index.records.filter(
+				(candidate) =>
+					isObject(candidate.data) &&
+					candidate.data.subjectKind === data.subjectKind &&
+					candidate.data.name === data.name,
+			);
+			return {
+				id: record.id,
+				subjectKind: data.subjectKind,
+				name: data.name,
+				producers: matching
+					.filter((candidate) => behaviorRole(candidate.data) === "producers")
+					.map(behaviorUsage),
+				consumers: matching
+					.filter((candidate) => behaviorRole(candidate.data) === "consumers")
+					.map(behaviorUsage),
+			};
+		});
+		return {
+			version: index.version,
+			path,
+			connections,
+			certainty: "complete",
+			uncertainty: [],
+			evidence: index.evidence,
+		};
 	}
 	if (request.method === "evidence") {
-		return session.getEvidence(requiredString(request.params, "recordId"));
+		const recordId = requiredString(request.params, "recordId");
+		const model = await querySession.projectModel();
+		return model.evidence.filter((record) => record.id === recordId);
 	}
-	const graph = session.getGraph();
-	if (request.method === "summary") return summarizeThemeGraph(graph);
 	if (
 		["node", "dependencies", "dependents", "affectedPages"].includes(
 			request.method,
 		)
 	) {
 		const nodeId = requiredString(request.params, "nodeId");
-		if (request.method === "node") return getThemeNode(graph, nodeId) ?? null;
-		if (request.method === "dependencies")
-			return session.getDependencies(nodeId);
-		if (request.method === "dependents") return session.getDependents(nodeId);
-		return session.getAffectedPages(nodeId);
+		if (request.method === "node") {
+			const model = await querySession.projectModel();
+			return (
+				model.declarations.find(
+					(record) => record.id === nodeId || record.owner.path === nodeId,
+				) ??
+				model.references.find(
+					(record) => record.id === nodeId || record.owner.path === nodeId,
+				) ??
+				null
+			);
+		}
+		if (request.method === "dependencies") {
+			const index = await querySession.dependencyIndex();
+			return index.records.filter((record) => record.from.path === nodeId);
+		}
+		if (request.method === "dependents") {
+			return (await querySession.dependencyIndex(nodeId)).records;
+		}
+		return (await querySession.affectedPages(nodeId)).pages;
 	}
 	throw new RpcError(-32601, `Method not found: ${request.method}`);
 }
@@ -608,9 +702,15 @@ function toolArgumentKeys(name: string): string[] {
 	}
 }
 
+type BehaviorQuery = {
+	subjectKind: (typeof BEHAVIOR_SUBJECT_KINDS)[number];
+	name: string;
+	hookKind?: (typeof DOM_HOOK_KINDS)[number];
+};
+
 function behaviorQueryParams(
 	params: Record<string, unknown> | undefined,
-): ThemeBehaviorQuery {
+): BehaviorQuery {
 	const subjectKind = requiredEnum(
 		params,
 		"subjectKind",
@@ -630,6 +730,35 @@ function behaviorQueryParams(
 		subjectKind,
 		name,
 		hookKind: requiredEnum(params, "hookKind", DOM_HOOK_KINDS),
+	};
+}
+
+function behaviorMatches(
+	data: ShopifyBehavior["data"],
+	query: BehaviorQuery,
+	role: (typeof BEHAVIOR_QUERY_ROLES)[number],
+): boolean {
+	if (!isObject(data)) return false;
+	if (data.subjectKind !== query.subjectKind || data.name !== query.name)
+		return false;
+	if (query.hookKind && data.hookKind !== query.hookKind) return false;
+	return role === "all" || behaviorRole(data) === role;
+}
+
+function behaviorRole(
+	data: ShopifyBehavior["data"],
+): "producers" | "consumers" {
+	if (!isObject(data)) return "consumers";
+	return ["emits", "defines", "dispatches"].includes(String(data.operation))
+		? "producers"
+		: "consumers";
+}
+
+function behaviorUsage(record: ShopifyBehavior): Record<string, unknown> {
+	return {
+		...(isObject(record.data) ? record.data : {}),
+		id: record.id,
+		fromPath: record.owner.path,
 	};
 }
 
