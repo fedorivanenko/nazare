@@ -197,13 +197,13 @@ diagnostics.ts
 - [x] Aggregate product-owned diagnostics and uncertainty.
 - [x] Implement graph update transaction with commit/rollback.
 - [ ] Add cycle diagnostics; allow declared fixed-point/SCC products only.
-- [ ] Add typed `ComputationRegistrar` and `CapabilityRegistry`.
+- [x] Add typed `ComputationRegistrar` and `CapabilityRegistry`.
 - [ ] Keep target-specific model types inside capability-owned `run()` methods; do not create central build/inspect/preview model unions.
-- [ ] Add `NazarePipeline { source, transforms, output }` composition.
-- [ ] Register source, transform, and output computations before session execution.
-- [ ] Include every pipeline contributor ID/version in cache identity.
+- [x] Add `NazarePipeline { source, transforms, output }` composition.
+- [x] Register source, transform, and output computations before session execution.
+- [x] Include every pipeline contributor ID/version in cache identity.
 - [x] Add in-memory cache implementation.
-- [ ] Add filesystem cache implementation.
+- [x] Add filesystem cache implementation.
 
 Tests:
 
