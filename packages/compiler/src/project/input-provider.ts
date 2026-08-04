@@ -9,7 +9,8 @@ export type InputSnapshot<Value> = {
 export type InputChange<Key extends ProductKey> =
 	| { kind: "added"; key: Key; fingerprint: string }
 	| { kind: "changed"; key: Key; fingerprint: string }
-	| { kind: "removed"; key: Key };
+	| { kind: "removed"; key: Key }
+	| { kind: "moved"; from: Key; key: Key; fingerprint: string };
 
 export type InputProvider<Key extends ProductKey, Value> = {
 	id: string;

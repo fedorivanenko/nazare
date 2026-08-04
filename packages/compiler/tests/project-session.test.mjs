@@ -87,6 +87,28 @@ test("applies add, change, and delete as one atomic revision", async () => {
 	);
 });
 
+test("applies moves as one atomic remove and add revision", async () => {
+	const before = id("before.liquid");
+	const after = id("after.liquid");
+	const project = createMemoryProject([{ id: before, contents: "same" }]);
+	const session = await createProjectSession({ host: project.host });
+	const update = await session.apply([
+		{
+			kind: "moved",
+			from: before,
+			key: after,
+			fingerprint: fingerprintProductKey("same"),
+		},
+	]);
+
+	assert.equal(update.committed, true);
+	assert.equal(update.revision, 2);
+	assert.deepEqual(
+		session.snapshot().fileIds.map((file) => file.path),
+		["after.liquid"],
+	);
+});
+
 test("session file revisions invalidate dependent graph products", async () => {
 	const fileId = id("a.liquid");
 	const project = createMemoryProject([{ id: fileId, contents: "a" }]);

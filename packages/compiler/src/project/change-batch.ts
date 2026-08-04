@@ -7,7 +7,20 @@ export function coalesceInputChanges<Key extends ProductKey>(
 ): readonly InputChange<Key>[] {
 	const byKey = new Map<string, InputChange<Key>>();
 
-	for (const change of changes) {
+	const expanded = changes.flatMap((change): readonly InputChange<Key>[] =>
+		change.kind === "moved"
+			? [
+					{ kind: "removed", key: change.from },
+					{
+						kind: "added",
+						key: change.key,
+						fingerprint: change.fingerprint,
+					},
+				]
+			: [change],
+	);
+
+	for (const change of expanded) {
 		const identity = canonicalProductKey(change.key);
 		const previous = byKey.get(identity);
 		if (previous?.kind === "added" && change.kind === "removed") {

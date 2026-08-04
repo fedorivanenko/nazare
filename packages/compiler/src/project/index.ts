@@ -8,6 +8,12 @@ export {
 	serializeProjectFileId,
 } from "./file-id.js";
 export {
+	createFileSystemProjectHost,
+	diffProjectFileSnapshots,
+	discoverProjectFiles,
+	type ProjectFileFingerprint,
+} from "./file-system-host.js";
+export {
 	createFileSystemInputProvider,
 	type ProjectFile,
 } from "./file-system-provider.js";

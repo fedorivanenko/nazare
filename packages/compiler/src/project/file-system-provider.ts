@@ -46,7 +46,9 @@ export function createFileSystemInputProvider(options: {
 			const value = { id, contents };
 			return {
 				value,
-				fingerprint: fingerprintProductKey(value),
+				// Identity is the graph input key; content fingerprint remains stable
+				// across moves so the host can recognize a remove/add pair as one move.
+				fingerprint: fingerprintProductKey(contents),
 			};
 		},
 	});

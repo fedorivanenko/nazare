@@ -73,10 +73,15 @@ export async function createProjectSession(input: {
 		snapshot,
 		async apply(changes) {
 			const normalized = coalesceInputChanges(
-				changes.map((change) => ({
-					...change,
-					key: projectFileId(change.key),
-				})),
+				changes.map((change) =>
+					change.kind === "moved"
+						? {
+								...change,
+								from: projectFileId(change.from),
+								key: projectFileId(change.key),
+							}
+						: { ...change, key: projectFileId(change.key) },
+				),
 			);
 			if (normalized.length === 0) {
 				return {

@@ -241,10 +241,11 @@ analysis-plan.ts
 - [ ] Replace absolute-path identity with project-relative identity.
 - [x] Implement lazy filesystem `InputProvider`.
 - [ ] Model config, Theme Check, metafield snapshots, and remote data as input providers.
-- [ ] Build one merged watcher per session.
+- [x] Build one coalesced filesystem watcher per session.
+- [ ] Merge external input-provider watchers into the session watcher.
 - [x] Coalesce rapid file events into one change batch.
 - [x] Implement atomic add/change/delete updates.
-- [ ] Implement move updates.
+- [x] Implement move updates.
 - [ ] Commit a new revision only after internal graph validation.
 - [ ] Ensure stale computations are cancelled and never published.
 
