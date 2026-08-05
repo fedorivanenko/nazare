@@ -389,6 +389,7 @@ unused-files
 - [x] Migrate graph-server query requests through `ProjectSession.get(product)`.
 - [x] Move graph-server external-input watch notifications to shared providers.
 - [x] Remove graph-server `ThemeProgram` and `ThemeComputation` query dependencies.
+- [x] Migrate direct CLI file-impact inspection to Shopify query products.
 - [ ] Delete `ThemeComputation` and direct query helpers after remaining consumers migrate.
 
 Exit gate:

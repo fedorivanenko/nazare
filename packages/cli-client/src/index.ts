@@ -52,6 +52,11 @@ import {
 	printHelp,
 } from "./options.js";
 import { type Output, processOutput } from "./output.js";
+import {
+	PROJECT_METADATA_KEYS,
+	type ShopifyFileImpact,
+	ShopifyQuerySession,
+} from "./shopify-query-session.js";
 
 /** Heavy modules, loaded only by commands that use them. */
 const compiler = () => import("@nazare/compiler");
@@ -635,35 +640,55 @@ async function runInspectFileImpact(
 		output,
 	);
 	if (prepared.persisted?.inputFingerprint === prepared.inputFingerprint) {
-		const impact = prepared.persisted.impacts[path];
-		if (!impact) {
-			output.error(
-				`Theme file ${path} was not found under inspected root ${prepared.root}`,
+		const cached = prepared.persisted.impacts[path];
+		if (cached) {
+			output.log(
+				format === "json"
+					? JSON.stringify({ root: prepared.root, ...cached }, null, 2)
+					: renderThemeFileImpact(cached),
 			);
-			return 1;
+			return hasErrors(prepared.persisted.issues) ? 1 : 0;
 		}
-		output.log(
-			format === "json"
-				? JSON.stringify({ root: prepared.root, ...impact }, null, 2)
-				: renderThemeFileImpact(impact),
-		);
-		return hasErrors(prepared.persisted.issues) ? 1 : 0;
 	}
 
-	const computation = await computePreparedThemeInspection(prepared);
-	const impact = computation.getFileImpact(path);
+	const impact = await (await querySessionForInspection(prepared)).fileImpact(
+		path,
+	);
 	if (!impact) {
 		output.error(
-			`Theme file ${path} was not found under inspected root ${computation.model.root}`,
+			`Theme file ${path} was not found under inspected root ${prepared.root}`,
 		);
 		return 1;
 	}
 	output.log(
 		format === "json"
-			? JSON.stringify({ root: computation.model.root, ...impact }, null, 2)
+			? JSON.stringify({ root: prepared.root, ...impact }, null, 2)
 			: renderThemeFileImpact(impact),
 	);
-	return hasErrors(computation.model.issues) ? 1 : 0;
+	await mkdir(dirname(prepared.cachePath), { recursive: true });
+	await writePersistedThemeInspection(prepared.cachePath, {
+		inputFingerprint: prepared.inputFingerprint,
+		root: prepared.root,
+		issues: [...impact.issues],
+		impacts: { [path]: impact as ThemeFileImpact },
+		factCache: {
+			version: 1,
+			entries: {
+				[path]: {
+					fingerprint: prepared.inputFingerprint,
+					facts: [
+						{
+							kind: "file",
+							path,
+							fileKind: (impact as ThemeFileImpact).fileKind,
+						},
+					],
+					issues: [],
+				},
+			},
+		},
+	});
+	return hasErrors(impact.issues) ? 1 : 0;
 }
 
 async function runInspectMetafieldImpact(
@@ -816,6 +841,20 @@ async function prepareThemeInspection(
 	};
 }
 
+async function querySessionForInspection(
+	prepared: PreparedThemeInspection,
+): Promise<ShopifyQuerySession> {
+	return ShopifyQuerySession.create(prepared.files, {
+		[PROJECT_METADATA_KEYS.config]: { exclude: prepared.exclude },
+		...(prepared.metafields
+			? { [PROJECT_METADATA_KEYS.metafields]: prepared.metafields.contents }
+			: {}),
+		...(prepared.themeCheck
+			? { [PROJECT_METADATA_KEYS.themeCheck]: prepared.themeCheck.contents }
+			: {}),
+	});
+}
+
 async function computePreparedThemeInspection(
 	prepared: PreparedThemeInspection,
 ): Promise<ReturnType<typeof computeNazareTheme>> {
@@ -857,7 +896,9 @@ function themeInspectionStatus(
 	return inspected.issues.some((issue) => issue.severity === "error") ? 1 : 0;
 }
 
-function renderThemeFileImpact(impact: ThemeFileImpact): string {
+function renderThemeFileImpact(
+	impact: ThemeFileImpact | ShopifyFileImpact,
+): string {
 	const lines = [
 		`Impact: ${impact.path}`,
 		`Kind ${impact.fileKind} · usage ${impact.usage} · certainty ${impact.certainty}`,
@@ -938,7 +979,7 @@ function renderMetafieldImpact(impact: ThemeMetafieldImpact): string {
 function appendInspectList(
 	lines: string[],
 	label: string,
-	values: string[],
+	values: readonly string[],
 ): void {
 	if (values.length === 0) {
 		lines.push(`${label}: none`);
@@ -1468,7 +1509,7 @@ function readCliVersion(): string {
 }
 
 function hasErrors(
-	issues: { severity: "error" | "warning" | "info" }[],
+	issues: readonly { severity: "error" | "warning" | "info" }[],
 ): boolean {
 	return issues.some((issue) => issue.severity === "error");
 }

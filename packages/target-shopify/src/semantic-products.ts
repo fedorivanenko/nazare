@@ -107,7 +107,14 @@ export function registerShopifySemanticComputations(
 				const schemaFact = source.facts.find(
 					(fact) => fact.kind === "liquid.schema",
 				);
-				return parseSchema(file, schemaFact?.data);
+				const schema = parseSchema(file, schemaFact?.data);
+				return {
+					...schema,
+					diagnostics: [
+						...schema.diagnostics,
+						...unknownSettingReadDiagnostics(source.facts, schema),
+					],
+				};
 			},
 			{
 				cache: jsonComputationCodec(),
@@ -283,6 +290,33 @@ function parseBlock(value: unknown): { type: string }[] {
 	return isRecord(value) && typeof value.type === "string"
 		? [{ type: value.type }]
 		: [];
+}
+
+function unknownSettingReadDiagnostics(
+	facts: readonly SourceFact[],
+	schema: ShopifyFileSchema,
+): Diagnostic[] {
+	const settingIds = new Set(schema.settings.map((setting) => setting.id));
+	return facts.flatMap((fact) => {
+		if (
+			fact.kind !== "liquid.read" ||
+			!isRecord(fact.data) ||
+			fact.data.root !== "section" ||
+			!Array.isArray(fact.data.path) ||
+			fact.data.path[0] !== "settings" ||
+			typeof fact.data.path[1] !== "string" ||
+			settingIds.has(fact.data.path[1])
+		)
+			return [];
+		return [
+			{
+				severity: "error" as const,
+				phase: "check" as const,
+				code: "CONSTRAINT_UNKNOWN_SETTING_READ",
+				message: `Unknown section setting "${fact.data.path[1]}" in ${schema.file.path}`,
+			},
+		];
+	});
 }
 
 function metafieldRead(

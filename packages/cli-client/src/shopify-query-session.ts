@@ -73,6 +73,19 @@ export type ShopifyBuildRequest = {
 	additionalDiagnostics?: readonly Diagnostic[];
 };
 
+export type ShopifyFileImpact = {
+	version: 1;
+	path: string;
+	fileKind: string;
+	usage: "used" | "unused";
+	certainty: "complete" | "partial";
+	dependencies: readonly string[];
+	dependents: readonly string[];
+	affectedPages: readonly string[];
+	uncertainty: readonly string[];
+	issues: readonly Diagnostic[];
+};
+
 export type ShopifyBuildPersistenceOptions = {
 	projectRoot: string;
 	outputRoot: string;
@@ -303,6 +316,56 @@ export class ShopifyQuerySession {
 		);
 	}
 
+	async fileImpact(path: string): Promise<ShopifyFileImpact | undefined> {
+		const file = this.fileIds().find((candidate) => candidate.path === path);
+		if (!file) return undefined;
+		const files = this.fileIds();
+		const [dependencies, dependents, affectedPages] = await Promise.all([
+			this.dependencyIndex(),
+			this.dependencyIndex(path),
+			this.affectedPages(path),
+		]);
+		const product = shopifyQueryProducts.affectedPages.product({
+			files,
+			changed: [file],
+		});
+		const revision = this.session.snapshot().revision;
+		const [metadata, modelMetadata] = await Promise.all([
+			this.session.graph.metadata(product, { revision }),
+			this.session.graph.metadata(
+				shopifyQueryProducts.projectModel.product({ files }),
+				{ revision },
+			),
+		]);
+		const uncertainty = [
+			...new Set([
+				...dependencies.uncertainty,
+				...affectedPages.impact.uncertainty,
+				...metadata.uncertainty.map((item) => item.message),
+			]),
+		];
+		const dependencyPaths = dependencies.records
+			.filter((record) => record.from.path === path)
+			.map((record) => record.to.path)
+			.sort();
+		const dependentPaths = dependents.records
+			.map((record) => record.from.path)
+			.sort();
+		const pages = affectedPages.pages.map((page) => page.path).sort();
+		return {
+			version: 1,
+			path,
+			fileKind: shopifyFileKind(path),
+			usage: dependentPaths.length > 0 || pages.length > 0 ? "used" : "unused",
+			certainty: uncertainty.length > 0 ? "partial" : "complete",
+			dependencies: dependencyPaths,
+			dependents: dependentPaths,
+			affectedPages: pages,
+			uncertainty,
+			issues: [...metadata.diagnostics, ...modelMetadata.diagnostics],
+		};
+	}
+
 	async impact(paths: readonly string[]): Promise<ShopifyImpactResult> {
 		return this.session.get(
 			shopifyQueryProducts.impact.product({
@@ -467,6 +530,19 @@ export class ShopifyQuerySession {
 	private fileIds(): readonly ProjectFileId[] {
 		return this.session.snapshot().fileIds;
 	}
+}
+
+function shopifyFileKind(path: string): string {
+	if (/^sections\/[^/]+\.liquid$/.test(path)) return "section";
+	if (/^snippets\/[^/]+\.liquid$/.test(path)) return "snippet";
+	if (/^blocks\/[^/]+\.liquid$/.test(path)) return "themeBlock";
+	if (/^templates\/.+\.json$/.test(path)) return "templateJson";
+	if (/^templates\/.+\.liquid$/.test(path)) return "templateLiquid";
+	if (/^layout\/[^/]+\.liquid$/.test(path)) return "layout";
+	if (/^locales\/[^/]+\.json$/.test(path)) return "locale";
+	if (path.startsWith("assets/")) return "asset";
+	if (path.endsWith(".nz.liquid")) return "nazareComponent";
+	return "other";
 }
 
 function fileId(path: string): ProjectFileId {
