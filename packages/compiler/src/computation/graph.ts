@@ -26,8 +26,15 @@ export type ComputationRequestOptions = {
 	revision?: number;
 };
 
+export type ComputationTelemetryEvent = {
+	type: "computed" | "memory-hit" | "cache-hit" | "invalidated";
+	cacheKey: string;
+	revision: number;
+};
+
 export type ComputationGraphOptions = {
 	cache?: ComputationCache;
+	onTelemetry?: (event: ComputationTelemetryEvent) => void;
 };
 
 export type ComputationGraphUpdate = {
@@ -100,7 +107,7 @@ export class ObsoleteComputationRevisionError extends Error {
 export function createComputationGraph(
 	options: ComputationGraphOptions = {},
 ): ComputationGraph {
-	return new DefaultComputationGraph(options.cache);
+	return new DefaultComputationGraph(options.cache, options.onTelemetry);
 }
 
 class DefaultComputationGraph implements ComputationGraph {
@@ -111,7 +118,10 @@ class DefaultComputationGraph implements ComputationGraph {
 	private readonly dependentsByDependency = new Map<string, Set<string>>();
 	private revisionValue = 0;
 
-	constructor(private readonly cache?: ComputationCache) {}
+	constructor(
+		private readonly cache?: ComputationCache,
+		private readonly onTelemetry?: (event: ComputationTelemetryEvent) => void,
+	) {}
 
 	get revision(): number {
 		return this.revisionValue;
@@ -274,7 +284,10 @@ class DefaultComputationGraph implements ComputationGraph {
 		}
 
 		const node = this.node(product.cacheKey);
-		if (node.hasValue) return node.value as Result;
+		if (node.hasValue) {
+			this.emitTelemetry("memory-hit", product.cacheKey);
+			return node.value as Result;
+		}
 		if (node.pending) {
 			return waitForRequest(node.pending as Promise<Result>, requestSignal);
 		}
@@ -316,7 +329,10 @@ class DefaultComputationGraph implements ComputationGraph {
 			evaluation,
 			controller,
 		);
-		if (restored.hit) return restored.value as Result;
+		if (restored.hit) {
+			this.emitTelemetry("cache-hit", product.cacheKey);
+			return restored.value as Result;
+		}
 
 		const dependencies = new Set<string>();
 		const dependencyRecords = new Map<string, CachedComputationDependency>();
@@ -370,6 +386,7 @@ class DefaultComputationGraph implements ComputationGraph {
 		};
 
 		const result = await computation.compute(context, product.key);
+		this.emitTelemetry("computed", product.cacheKey);
 		if (!this.canCommitNode(node, generation, evaluation, controller)) {
 			return result as Result;
 		}
@@ -545,9 +562,17 @@ class DefaultComputationGraph implements ComputationGraph {
 				node.diagnostics = [];
 				node.uncertainty = [];
 				node.controller?.abort();
+				this.emitTelemetry("invalidated", cacheKey);
 				pending.push(productDependency(cacheKey));
 			}
 		}
+	}
+
+	private emitTelemetry(
+		type: ComputationTelemetryEvent["type"],
+		cacheKey: string,
+	): void {
+		this.onTelemetry?.({ type, cacheKey, revision: this.revisionValue });
 	}
 
 	private abortPendingComputations(): void {

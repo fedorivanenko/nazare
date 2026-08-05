@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
 	createCapabilityRegistry,
+	createComputationGraph,
 	fingerprintProductKey,
 } from "@nazare/compiler/computation";
 import {
@@ -17,13 +18,14 @@ import {
 import {
 	shopifyProducts,
 	shopifyQueryProducts,
+	shopifySemanticProducts,
 	shopifySemanticTarget,
 } from "../dist/index.js";
 
 const id = (path) =>
 	projectFileId({ workspace: "test", package: "theme", path });
 
-async function openProject(entries) {
+async function openProject(entries, onTelemetry) {
 	const files = new Map(
 		entries.map(([path, contents]) => [path, { id: id(path), contents }]),
 	);
@@ -44,7 +46,10 @@ async function openProject(entries) {
 			return [...files.values()].map((file) => file.id);
 		},
 	});
-	const session = await createProjectSession({ host });
+	const session = await createProjectSession({
+		host,
+		...(onTelemetry ? { graph: createComputationGraph({ onTelemetry }) } : {}),
+	});
 	createSourceProductRegistrar({
 		host,
 		frontends: createDefaultSourceFrontendRegistry(),
@@ -133,7 +138,8 @@ test("path moves recompute target roles without changing file contents", async (
 	const after = id("sections/card.liquid");
 	const contents = project.files.get(before.path).contents;
 	assert.equal(
-		(await project.session.get(shopifyProducts.classification.product(before))).role,
+		(await project.session.get(shopifyProducts.classification.product(before)))
+			.role,
 		"snippet",
 	);
 
@@ -152,8 +158,63 @@ test("path moves recompute target roles without changing file contents", async (
 	});
 
 	assert.equal(
-		(await project.session.get(shopifyProducts.classification.product(after))).role,
+		(await project.session.get(shopifyProducts.classification.product(after)))
+			.role,
 		"section",
+	);
+});
+
+test("warm edit telemetry stays file-local and reports semantic deltas", async () => {
+	const events = [];
+	const project = await openProject(CANONICAL_THEME, (event) =>
+		events.push(event),
+	);
+	const path = "snippets/card.liquid";
+	const file = id(path);
+	const initialMetafields = await project.session.get(
+		shopifySemanticProducts.metafields.product(file),
+	);
+	const initialGraph = await project.session.get(
+		shopifyQueryProducts.projectGraph.product({
+			files: project.session.snapshot().fileIds,
+		}),
+	);
+	events.length = 0;
+
+	const changed = `${project.files.get(path).contents}{{ product.metafields.custom.subtitle.value }}`;
+	project.files.set(path, { id: file, contents: changed });
+	await project.session.apply({
+		kind: "files",
+		changes: [
+			{
+				kind: "changed",
+				key: file,
+				fingerprint: fingerprintProductKey(changed),
+			},
+		],
+	});
+	const updatedMetafields = await project.session.get(
+		shopifySemanticProducts.metafields.product(file),
+	);
+	const updatedGraph = await project.session.get(
+		shopifyQueryProducts.projectGraph.product({
+			files: project.session.snapshot().fileIds,
+		}),
+	);
+	const computed = events.filter((event) => event.type === "computed");
+	const parsed = computed.filter((event) =>
+		event.cacheKey.includes("parsed-file"),
+	);
+
+	assert.equal(parsed.length, 1);
+	assert.equal(
+		new Set(computed.map((event) => event.cacheKey)).size,
+		computed.length,
+	);
+	assert.equal(updatedMetafields.length - initialMetafields.length, 1);
+	assert.equal(
+		updatedGraph.graph.edges.length - initialGraph.graph.edges.length,
+		0,
 	);
 });
 

@@ -164,7 +164,7 @@ Goal: retain semantic confidence while contracts are deleted.
   - output collision
   - failed output transaction
 - [x] Assert stable IDs and canonical ordering independently from current API shapes.
-- [ ] Assert telemetry counts for warm edits: parsed files, processed pass keys, replaced records, graph deltas.
+- [x] Assert telemetry counts for warm edits: parsed files, computed product keys, replaced semantic records, graph deltas.
 
 Exit gate:
 

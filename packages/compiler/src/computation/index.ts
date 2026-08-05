@@ -35,6 +35,7 @@ export {
 	type ComputationGraphOptions,
 	type ComputationGraphUpdate,
 	type ComputationRequestOptions,
+	type ComputationTelemetryEvent,
 	createComputationGraph,
 	ObsoleteComputationRevisionError,
 } from "./graph.js";

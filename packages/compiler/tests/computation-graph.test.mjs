@@ -48,6 +48,42 @@ test("memoizes products and deduplicates concurrent computation", async () => {
 	assert.equal(calls.count, 1);
 });
 
+test("reports revisioned compute, reuse, and invalidation telemetry", async () => {
+	const events = [];
+	const graph = createComputationGraph({
+		onTelemetry(event) {
+			events.push(event);
+		},
+	});
+	const source = inputComputation("telemetry-source", "source", { count: 0 });
+	graph.register(source);
+	let update = graph.beginUpdate();
+	update.setInput("source", "one");
+	update.commit();
+	const product = source.product("key");
+
+	await graph.get(product);
+	await graph.get(product);
+	update = graph.beginUpdate();
+	update.setInput("source", "two");
+	update.commit();
+	await graph.get(product);
+
+	assert.deepEqual(
+		events.map(({ type, revision }) => ({ type, revision })),
+		[
+			{ type: "computed", revision: 1 },
+			{ type: "memory-hit", revision: 1 },
+			{ type: "invalidated", revision: 2 },
+			{ type: "computed", revision: 2 },
+		],
+	);
+	assert.equal(
+		events.every((event) => event.cacheKey === product.cacheKey),
+		true,
+	);
+});
+
 test("invalidates only transitive dependents of changed inputs", async () => {
 	const graph = createComputationGraph();
 	const sourceCalls = { count: 0 };

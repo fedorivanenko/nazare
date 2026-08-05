@@ -107,6 +107,7 @@ export {
 	type ComputationPriority,
 	type ComputationRegistrar,
 	type ComputationRequestOptions,
+	type ComputationTelemetryEvent,
 	type ComputationUncertainty,
 	canonicalProductKey,
 	createCapabilityRegistry,
