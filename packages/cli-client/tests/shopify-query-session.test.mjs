@@ -64,6 +64,114 @@ test("publication refuses unowned and modified output conflicts", async () => {
 	);
 });
 
+test("persistent builds commit output and reconciliation metadata together", async () => {
+	const projectRoot = await mkdtemp(
+		join(tmpdir(), "nazare-persistent-session-"),
+	);
+	const outputRoot = join(projectRoot, "theme-output");
+	await mkdir(join(outputRoot, "config"), { recursive: true });
+	await mkdir(join(outputRoot, "locales"), { recursive: true });
+	await writeFile(
+		join(outputRoot, "config/settings_data.json"),
+		JSON.stringify({ current: { old: "value" } }),
+	);
+	await writeFile(
+		join(outputRoot, "locales/en.default.json"),
+		JSON.stringify({ title: "merchant" }),
+	);
+	await writeFile(
+		join(projectRoot, "nazare.migrations.json"),
+		JSON.stringify({
+			migrations: [
+				{ id: "rename", op: "renameSetting", from: "old", to: "current" },
+			],
+		}),
+	);
+	await writeFile(
+		join(projectRoot, "nazare.locales-base.json"),
+		JSON.stringify({ "locales/en.default.json": { title: "base" } }),
+	);
+	const session = await ShopifyQuerySession.create([
+		{ path: "config/settings_data.json", contents: "{}" },
+		{
+			path: "locales/en.default.json",
+			contents: JSON.stringify({ title: "developer", added: "new" }),
+		},
+	]);
+
+	await session.publishPersistentBuild(
+		{ scope: { kind: "workspace" } },
+		{ projectRoot, outputRoot, targetId: "shop#theme" },
+	);
+
+	const settings = JSON.parse(
+		await readFile(join(outputRoot, "config/settings_data.json"), "utf8"),
+	);
+	assert.equal(settings.current.current, "value");
+	assert.deepEqual(
+		JSON.parse(
+			await readFile(join(outputRoot, "locales/en.default.json"), "utf8"),
+		),
+		{ title: "merchant", added: "new" },
+	);
+	assert.deepEqual(
+		JSON.parse(
+			await readFile(
+				join(projectRoot, "nazare.migrations-applied.json"),
+				"utf8",
+			),
+		).applied["shop#theme"],
+		["rename"],
+	);
+	assert.deepEqual(
+		JSON.parse(
+			await readFile(join(projectRoot, "nazare.locales-base.json"), "utf8"),
+		),
+		{ "locales/en.default.json": { title: "developer", added: "new" } },
+	);
+	assert.equal(
+		JSON.parse(
+			await readFile(join(projectRoot, "nazare.schema-lock.json"), "utf8"),
+		).version,
+		1,
+	);
+});
+
+test("persistent build failure rolls output and metadata back together", async () => {
+	const projectRoot = await mkdtemp(
+		join(tmpdir(), "nazare-persistent-rollback-"),
+	);
+	const outputRoot = join(projectRoot, "a-output");
+	await mkdir(join(outputRoot, "config"), { recursive: true });
+	await writeFile(
+		join(outputRoot, "config/settings_data.json"),
+		JSON.stringify({ current: { merchant: true } }),
+	);
+	await mkdir(join(outputRoot, "z-bad"));
+	const session = await ShopifyQuerySession.create([
+		{ path: "config/settings_data.json", contents: "{}" },
+		{ path: "z-bad", contents: "generated" },
+	]);
+
+	await assert.rejects(
+		session.publishPersistentBuild(
+			{ scope: { kind: "workspace" } },
+			{ projectRoot, outputRoot, targetId: "theme" },
+		),
+		/Output path is not a regular file/,
+	);
+	assert.deepEqual(
+		JSON.parse(
+			await readFile(join(outputRoot, "config/settings_data.json"), "utf8"),
+		),
+		{ current: { merchant: true } },
+	);
+	await assert.rejects(
+		readFile(join(projectRoot, "nazare.locales-base.json"), "utf8"),
+		{ code: "ENOENT" },
+	);
+});
+
 test("check-only session builds never plan output deletion", async () => {
 	const session = await ShopifyQuerySession.create([
 		{ path: "templates/index.liquid", contents: "Index" },

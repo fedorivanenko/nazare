@@ -1,5 +1,8 @@
+import { readFile } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
 import {
 	createDefaultSourceFrontendRegistry,
+	createOwnedOutputPlan,
 	createProjectMetadataInputProvider,
 	createProjectSession,
 	createSourceProductRegistrar,
@@ -10,6 +13,8 @@ import {
 	FileSystemAtomicOutputStore,
 	fingerprintProductKey,
 	type InputChange,
+	OutputPlanValidationError,
+	type OwnedOutputFile,
 	type OwnedOutputPlan,
 	PROJECT_METADATA_KEYS,
 	type ProductKey,
@@ -21,6 +26,7 @@ import {
 	readExistingOutputState,
 } from "@nazare/compiler";
 import {
+	parseShopifyMigrations,
 	type ShopifyAffectedPagesResult,
 	type ShopifyBehaviorIndexResult,
 	type ShopifyBuildModel,
@@ -61,6 +67,16 @@ export type ShopifyBuildRequest = {
 	migrations?: readonly ShopifyMigration[];
 	appliedMigrationIds?: readonly string[];
 	localeBase?: Readonly<Record<string, ProductKey>>;
+};
+
+export type ShopifyBuildPersistenceOptions = {
+	projectRoot: string;
+	outputRoot: string;
+	targetId: string;
+	schemaLockPath?: string;
+	migrationsPath?: string;
+	migrationLedgerPath?: string;
+	localeBasePath?: string;
 };
 
 export type ShopifyBuildProductsResult = {
@@ -166,6 +182,96 @@ export class ShopifyQuerySession {
 			expectedRevision: products.revision,
 			currentRevision: () => this.session.snapshot().revision,
 			store: new FileSystemAtomicOutputStore(outputRoot),
+		});
+		return products;
+	}
+
+	async publishPersistentBuild(
+		request: ShopifyBuildRequest,
+		options: ShopifyBuildPersistenceOptions,
+	): Promise<ShopifyBuildProductsResult> {
+		if (request.checkOnly) {
+			throw new Error("Check-only builds cannot publish output");
+		}
+		const paths = {
+			schemaLock: options.schemaLockPath ?? "nazare.schema-lock.json",
+			migrations: options.migrationsPath ?? "nazare.migrations.json",
+			ledger: options.migrationLedgerPath ?? "nazare.migrations-applied.json",
+			localeBase: options.localeBasePath ?? "nazare.locales-base.json",
+		};
+		const [priorSchemaLock, migrationsRaw, ledger, localeBase] =
+			await Promise.all([
+				readOptionalJson<ShopifySchemaLock>(
+					options.projectRoot,
+					paths.schemaLock,
+				),
+				readOptionalText(options.projectRoot, paths.migrations),
+				readOptionalJson<MigrationLedger>(options.projectRoot, paths.ledger),
+				readOptionalJson<Record<string, ProductKey>>(
+					options.projectRoot,
+					paths.localeBase,
+				),
+			]);
+		const parsedMigrations = migrationsRaw
+			? parseShopifyMigrations(migrationsRaw, paths.migrations)
+			: { migrations: [], diagnostics: [] };
+		if (parsedMigrations.diagnostics.length > 0) {
+			throw new OutputPlanValidationError(parsedMigrations.diagnostics);
+		}
+		const products = await this.buildProducts({
+			...request,
+			existingOutput: await readExistingOutputState(options.outputRoot),
+			priorSchemaLock,
+			migrations: parsedMigrations.migrations,
+			appliedMigrationIds: ledger?.applied[options.targetId] ?? [],
+			localeBase: localeBase ?? {},
+		});
+		const outputPrefix = projectRelativeOutputPath(
+			options.projectRoot,
+			options.outputRoot,
+		);
+		const nextLedger: MigrationLedger = {
+			version: 1,
+			applied: {
+				...(ledger?.applied ?? {}),
+				[options.targetId]: [
+					...new Set([
+						...(ledger?.applied[options.targetId] ?? []),
+						...products.emission.appliedMigrationIds,
+					]),
+				],
+			},
+		};
+		const projectWrites = [
+			projectMetadataWrite(paths.schemaLock, products.model.schemaLock),
+			projectMetadataWrite(paths.localeBase, products.emission.nextLocaleBase),
+			...(products.emission.appliedMigrationIds.length > 0
+				? [projectMetadataWrite(paths.ledger, nextLedger)]
+				: []),
+		];
+		const combined = createOwnedOutputPlan({
+			writes: [
+				...products.ownedOutput.writes.map((file) => ({
+					...file,
+					path: `${outputPrefix}/${file.path}`,
+				})),
+				...projectWrites,
+			],
+		});
+		await executeOutputTransaction({
+			plan: {
+				...combined,
+				deletes: products.ownedOutput.deletes.map(
+					(path) => `${outputPrefix}/${path}`,
+				),
+				diagnostics: [
+					...products.ownedOutput.diagnostics,
+					...combined.diagnostics,
+				],
+			},
+			expectedRevision: products.revision,
+			currentRevision: () => this.session.snapshot().revision,
+			store: new FileSystemAtomicOutputStore(options.projectRoot),
 		});
 		return products;
 	}
@@ -358,4 +464,63 @@ export class ShopifyQuerySession {
 
 function fileId(path: string): ProjectFileId {
 	return projectFileId({ workspace: "graph-server", package: "theme", path });
+}
+
+type MigrationLedger = {
+	version: 1;
+	applied: Record<string, string[]>;
+};
+
+async function readOptionalText(
+	root: string,
+	path: string,
+): Promise<string | undefined> {
+	try {
+		return await readFile(join(root, path), "utf8");
+	} catch (error) {
+		if (
+			error instanceof Error &&
+			"code" in error &&
+			(error as NodeJS.ErrnoException).code === "ENOENT"
+		)
+			return undefined;
+		throw error;
+	}
+}
+
+async function readOptionalJson<Value>(
+	root: string,
+	path: string,
+): Promise<Value | undefined> {
+	const raw = await readOptionalText(root, path);
+	if (raw === undefined) return undefined;
+	try {
+		return JSON.parse(raw) as Value;
+	} catch (error) {
+		throw new Error(
+			`${path}: invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	}
+}
+
+function projectRelativeOutputPath(
+	projectRoot: string,
+	outputRoot: string,
+): string {
+	const path = relative(projectRoot, outputRoot).split(sep).join("/");
+	if (!path || path === ".." || path.startsWith("../")) {
+		throw new Error("Build output root must be a child of project root");
+	}
+	return path;
+}
+
+function projectMetadataWrite(
+	path: string,
+	value: ProductKey,
+): OwnedOutputFile {
+	return {
+		path,
+		contents: `${JSON.stringify(value, null, 2)}\n`,
+		ownerId: "nazare:build-metadata",
+	};
 }

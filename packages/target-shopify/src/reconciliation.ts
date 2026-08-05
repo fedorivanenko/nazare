@@ -23,6 +23,89 @@ export type ShopifyLocaleMerge = {
 	conflicts: readonly string[];
 };
 
+export function parseShopifyMigrations(
+	raw: string,
+	file = "nazare.migrations.json",
+): { migrations: ShopifyMigration[]; diagnostics: Diagnostic[] } {
+	let value: unknown;
+	try {
+		value = JSON.parse(raw);
+	} catch (error) {
+		return {
+			migrations: [],
+			diagnostics: [
+				migrationError(file, `invalid JSON: ${errorMessage(error)}`),
+			],
+		};
+	}
+	if (!isObject(value) || !Array.isArray(value.migrations)) {
+		return {
+			migrations: [],
+			diagnostics: [migrationError(file, 'missing "migrations" array')],
+		};
+	}
+	const migrations: ShopifyMigration[] = [];
+	const diagnostics: Diagnostic[] = [];
+	const ids = new Set<string>();
+	for (const [index, entry] of value.migrations.entries()) {
+		const at = `migrations[${index}]`;
+		if (!isObject(entry) || typeof entry.id !== "string" || !entry.id) {
+			diagnostics.push(migrationError(file, `${at} needs a non-empty id`));
+			continue;
+		}
+		if (ids.has(entry.id)) {
+			diagnostics.push(migrationError(file, `${at} duplicates id ${entry.id}`));
+			continue;
+		}
+		ids.add(entry.id);
+		const text = (key: string): string | undefined =>
+			typeof entry[key] === "string" && entry[key] ? entry[key] : undefined;
+		if (entry.op === "renameSection" || entry.op === "renameBlock") {
+			const from = text("from");
+			const to = text("to");
+			if (from && to) migrations.push({ id: entry.id, op: entry.op, from, to });
+			else diagnostics.push(migrationError(file, `${at} needs from and to`));
+		} else if (entry.op === "renameSetting") {
+			const from = text("from");
+			const to = text("to");
+			if (from && to) {
+				migrations.push({
+					id: entry.id,
+					op: entry.op,
+					section: text("section") ?? null,
+					from,
+					to,
+				});
+			} else diagnostics.push(migrationError(file, `${at} needs from and to`));
+		} else if (entry.op === "removeSetting") {
+			const setting = text("setting");
+			if (setting) {
+				migrations.push({
+					id: entry.id,
+					op: entry.op,
+					section: text("section") ?? null,
+					setting,
+				});
+			} else diagnostics.push(migrationError(file, `${at} needs setting`));
+		} else diagnostics.push(migrationError(file, `${at} has unknown op`));
+	}
+	if (diagnostics.length > 0) return { migrations: [], diagnostics };
+	return { migrations, diagnostics };
+}
+
+function migrationError(file: string, message: string): Diagnostic {
+	return {
+		severity: "error",
+		phase: "emit",
+		code: "SHOPIFY_MIGRATION_INVALID",
+		message: `${file}: ${message}`,
+	};
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
 type JsonObject = Record<string, unknown>;
 type SectionInstance = {
 	type?: string;

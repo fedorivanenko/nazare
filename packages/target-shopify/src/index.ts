@@ -55,6 +55,7 @@ export {
 	applyMigrationsToMerchantData,
 	applyMigrationsToSchemaLock,
 	mergeShopifyLocale,
+	parseShopifyMigrations,
 	type ShopifyLocaleMerge,
 	type ShopifyMigration,
 } from "./reconciliation.js";
