@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Diagnostic } from "@nazare/core";
 import { normalizeProjectPath } from "./project/file-id.js";
 
@@ -5,6 +6,18 @@ export type OwnedOutputFile = {
 	path: string;
 	contents: string;
 	ownerId: string;
+};
+
+export const OUTPUT_OWNERSHIP_MANIFEST_PATH = ".nazare/build-manifest.json";
+
+export type OutputOwnershipManifest = {
+	version: 1;
+	files: Readonly<Record<string, { hash: string; ownerId: string }>>;
+};
+
+export type ExistingOutputState = {
+	hashes: Readonly<Record<string, string>>;
+	ownership: OutputOwnershipManifest;
 };
 
 export type OwnedOutputPlan = {
@@ -83,6 +96,86 @@ export function createOwnedOutputPlan(input: {
 		deletes: Object.freeze(deletes),
 		diagnostics: Object.freeze(diagnostics),
 	});
+}
+
+export function createProtectedOwnedOutputPlan(input: {
+	writes: readonly OwnedOutputFile[];
+	existing: ExistingOutputState;
+}): OwnedOutputPlan {
+	const base = createOwnedOutputPlan({ writes: input.writes });
+	const diagnostics = [...base.diagnostics];
+	const writesByPath = new Map(base.writes.map((file) => [file.path, file]));
+	for (const file of base.writes) {
+		const existingHash = input.existing.hashes[file.path];
+		if (!existingHash) continue;
+		const owned = input.existing.ownership.files[file.path];
+		if (!owned) {
+			diagnostics.push(
+				outputConflict(
+					"OUTPUT_PATH_NOT_OWNED",
+					`${file.path} exists but is not owned by Nazare`,
+				),
+			);
+		} else if (owned.hash !== existingHash) {
+			diagnostics.push(
+				outputConflict(
+					"OUTPUT_OWNED_FILE_MODIFIED",
+					`${file.path} is Nazare-owned but was modified after publication`,
+				),
+			);
+		}
+	}
+	const deletes: string[] = [];
+	for (const [path, owned] of Object.entries(input.existing.ownership.files)) {
+		if (writesByPath.has(path) || !input.existing.hashes[path]) continue;
+		if (input.existing.hashes[path] !== owned.hash) {
+			diagnostics.push(
+				outputConflict(
+					"OUTPUT_STALE_FILE_MODIFIED",
+					`${path} is stale Nazare output but was modified after publication`,
+				),
+			);
+			continue;
+		}
+		deletes.push(path);
+	}
+	const manifest: OutputOwnershipManifest = {
+		version: 1,
+		files: Object.fromEntries(
+			base.writes
+				.map(
+					(file) =>
+						[
+							file.path,
+							{ hash: hashOutput(file.contents), ownerId: file.ownerId },
+						] as const,
+				)
+				.sort(([left], [right]) => left.localeCompare(right)),
+		),
+	};
+	const manifestFile: OwnedOutputFile = {
+		path: OUTPUT_OWNERSHIP_MANIFEST_PATH,
+		contents: `${JSON.stringify(manifest, null, 2)}\n`,
+		ownerId: "nazare:output-ownership",
+	};
+	return Object.freeze({
+		version: 1,
+		writes: Object.freeze(
+			[...base.writes, manifestFile].sort((left, right) =>
+				left.path.localeCompare(right.path),
+			),
+		),
+		deletes: Object.freeze(deletes.sort()),
+		diagnostics: Object.freeze(diagnostics),
+	});
+}
+
+export function hashOutput(contents: string): string {
+	return `sha256-${createHash("sha256").update(contents).digest("hex")}`;
+}
+
+function outputConflict(code: string, message: string): Diagnostic {
+	return { severity: "error", code, message, phase: "emit" };
 }
 
 export async function executeOutputTransaction(input: {

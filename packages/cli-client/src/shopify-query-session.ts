@@ -5,6 +5,7 @@ import {
 	createSourceProductRegistrar,
 	defineInputProvider,
 	defineProjectHost,
+	type ExistingOutputState,
 	executeOutputTransaction,
 	FileSystemAtomicOutputStore,
 	fingerprintProductKey,
@@ -17,6 +18,7 @@ import {
 	type ProjectMetadataKey,
 	type ProjectSession,
 	projectFileId,
+	readExistingOutputState,
 } from "@nazare/compiler";
 import {
 	type ShopifyAffectedPagesResult,
@@ -52,6 +54,7 @@ export type ShopifyBuildRequest = {
 	emitOnError?: boolean;
 	checkOnly?: boolean;
 	previouslyOwnedPaths?: readonly string[];
+	existingOutput?: ExistingOutputState;
 };
 
 export type ShopifyBuildProductsResult = {
@@ -148,7 +151,10 @@ export class ShopifyQuerySession {
 		if (request.checkOnly) {
 			throw new Error("Check-only builds cannot publish output");
 		}
-		const products = await this.buildProducts(request);
+		const products = await this.buildProducts({
+			...request,
+			existingOutput: await readExistingOutputState(outputRoot),
+		});
 		await executeOutputTransaction({
 			plan: products.ownedOutput,
 			expectedRevision: products.revision,
@@ -331,6 +337,7 @@ export class ShopifyQuerySession {
 			emitOnError: request.emitOnError ?? false,
 			checkOnly: request.checkOnly ?? false,
 			previouslyOwnedPaths: request.previouslyOwnedPaths ?? [],
+			existingOutput: request.existingOutput ?? null,
 		};
 	}
 

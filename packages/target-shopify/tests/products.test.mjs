@@ -708,6 +708,7 @@ test("build products preserve scopes and compile only reachable closure", async 
 		emitOnError: false,
 		checkOnly: false,
 		previouslyOwnedPaths: [],
+		existingOutput: null,
 	};
 	const model = await session.get(shopifyBuildProducts.model.product(plan));
 	const emission = await session.get(
@@ -740,6 +741,7 @@ test("build emission stops on diagnostics unless explicitly allowed", async () =
 		emitOnError: false,
 		checkOnly: false,
 		previouslyOwnedPaths: [],
+		existingOutput: null,
 	};
 	const emission = await session.get(
 		shopifyBuildProducts.emission.product(plan),
@@ -764,6 +766,7 @@ test("build owned-output products detect generated path collisions", async () =>
 		emitOnError: false,
 		checkOnly: false,
 		previouslyOwnedPaths: ["assets/stale.js"],
+		existingOutput: null,
 	};
 	const output = await session.get(
 		shopifyBuildProducts.ownedOutput.product(plan),

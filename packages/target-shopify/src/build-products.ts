@@ -5,10 +5,12 @@ import {
 	type ComputationGraph,
 	compileArtifact,
 	createOwnedOutputPlan,
+	createProtectedOwnedOutputPlan,
 	defineCapability,
 	defineCapabilityProvider,
 	defineComputation,
 	defineProduct,
+	type ExistingOutputState,
 	emitTheme,
 	jsonComputationCodec,
 	type OwnedOutputFile,
@@ -34,6 +36,7 @@ export type ShopifyBuildPlan = {
 	emitOnError: boolean;
 	checkOnly: boolean;
 	previouslyOwnedPaths: readonly string[];
+	existingOutput: ExistingOutputState | null;
 };
 
 export type ShopifyBuildModel = {
@@ -197,12 +200,18 @@ export function registerShopifyBuildComputations(
 				const emission = await context.get(
 					shopifyBuildProducts.emission.product(plan),
 				);
-				const owned = createOwnedOutputPlan({
-					writes: emission.files,
-					previouslyOwnedPaths: emission.checkOnly
-						? []
-						: plan.previouslyOwnedPaths,
-				});
+				const owned =
+					plan.existingOutput && !emission.checkOnly
+						? createProtectedOwnedOutputPlan({
+								writes: emission.files,
+								existing: plan.existingOutput,
+							})
+						: createOwnedOutputPlan({
+								writes: emission.files,
+								previouslyOwnedPaths: emission.checkOnly
+									? []
+									: plan.previouslyOwnedPaths,
+							});
 				return {
 					...owned,
 					diagnostics: [...emission.diagnostics, ...owned.diagnostics],

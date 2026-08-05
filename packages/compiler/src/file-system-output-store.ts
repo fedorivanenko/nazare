@@ -1,9 +1,72 @@
-import { lstat, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import {
+	lstat,
+	mkdir,
+	mkdtemp,
+	readdir,
+	readFile,
+	rename,
+	rm,
+	writeFile,
+} from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import type {
-	AtomicOutputCommit,
-	AtomicOutputStore,
+import {
+	type AtomicOutputCommit,
+	type AtomicOutputStore,
+	type ExistingOutputState,
+	hashOutput,
+	OUTPUT_OWNERSHIP_MANIFEST_PATH,
+	type OutputOwnershipManifest,
 } from "./output-transaction.js";
+
+export async function readExistingOutputState(
+	outputRoot: string,
+): Promise<ExistingOutputState> {
+	const manifest = await readOwnershipManifest(outputRoot);
+	const hashes: Record<string, string> = {};
+	async function walk(
+		directory: string,
+		relativeDirectory: string,
+	): Promise<void> {
+		const entries = await readdir(directory, { withFileTypes: true }).catch(
+			(error: unknown) => {
+				if (isMissing(error)) return [];
+				throw error;
+			},
+		);
+		for (const entry of entries) {
+			const path = relativeDirectory
+				? `${relativeDirectory}/${entry.name}`
+				: entry.name;
+			const absolutePath = join(directory, entry.name);
+			if (entry.isDirectory()) await walk(absolutePath, path);
+			else if (entry.isFile() && path !== OUTPUT_OWNERSHIP_MANIFEST_PATH) {
+				hashes[path] = hashOutput(await readFile(absolutePath, "utf8"));
+			}
+		}
+	}
+	await walk(outputRoot, "");
+	return { hashes, ownership: manifest };
+}
+
+async function readOwnershipManifest(
+	outputRoot: string,
+): Promise<OutputOwnershipManifest> {
+	try {
+		const parsed = JSON.parse(
+			await readFile(join(outputRoot, OUTPUT_OWNERSHIP_MANIFEST_PATH), "utf8"),
+		) as Partial<OutputOwnershipManifest>;
+		if (
+			parsed.version === 1 &&
+			parsed.files &&
+			typeof parsed.files === "object"
+		) {
+			return { version: 1, files: parsed.files };
+		}
+	} catch (error) {
+		if (!isMissing(error) && !(error instanceof SyntaxError)) throw error;
+	}
+	return { version: 1, files: {} };
+}
 
 /**
  * Filesystem transaction using same-filesystem staging plus rollback backups.
@@ -107,6 +170,14 @@ async function assertSafeOutputPath(root: string, path: string): Promise<void> {
 			throw new Error(`Output path traverses a symbolic link: ${path}`);
 		}
 	}
+}
+
+function isMissing(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		"code" in error &&
+		(error as NodeJS.ErrnoException).code === "ENOENT"
+	);
 }
 
 async function optionalStatus(

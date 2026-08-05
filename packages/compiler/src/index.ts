@@ -134,7 +134,10 @@ export type {
 	NazareExtensionContext,
 	NazareExtensionRegistration,
 } from "./extensions.js";
-export { FileSystemAtomicOutputStore } from "./file-system-output-store.js";
+export {
+	FileSystemAtomicOutputStore,
+	readExistingOutputState,
+} from "./file-system-output-store.js";
 export type {
 	CompileInput,
 	CompilerFrontend,
@@ -157,8 +160,13 @@ export {
 	type AtomicOutputCommit,
 	type AtomicOutputStore,
 	createOwnedOutputPlan,
+	createProtectedOwnedOutputPlan,
+	type ExistingOutputState,
 	executeOutputTransaction,
+	hashOutput,
 	ObsoleteOutputRevisionError,
+	OUTPUT_OWNERSHIP_MANIFEST_PATH,
+	type OutputOwnershipManifest,
 	OutputPlanValidationError,
 	type OutputTransactionResult,
 	type OwnedOutputFile,

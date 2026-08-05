@@ -33,6 +33,37 @@ test("shared Shopify session plans and publishes reachable build output", async 
 	);
 });
 
+test("publication refuses unowned and modified output conflicts", async () => {
+	const session = await ShopifyQuerySession.create([
+		{ path: "snippets/card.liquid", contents: "generated" },
+	]);
+	const request = { scope: { kind: "workspace" } };
+	const temporary = await mkdtemp(join(tmpdir(), "nazare-owned-session-"));
+	const unownedRoot = join(temporary, "unowned");
+	await mkdir(join(unownedRoot, "snippets"), { recursive: true });
+	await writeFile(join(unownedRoot, "snippets/card.liquid"), "merchant");
+	await assert.rejects(session.publishBuild(request, unownedRoot), (error) => {
+		assert.equal(error.diagnostics[0].code, "OUTPUT_PATH_NOT_OWNED");
+		return true;
+	});
+	assert.equal(
+		await readFile(join(unownedRoot, "snippets/card.liquid"), "utf8"),
+		"merchant",
+	);
+
+	const ownedRoot = join(temporary, "owned");
+	await session.publishBuild(request, ownedRoot);
+	await writeFile(join(ownedRoot, "snippets/card.liquid"), "merchant edit");
+	await assert.rejects(session.publishBuild(request, ownedRoot), (error) => {
+		assert.equal(error.diagnostics[0].code, "OUTPUT_OWNED_FILE_MODIFIED");
+		return true;
+	});
+	assert.equal(
+		await readFile(join(ownedRoot, "snippets/card.liquid"), "utf8"),
+		"merchant edit",
+	);
+});
+
 test("check-only session builds never plan output deletion", async () => {
 	const session = await ShopifyQuerySession.create([
 		{ path: "templates/index.liquid", contents: "Index" },
