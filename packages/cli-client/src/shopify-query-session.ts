@@ -32,6 +32,7 @@ import {
 	type ShopifyMetafieldIndexResult,
 	type ShopifyProjectGraphResult,
 	type ShopifyProjectModelResult,
+	type ShopifySchemaLock,
 	type ShopifyUnusedFilesResult,
 	shopifyBuildOutput,
 	shopifyBuildProducts,
@@ -55,6 +56,7 @@ export type ShopifyBuildRequest = {
 	checkOnly?: boolean;
 	previouslyOwnedPaths?: readonly string[];
 	existingOutput?: ExistingOutputState;
+	priorSchemaLock?: ShopifySchemaLock;
 };
 
 export type ShopifyBuildProductsResult = {
@@ -338,6 +340,7 @@ export class ShopifyQuerySession {
 			checkOnly: request.checkOnly ?? false,
 			previouslyOwnedPaths: request.previouslyOwnedPaths ?? [],
 			existingOutput: request.existingOutput ?? null,
+			priorSchemaLock: request.priorSchemaLock ?? null,
 		};
 	}
 

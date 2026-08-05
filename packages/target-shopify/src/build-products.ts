@@ -18,17 +18,39 @@ import {
 	type PortableApplicationModel,
 	type ProjectFileId,
 	portableApplicationModel,
+	type SourceFact,
 	serializeProjectFileId,
 	sourceProducts,
 } from "@nazare/compiler";
 import type { Diagnostic } from "@nazare/core";
+import { shopifyProducts } from "./products.js";
 import { shopifyResolutionProducts } from "./resolution.js";
+import { shopifySemanticProducts } from "./semantic-products.js";
 
 export type ShopifyBuildScope =
 	| { kind: "workspace" }
 	| { kind: "closure"; root: ProjectFileId }
 	| { kind: "file"; file: ProjectFileId }
 	| { kind: "files"; files: readonly ProjectFileId[] };
+
+export type ShopifySchemaLockEntry = {
+	settings: readonly { id: string; type: string }[];
+	blocks: readonly { type: string }[];
+};
+
+export type ShopifySchemaLock = {
+	version: 1;
+	sections: Readonly<Record<string, ShopifySchemaLockEntry>>;
+};
+
+export type ShopifySchemaDrift = {
+	code:
+		| "SHOPIFY_SECTION_REMOVED"
+		| "SHOPIFY_SETTING_REMOVED"
+		| "SHOPIFY_SETTING_RETYPED"
+		| "SHOPIFY_BLOCK_REMOVED";
+	message: string;
+};
 
 export type ShopifyBuildPlan = {
 	scope: ShopifyBuildScope;
@@ -37,6 +59,7 @@ export type ShopifyBuildPlan = {
 	checkOnly: boolean;
 	previouslyOwnedPaths: readonly string[];
 	existingOutput: ExistingOutputState | null;
+	priorSchemaLock: ShopifySchemaLock | null;
 };
 
 export type ShopifyBuildModel = {
@@ -45,6 +68,8 @@ export type ShopifyBuildModel = {
 	files: readonly ProjectFileId[];
 	roots: readonly ProjectFileId[];
 	application: PortableApplicationModel;
+	schemaLock: ShopifySchemaLock;
+	schemaDrift: readonly ShopifySchemaDrift[];
 	diagnostics: readonly Diagnostic[];
 	canEmit: boolean;
 };
@@ -104,6 +129,19 @@ export function registerShopifyBuildComputations(
 				const application = await context.get(
 					portableApplicationModel.product({ files: selected, roots }),
 				);
+				const schemaRecords = await Promise.all(
+					selected.map(async (file) => ({
+						file,
+						schema: await context.get(
+							shopifySemanticProducts.schema.product(file),
+						),
+						classification: await context.get(
+							shopifyProducts.classification.product(file),
+						),
+						facts: await context.get(sourceProducts.facts.product(file)),
+					})),
+				);
+				const schemaLock = createSchemaLock(schemaRecords);
 				const diagnostics = application.diagnostics;
 				return {
 					version: 1 as const,
@@ -111,6 +149,8 @@ export function registerShopifyBuildComputations(
 					files: selected,
 					roots,
 					application,
+					schemaLock,
+					schemaDrift: diffSchemaLocks(plan.priorSchemaLock, schemaLock),
 					diagnostics,
 					canEmit: !diagnostics.some(
 						(diagnostic) => diagnostic.severity === "error",
@@ -263,6 +303,103 @@ function buildRoots(
 	if (scope.kind === "file") return [scope.file];
 	if (scope.kind === "files") return [...scope.files].sort(compareFiles);
 	return [...selected];
+}
+
+function createSchemaLock(
+	records: readonly {
+		file: ProjectFileId;
+		schema: {
+			settings: readonly { id: string; type: string }[];
+			blocks: readonly { type: string }[];
+		};
+		classification: { role: string };
+		facts: { facts: readonly SourceFact[] };
+	}[],
+): ShopifySchemaLock {
+	const sections: Record<string, ShopifySchemaLockEntry> = {};
+	for (const record of records) {
+		const path = sectionOutputPath(record);
+		if (!path) continue;
+		sections[path] = {
+			settings: record.schema.settings.map(({ id, type }) => ({ id, type })),
+			blocks: record.schema.blocks.map(({ type }) => ({ type })),
+		};
+	}
+	return {
+		version: 1,
+		sections: Object.fromEntries(
+			Object.entries(sections).sort(([left], [right]) =>
+				left.localeCompare(right),
+			),
+		),
+	};
+}
+
+function sectionOutputPath(record: {
+	file: ProjectFileId;
+	classification: { role: string };
+	facts: { facts: readonly SourceFact[] };
+}): string | undefined {
+	if (record.classification.role === "section") return record.file.path;
+	const component = record.facts.facts.find(
+		(fact) =>
+			fact.kind === "nazare.component" &&
+			isRecord(fact.data) &&
+			fact.data.componentKind === "section",
+	);
+	return component
+		? `sections/${componentName(record.file.path)}.liquid`
+		: undefined;
+}
+
+function diffSchemaLocks(
+	prior: ShopifySchemaLock | null,
+	next: ShopifySchemaLock,
+): ShopifySchemaDrift[] {
+	if (!prior) return [];
+	const drift: ShopifySchemaDrift[] = [];
+	for (const [path, oldEntry] of Object.entries(prior.sections)) {
+		const name = componentName(path);
+		const nextEntry = next.sections[path];
+		if (!nextEntry) {
+			drift.push({
+				code: "SHOPIFY_SECTION_REMOVED",
+				message: `Section "${name}" was removed`,
+			});
+			continue;
+		}
+		const nextSettings = new Map(
+			nextEntry.settings.map((setting) => [setting.id, setting.type]),
+		);
+		for (const setting of oldEntry.settings) {
+			const nextType = nextSettings.get(setting.id);
+			if (nextType === undefined) {
+				drift.push({
+					code: "SHOPIFY_SETTING_REMOVED",
+					message: `Setting "${setting.id}" was removed from "${name}"`,
+				});
+			} else if (nextType !== setting.type) {
+				drift.push({
+					code: "SHOPIFY_SETTING_RETYPED",
+					message: `Setting "${setting.id}" in "${name}" changed type ${setting.type} → ${nextType}`,
+				});
+			}
+		}
+		const nextBlocks = new Set(nextEntry.blocks.map((block) => block.type));
+		for (const block of oldEntry.blocks) {
+			if (!nextBlocks.has(block.type)) {
+				drift.push({
+					code: "SHOPIFY_BLOCK_REMOVED",
+					message: `Block type "${block.type}" was removed from "${name}"`,
+				});
+			}
+		}
+	}
+	return drift;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function componentName(path: string): string {

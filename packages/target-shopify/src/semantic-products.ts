@@ -26,6 +26,7 @@ export type ShopifySchemaSetting = {
 export type ShopifyFileSchema = {
 	file: ProjectFileId;
 	settings: readonly ShopifySchemaSetting[];
+	blocks: readonly { type: string }[];
 	diagnostics: readonly Diagnostic[];
 };
 
@@ -227,22 +228,26 @@ function parseSchema(
 	data: ProductKey | undefined,
 ): ShopifyFileSchema {
 	if (!isRecord(data) || typeof data.body !== "string") {
-		return { file, settings: [], diagnostics: [] };
+		return { file, settings: [], blocks: [], diagnostics: [] };
 	}
 	try {
 		const parsed: unknown = JSON.parse(data.body);
 		if (!isRecord(parsed) || !Array.isArray(parsed.settings)) {
-			return { file, settings: [], diagnostics: [] };
+			return { file, settings: [], blocks: [], diagnostics: [] };
 		}
 		return {
 			file,
 			settings: parsed.settings.flatMap((setting) => parseSetting(setting)),
+			blocks: Array.isArray(parsed.blocks)
+				? parsed.blocks.flatMap((block) => parseBlock(block))
+				: [],
 			diagnostics: [],
 		};
 	} catch (error) {
 		return {
 			file,
 			settings: [],
+			blocks: [],
 			diagnostics: [
 				{
 					severity: "error",
@@ -272,6 +277,12 @@ function parseSetting(value: unknown): ShopifySchemaSetting[] {
 				: {}),
 		},
 	];
+}
+
+function parseBlock(value: unknown): { type: string }[] {
+	return isRecord(value) && typeof value.type === "string"
+		? [{ type: value.type }]
+		: [];
 }
 
 function metafieldRead(

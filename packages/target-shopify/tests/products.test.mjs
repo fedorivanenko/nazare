@@ -709,6 +709,7 @@ test("build products preserve scopes and compile only reachable closure", async 
 		checkOnly: false,
 		previouslyOwnedPaths: [],
 		existingOutput: null,
+		priorSchemaLock: null,
 	};
 	const model = await session.get(shopifyBuildProducts.model.product(plan));
 	const emission = await session.get(
@@ -730,6 +731,48 @@ test("build products preserve scopes and compile only reachable closure", async 
 	assert.equal(parseCalls, 2);
 });
 
+test("build models derive deterministic schema locks and drift", async () => {
+	const session = await targetSession({
+		"sections/hero.liquid": `{% schema %}{"settings":[{"id":"title","type":"text"}],"blocks":[{"type":"new"}]}{% endschema %}`,
+	});
+	shopifyBuildOutput().registerComputations(session.graph);
+	const model = await session.get(
+		shopifyBuildProducts.model.product({
+			scope: { kind: "workspace" },
+			files: session.snapshot().fileIds,
+			emitOnError: false,
+			checkOnly: true,
+			previouslyOwnedPaths: [],
+			existingOutput: null,
+			priorSchemaLock: {
+				version: 1,
+				sections: {
+					"sections/hero.liquid": {
+						settings: [
+							{ id: "title", type: "checkbox" },
+							{ id: "removed", type: "text" },
+						],
+						blocks: [{ type: "old" }],
+					},
+				},
+			},
+		}),
+	);
+
+	assert.deepEqual(model.schemaLock.sections["sections/hero.liquid"], {
+		settings: [{ id: "title", type: "text" }],
+		blocks: [{ type: "new" }],
+	});
+	assert.deepEqual(
+		model.schemaDrift.map((entry) => entry.code),
+		[
+			"SHOPIFY_SETTING_RETYPED",
+			"SHOPIFY_SETTING_REMOVED",
+			"SHOPIFY_BLOCK_REMOVED",
+		],
+	);
+});
+
 test("build emission stops on diagnostics unless explicitly allowed", async () => {
 	const session = await targetSession({
 		"components/broken.nz.liquid": "{% component snippet %}\n{% render",
@@ -742,6 +785,7 @@ test("build emission stops on diagnostics unless explicitly allowed", async () =
 		checkOnly: false,
 		previouslyOwnedPaths: [],
 		existingOutput: null,
+		priorSchemaLock: null,
 	};
 	const emission = await session.get(
 		shopifyBuildProducts.emission.product(plan),
@@ -767,6 +811,7 @@ test("build owned-output products detect generated path collisions", async () =>
 		checkOnly: false,
 		previouslyOwnedPaths: ["assets/stale.js"],
 		existingOutput: null,
+		priorSchemaLock: null,
 	};
 	const output = await session.get(
 		shopifyBuildProducts.ownedOutput.product(plan),
