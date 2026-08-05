@@ -92,6 +92,7 @@ export async function runThemeBuild(
 	target: string | undefined,
 	cliOptions: CliOptions,
 	output: Output = console,
+	mode: { checkOnly?: boolean } = {},
 ): Promise<number> {
 	try {
 		// Both paths are explicit: an explicit CLI flag/positional wins, else the
@@ -100,7 +101,10 @@ export async function runThemeBuild(
 		const config = await readProjectConfig(projectRoot);
 		const sourceRoot =
 			target ?? cliOptions.sourceRoot ?? config.build?.sourceRoot;
-		const outDir = cliOptions.outDir ?? config.build?.outDir;
+		const outDir =
+			cliOptions.outDir ??
+			config.build?.outDir ??
+			(mode.checkOnly ? ".nazare-check" : undefined);
 		if (!sourceRoot) {
 			throw new Error(
 				'No source root. Pass it as `nazare build <source-root>` or --source-root, or set "build": { "sourceRoot": "…" } in nazare.theme.json.',
@@ -114,7 +118,7 @@ export async function runThemeBuild(
 		// Reconcile against a live theme: pull its merchant-owned data into the
 		// output dir first, so build products snapshot and preserve it instead of
 		// resetting it to the source seeds.
-		if (cliOptions.pullData) {
+		if (cliOptions.pullData && !mode.checkOnly) {
 			const outDirAbs = join(projectRoot, outDir);
 			await mkdir(outDirAbs, { recursive: true });
 			pullThemeData(
@@ -177,24 +181,28 @@ export async function runThemeBuild(
 		);
 		const buildRequest = {
 			...request,
+			checkOnly: mode.checkOnly ?? false,
 			additionalOutputFiles: extensionOutput.files,
 			additionalDiagnostics: extensionOutput.diagnostics,
 		};
 		const preflight = await session.buildProducts(buildRequest);
-		const products = hasErrors(preflight.ownedOutput.diagnostics)
-			? preflight
-			: await session.publishPersistentBuild(buildRequest, {
-					projectRoot,
-					outputRoot: resolve(projectRoot, outDir),
-					targetId:
-						[cliOptions.store, cliOptions.theme].filter(Boolean).join("#") ||
-						outDir,
-				});
+		const products =
+			mode.checkOnly || hasErrors(preflight.ownedOutput.diagnostics)
+				? preflight
+				: await session.publishPersistentBuild(buildRequest, {
+						projectRoot,
+						outputRoot: resolve(projectRoot, outDir),
+						targetId:
+							[cliOptions.store, cliOptions.theme].filter(Boolean).join("#") ||
+							outDir,
+					});
 		const result = commandBuildResult(products, inputs, sourceRoot, outDir);
 		if (cliOptions.json) {
 			output.log(
 				JSON.stringify({ ...result, components: result.compiled }, null, 2),
 			);
+		} else if (mode.checkOnly) {
+			printCheckSummary(result, output);
 		} else {
 			printBuildSummary(result, outDir, output);
 		}
@@ -376,6 +384,22 @@ async function runBuildExtensions(
 // Human-readable build summary. Leads with what was produced, then the
 // reconciliation outcomes (what was kept from the live theme, migrated, or
 // merged), then warnings and errors. `--json` prints the raw result instead.
+function printCheckSummary(
+	result: ThemeBuildCommandResult,
+	output: Output,
+): void {
+	const errors = result.issues.filter((issue) => issue.severity === "error");
+	const warnings = result.issues.filter(
+		(issue) => issue.severity === "warning",
+	);
+	output.log(
+		`Checked ${result.compiled.length} component${result.compiled.length === 1 ? "" : "s"}: ${errors.length} error${errors.length === 1 ? "" : "s"}, ${warnings.length} warning${warnings.length === 1 ? "" : "s"}`,
+	);
+	for (const issue of result.issues) {
+		output.log(`[${issue.severity}] ${issue.code}: ${issue.message}`);
+	}
+}
+
 function printBuildSummary(
 	result: ThemeBuildCommandResult,
 	outDir: string,

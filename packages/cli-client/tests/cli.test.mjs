@@ -296,7 +296,7 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 	);
 });
 
-test("cli: build validates dependencies, check looks at the entry only", async () => {
+test("cli: check is build check-only mode and validates the closure", async () => {
 	await withProject(
 		{
 			"component.nz.liquid": `{% import Child from "./child.nz.liquid" %}\n{% render Child {} %}`,
@@ -319,14 +319,20 @@ test("cli: build validates dependencies, check looks at the entry only", async (
 				),
 			);
 
-			// check compiles the entry only — the child is not checked here.
-			const validated = await runCli(cwd, "check", "component.nz.liquid");
-			assert.equal(validated.status, 0, validated.stderr);
+			// check requests the same closure but never publishes output.
+			const validated = await runCli(
+				cwd,
+				"check",
+				"component.nz.liquid",
+				"--json",
+			);
+			assert.notEqual(validated.status, 0);
 			assert.ok(
-				!JSON.parse(validated.stdout).issues.some(
+				JSON.parse(validated.stdout).issues.some(
 					(issue) => issue.code === "NAZARE_PARSE_TYPE_EXPRESSION",
 				),
 			);
+			assert.equal(existsSync(join(cwd, ".nazare-check")), false);
 		},
 	);
 });

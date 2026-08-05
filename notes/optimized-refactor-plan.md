@@ -484,11 +484,11 @@ raw argv
 → consume NazareEvent
 ```
 
-- [ ] Parse options once.
+- [x] Parse options once.
 - [ ] Use one `--watch` execution mode for build, inspect, and preview.
 - [ ] Stream revisioned result/update-failed events.
-- [ ] Keep text/JSON/DOT formatting outside compiler.
-- [ ] Remove `check` implementation; route alias to build check-only if alias remains.
+- [x] Keep text/JSON/DOT formatting outside compiler.
+- [x] Remove `check` implementation; route alias to build check-only if alias remains.
 - [ ] Remove source/graph-server direct compiler plumbing after replacement.
 - [ ] Delete old CLI adapters rather than retaining compatibility wrappers.
 

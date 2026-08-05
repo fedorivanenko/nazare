@@ -169,13 +169,14 @@ export async function main(
 			return 0;
 		}
 
-		if (command === "build") {
+		if (command === "build" || command === "check") {
 			const { runThemeBuild } = await import("./build-command.js");
 			return await runThemeBuild(
 				projectRoot,
 				cliOptions.positionals[0],
 				cliOptions,
 				output,
+				{ checkOnly: command === "check" },
 			);
 		}
 
@@ -220,18 +221,15 @@ export async function main(
 		}
 
 		// Every other command targets exactly one entry file.
-		if (command !== "check" && command !== "inspect") {
+		if (command !== "inspect") {
 			output.error(`Unknown command ${command}`);
 			printHelp(output);
 			return 1;
 		}
 		// `inspect` names the view first: `nazare inspect ir <file>`.
-		const view = command === "inspect" ? cliOptions.positionals[0] : "check";
-		const target =
-			command === "inspect"
-				? cliOptions.positionals[1]
-				: cliOptions.positionals[0];
-		if (command === "inspect" && (!view || !INSPECT_VIEW_SET.has(view))) {
+		const view = cliOptions.positionals[0];
+		const target = cliOptions.positionals[1];
+		if (!view || !INSPECT_VIEW_SET.has(view)) {
 			output.error(
 				`Usage: nazare inspect <${[...INSPECT_VIEWS].join("|")}> <file>, or nazare inspect theme [dir]`,
 			);
@@ -297,14 +295,6 @@ export async function main(
 				),
 			);
 			return hasErrors(result.issues) ? 1 : 0;
-		}
-
-		// `check` is the top-level command's internal projection, not an inspect view.
-		if (view === "check") {
-			const result = compile();
-			const issues = result.issues;
-			output.log(JSON.stringify({ issues, notes: result.notes }, null, 2));
-			return hasErrors(issues) ? 1 : 0;
 		}
 
 		if (view === "artifact") {
