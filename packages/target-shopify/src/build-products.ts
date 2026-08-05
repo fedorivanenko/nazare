@@ -16,6 +16,7 @@ import {
 	type OwnedOutputFile,
 	type OwnedOutputPlan,
 	type PortableApplicationModel,
+	type ProductKey,
 	type ProjectFileId,
 	portableApplicationModel,
 	type SourceFact,
@@ -24,6 +25,12 @@ import {
 } from "@nazare/compiler";
 import type { Diagnostic } from "@nazare/core";
 import { shopifyProducts } from "./products.js";
+import {
+	applyMigrationsToMerchantData,
+	applyMigrationsToSchemaLock,
+	mergeShopifyLocale,
+	type ShopifyMigration,
+} from "./reconciliation.js";
 import { shopifyResolutionProducts } from "./resolution.js";
 import { shopifySemanticProducts } from "./semantic-products.js";
 
@@ -60,6 +67,9 @@ export type ShopifyBuildPlan = {
 	previouslyOwnedPaths: readonly string[];
 	existingOutput: ExistingOutputState | null;
 	priorSchemaLock: ShopifySchemaLock | null;
+	migrations: readonly ShopifyMigration[];
+	appliedMigrationIds: readonly string[];
+	localeBase: Readonly<Record<string, ProductKey>>;
 };
 
 export type ShopifyBuildModel = {
@@ -79,6 +89,10 @@ export type ShopifyEmissionPlan = {
 	files: readonly OwnedOutputFile[];
 	diagnostics: readonly Diagnostic[];
 	checkOnly: boolean;
+	appliedMigrationIds: readonly string[];
+	migratedPaths: readonly string[];
+	mergedLocalePaths: readonly string[];
+	nextLocaleBase: Readonly<Record<string, ProductKey>>;
 };
 
 export const shopifyBuildProducts = {
@@ -150,7 +164,15 @@ export function registerShopifyBuildComputations(
 					roots,
 					application,
 					schemaLock,
-					schemaDrift: diffSchemaLocks(plan.priorSchemaLock, schemaLock),
+					schemaDrift: diffSchemaLocks(
+						plan.priorSchemaLock
+							? applyMigrationsToSchemaLock(
+									plan.priorSchemaLock,
+									plan.migrations,
+								)
+							: null,
+						schemaLock,
+					),
 					diagnostics,
 					canEmit: !diagnostics.some(
 						(diagnostic) => diagnostic.severity === "error",
@@ -187,6 +209,9 @@ export function registerShopifyBuildComputations(
 							path: source.id.path,
 							contents: source.contents,
 							ownerId: `source:${serializeProjectFileId(source.id)}`,
+							...(isMerchantOwnedPath(source.id.path)
+								? { ownership: "merchant" as const }
+								: {}),
 						});
 						continue;
 					}
@@ -215,15 +240,26 @@ export function registerShopifyBuildComputations(
 						})),
 					);
 				}
+				diagnostics.push(
+					...createOwnedOutputPlan({ writes: files }).diagnostics,
+				);
+				const reconciled = reconcileOutput(files, plan);
+				diagnostics.push(...reconciled.diagnostics);
 				const hasErrors = diagnostics.some(
 					(diagnostic) => diagnostic.severity === "error",
 				);
 				return {
 					version: 1 as const,
 					files:
-						plan.checkOnly || (hasErrors && !plan.emitOnError) ? [] : files,
+						plan.checkOnly || (hasErrors && !plan.emitOnError)
+							? []
+							: reconciled.files,
 					diagnostics,
 					checkOnly: plan.checkOnly,
+					appliedMigrationIds: reconciled.appliedMigrationIds,
+					migratedPaths: reconciled.migratedPaths,
+					mergedLocalePaths: reconciled.mergedLocalePaths,
+					nextLocaleBase: reconciled.nextLocaleBase,
 				};
 			},
 			{
@@ -303,6 +339,137 @@ function buildRoots(
 	if (scope.kind === "file") return [scope.file];
 	if (scope.kind === "files") return [...scope.files].sort(compareFiles);
 	return [...selected];
+}
+
+function reconcileOutput(
+	files: readonly OwnedOutputFile[],
+	plan: ShopifyBuildPlan,
+): {
+	files: OwnedOutputFile[];
+	diagnostics: Diagnostic[];
+	appliedMigrationIds: string[];
+	migratedPaths: string[];
+	mergedLocalePaths: string[];
+	nextLocaleBase: Record<string, ProductKey>;
+} {
+	const output = new Map(files.map((file) => [file.path, file]));
+	const existing = plan.existingOutput?.contents ?? {};
+	const alreadyApplied = new Set(plan.appliedMigrationIds);
+	const unapplied = plan.migrations.filter(
+		(migration) => !alreadyApplied.has(migration.id),
+	);
+	const existingData = Object.fromEntries(
+		Object.entries(existing).filter(([path]) => isMerchantDataPath(path)),
+	);
+	const migrated = applyMigrationsToMerchantData(existingData, unapplied);
+	const diagnostics = [...migrated.diagnostics];
+	for (const path of new Set([
+		...Object.keys(migrated.contents),
+		...files
+			.filter((file) => isMerchantDataPath(file.path))
+			.map((file) => file.path),
+	])) {
+		const source = output.get(path);
+		const target = migrated.contents[path];
+		if (target !== undefined) {
+			output.set(path, {
+				path,
+				contents: target,
+				ownerId: "merchant:data",
+				ownership: "merchant",
+			});
+		} else if (source) output.set(path, { ...source, ownership: "merchant" });
+	}
+
+	const nextLocaleBase: Record<string, ProductKey> = {};
+	const mergedLocalePaths: string[] = [];
+	const localePaths = new Set([
+		...files
+			.filter((file) => isStorefrontLocale(file.path))
+			.map((file) => file.path),
+		...Object.keys(existing).filter(isStorefrontLocale),
+	]);
+	for (const path of localePaths) {
+		const sourceFile = output.get(path);
+		const targetRaw = existing[path];
+		if (!sourceFile) {
+			if (targetRaw !== undefined) {
+				output.set(path, {
+					path,
+					contents: targetRaw,
+					ownerId: "merchant:locale",
+					ownership: "merchant",
+				});
+			}
+			continue;
+		}
+		const source = parseJson(sourceFile.contents, path, diagnostics);
+		const target =
+			targetRaw === undefined
+				? undefined
+				: parseJson(targetRaw, path, diagnostics);
+		if (source === undefined) continue;
+		nextLocaleBase[path] = source;
+		const merged = mergeShopifyLocale(plan.localeBase[path], source, target);
+		if (targetRaw !== undefined) mergedLocalePaths.push(path);
+		for (const key of merged.conflicts) {
+			diagnostics.push({
+				severity: "warning",
+				phase: "emit",
+				code: "SHOPIFY_LOCALE_CONFLICT",
+				message: `${path}: "${key}" changed in source and merchant data; kept merchant value`,
+			});
+		}
+		output.set(path, {
+			...sourceFile,
+			contents: merged.contents,
+			ownership: "merchant",
+		});
+	}
+	return {
+		files: [...output.values()].sort((left, right) =>
+			left.path.localeCompare(right.path),
+		),
+		diagnostics,
+		appliedMigrationIds: unapplied.map((migration) => migration.id),
+		migratedPaths: [...migrated.changedPaths],
+		mergedLocalePaths: mergedLocalePaths.sort(),
+		nextLocaleBase,
+	};
+}
+
+function parseJson(
+	raw: string,
+	path: string,
+	diagnostics: Diagnostic[],
+): ProductKey | undefined {
+	try {
+		return JSON.parse(raw) as ProductKey;
+	} catch (error) {
+		diagnostics.push({
+			severity: "error",
+			phase: "emit",
+			code: "SHOPIFY_RECONCILIATION_JSON_INVALID",
+			message: `${path}: ${error instanceof Error ? error.message : String(error)}`,
+		});
+		return undefined;
+	}
+}
+
+function isMerchantDataPath(path: string): boolean {
+	return (
+		path === "config/settings_data.json" ||
+		/^templates\/.+\.json$/.test(path) ||
+		/^sections\/[^/]+\.json$/.test(path)
+	);
+}
+
+function isStorefrontLocale(path: string): boolean {
+	return /^locales\/[^/]+\.json$/.test(path) && !path.endsWith(".schema.json");
+}
+
+function isMerchantOwnedPath(path: string): boolean {
+	return isMerchantDataPath(path) || isStorefrontLocale(path);
 }
 
 function createSchemaLock(

@@ -427,7 +427,8 @@ OutputTransaction
 - [x] Preserve merchant-owned data through explicit owned-path deletion plans.
 - [x] Preserve build-manifest ownership and reject unowned or merchant-modified output.
 - [x] Derive deterministic schema locks and breaking-drift products.
-- [ ] Preserve migration application and locale merge.
+- [x] Add run-once migration application and three-way locale merge products.
+- [ ] Persist schema lock, migration ledger, and locale base transactionally.
 - [x] Stage writes and stale owned-file deletions.
 - [x] Atomically publish or roll back output transaction.
 - [x] Keep check-only mode as build without emission.

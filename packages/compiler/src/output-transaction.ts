@@ -6,6 +6,7 @@ export type OwnedOutputFile = {
 	path: string;
 	contents: string;
 	ownerId: string;
+	ownership?: "generated" | "merchant";
 };
 
 export const OUTPUT_OWNERSHIP_MANIFEST_PATH = ".nazare/build-manifest.json";
@@ -17,6 +18,7 @@ export type OutputOwnershipManifest = {
 
 export type ExistingOutputState = {
 	hashes: Readonly<Record<string, string>>;
+	contents: Readonly<Record<string, string>>;
 	ownership: OutputOwnershipManifest;
 };
 
@@ -105,7 +107,10 @@ export function createProtectedOwnedOutputPlan(input: {
 	const base = createOwnedOutputPlan({ writes: input.writes });
 	const diagnostics = [...base.diagnostics];
 	const writesByPath = new Map(base.writes.map((file) => [file.path, file]));
-	for (const file of base.writes) {
+	const generatedWrites = base.writes.filter(
+		(file) => file.ownership !== "merchant",
+	);
+	for (const file of generatedWrites) {
 		const existingHash = input.existing.hashes[file.path];
 		if (!existingHash) continue;
 		const owned = input.existing.ownership.files[file.path];
@@ -142,7 +147,7 @@ export function createProtectedOwnedOutputPlan(input: {
 	const manifest: OutputOwnershipManifest = {
 		version: 1,
 		files: Object.fromEntries(
-			base.writes
+			generatedWrites
 				.map(
 					(file) =>
 						[

@@ -30,6 +30,7 @@ import {
 	type ShopifyEmissionPlan,
 	type ShopifyImpactResult,
 	type ShopifyMetafieldIndexResult,
+	type ShopifyMigration,
 	type ShopifyProjectGraphResult,
 	type ShopifyProjectModelResult,
 	type ShopifySchemaLock,
@@ -57,6 +58,9 @@ export type ShopifyBuildRequest = {
 	previouslyOwnedPaths?: readonly string[];
 	existingOutput?: ExistingOutputState;
 	priorSchemaLock?: ShopifySchemaLock;
+	migrations?: readonly ShopifyMigration[];
+	appliedMigrationIds?: readonly string[];
+	localeBase?: Readonly<Record<string, ProductKey>>;
 };
 
 export type ShopifyBuildProductsResult = {
@@ -341,6 +345,9 @@ export class ShopifyQuerySession {
 			previouslyOwnedPaths: request.previouslyOwnedPaths ?? [],
 			existingOutput: request.existingOutput ?? null,
 			priorSchemaLock: request.priorSchemaLock ?? null,
+			migrations: request.migrations ?? [],
+			appliedMigrationIds: request.appliedMigrationIds ?? [],
+			localeBase: request.localeBase ?? {},
 		};
 	}
 

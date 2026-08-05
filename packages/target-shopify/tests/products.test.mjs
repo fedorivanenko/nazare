@@ -710,6 +710,9 @@ test("build products preserve scopes and compile only reachable closure", async 
 		previouslyOwnedPaths: [],
 		existingOutput: null,
 		priorSchemaLock: null,
+		migrations: [],
+		appliedMigrationIds: [],
+		localeBase: {},
 	};
 	const model = await session.get(shopifyBuildProducts.model.product(plan));
 	const emission = await session.get(
@@ -756,6 +759,9 @@ test("build models derive deterministic schema locks and drift", async () => {
 					},
 				},
 			},
+			migrations: [],
+			appliedMigrationIds: [],
+			localeBase: {},
 		}),
 	);
 
@@ -786,6 +792,9 @@ test("build emission stops on diagnostics unless explicitly allowed", async () =
 		previouslyOwnedPaths: [],
 		existingOutput: null,
 		priorSchemaLock: null,
+		migrations: [],
+		appliedMigrationIds: [],
+		localeBase: {},
 	};
 	const emission = await session.get(
 		shopifyBuildProducts.emission.product(plan),
@@ -795,6 +804,95 @@ test("build emission stops on diagnostics unless explicitly allowed", async () =
 		true,
 	);
 	assert.deepEqual(emission.files, []);
+});
+
+test("build emission migrates merchant data and merges locales", async () => {
+	const session = await targetSession({
+		"config/settings_data.json": "{}",
+		"locales/en.default.json": JSON.stringify({ hello: "source", dev: "new" }),
+	});
+	shopifyBuildOutput().registerComputations(session.graph);
+	const settings = JSON.stringify({
+		current: {
+			oldGlobal: "global",
+			sections: {
+				hero: {
+					type: "old-section",
+					settings: { oldSetting: "value" },
+					blocks: { block: { type: "old-block" } },
+				},
+			},
+		},
+	});
+	const locale = JSON.stringify({ hello: "merchant", dev: "base" });
+	const emission = await session.get(
+		shopifyBuildProducts.emission.product({
+			scope: { kind: "workspace" },
+			files: session.snapshot().fileIds,
+			emitOnError: false,
+			checkOnly: false,
+			previouslyOwnedPaths: [],
+			existingOutput: {
+				hashes: {},
+				contents: {
+					"config/settings_data.json": settings,
+					"locales/en.default.json": locale,
+				},
+				ownership: { version: 1, files: {} },
+			},
+			priorSchemaLock: null,
+			migrations: [
+				{
+					id: "global",
+					op: "renameSetting",
+					section: null,
+					from: "oldGlobal",
+					to: "newGlobal",
+				},
+				{
+					id: "section",
+					op: "renameSection",
+					from: "old-section",
+					to: "new-section",
+				},
+				{
+					id: "setting",
+					op: "renameSetting",
+					section: "new-section",
+					from: "oldSetting",
+					to: "newSetting",
+				},
+				{ id: "block", op: "renameBlock", from: "old-block", to: "new-block" },
+			],
+			appliedMigrationIds: [],
+			localeBase: {
+				"locales/en.default.json": { hello: "base", dev: "base" },
+			},
+		}),
+	);
+	const output = new Map(emission.files.map((file) => [file.path, file]));
+	const migrated = JSON.parse(output.get("config/settings_data.json").contents);
+	assert.equal(migrated.current.newGlobal, "global");
+	assert.equal(migrated.current.sections.hero.type, "new-section");
+	assert.equal(migrated.current.sections.hero.settings.newSetting, "value");
+	assert.equal(migrated.current.sections.hero.blocks.block.type, "new-block");
+	assert.deepEqual(JSON.parse(output.get("locales/en.default.json").contents), {
+		hello: "merchant",
+		dev: "new",
+	});
+	assert.deepEqual(emission.appliedMigrationIds, [
+		"global",
+		"section",
+		"setting",
+		"block",
+	]);
+	assert.deepEqual(emission.mergedLocalePaths, ["locales/en.default.json"]);
+	assert.equal(
+		emission.diagnostics.some(
+			(diagnostic) => diagnostic.code === "SHOPIFY_LOCALE_CONFLICT",
+		),
+		true,
+	);
 });
 
 test("build owned-output products detect generated path collisions", async () => {
@@ -812,6 +910,9 @@ test("build owned-output products detect generated path collisions", async () =>
 		previouslyOwnedPaths: ["assets/stale.js"],
 		existingOutput: null,
 		priorSchemaLock: null,
+		migrations: [],
+		appliedMigrationIds: [],
+		localeBase: {},
 	};
 	const output = await session.get(
 		shopifyBuildProducts.ownedOutput.product(plan),

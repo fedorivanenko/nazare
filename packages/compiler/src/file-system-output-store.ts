@@ -23,6 +23,7 @@ export async function readExistingOutputState(
 ): Promise<ExistingOutputState> {
 	const manifest = await readOwnershipManifest(outputRoot);
 	const hashes: Record<string, string> = {};
+	const contents: Record<string, string> = {};
 	async function walk(
 		directory: string,
 		relativeDirectory: string,
@@ -40,12 +41,14 @@ export async function readExistingOutputState(
 			const absolutePath = join(directory, entry.name);
 			if (entry.isDirectory()) await walk(absolutePath, path);
 			else if (entry.isFile() && path !== OUTPUT_OWNERSHIP_MANIFEST_PATH) {
-				hashes[path] = hashOutput(await readFile(absolutePath, "utf8"));
+				const value = await readFile(absolutePath, "utf8");
+				contents[path] = value;
+				hashes[path] = hashOutput(value);
 			}
 		}
 	}
 	await walk(outputRoot, "");
-	return { hashes, ownership: manifest };
+	return { hashes, contents, ownership: manifest };
 }
 
 async function readOwnershipManifest(

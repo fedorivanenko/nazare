@@ -52,6 +52,13 @@ export {
 	type VersionedShopifyQuery,
 } from "./query-products.js";
 export {
+	applyMigrationsToMerchantData,
+	applyMigrationsToSchemaLock,
+	mergeShopifyLocale,
+	type ShopifyLocaleMerge,
+	type ShopifyMigration,
+} from "./reconciliation.js";
+export {
 	registerShopifyGraphComputations,
 	type ShopifyFileDataFlow,
 	type ShopifyRenderEdge,
