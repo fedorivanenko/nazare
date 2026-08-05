@@ -154,7 +154,7 @@ Goal: retain semantic confidence while contracts are deleted.
   - theme scaffold
   - parser throughput
 - [x] Keep canonical theme equivalence and replay tests as behavior gates.
-- [ ] Add fixtures covering:
+- [x] Add fixtures covering:
   - file add/change/delete
   - dependency-edge add/remove
   - dependency cycles

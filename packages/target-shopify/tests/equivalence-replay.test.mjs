@@ -14,7 +14,11 @@ import {
 	createDefaultSourceFrontendRegistry,
 	createSourceProductRegistrar,
 } from "@nazare/compiler/source-products";
-import { shopifyQueryProducts, shopifySemanticTarget } from "../dist/index.js";
+import {
+	shopifyProducts,
+	shopifyQueryProducts,
+	shopifySemanticTarget,
+} from "../dist/index.js";
 
 const id = (path) =>
 	projectFileId({ workspace: "test", package: "theme", path });
@@ -75,6 +79,81 @@ test("canonical theme model is equivalent across discovery orders", async () => 
 	assert.deepEqual(
 		await projectModel(forward.session),
 		await projectModel(reverse.session),
+	);
+});
+
+test("dependency edge additions and removals update the project graph", async () => {
+	const project = await openProject([
+		["sections/main.liquid", "<main>Main</main>"],
+		["snippets/card.liquid", "<article>Card</article>"],
+	]);
+	const graph = async () =>
+		project.session.get(
+			shopifyQueryProducts.projectGraph.product({
+				files: project.session.snapshot().fileIds,
+			}),
+		);
+	assert.equal((await graph()).graph.edges.length, 0);
+
+	const path = "sections/main.liquid";
+	const changed = "{% render 'card' %}<main>Main</main>";
+	project.files.set(path, { id: id(path), contents: changed });
+	await project.session.apply({
+		kind: "files",
+		changes: [
+			{
+				kind: "changed",
+				key: id(path),
+				fingerprint: fingerprintProductKey(changed),
+			},
+		],
+	});
+	assert.equal((await graph()).graph.edges.length, 1);
+
+	const restored = "<main>Main</main>";
+	project.files.set(path, { id: id(path), contents: restored });
+	await project.session.apply({
+		kind: "files",
+		changes: [
+			{
+				kind: "changed",
+				key: id(path),
+				fingerprint: fingerprintProductKey(restored),
+			},
+		],
+	});
+	assert.equal((await graph()).graph.edges.length, 0);
+});
+
+test("path moves recompute target roles without changing file contents", async () => {
+	const project = await openProject([
+		["snippets/card.liquid", "<article>Card</article>"],
+	]);
+	const before = id("snippets/card.liquid");
+	const after = id("sections/card.liquid");
+	const contents = project.files.get(before.path).contents;
+	assert.equal(
+		(await project.session.get(shopifyProducts.classification.product(before))).role,
+		"snippet",
+	);
+
+	project.files.delete(before.path);
+	project.files.set(after.path, { id: after, contents });
+	await project.session.apply({
+		kind: "files",
+		changes: [
+			{
+				kind: "moved",
+				from: before,
+				key: after,
+				fingerprint: fingerprintProductKey(contents),
+			},
+		],
+	});
+
+	assert.equal(
+		(await project.session.get(shopifyProducts.classification.product(after))).role,
+		"section",
 	);
 });
 
