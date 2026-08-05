@@ -73,6 +73,23 @@ export type ShopifyBuildRequest = {
 	additionalDiagnostics?: readonly Diagnostic[];
 };
 
+export type ShopifyInspection = {
+	version: 1;
+	nodes: readonly { id: string; path: string; kind: string }[];
+	edges: readonly { id: string; from: string; to: string; kind: string }[];
+	issues: readonly Diagnostic[];
+	uncertainty: readonly string[];
+	metafields: {
+		state: "present" | "unknown";
+		consumedDefinitionIds: readonly string[];
+	};
+	summary: {
+		unresolvedCount: number;
+		brokenMetafieldReadCount: number;
+		affectedPageCount: number;
+	};
+};
+
 export type ShopifyMetafieldImpact = {
 	version: 2;
 	identity: { owner: string; namespace: string; key: string };
@@ -333,6 +350,80 @@ export class ShopifyQuerySession {
 		return this.session.get(
 			shopifyQueryProducts.projectGraph.product({ files: this.fileIds() }),
 		);
+	}
+
+	async inspection(): Promise<ShopifyInspection> {
+		const files = this.fileIds();
+		const modelProduct = shopifyQueryProducts.projectModel.product({ files });
+		const graphProduct = shopifyQueryProducts.projectGraph.product({ files });
+		const revision = this.session.snapshot().revision;
+		const [model, graph, modelMetadata, graphMetadata, metafields] =
+			await Promise.all([
+				this.session.graph.get(modelProduct, { revision }),
+				this.session.graph.get(graphProduct, { revision }),
+				this.session.graph.metadata(modelProduct, { revision }),
+				this.session.graph.metadata(graphProduct, { revision }),
+				this.metafieldIndex({ ownerType: null, namespace: null }),
+			]);
+		const consumedDefinitionIds = metafields.records.flatMap((record) => {
+			if (!record.namespace || !record.key || record.dynamic) return [];
+			return findMetafieldDefinition(
+				this.externalInputs.get(PROJECT_METADATA_KEYS.metafields),
+				{
+					owner: record.ownerType,
+					namespace: record.namespace,
+					key: record.key,
+				},
+			)
+				? [`${record.ownerType}.${record.namespace}.${record.key}`]
+				: [];
+		});
+		const resolvedReferenceIds = new Set(
+			graph.graph.edges.map((edge) => edge.referenceId),
+		);
+		const unresolvedCount = model.references.filter(
+			(reference) =>
+				reference.static && !resolvedReferenceIds.has(reference.id),
+		).length;
+		return {
+			version: 1,
+			nodes: graph.graph.nodes.map((file) => ({
+				id: `file:${file.path}`,
+				path: file.path,
+				kind: shopifyFileKind(file.path),
+			})),
+			edges: graph.graph.edges.map((edge) => ({
+				id: edge.id,
+				from: `file:${edge.from.path}`,
+				to: `file:${edge.to.path}`,
+				kind: edge.kind,
+			})),
+			issues: [...modelMetadata.diagnostics, ...graphMetadata.diagnostics],
+			uncertainty: [
+				...new Set([
+					...model.uncertainty,
+					...modelMetadata.uncertainty.map((item) => item.message),
+					...graphMetadata.uncertainty.map((item) => item.message),
+				]),
+			],
+			metafields: {
+				state: this.externalInputs.has(PROJECT_METADATA_KEYS.metafields)
+					? "present"
+					: "unknown",
+				consumedDefinitionIds: [...new Set(consumedDefinitionIds)].sort(),
+			},
+			summary: {
+				unresolvedCount,
+				brokenMetafieldReadCount: metafields.records.filter(
+					(record) =>
+						!record.dynamic &&
+						!consumedDefinitionIds.includes(
+							`${record.ownerType}.${record.namespace}.${record.key}`,
+						),
+				).length,
+				affectedPageCount: 0,
+			},
+		};
 	}
 
 	async dependencyIndex(
@@ -651,9 +742,18 @@ function findMetafieldDefinition(
 			return undefined;
 		}
 	}
-	if (!value || typeof value !== "object" || Array.isArray(value))
-		return undefined;
-	const definitions = (value as Record<string, unknown>)[identity.owner];
+	if (!value || typeof value !== "object") return undefined;
+	const definitions = Array.isArray(value)
+		? value.filter(
+				(candidate) =>
+					candidate &&
+					typeof candidate === "object" &&
+					!Array.isArray(candidate) &&
+					((candidate as Record<string, unknown>).owner === identity.owner ||
+						(candidate as Record<string, unknown>).ownerType ===
+							identity.owner),
+			)
+		: (value as Record<string, unknown>)[identity.owner];
 	if (!Array.isArray(definitions)) return undefined;
 	for (const candidate of definitions) {
 		if (!candidate || typeof candidate !== "object" || Array.isArray(candidate))
