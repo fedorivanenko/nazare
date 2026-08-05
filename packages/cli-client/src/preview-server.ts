@@ -38,6 +38,7 @@ import {
 	previewSource,
 	renderCollection,
 } from "./preview-command.js";
+import { executeRevisionUpdates } from "./revision-execution.js";
 
 const DEFAULT_PORT = 4173;
 
@@ -577,72 +578,48 @@ export async function runPreviewServe(
 	}
 	output.log("watching for changes");
 
-	let latestGeneration = 0;
 	let stopped = false;
-	let activeRender: AbortController | undefined;
-	const rebuild = async (
-		generation: number,
-		revision: number,
-		signal: AbortSignal,
-	): Promise<void> => {
-		const started = Date.now();
-		try {
-			const next = await buildState(dir, label, state, signal);
-			// A newer revision supersedes this render. It may finish, but it cannot
-			// publish pages or reload clients from stale input.
-			if (
-				stopped ||
-				generation !== latestGeneration ||
-				revision !== previewSession.revision
-			) {
-				return;
-			}
-			if (!next || next.rendered.length === 0) {
-				output.error(
-					"nothing to preview after that change; keeping the last build",
-				);
-				return;
-			}
-			state = next;
-			report(state, output);
-			output.log(`rebuilt revision ${revision} in ${Date.now() - started}ms`);
-		} catch (error) {
-			if (generation !== latestGeneration || stopped) return;
-			output.error(
-				`rebuild failed: ${error instanceof Error ? error.message : String(error)}`,
-			);
-			return;
-		}
-		for (const client of clients) client.write("data: reload\n\n");
-	};
-
-	const updates = previewSession.watch()[Symbol.asyncIterator]();
-	const watchLoop = (async () => {
-		while (!stopped) {
-			const item = await updates.next();
-			if (item.done) return;
-			const update = item.value;
+	const executionController = new AbortController();
+	const watchLoop = executeRevisionUpdates({
+		updates: previewSession.watch(),
+		revision(update) {
 			if (!update.committed) {
 				for (const diagnostic of update.diagnostics) {
 					output.error(`${diagnostic.code}: ${diagnostic.message}`);
 				}
-				continue;
+				return undefined;
 			}
-			if (
-				!update.changedFileIds.some((file) =>
-					/\.(liquid|json|css|js|ts|svg|png|jpe?g|webp|woff2?)$/.test(
-						file.path,
-					),
-				)
-			) {
-				continue;
+			return update.changedFileIds.some((file) =>
+				/\.(liquid|json|css|js|ts|svg|png|jpe?g|webp|woff2?)$/.test(file.path),
+			)
+				? update.revision
+				: undefined;
+		},
+		async run(_revision, signal) {
+			const next = await buildState(dir, label, state, signal);
+			if (!next || next.rendered.length === 0) {
+				throw new Error(
+					"nothing to preview after that change; keeping the last build",
+				);
 			}
-			const generation = ++latestGeneration;
-			activeRender?.abort(`Superseded by preview revision ${update.revision}`);
-			activeRender = new AbortController();
-			void rebuild(generation, update.revision, activeRender.signal);
-		}
-	})().catch((error) => {
+			return next;
+		},
+		onEvent(event) {
+			if (event.type === "update-failed") {
+				output.error(
+					`update-failed revision ${event.revision}: ${event.error instanceof Error ? event.error.message : String(event.error)}`,
+				);
+				return;
+			}
+			state = event.result;
+			report(state, output);
+			output.log(
+				`result revision ${event.revision} in ${Math.round(event.durationMs)}ms`,
+			);
+			for (const client of clients) client.write("data: reload\n\n");
+		},
+		signal: executionController.signal,
+	}).catch((error) => {
 		if (!stopped) {
 			output.error(
 				`preview watcher failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -654,8 +631,7 @@ export async function runPreviewServe(
 	await new Promise<void>((stop) => {
 		const shutdown = () => {
 			stopped = true;
-			activeRender?.abort("Preview server stopped");
-			void updates.return?.();
+			executionController.abort("Preview server stopped");
 			for (const client of clients) client.end();
 			server.close(() => stop());
 		};

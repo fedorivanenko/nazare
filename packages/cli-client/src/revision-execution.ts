@@ -26,11 +26,17 @@ export async function executeRevisionUpdates<Update, Result>(options: {
 	let generation = 0;
 	let active: AbortController | undefined;
 	const pending = new Set<Promise<void>>();
-	const stop = () => active?.abort("Revision execution stopped");
+	const updates = options.updates[Symbol.asyncIterator]();
+	const stop = () => {
+		active?.abort("Revision execution stopped");
+		void updates.return?.();
+	};
 	options.signal?.addEventListener("abort", stop, { once: true });
 	try {
-		for await (const update of options.updates) {
-			if (options.signal?.aborted) break;
+		while (!options.signal?.aborted) {
+			const item = await updates.next();
+			if (item.done) break;
+			const update = item.value;
 			const revision = options.revision(update);
 			if (revision === undefined) continue;
 			const currentGeneration = ++generation;
