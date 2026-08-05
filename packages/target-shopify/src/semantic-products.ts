@@ -12,6 +12,7 @@ import {
 	sourceProducts,
 } from "@nazare/compiler/source-products";
 import type { Diagnostic } from "@nazare/core";
+import { extractShopifyGraphqlMetafields } from "./graphql-metafields.js";
 import {
 	type ShopifyBehavior,
 	type ShopifyFileClassification,
@@ -362,35 +363,23 @@ function metafieldRead(
 ): ShopifyMetafieldRead[] {
 	if (fact.kind === "source.accessesNetwork" && isRecord(fact.data)) {
 		const data = fact.data;
-		return Array.isArray(data.metafieldReferences)
-			? data.metafieldReferences.flatMap((reference, index) => {
-					if (!isRecord(reference)) return [];
-					const ownerType =
-						typeof reference.owner === "string" ? reference.owner : "unknown";
-					const namespace =
-						typeof reference.namespace === "string"
-							? reference.namespace
-							: undefined;
-					const key =
-						typeof reference.key === "string" ? reference.key : undefined;
-					return [
-						{
-							id: `shopify-metafield:${fingerprintProductKey({ file, sourceFact: fact.id, index })}`,
-							owner: file,
-							ownerType,
-							...(namespace ? { namespace } : {}),
-							...(key ? { key } : {}),
-							dynamic: reference.certainty !== "exact",
-							...(typeof data.transport === "string"
-								? { transport: data.transport }
-								: {}),
-							...(typeof data.endpoint === "string"
-								? { endpoint: data.endpoint }
-								: {}),
-						},
-					];
-				})
-			: [];
+		if (typeof data.graphqlQuery !== "string") return [];
+		return extractShopifyGraphqlMetafields(data.graphqlQuery).map(
+			(reference, index) => ({
+				id: `shopify-metafield:${fingerprintProductKey({ file, sourceFact: fact.id, index })}`,
+				owner: file,
+				ownerType: reference.owner ?? "unknown",
+				...(reference.namespace ? { namespace: reference.namespace } : {}),
+				...(reference.key ? { key: reference.key } : {}),
+				dynamic: reference.certainty !== "exact",
+				...(typeof data.transport === "string"
+					? { transport: data.transport }
+					: {}),
+				...(typeof data.endpoint === "string"
+					? { endpoint: data.endpoint }
+					: {}),
+			}),
+		);
 	}
 	if (fact.kind !== "liquid.read" || !isRecord(fact.data)) return [];
 	if (

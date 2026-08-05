@@ -292,7 +292,6 @@ export type {
 	ThemeMetafieldDefinitionRecord,
 	ThemeMetafieldReadRecord,
 	ThemeNetworkAccessRecord,
-	ThemeNetworkMetafieldReference,
 	ThemePageRecord,
 	ThemeRenderArgumentRecord,
 	ThemeRenderSiteRecord,

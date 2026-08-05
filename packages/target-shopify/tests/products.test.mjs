@@ -399,6 +399,36 @@ test("derives metafield products and data-driven classification", async () => {
 	assert.deepEqual(classification.classes, ["data-driven"]);
 });
 
+test("enriches neutral static GraphQL requests with Shopify metafield semantics", async () => {
+	const session = await targetSession({
+		"assets/product.js": `fetch("/api/graphql", {
+			body: JSON.stringify({
+				query: "query { product { metafield(namespace: \\"custom\\", key: \\"subtitle\\") { value } } }",
+			}),
+		});`,
+	});
+	const metafields = await session.get(
+		shopifySemanticProducts.metafields.product(id("assets/product.js")),
+	);
+
+	assert.deepEqual(
+		metafields.map(({ ownerType, namespace, key, dynamic }) => ({
+			ownerType,
+			namespace,
+			key,
+			dynamic,
+		})),
+		[
+			{
+				ownerType: "product",
+				namespace: "custom",
+				key: "subtitle",
+				dynamic: false,
+			},
+		],
+	);
+});
+
 test("derives browser behavior capability without Shopify role leakage", async () => {
 	const session = await targetSession({
 		"assets/theme.css": ".card { --accent: red }",

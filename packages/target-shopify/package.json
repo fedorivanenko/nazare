@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@nazare/compiler": "workspace:^",
-    "@nazare/core": "workspace:^"
+    "@nazare/core": "workspace:^",
+    "graphql": "^16.11.0"
   }
 }

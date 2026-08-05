@@ -1,20 +1,9 @@
 import type { Program } from "acorn";
-import {
-	type DocumentNode,
-	type FieldNode,
-	type FragmentDefinitionNode,
-	Kind,
-	parse,
-	type SelectionSetNode,
-	type ValueNode,
-} from "graphql";
+import { parse } from "graphql";
 import { type JavaScriptNode, walkJavaScript } from "./javascript-ast.js";
 import { spanFromOffsets } from "./source.js";
 import type { SourceAnalysisUncertainty } from "./source-analysis-types.js";
-import type {
-	ThemeFact,
-	ThemeNetworkMetafieldReference,
-} from "./theme-facts.js";
+import type { ThemeFact } from "./theme-facts.js";
 
 export type JavaScriptNetworkAnalysis = {
 	facts: ThemeFact[];
@@ -105,13 +94,11 @@ export function analyzeJavaScriptNetwork(
 			endpoint?.toLowerCase().includes("graphql") === true;
 		let graphql: Extract<ThemeFact, { kind: "accessesNetwork" }>["graphql"] =
 			"none";
-		let metafieldReferences: ThemeNetworkMetafieldReference[] = [];
 
 		if (queryText !== undefined) {
 			try {
-				const document = parse(queryText, { noLocation: true });
+				parse(queryText, { noLocation: true });
 				graphql = "static";
-				metafieldReferences = collectGraphqlMetafieldReferences(document);
 			} catch {
 				graphql = "invalid";
 				pushUncertainty(
@@ -140,7 +127,7 @@ export function analyzeJavaScriptNetwork(
 			endpoint,
 			method: methodName,
 			graphql,
-			metafieldReferences,
+			graphqlQuery: graphql === "static" ? queryText : undefined,
 			span: nodeSpan(call),
 		});
 	});
@@ -299,206 +286,6 @@ function requestMayContainGraphql(
 		payload?.type === "ObjectExpression" &&
 		objectPropertyValue(payload, "query") !== undefined
 	);
-}
-
-function collectGraphqlMetafieldReferences(
-	document: DocumentNode,
-): ThemeNetworkMetafieldReference[] {
-	const fragments = new Map<string, FragmentDefinitionNode>();
-	for (const definition of document.definitions) {
-		if (definition.kind === Kind.FRAGMENT_DEFINITION) {
-			fragments.set(definition.name.value, definition);
-		}
-	}
-	const references: ThemeNetworkMetafieldReference[] = [];
-	for (const definition of document.definitions) {
-		if (definition.kind !== Kind.OPERATION_DEFINITION) continue;
-		walkSelectionSet(definition.selectionSet, undefined, new Set());
-	}
-	return dedupeReferences(references);
-
-	function walkSelectionSet(
-		selectionSet: SelectionSetNode,
-		owner: string | undefined,
-		activeFragments: Set<string>,
-	): void {
-		for (const selection of selectionSet.selections) {
-			if (selection.kind === Kind.FIELD) {
-				if (selection.name.value === "metafield") {
-					references.push(referenceFromMetafield(selection, owner));
-				} else if (selection.name.value === "metafields") {
-					references.push(...referencesFromMetafields(selection, owner));
-				}
-				if (selection.selectionSet) {
-					walkSelectionSet(
-						selection.selectionSet,
-						ownerAfterField(selection.name.value, owner),
-						activeFragments,
-					);
-				}
-				continue;
-			}
-			if (selection.kind === Kind.INLINE_FRAGMENT) {
-				walkSelectionSet(
-					selection.selectionSet,
-					graphqlOwner(selection.typeCondition?.name.value),
-					activeFragments,
-				);
-				continue;
-			}
-			const name = selection.name.value;
-			if (activeFragments.has(name)) continue;
-			const fragment = fragments.get(name);
-			if (!fragment) continue;
-			const next = new Set(activeFragments).add(name);
-			walkSelectionSet(
-				fragment.selectionSet,
-				graphqlOwner(fragment.typeCondition.name.value),
-				next,
-			);
-		}
-	}
-}
-
-function referenceFromMetafield(
-	field: FieldNode,
-	owner: string | undefined,
-): ThemeNetworkMetafieldReference {
-	const namespace = stringArgument(field, "namespace");
-	const key = stringArgument(field, "key");
-	return owner && namespace && key
-		? { certainty: "exact", owner, namespace, key }
-		: { certainty: "partial", owner, namespace, key };
-}
-
-function referencesFromMetafields(
-	field: FieldNode,
-	owner: string | undefined,
-): ThemeNetworkMetafieldReference[] {
-	const identifiers = field.arguments?.find(
-		(argument) => argument.name.value === "identifiers",
-	)?.value;
-	if (!identifiers || identifiers.kind !== Kind.LIST) {
-		return [{ owner, certainty: "partial" }];
-	}
-	return identifiers.values.map((value) => {
-		if (value.kind !== Kind.OBJECT) return { owner, certainty: "partial" };
-		const namespace = stringObjectField(value, "namespace");
-		const key = stringObjectField(value, "key");
-		return owner && namespace && key
-			? { certainty: "exact" as const, owner, namespace, key }
-			: { certainty: "partial" as const, owner, namespace, key };
-	});
-}
-
-function stringArgument(field: FieldNode, name: string): string | undefined {
-	return stringValue(
-		field.arguments?.find((argument) => argument.name.value === name)?.value,
-	);
-}
-
-function stringObjectField(
-	value: Extract<ValueNode, { kind: typeof Kind.OBJECT }>,
-	name: string,
-): string | undefined {
-	return stringValue(
-		value.fields.find((field) => field.name.value === name)?.value,
-	);
-}
-
-function stringValue(value: ValueNode | undefined): string | undefined {
-	if (value?.kind !== Kind.STRING) return undefined;
-	return value.value.length > 0 && value.value === value.value.trim()
-		? value.value
-		: undefined;
-}
-
-type SupportedGraphqlMetafieldOwner =
-	| "article"
-	| "blog"
-	| "collection"
-	| "company"
-	| "company_location"
-	| "customer"
-	| "location"
-	| "market"
-	| "order"
-	| "page"
-	| "product"
-	| "shop"
-	| "variant";
-
-const GRAPHQL_OWNER_ALIASES = {
-	article: "article",
-	articles: "article",
-	blog: "blog",
-	blogs: "blog",
-	collection: "collection",
-	collections: "collection",
-	company: "company",
-	companies: "company",
-	companylocation: "company_location",
-	companylocations: "company_location",
-	customer: "customer",
-	customers: "customer",
-	location: "location",
-	locations: "location",
-	market: "market",
-	markets: "market",
-	order: "order",
-	orders: "order",
-	page: "page",
-	pages: "page",
-	product: "product",
-	products: "product",
-	productvariant: "variant",
-	productvariants: "variant",
-	shop: "shop",
-	variant: "variant",
-	variants: "variant",
-} as const satisfies Readonly<Record<string, SupportedGraphqlMetafieldOwner>>;
-
-const GRAPHQL_TRANSPARENT_OWNER_FIELDS = new Set(["edges", "node", "nodes"]);
-
-/**
- * Owner proof is deliberately schema-free and narrow. A recognized Shopify
- * root/type establishes owner. Only connection wrappers preserve it. Any
- * unknown nested field or type condition clears owner, preventing an outer
- * product from being assigned to nested MediaImage or other HasMetafields data.
- */
-function ownerAfterField(
-	fieldName: string,
-	owner: string | undefined,
-): string | undefined {
-	return (
-		graphqlOwner(fieldName) ??
-		(GRAPHQL_TRANSPARENT_OWNER_FIELDS.has(fieldName) ? owner : undefined)
-	);
-}
-
-function graphqlOwner(
-	name: string | undefined,
-): SupportedGraphqlMetafieldOwner | undefined {
-	if (!name) return undefined;
-	const normalized = name.replace(/[^A-Za-z]/g, "").toLowerCase();
-	return Object.hasOwn(GRAPHQL_OWNER_ALIASES, normalized)
-		? GRAPHQL_OWNER_ALIASES[normalized as keyof typeof GRAPHQL_OWNER_ALIASES]
-		: undefined;
-}
-
-function dedupeReferences(
-	references: ThemeNetworkMetafieldReference[],
-): ThemeNetworkMetafieldReference[] {
-	const byKey = new Map<string, ThemeNetworkMetafieldReference>();
-	for (const reference of references) {
-		const key = `${reference.owner ?? ""}\0${reference.namespace ?? ""}\0${reference.key ?? ""}\0${reference.certainty}`;
-		byKey.set(key, reference);
-	}
-	return [...byKey.values()].sort((left, right) => {
-		const leftKey = JSON.stringify(left);
-		const rightKey = JSON.stringify(right);
-		return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
-	});
 }
 
 function objectPropertyValue(

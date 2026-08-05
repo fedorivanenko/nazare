@@ -71,6 +71,7 @@ importers:
       '@nazare/target-shopify':
         specifier: workspace:^
         version: link:../target-shopify
+
   packages/compiler:
     dependencies:
       '@nazare/core':
@@ -151,6 +152,9 @@ importers:
       '@nazare/core':
         specifier: workspace:^
         version: link:../core
+      graphql:
+        specifier: ^16.11.0
+        version: 16.14.2
 
   packages/tree-sitter-liquid:
     dependencies:

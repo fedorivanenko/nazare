@@ -272,7 +272,7 @@ export type ThemeFact =
 			endpoint?: string;
 			method?: string;
 			graphql: "none" | "static" | "dynamic" | "invalid";
-			metafieldReferences: ThemeNetworkMetafieldReference[];
+			graphqlQuery?: string;
 			span?: SourceSpan;
 	  }
 	| {
@@ -547,21 +547,6 @@ export type ThemeMetafieldDefinitionRecord = {
 	type?: string;
 };
 
-/** Static identity constraints recovered from a local GraphQL request. */
-export type ThemeNetworkMetafieldReference =
-	| {
-			certainty: "exact";
-			owner: string;
-			namespace: string;
-			key: string;
-	  }
-	| {
-			certainty: "partial";
-			owner?: string;
-			namespace?: string;
-			key?: string;
-	  };
-
 /**
  * Recognizable network call authored in a checked-out JavaScript theme file.
  * This is local call-site evidence only; response contents and remote systems
@@ -574,7 +559,7 @@ export type ThemeNetworkAccessRecord = {
 	endpoint?: string;
 	method?: string;
 	graphql: "none" | "static" | "dynamic" | "invalid";
-	metafieldReferences: ThemeNetworkMetafieldReference[];
+	graphqlQuery?: string;
 	span?: SourceSpan;
 };
 
