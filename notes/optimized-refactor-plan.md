@@ -420,6 +420,7 @@ OutputTransaction
 
 - [x] Add validated `OwnedOutputPlan` collision and stale-owned deletion planning.
 - [x] Add revision-guarded `AtomicOutputStore` transaction contract.
+- [x] Wire build products and publication through shared Shopify `ProjectSession`.
 - [x] Preserve build scopes as analysis roots: workspace, closure, file, files.
 - [x] Compile only reachable source closure.
 - [x] Detect output collisions before writes.

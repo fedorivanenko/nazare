@@ -5,8 +5,11 @@ import {
 	createSourceProductRegistrar,
 	defineInputProvider,
 	defineProjectHost,
+	executeOutputTransaction,
+	FileSystemAtomicOutputStore,
 	fingerprintProductKey,
 	type InputChange,
+	type OwnedOutputPlan,
 	PROJECT_METADATA_KEYS,
 	type ProductKey,
 	type ProjectFileId,
@@ -18,12 +21,19 @@ import {
 import {
 	type ShopifyAffectedPagesResult,
 	type ShopifyBehaviorIndexResult,
+	type ShopifyBuildModel,
+	type ShopifyBuildPlan,
+	type ShopifyBuildScope,
 	type ShopifyDependencyIndexResult,
+	type ShopifyEmissionPlan,
 	type ShopifyImpactResult,
 	type ShopifyMetafieldIndexResult,
 	type ShopifyProjectGraphResult,
 	type ShopifyProjectModelResult,
 	type ShopifyUnusedFilesResult,
+	shopifyBuildOutput,
+	shopifyBuildProducts,
+	shopifyPortableTransform,
 	shopifyQueryProducts,
 	shopifySemanticTarget,
 } from "@nazare/target-shopify";
@@ -32,6 +42,25 @@ export type ShopifyQueryInputFile = { path: string; contents: string };
 export type ShopifyQueryExternalInputs = Partial<
 	Readonly<Record<ProjectMetadataKey, ProductKey>>
 >;
+
+export type ShopifyBuildRequest = {
+	scope:
+		| { kind: "workspace" }
+		| { kind: "closure"; root: string }
+		| { kind: "file"; file: string }
+		| { kind: "files"; files: readonly string[] };
+	emitOnError?: boolean;
+	checkOnly?: boolean;
+	previouslyOwnedPaths?: readonly string[];
+};
+
+export type ShopifyBuildProductsResult = {
+	revision: number;
+	plan: ShopifyBuildPlan;
+	model: ShopifyBuildModel;
+	emission: ShopifyEmissionPlan;
+	ownedOutput: OwnedOutputPlan;
+};
 
 export { PROJECT_METADATA_KEYS };
 
@@ -87,7 +116,46 @@ export class ShopifyQuerySession {
 			frontends: createDefaultSourceFrontendRegistry(),
 		}).registerComputations(session.graph);
 		shopifySemanticTarget().registerComputations(session.graph);
+		shopifyPortableTransform().registerComputations(session.graph);
+		shopifyBuildOutput().registerComputations(session.graph);
 		return new ShopifyQuerySession(session, files, metadata);
+	}
+
+	async buildProducts(
+		request: ShopifyBuildRequest,
+	): Promise<ShopifyBuildProductsResult> {
+		const revision = this.session.snapshot().revision;
+		const plan = this.buildPlan(request);
+		const model = await this.session.graph.get(
+			shopifyBuildProducts.model.product(plan),
+			{ revision },
+		);
+		const emission = await this.session.graph.get(
+			shopifyBuildProducts.emission.product(plan),
+			{ revision },
+		);
+		const ownedOutput = await this.session.graph.get(
+			shopifyBuildProducts.ownedOutput.product(plan),
+			{ revision },
+		);
+		return { revision, plan, model, emission, ownedOutput };
+	}
+
+	async publishBuild(
+		request: ShopifyBuildRequest,
+		outputRoot: string,
+	): Promise<ShopifyBuildProductsResult> {
+		if (request.checkOnly) {
+			throw new Error("Check-only builds cannot publish output");
+		}
+		const products = await this.buildProducts(request);
+		await executeOutputTransaction({
+			plan: products.ownedOutput,
+			expectedRevision: products.revision,
+			currentRevision: () => this.session.snapshot().revision,
+			store: new FileSystemAtomicOutputStore(outputRoot),
+		});
+		return products;
 	}
 
 	async projectModel(): Promise<ShopifyProjectModelResult> {
@@ -239,6 +307,31 @@ export class ShopifyQuerySession {
 			throw update.error ?? new Error("Query update rejected");
 		}
 		return update.revision;
+	}
+
+	private buildPlan(request: ShopifyBuildRequest): ShopifyBuildPlan {
+		let scope: ShopifyBuildScope;
+		switch (request.scope.kind) {
+			case "workspace":
+				scope = request.scope;
+				break;
+			case "closure":
+				scope = { kind: "closure", root: fileId(request.scope.root) };
+				break;
+			case "file":
+				scope = { kind: "file", file: fileId(request.scope.file) };
+				break;
+			case "files":
+				scope = { kind: "files", files: request.scope.files.map(fileId) };
+				break;
+		}
+		return {
+			scope,
+			files: this.fileIds(),
+			emitOnError: request.emitOnError ?? false,
+			checkOnly: request.checkOnly ?? false,
+			previouslyOwnedPaths: request.previouslyOwnedPaths ?? [],
+		};
 	}
 
 	private fileIds(): readonly ProjectFileId[] {

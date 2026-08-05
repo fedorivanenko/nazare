@@ -199,7 +199,9 @@ export function registerShopifyBuildComputations(
 				);
 				const owned = createOwnedOutputPlan({
 					writes: emission.files,
-					previouslyOwnedPaths: plan.previouslyOwnedPaths,
+					previouslyOwnedPaths: emission.checkOnly
+						? []
+						: plan.previouslyOwnedPaths,
 				});
 				return {
 					...owned,
