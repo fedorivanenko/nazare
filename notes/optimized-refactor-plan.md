@@ -148,7 +148,7 @@ preview capability implementation
 
 Goal: retain semantic confidence while contracts are deleted.
 
-- [ ] Record current benchmark baselines:
+- [x] Record current benchmark baselines:
   - incremental single-file edit
   - full theme inspection
   - theme scaffold
