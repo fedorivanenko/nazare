@@ -459,7 +459,7 @@ Failed builds and stale revisions cannot mutate output.
 - [x] Render stories independently and concurrently.
 - [x] Cache pure render plans, not publication side effects.
 - [x] Move preview serve watcher to the shared `ProjectSession`.
-- [ ] Cancel stale renders on revision changes.
+- [x] Cancel stale renders on revision changes.
 - [x] Keep scaffold and fixture management outside project analysis.
 - [x] Delete preview-specific compiler workspace orchestration.
 

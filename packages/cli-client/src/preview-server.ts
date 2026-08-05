@@ -89,10 +89,13 @@ async function buildState(
 	dir: string,
 	label: string,
 	previous?: ServerState,
+	signal?: AbortSignal,
 ): Promise<ServerState | undefined> {
+	signal?.throwIfAborted();
 	const collection = await collectPreview(dir);
+	signal?.throwIfAborted();
 	if (!collection || collection === "missing") return undefined;
-	const fresh = await renderCollection(collection);
+	const fresh = await renderCollection(collection, { signal });
 
 	// A story file is written by hand, so it spends time being invalid — every
 	// keystroke between `{` and a closing brace. Dropping the component while
@@ -576,13 +579,15 @@ export async function runPreviewServe(
 
 	let latestGeneration = 0;
 	let stopped = false;
+	let activeRender: AbortController | undefined;
 	const rebuild = async (
 		generation: number,
 		revision: number,
+		signal: AbortSignal,
 	): Promise<void> => {
 		const started = Date.now();
 		try {
-			const next = await buildState(dir, label, state);
+			const next = await buildState(dir, label, state, signal);
 			// A newer revision supersedes this render. It may finish, but it cannot
 			// publish pages or reload clients from stale input.
 			if (
@@ -633,7 +638,9 @@ export async function runPreviewServe(
 				continue;
 			}
 			const generation = ++latestGeneration;
-			void rebuild(generation, update.revision);
+			activeRender?.abort(`Superseded by preview revision ${update.revision}`);
+			activeRender = new AbortController();
+			void rebuild(generation, update.revision, activeRender.signal);
 		}
 	})().catch((error) => {
 		if (!stopped) {
@@ -647,6 +654,7 @@ export async function runPreviewServe(
 	await new Promise<void>((stop) => {
 		const shutdown = () => {
 			stopped = true;
+			activeRender?.abort("Preview server stopped");
 			void updates.return?.();
 			for (const client of clients) client.end();
 			server.close(() => stop());

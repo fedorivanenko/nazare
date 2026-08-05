@@ -483,17 +483,22 @@ export async function collectPreview(
  */
 export async function renderCollection(
 	collection: PreviewCollection,
+	options: { signal?: AbortSignal } = {},
 ): Promise<RenderedComponent[]> {
+	options.signal?.throwIfAborted();
 	const snippets = snippetLibrary(
 		collection.compiled.map((entry) => entry.component),
 	);
-	const rendered: RenderedComponent[] = [];
-	for (const { component, stories } of collection.previewed) {
-		rendered.push(
-			await renderComponentStories(component, stories, { snippets }),
-		);
-	}
-	return rendered;
+	return Promise.all(
+		collection.previewed.map(async ({ component, stories }) => {
+			options.signal?.throwIfAborted();
+			const rendered = await renderComponentStories(component, stories, {
+				snippets,
+			});
+			options.signal?.throwIfAborted();
+			return rendered;
+		}),
+	);
 }
 
 function reportSkipped(collection: PreviewCollection, output: Output): void {
