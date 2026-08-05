@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { collectPlainLiquidFacts } from "../dist/liquid-facts.js";
 import {
 	buildPlainLiquid,
 	compileArtifact,
@@ -7,7 +8,6 @@ import {
 	compilePlainLiquid,
 	treeSitterPlainLiquidFrontend,
 } from "../dist/testing.js";
-import { collectPlainLiquidThemeFacts } from "../dist/theme-liquid-facts.js";
 
 test("plain Liquid frontend parses schema, settings reads, and static dependencies", () => {
 	const source = `<section>
@@ -130,7 +130,7 @@ test("plain Liquid frontend records failed parses without derived facts", () => 
 });
 
 test("plain Liquid fact scanning rejects malformed expressions", () => {
-	const result = collectPlainLiquidThemeFacts(
+	const result = collectPlainLiquidFacts(
 		"snippets/broken-expression.liquid",
 		"{{ title | default: 'missing }}",
 	);

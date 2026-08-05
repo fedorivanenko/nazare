@@ -6,7 +6,7 @@ export type SourceAnalysisUncertainty = {
 	span?: SourceSpan;
 };
 
-export type JavaScriptSourceOwner = {
+export type SourceJavaScriptOwner = {
 	kind: "function" | "method" | "anonymousFunction" | "module";
 	name?: string;
 	exports: Array<"named" | "default">;
@@ -25,7 +25,7 @@ export type AnalyzedSourceFact = {
 	span?: SourceSpan;
 	extractor?: string;
 	static?: boolean;
-	javaScriptOwner?: JavaScriptSourceOwner;
+	javaScriptOwner?: SourceJavaScriptOwner;
 	transport?: NetworkTransport;
 	endpoint?: string;
 	method?: string;

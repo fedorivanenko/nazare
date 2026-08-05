@@ -3,7 +3,7 @@
 // gallery shows, so a lowering bug is visible here instead of only on a store.
 import {
 	buildPlainLiquid,
-	collectPlainLiquidThemeFacts,
+	collectPlainLiquidFacts,
 	compileArtifact,
 	emitTheme,
 } from "@nazare/compiler/compile";
@@ -122,7 +122,7 @@ export function previewComponentFromSource(
 		// snippet. Both are the author's own statement, and both are already
 		// parsed — reading them is what makes a plain component previewable with
 		// props rather than blank.
-		const { facts } = collectPlainLiquidThemeFacts(file, source);
+		const { facts } = collectPlainLiquidFacts(file, source);
 		return {
 			name,
 			file,

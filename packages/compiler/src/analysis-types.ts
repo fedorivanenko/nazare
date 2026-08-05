@@ -1,6 +1,7 @@
 import type { SourceSpan } from "@nazare/core";
 import type { ThemeEvidenceStrength } from "./evidence-strength.js";
 import type { ThemeFileKind } from "./file-classifier.js";
+import type { SourceJavaScriptOwner } from "./source-analysis-types.js";
 
 /**
  * Stable render-call-site identity: file path plus the render tag's start
@@ -11,7 +12,7 @@ export function renderSiteKey(fromPath: string, span: SourceSpan): string {
 	return `${fromPath}@${span.start.line}:${span.start.column}`;
 }
 
-export type ThemeSourceLanguage =
+export type SourceLanguage =
 	| "nazare-liquid"
 	| "liquid"
 	| "css"
@@ -20,27 +21,19 @@ export type ThemeSourceLanguage =
 	| "asset"
 	| "other";
 
-export type ThemeDomHookKind = "class" | "id" | "attribute";
+export type SourceDomHookKind = "class" | "id" | "attribute";
 
-export type ThemeJavaScriptOwner = {
-	kind: "function" | "method" | "anonymousFunction" | "module";
-	name?: string;
-	exports: Array<"named" | "default">;
-	id: string;
-	span?: SourceSpan;
-};
-
-export type ThemeBehaviorFact = {
+export type SourceBehaviorFact = {
 	kind: "behavior";
 	fromPath: string;
 	name: string;
 	span?: SourceSpan;
 	extractor: string;
-	javaScriptOwner?: ThemeJavaScriptOwner;
+	javaScriptOwner?: SourceJavaScriptOwner;
 } & (
 	| {
 			subjectKind: "domHook";
-			hookKind: ThemeDomHookKind;
+			hookKind: SourceDomHookKind;
 			operation: "emits" | "selects" | "queries" | "mutates";
 	  }
 	| {
@@ -69,16 +62,16 @@ export type ThemeMetafieldOwnerSetting = {
 	  }
 );
 
-export type ThemeFact =
+export type SourceAnalysisFact =
 	| { kind: "file"; path: string; fileKind: ThemeFileKind }
 	| {
 			kind: "sourceAnalysis";
 			path: string;
-			language: ThemeSourceLanguage;
+			language: SourceLanguage;
 			completeness: "complete" | "partial" | "failed";
 			uncertainty: string[];
 	  }
-	| ThemeBehaviorFact
+	| SourceBehaviorFact
 	| { kind: "declaresSection"; path: string; name: string }
 	| { kind: "declaresSnippet"; path: string; name: string }
 	| { kind: "declaresTemplate"; path: string; name: string }

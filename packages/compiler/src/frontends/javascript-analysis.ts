@@ -12,7 +12,7 @@ import { spanFromOffsets } from "../source.js";
 import type {
 	AnalyzedSourceFact,
 	SourceAnalysisUncertainty,
-	JavaScriptSourceOwner as ThemeJavaScriptOwner,
+	SourceJavaScriptOwner,
 } from "../source-analysis-types.js";
 
 export type JavaScriptSourceAnalysis = {
@@ -78,7 +78,7 @@ export function analyzeJavaScriptSource(
 
 	function analyzeCall(
 		call: JavaScriptNode,
-		owner: ThemeJavaScriptOwner,
+		owner: SourceJavaScriptOwner,
 	): void {
 		const callee = asNode(call.callee);
 		if (!callee || callee.type !== "MemberExpression") return;
@@ -201,7 +201,7 @@ export function analyzeJavaScriptSource(
 	function analyzeDatasetAccess(
 		access: JavaScriptNode,
 		parent: JavaScriptNode | undefined,
-		owner: ThemeJavaScriptOwner,
+		owner: SourceJavaScriptOwner,
 	): void {
 		const target = asNode(access.object);
 		if (target?.type !== "MemberExpression" || memberName(target) !== "dataset")
@@ -244,7 +244,7 @@ export function analyzeJavaScriptSource(
 		name: string,
 		operation: "queries" | "mutates",
 		node: JavaScriptNode,
-		javaScriptOwner: ThemeJavaScriptOwner,
+		javaScriptOwner: SourceJavaScriptOwner,
 	): void {
 		facts.push({
 			kind: "behavior",
@@ -263,7 +263,7 @@ export function analyzeJavaScriptSource(
 		operation: "dispatches" | "listens",
 		name: string | undefined,
 		node: JavaScriptNode,
-		javaScriptOwner: ThemeJavaScriptOwner,
+		javaScriptOwner: SourceJavaScriptOwner,
 	): void {
 		if (name === undefined) {
 			pushUncertainty(
@@ -288,7 +288,7 @@ export function analyzeJavaScriptSource(
 	function pushCustomElement(
 		name: string | undefined,
 		node: JavaScriptNode,
-		javaScriptOwner: ThemeJavaScriptOwner,
+		javaScriptOwner: SourceJavaScriptOwner,
 	): void {
 		if (name === undefined) {
 			pushUncertainty(
@@ -310,7 +310,7 @@ export function analyzeJavaScriptSource(
 		});
 	}
 
-	function ownerFor(ancestors: JavaScriptNode[]): ThemeJavaScriptOwner {
+	function ownerFor(ancestors: JavaScriptNode[]): SourceJavaScriptOwner {
 		for (let index = ancestors.length - 1; index >= 0; index -= 1) {
 			const node = ancestors[index];
 			if (!isFunctionNode(node)) continue;
@@ -345,7 +345,7 @@ export function analyzeJavaScriptSource(
 	}
 }
 
-type JavaScriptExportKind = ThemeJavaScriptOwner["exports"][number];
+type JavaScriptExportKind = SourceJavaScriptOwner["exports"][number];
 
 function javaScriptOwnerId(
 	path: string,

@@ -6,7 +6,7 @@ import {
 	liquidSyntaxFacts,
 	parseSourceDocument,
 } from "@nazare/source";
-import { renderSiteKey, type ThemeFact } from "./analysis-types.js";
+import { renderSiteKey, type SourceAnalysisFact } from "./analysis-types.js";
 import type { AuthoredSchema, SettingsRead } from "./ast.js";
 import { checkVanillaSchema } from "./check-vanilla.js";
 import { parseLiquidCrash } from "./diagnostics.js";
@@ -18,16 +18,16 @@ import {
 	validateDependencyName,
 } from "./plain-liquid.js";
 import { spanFromOffsets } from "./source.js";
-import { collectTreeSitterSourceThemeFacts } from "./tree-sitter-liquid-facts.js";
+import { collectTreeSitterSourceFacts } from "./tree-sitter-liquid-facts.js";
 
-export function collectPlainLiquidThemeFacts(
+export function collectPlainLiquidFacts(
 	path: string,
 	contents: string,
 	options: { parseMode: "strict" | "liquid-only" } = {
 		parseMode: "liquid-only",
 	},
 ): {
-	facts: ThemeFact[];
+	facts: SourceAnalysisFact[];
 	issues: Diagnostic[];
 	uncertainty: Array<{ code: string; message: string; span?: SourceSpan }>;
 } {
@@ -44,7 +44,7 @@ export function collectPlainLiquidThemeFacts(
 			? htmlSyntaxIssues(document)
 			: [];
 	const authoritative = syntax.authoritative && htmlIssues.length === 0;
-	const facts: ThemeFact[] = [];
+	const facts: SourceAnalysisFact[] = [];
 	const issues: Diagnostic[] = [...document.issues, ...htmlIssues].map(
 		(issue) =>
 			markDiagnostics(
@@ -139,7 +139,7 @@ export function collectPlainLiquidThemeFacts(
 			span: read.span,
 		});
 	}
-	const sourceResult = collectTreeSitterSourceThemeFacts(
+	const sourceResult = collectTreeSitterSourceFacts(
 		path,
 		contents,
 		syntax,
@@ -169,9 +169,9 @@ function schemaFacts(
 	path: string,
 	schema: AuthoredSchema,
 	issues: Diagnostic[],
-): ThemeFact[] {
+): SourceAnalysisFact[] {
 	const schemaPath = "schema";
-	const facts: ThemeFact[] = [
+	const facts: SourceAnalysisFact[] = [
 		{ kind: "definesSchema", path, schemaPath, span: schema.span },
 	];
 	let parsed: unknown;
@@ -287,7 +287,7 @@ function collectSchemaSettings(
 	value: unknown,
 	blockType: string | undefined,
 	schema: AuthoredSchema,
-	facts: ThemeFact[],
+	facts: SourceAnalysisFact[],
 	issues: Diagnostic[],
 ): void {
 	const owner = blockType ? `block ${blockType}` : "section";

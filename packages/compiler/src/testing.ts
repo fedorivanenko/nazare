@@ -16,7 +16,10 @@ export type {
 	ArtifactSyntaxNode,
 } from "@nazare/core";
 export type {
-	ThemeBehaviorFact,
+	SourceAnalysisFact,
+	SourceBehaviorFact,
+	SourceDomHookKind,
+	SourceLanguage,
 	ThemeBlockInstanceRecord,
 	ThemeBlockRecord,
 	ThemeBlockSettingRecord,
@@ -24,10 +27,7 @@ export type {
 	ThemeCapabilitySignalRecord,
 	ThemeClassificationRecord,
 	ThemeDataAccessRecord,
-	ThemeDomHookKind,
 	ThemeEvidenceRecord,
-	ThemeFact,
-	ThemeJavaScriptOwner,
 	ThemeLocaleKeyRecord,
 	ThemeLocaleReferenceRecord,
 	ThemeLocaleTranslationRecord,
@@ -38,7 +38,6 @@ export type {
 	ThemeRenderArgumentRecord,
 	ThemeSectionInstanceRecord,
 	ThemeSettingReadRecord,
-	ThemeSourceLanguage,
 } from "./analysis-types.js";
 export type {
 	AuthoredSchema,
@@ -167,7 +166,7 @@ export { componentSymbolIdForFile } from "./ids.js";
 // `{% doc %}` @param declarations are the author's own statement of a
 // component's interface, and tooling outside the graph (the preview's controls)
 // needs them for one file at a time.
-export { collectPlainLiquidThemeFacts } from "./liquid-facts.js";
+export { collectPlainLiquidFacts } from "./liquid-facts.js";
 export { mergeArtifactIR } from "./merge.js";
 export {
 	type AtomicOutputCommit,
@@ -262,6 +261,7 @@ export {
 	type ThemeSchemaFromIROptions,
 	themeSchemaFromIR,
 } from "./schema.js";
+export type { SourceJavaScriptOwner } from "./source-analysis-types.js";
 export {
 	assetSourceFrontend,
 	type ClassifiedSourceFile,

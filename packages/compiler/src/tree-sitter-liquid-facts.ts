@@ -1,6 +1,6 @@
 import type { SourceSpan } from "@nazare/core";
 import type { HtmlMarkupFacts, LiquidSyntaxFacts } from "@nazare/source";
-import { renderSiteKey, type ThemeFact } from "./analysis-types.js";
+import { renderSiteKey, type SourceAnalysisFact } from "./analysis-types.js";
 import {
 	LIQUID_GLOBAL_NAMES,
 	lookupCapabilityRules,
@@ -17,18 +17,18 @@ type Binding = {
 };
 
 /** Applies theme semantics to canonical Tree-sitter Liquid facts. */
-export function collectTreeSitterSourceThemeFacts(
+export function collectTreeSitterSourceFacts(
 	path: string,
 	source: string,
 	liquid: LiquidSyntaxFacts,
 	markup?: HtmlMarkupFacts,
 ): {
-	facts: ThemeFact[];
+	facts: SourceAnalysisFact[];
 	issues: [];
 	uncertainty: Array<{ code: string; message: string; span?: SourceSpan }>;
 } {
 	if (!liquid.authoritative) return { facts: [], issues: [], uncertainty: [] };
-	const facts: ThemeFact[] = [];
+	const facts: SourceAnalysisFact[] = [];
 	const uncertainty = (markup?.uncertainty ?? []).map((boundary) => ({
 		code: "THEME_DYNAMIC_MARKUP_HOOK",
 		message: `Dynamic ${boundary.kind} markup prevents complete DOM hook analysis`,
