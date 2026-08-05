@@ -485,8 +485,8 @@ raw argv
 ```
 
 - [x] Parse options once.
-- [ ] Use one `--watch` execution mode for build, inspect, and preview.
-- [ ] Stream revisioned result/update-failed events.
+- [x] Use one revision execution mode for build, inspect, and preview (`--watch` for finite commands; inherent for preview serve).
+- [x] Stream revisioned result/update-failed events.
 - [x] Keep text/JSON/DOT formatting outside compiler.
 - [x] Remove `check` implementation; route alias to build check-only if alias remains.
 - [x] Remove source/graph-server direct compiler plumbing after replacement.

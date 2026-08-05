@@ -159,17 +159,20 @@ export class ShopifyQuerySession {
 	private readonly metadataChanges: AsyncIterator<
 		readonly InputChange<string>[]
 	>;
+	private readonly includeFile: (path: string) => boolean;
 
 	private constructor(
 		session: ProjectSession,
 		files: Map<string, ShopifyQueryInputFile>,
 		metadata: ProjectMetadataInputProvider,
 		externalInputs: Map<ProjectMetadataKey, ProductKey>,
+		includeFile: (path: string) => boolean = () => true,
 	) {
 		this.session = session;
 		this.files = files;
 		this.metadata = metadata;
 		this.externalInputs = externalInputs;
+		this.includeFile = includeFile;
 		this.metadataChanges = metadata.provider
 			.watch?.()
 			[Symbol.asyncIterator]() as AsyncIterator<readonly InputChange<string>[]>;
@@ -220,6 +223,7 @@ export class ShopifyQuerySession {
 	static async open(
 		root: string,
 		externalInputs: ShopifyQueryExternalInputs = {},
+		options: { includeFile?: (path: string) => boolean } = {},
 	): Promise<ShopifyQuerySession> {
 		const metadata = createProjectMetadataInputProvider(externalInputs);
 		const fileHost = createFileSystemProjectHost({
@@ -253,7 +257,17 @@ export class ShopifyQuerySession {
 					entry[1] !== undefined,
 			),
 		);
-		return new ShopifyQuerySession(session, files, metadata, externalValues);
+		return new ShopifyQuerySession(
+			session,
+			files,
+			metadata,
+			externalValues,
+			options.includeFile,
+		);
+	}
+
+	acceptsFile(path: string): boolean {
+		return this.includeFile(path);
 	}
 
 	async buildProducts(
@@ -772,7 +786,9 @@ export class ShopifyQuerySession {
 	}
 
 	private fileIds(): readonly ProjectFileId[] {
-		return this.session.snapshot().fileIds;
+		return this.session
+			.snapshot()
+			.fileIds.filter((file) => this.includeFile(file.path));
 	}
 }
 
