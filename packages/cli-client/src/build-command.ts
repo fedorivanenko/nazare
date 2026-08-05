@@ -5,8 +5,8 @@ import { pathToFileURL } from "node:url";
 import type {
 	NazareComponent,
 	NazareExtensionRegistration,
-	OwnedOutputFile,
-} from "@nazare/compiler";
+} from "@nazare/compiler/extensions";
+import type { OwnedOutputFile } from "@nazare/compiler/output";
 import type { Diagnostic } from "@nazare/core";
 import { collectThemeInputFiles } from "./inspect-input.js";
 import type { CliOptions } from "./options.js";

@@ -19,6 +19,10 @@
 			"types": "./dist/project/index.d.ts",
 			"import": "./dist/project/index.js"
 		},
+		"./extensions": {
+			"types": "./dist/extensions/index.d.ts",
+			"import": "./dist/extensions/index.js"
+		},
 		"./output": {
 			"types": "./dist/output/index.d.ts",
 			"import": "./dist/output/index.js"

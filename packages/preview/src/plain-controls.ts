@@ -10,8 +10,14 @@
 // So this is the same pass as controls.ts against a different declaration
 // source. Nothing here infers an interface from a template's body — an
 // undeclared prop stays undeclared, and the story that needs it says so.
-import type { ThemeFact } from "@nazare/compiler";
 import type { PreviewControl } from "./controls.js";
+
+type PlainControlFact = {
+	kind: string;
+	name?: string;
+	paramType?: string;
+	required?: boolean;
+};
 
 /** `{string}`, `{number}`, `{boolean}` — Shopify's doc types, loosely written. */
 function kindFromDocType(type: string | undefined): PreviewControl["kind"] {
@@ -30,17 +36,21 @@ function kindFromDocType(type: string | undefined): PreviewControl["kind"] {
 }
 
 /** `{% doc %}` `@param` lines — the author's statement of a snippet's props. */
-export function controlsFromDocParams(facts: ThemeFact[]): PreviewControl[] {
+export function controlsFromDocParams(
+	facts: readonly PlainControlFact[],
+): PreviewControl[] {
 	const controls: PreviewControl[] = [];
 	const seen = new Set<string>();
 	for (const fact of facts) {
-		if (fact.kind !== "declaresDocParam" || seen.has(fact.name)) continue;
+		if (fact.kind !== "declaresDocParam" || !fact.name || seen.has(fact.name)) {
+			continue;
+		}
 		seen.add(fact.name);
 		controls.push({
 			name: fact.name,
 			label: fact.name,
 			kind: kindFromDocType(fact.paramType),
-			required: fact.required,
+			required: fact.required ?? false,
 			// `{% doc %}` has no syntax for a default. `[name]` says optional and
 			// nothing more, so there is no default to state — and a prop the
 			// declaration says nothing about renders nil, as it would on a
@@ -161,7 +171,7 @@ export function controlsFromSchemaSource(source: string): PreviewControl[] {
  * two would produce a story that cannot render in either scope.
  */
 export function plainLiquidControls(
-	facts: ThemeFact[],
+	facts: readonly PlainControlFact[],
 	schemaSource?: string,
 ): PreviewControl[] {
 	return schemaSource !== undefined
