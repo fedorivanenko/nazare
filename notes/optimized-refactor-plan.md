@@ -425,7 +425,8 @@ OutputTransaction
 - [x] Compile only reachable source closure.
 - [x] Detect output collisions before writes.
 - [x] Preserve merchant-owned data through explicit owned-path deletion plans.
-- [ ] Preserve schema locks, migrations, locale merge, and build manifest ownership.
+- [x] Preserve build-manifest ownership and reject unowned or merchant-modified output.
+- [ ] Preserve schema locks, migrations, and locale merge.
 - [x] Stage writes and stale owned-file deletions.
 - [x] Atomically publish or roll back output transaction.
 - [x] Keep check-only mode as build without emission.
