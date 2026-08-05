@@ -164,7 +164,7 @@ async function* watchProjectFiles(options: {
 		options.files,
 		await options.discover(),
 	);
-	const queue = createAsyncQueue<void>();
+	const queue = createAsyncSignalQueue();
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const watcher = watchFileSystem(options.root, { recursive: true }, () => {
 		if (timer) clearTimeout(timer);
@@ -174,7 +174,9 @@ async function* watchProjectFiles(options: {
 
 	try {
 		while (true) {
-			await queue.next();
+			// A bounded wait lets AsyncIterator.return() enter this generator's
+			// finally block even when the filesystem is idle.
+			if (!(await queue.next(100))) continue;
 			const current = await fingerprintDiscoveredFiles(
 				options.files,
 				await options.discover(),
@@ -219,34 +221,50 @@ function changePath(change: InputChange<ProjectFileId>): string {
 		: change.key.path;
 }
 
-function createAsyncQueue<Value>(): {
-	push(value?: Value): void;
+function createAsyncSignalQueue(): {
+	push(): void;
 	fail(error: unknown): void;
-	next(): Promise<Value>;
+	next(timeoutMs: number): Promise<boolean>;
 } {
-	const values: Array<{ value: Value }> = [];
+	let queued = 0;
 	const readers: Array<{
-		resolve(value: Value): void;
+		resolve(value: boolean): void;
 		reject(error: unknown): void;
 	}> = [];
 	let failure: unknown;
 
 	return {
-		push(value = undefined as Value) {
+		push() {
 			const reader = readers.shift();
-			if (reader) reader.resolve(value);
-			else values.push({ value });
+			if (reader) reader.resolve(true);
+			else queued++;
 		},
 		fail(error) {
 			failure = error;
 			for (const reader of readers.splice(0)) reader.reject(error);
 		},
-		async next() {
+		async next(timeoutMs) {
 			if (failure) throw failure;
-			const queued = values.shift();
-			if (queued) return queued.value;
-			return new Promise<Value>((resolve, reject) => {
-				readers.push({ resolve, reject });
+			if (queued > 0) {
+				queued--;
+				return true;
+			}
+			return new Promise<boolean>((resolve, reject) => {
+				const reader = { resolve, reject };
+				readers.push(reader);
+				const timeout = setTimeout(() => {
+					const index = readers.indexOf(reader);
+					if (index >= 0) readers.splice(index, 1);
+					resolve(false);
+				}, timeoutMs);
+				reader.resolve = (value) => {
+					clearTimeout(timeout);
+					resolve(value);
+				};
+				reader.reject = (error) => {
+					clearTimeout(timeout);
+					reject(error);
+				};
 			});
 		},
 	};
