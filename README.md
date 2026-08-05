@@ -13,6 +13,9 @@ nazare inspect metafield <id>    # definitions, readers, and affected pages
 nazare preview build [dir]       # static component workbench
 nazare preview check [dir]       # validate and render every authored story
 nazare preview serve [dir]       # revisioned live preview
+nazare build --watch             # revisioned build events
+nazare check --watch             # revisioned check-only events
+nazare inspect theme --watch     # revisioned inspection events
 ```
 
 Project paths come from `nazare.theme.json`; generated output ownership is recorded under `.nazare/` in the output directory. Build publication validates ownership and revisions before atomically replacing files.
@@ -31,7 +34,7 @@ revisioned project inputs
 → revision-guarded atomic publication
 ```
 
-Build, inspect, and preview share revisioned source products but request different projections. Dependency reads automatically create invalidation edges. Pure computations may be cached; filesystem publication and other side effects are never cached.
+Build, inspect, and preview share revisioned source products but request different projections. `build --watch`, `check --watch`, `inspect theme --watch`, and Preview serve publish only current revision `result` or `update-failed` events; superseded work is aborted. Dependency reads automatically create invalidation edges. Pure computations may be cached; filesystem publication and other side effects are never cached.
 
 Stable semantic identity uses project-relative `ProjectFileId` values. Dynamic references and opaque runtime behavior remain explicit uncertainty rather than guessed dependencies.
 
@@ -57,7 +60,7 @@ Stable semantic identity uses project-relative `ProjectFileId` values. Dynamic r
 @nazare/compiler/source-products
 ```
 
-The compiler cannot import targets, Preview, or CLI packages. Architecture tests enforce this direction and forbid production consumers from using the compiler root barrel.
+The compiler cannot import targets, Preview, or CLI packages. Architecture tests enforce this direction. Compiler root exposes direct compile APIs only; architecture consumers use intentional submodules.
 
 ## Development
 
