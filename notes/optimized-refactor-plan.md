@@ -196,9 +196,9 @@ diagnostics.ts
 - [x] Support `AbortSignal` and interactive/background priority.
 - [x] Aggregate product-owned diagnostics and uncertainty.
 - [x] Implement graph update transaction with commit/rollback.
-- [ ] Add cycle diagnostics; allow declared fixed-point/SCC products only.
+- [x] Add cycle diagnostics; allow declared fixed-point/SCC products only.
 - [x] Add typed `ComputationRegistrar` and `CapabilityRegistry`.
-- [ ] Keep target-specific model types inside capability-owned `run()` methods; do not create central build/inspect/preview model unions.
+- [x] Keep target-specific model types inside capability-owned `run()` methods; do not create central build/inspect/preview model unions.
 - [x] Add `NazarePipeline { source, transforms, output }` composition.
 - [x] Register source, transform, and output computations before session execution.
 - [x] Include every pipeline contributor ID/version in cache identity.
