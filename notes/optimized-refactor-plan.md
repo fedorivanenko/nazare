@@ -448,6 +448,7 @@ Failed builds and stale revisions cannot mutate output.
 
 ## Phase 7 — preview products
 
+- [x] Remove direct preview component compilation from old workspace build API.
 - [ ] Define story discovery as products keyed by story file.
 - [ ] Define fixture inputs through providers.
 - [ ] Define preview model by component/story roots.
