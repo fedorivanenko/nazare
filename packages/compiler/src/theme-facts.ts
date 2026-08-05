@@ -6,10 +6,8 @@ import type {
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
 import type { EmitResult } from "./emit.js";
-import type { ThemeCheckPolicyInput } from "./theme-check-policy.js";
 import type { ThemeEvidenceStrength } from "./theme-evidence-strength.js";
 import type { ThemeEvidenceRecord } from "./theme-evidence-types.js";
-import type { ThemeMetafieldSnapshot } from "./theme-external-types.js";
 import type { ThemeFileKind } from "./theme-file-classifier.js";
 
 export interface ThemeInputFile {
@@ -43,10 +41,6 @@ export interface AnalyzeNazareThemeOptions {
 	 * THEME_FILE_EXCLUDED so the graph never omits a file silently.
 	 */
 	exclude?: string[];
-	/** Store schema snapshot from Shopify CLI. Missing snapshot means unknown. */
-	metafields?: ThemeMetafieldSnapshot;
-	/** Shopify Theme Check configuration. */
-	themeCheck?: ThemeCheckPolicyInput;
 	/** Debug-only cadence for canonical index and cold replay validation. */
 	incrementalValidationInterval?: number;
 }

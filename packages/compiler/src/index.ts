@@ -25,7 +25,6 @@ export type {
 	NazarePropsNode,
 	NazareRenderNode,
 	NazareRootMarkerNode,
-	ParseDiagnostic,
 } from "./ast.js";
 export { importSpecifiers } from "./bundle.js";
 export {
@@ -262,15 +261,9 @@ export {
 } from "./symbols.js";
 export { syntaxFromAst } from "./syntax.js";
 export {
-	parseThemeCheckPolicy,
-	type ThemeCheckPolicy,
-	type ThemeCheckPolicyInput,
-} from "./theme-check-policy.js";
-export {
 	strongerThemeEvidence,
 	type ThemeEvidenceStrength,
 } from "./theme-evidence-strength.js";
-export { matchesThemeGlob } from "./theme-exclusions.js";
 export type {
 	AnalyzeNazareThemeOptions,
 	BuildNazareThemeWorkspaceOptions,

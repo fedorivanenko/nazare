@@ -9,9 +9,6 @@ import type {
 } from "@nazare/core";
 import type { HtmlMarkupFacts, LiquidSyntaxFacts } from "@nazare/source";
 
-/** @deprecated Use {@link Diagnostic} from @nazare/core. */
-export type ParseDiagnostic = Diagnostic;
-
 /** {% import Name from "./name.nz.liquid" %} — a component import. */
 export type NazareImportNode = {
 	type: "NazareImport";
