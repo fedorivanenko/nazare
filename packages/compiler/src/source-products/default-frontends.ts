@@ -100,15 +100,16 @@ export const jsonSourceFrontend = defineSourceFrontend({
 	},
 });
 
-export const cssSourceFrontend = analyzedThemeFrontend({
+export const cssSourceFrontend = analyzedSourceFrontend({
 	id: "nazare.source.css",
 	language: "css",
 	accepts: (path) => path.endsWith(".css"),
 	analyze: analyzeCssSource,
 });
 
-export const javaScriptSourceFrontend = analyzedThemeFrontend({
+export const javaScriptSourceFrontend = analyzedSourceFrontend({
 	id: "nazare.source.javascript",
+	version: 2,
 	language: "javascript",
 	accepts: (path) => /\.(?:js|mjs|cjs)$/.test(path),
 	analyze: analyzeJavaScriptSource,
@@ -204,8 +205,9 @@ function sourceDocumentFrontend(input: {
 	});
 }
 
-function analyzedThemeFrontend(input: {
+function analyzedSourceFrontend(input: {
 	id: string;
+	version?: number;
 	language: string;
 	accepts(path: string): boolean;
 	analyze(
@@ -219,7 +221,7 @@ function analyzedThemeFrontend(input: {
 }): SourceFrontend {
 	return defineSourceFrontend({
 		id: input.id,
-		version: 1,
+		version: input.version ?? 1,
 		language: input.language,
 		accepts: (file) => input.accepts(file.id.path),
 		async parse(file) {

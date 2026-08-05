@@ -75,7 +75,7 @@ export const shopifySemanticProducts = {
 	metafields: defineProduct<ProjectFileId, readonly ShopifyMetafieldRead[]>({
 		namespace: "nazare.target.shopify",
 		id: "file-metafield-reads",
-		version: 1,
+		version: 2,
 	}),
 	behavior: defineProduct<ProjectFileId, readonly ShopifyBehavior[]>({
 		namespace: "nazare.target.shopify",
