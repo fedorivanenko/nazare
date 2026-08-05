@@ -19,6 +19,14 @@
 			"types": "./dist/project/index.d.ts",
 			"import": "./dist/project/index.js"
 		},
+		"./output": {
+			"types": "./dist/output/index.d.ts",
+			"import": "./dist/output/index.js"
+		},
+		"./portable": {
+			"types": "./dist/portable/index.d.ts",
+			"import": "./dist/portable/index.js"
+		},
 		"./source-products": {
 			"types": "./dist/source-products/index.d.ts",
 			"import": "./dist/source-products/index.js"

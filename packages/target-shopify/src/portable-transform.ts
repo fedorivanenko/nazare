@@ -1,11 +1,4 @@
 import {
-	type PortableApplicationModel,
-	type PortableApplicationPlan,
-	type PortableRenderEdge,
-	type PortableRenderTree,
-	portableApplicationModel,
-} from "@nazare/compiler";
-import {
 	type ComputationGraph,
 	type ComputationRegistrar,
 	defineComputation,
@@ -13,6 +6,13 @@ import {
 	fingerprintProductKey,
 	jsonComputationCodec,
 } from "@nazare/compiler/computation";
+import {
+	type PortableApplicationModel,
+	type PortableApplicationPlan,
+	type PortableRenderEdge,
+	type PortableRenderTree,
+	portableApplicationModel,
+} from "@nazare/compiler/portable";
 import {
 	type ProjectFileId,
 	serializeProjectFileId,

@@ -1,14 +1,7 @@
 import {
 	type CompiledComponent,
 	compileArtifact,
-	createOwnedOutputPlan,
-	createProtectedOwnedOutputPlan,
-	type ExistingOutputState,
 	emitTheme,
-	type OwnedOutputFile,
-	type OwnedOutputPlan,
-	type PortableApplicationModel,
-	portableApplicationModel,
 } from "@nazare/compiler";
 import {
 	type CapabilityProvider,
@@ -21,6 +14,17 @@ import {
 	jsonComputationCodec,
 	type ProductKey,
 } from "@nazare/compiler/computation";
+import {
+	createOwnedOutputPlan,
+	createProtectedOwnedOutputPlan,
+	type ExistingOutputState,
+	type OwnedOutputFile,
+	type OwnedOutputPlan,
+} from "@nazare/compiler/output";
+import {
+	type PortableApplicationModel,
+	portableApplicationModel,
+} from "@nazare/compiler/portable";
 import {
 	type ProjectFileId,
 	serializeProjectFileId,

@@ -1,6 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import {
+	fingerprintProductKey,
+	type ProductKey,
+} from "@nazare/compiler/computation";
+import {
 	createOwnedOutputPlan,
 	type ExistingOutputState,
 	executeOutputTransaction,
@@ -9,11 +13,7 @@ import {
 	type OwnedOutputFile,
 	type OwnedOutputPlan,
 	readExistingOutputState,
-} from "@nazare/compiler";
-import {
-	fingerprintProductKey,
-	type ProductKey,
-} from "@nazare/compiler/computation";
+} from "@nazare/compiler/output";
 import {
 	createProjectMetadataInputProvider,
 	createProjectSession,
