@@ -1,4 +1,15 @@
 export {
+	registerShopifyBuildComputations,
+	type ShopifyBuildCapability,
+	type ShopifyBuildModel,
+	type ShopifyBuildPlan,
+	type ShopifyBuildScope,
+	type ShopifyEmissionPlan,
+	shopifyBuildCapability,
+	shopifyBuildOutput,
+	shopifyBuildProducts,
+} from "./build-products.js";
+export {
 	registerShopifyPortableTransform,
 	shopifyPortableTransform,
 } from "./portable-transform.js";

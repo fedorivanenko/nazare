@@ -166,7 +166,10 @@ function portableModel(
 					]
 				: [],
 		),
-		diagnostics: records.flatMap((record) => record.schema.diagnostics),
+		diagnostics: records.flatMap((record) => [
+			...record.parsed.diagnostics,
+			...record.schema.diagnostics,
+		]),
 		uncertainty: records.flatMap((record) =>
 			record.parsed.uncertainty.map((boundary) => ({
 				code: boundary.code,

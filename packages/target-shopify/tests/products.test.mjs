@@ -19,6 +19,8 @@ import {
 } from "@nazare/compiler";
 import {
 	classifyShopifyFile,
+	shopifyBuildOutput,
+	shopifyBuildProducts,
 	shopifyGraphProducts,
 	shopifyPortableTransform,
 	shopifyProducts,
@@ -677,6 +679,103 @@ test("project-model queries preserve evidence and uncertainty", async () => {
 	assert.deepEqual(result.uncertainty, [
 		"Dynamic references prevent complete classification",
 	]);
+});
+
+test("build products preserve scopes and compile only reachable closure", async () => {
+	let parseCalls = 0;
+	const defaults = createDefaultSourceFrontendRegistry();
+	const frontends = createSourceFrontendRegistry(
+		defaults.frontends.map((frontend) => ({
+			...frontend,
+			async parse(file, context) {
+				parseCalls += 1;
+				return frontend.parse(file, context);
+			},
+		})),
+	);
+	const session = await targetSession(
+		{
+			"templates/index.liquid": "{% render 'card' %}",
+			"snippets/card.liquid": "<span>Card</span>",
+			"snippets/unused.liquid": "<span>Unused</span>",
+		},
+		frontends,
+	);
+	shopifyBuildOutput().registerComputations(session.graph);
+	const plan = {
+		scope: { kind: "closure", root: id("templates/index.liquid") },
+		files: session.snapshot().fileIds,
+		emitOnError: false,
+		checkOnly: false,
+		previouslyOwnedPaths: [],
+	};
+	const model = await session.get(shopifyBuildProducts.model.product(plan));
+	const emission = await session.get(
+		shopifyBuildProducts.emission.product(plan),
+	);
+
+	assert.deepEqual(
+		model.files.map((file) => file.path),
+		["snippets/card.liquid", "templates/index.liquid"],
+	);
+	assert.deepEqual(
+		emission.files.map((file) => file.path),
+		["snippets/card.liquid", "templates/index.liquid"],
+	);
+	const checkOnly = await session.get(
+		shopifyBuildProducts.emission.product({ ...plan, checkOnly: true }),
+	);
+	assert.deepEqual(checkOnly.files, []);
+	assert.equal(parseCalls, 2);
+});
+
+test("build emission stops on diagnostics unless explicitly allowed", async () => {
+	const session = await targetSession({
+		"components/broken.nz.liquid": "{% component snippet %}\n{% render",
+	});
+	shopifyBuildOutput().registerComputations(session.graph);
+	const plan = {
+		scope: { kind: "workspace" },
+		files: session.snapshot().fileIds,
+		emitOnError: false,
+		checkOnly: false,
+		previouslyOwnedPaths: [],
+	};
+	const emission = await session.get(
+		shopifyBuildProducts.emission.product(plan),
+	);
+	assert.equal(
+		emission.diagnostics.some((diagnostic) => diagnostic.severity === "error"),
+		true,
+	);
+	assert.deepEqual(emission.files, []);
+});
+
+test("build owned-output products detect generated path collisions", async () => {
+	const session = await targetSession({
+		"components/card.nz.liquid":
+			'{% component snippet %}\n<div class="card">Card</div>',
+		"snippets/card.liquid": "<span>Existing</span>",
+	});
+	shopifyBuildOutput().registerComputations(session.graph);
+	const plan = {
+		scope: { kind: "workspace" },
+		files: session.snapshot().fileIds,
+		emitOnError: false,
+		checkOnly: false,
+		previouslyOwnedPaths: ["assets/stale.js"],
+	};
+	const output = await session.get(
+		shopifyBuildProducts.ownedOutput.product(plan),
+	);
+
+	assert.equal(
+		output.diagnostics.some(
+			(diagnostic) => diagnostic.code === "OUTPUT_PATH_COLLISION",
+		),
+		true,
+	);
+	assert.deepEqual(output.deletes, ["assets/stale.js"]);
 });
 
 test("target facts retain stable source ownership", async () => {

@@ -420,15 +420,15 @@ OutputTransaction
 
 - [x] Add validated `OwnedOutputPlan` collision and stale-owned deletion planning.
 - [x] Add revision-guarded `AtomicOutputStore` transaction contract.
-- [ ] Preserve build scopes as analysis roots: workspace, closure, file, files.
-- [ ] Compile only reachable source closure.
-- [ ] Detect output collisions before writes.
-- [ ] Preserve merchant-owned data.
+- [x] Preserve build scopes as analysis roots: workspace, closure, file, files.
+- [x] Compile only reachable source closure.
+- [x] Detect output collisions before writes.
+- [x] Preserve merchant-owned data through explicit owned-path deletion plans.
 - [ ] Preserve schema locks, migrations, locale merge, and build manifest ownership.
 - [ ] Stage writes and stale owned-file deletions.
 - [ ] Atomically commit output transaction.
-- [ ] Keep check-only mode as build without emission.
-- [ ] Prevent obsolete revisions from committing output.
+- [x] Keep check-only mode as build without emission.
+- [x] Prevent obsolete revisions from committing output.
 - [ ] Delete `ThemeBuildSession` compatibility subclass and old workspace build API.
 
 Exit gate:
