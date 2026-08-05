@@ -7,10 +7,12 @@ import {
 	defineProduct,
 	fingerprintProductKey,
 	jsonComputationCodec,
-	type ProjectFileId,
+} from "@nazare/compiler/computation";
+import type { ProjectFileId } from "@nazare/compiler/project";
+import {
 	type SourceFact,
 	sourceProducts,
-} from "@nazare/compiler";
+} from "@nazare/compiler/source-products";
 import { registerShopifyQueryComputations } from "./query-products.js";
 import { registerShopifyGraphComputations } from "./render-graph.js";
 import { registerShopifyResolutionComputations } from "./resolution.js";

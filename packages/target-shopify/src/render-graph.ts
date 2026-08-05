@@ -4,9 +4,11 @@ import {
 	defineProduct,
 	fingerprintProductKey,
 	jsonComputationCodec,
+} from "@nazare/compiler/computation";
+import {
 	type ProjectFileId,
 	serializeProjectFileId,
-} from "@nazare/compiler";
+} from "@nazare/compiler/project";
 import type { Diagnostic } from "@nazare/core";
 import {
 	type ShopifyDataRead,

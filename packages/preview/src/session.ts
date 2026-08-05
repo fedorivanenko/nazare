@@ -1,13 +1,15 @@
 import {
-	createDefaultSourceFrontendRegistry,
 	createFileSystemProjectHost,
 	createProjectSession,
-	createSourceProductRegistrar,
 	type ProjectFileId,
 	type ProjectSession,
 	type ProjectSessionUpdate,
 	projectFileId,
-} from "@nazare/compiler";
+} from "@nazare/compiler/project";
+import {
+	createDefaultSourceFrontendRegistry,
+	createSourceProductRegistrar,
+} from "@nazare/compiler/source-products";
 import {
 	createPreviewProductRegistrar,
 	type PreviewModel,

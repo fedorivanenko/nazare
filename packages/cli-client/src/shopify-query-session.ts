@@ -1,30 +1,36 @@
 import { readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import {
-	createDefaultSourceFrontendRegistry,
 	createOwnedOutputPlan,
-	createProjectMetadataInputProvider,
-	createProjectSession,
-	createSourceProductRegistrar,
-	defineInputProvider,
-	defineProjectHost,
 	type ExistingOutputState,
 	executeOutputTransaction,
 	FileSystemAtomicOutputStore,
-	fingerprintProductKey,
-	type InputChange,
 	OutputPlanValidationError,
 	type OwnedOutputFile,
 	type OwnedOutputPlan,
-	PROJECT_METADATA_KEYS,
+	readExistingOutputState,
+} from "@nazare/compiler";
+import {
+	fingerprintProductKey,
 	type ProductKey,
+} from "@nazare/compiler/computation";
+import {
+	createProjectMetadataInputProvider,
+	createProjectSession,
+	defineInputProvider,
+	defineProjectHost,
+	type InputChange,
+	PROJECT_METADATA_KEYS,
 	type ProjectFileId,
 	type ProjectMetadataInputProvider,
 	type ProjectMetadataKey,
 	type ProjectSession,
 	projectFileId,
-	readExistingOutputState,
-} from "@nazare/compiler";
+} from "@nazare/compiler/project";
+import {
+	createDefaultSourceFrontendRegistry,
+	createSourceProductRegistrar,
+} from "@nazare/compiler/source-products";
 import type { Diagnostic } from "@nazare/core";
 import {
 	parseShopifyMigrations,

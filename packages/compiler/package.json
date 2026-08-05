@@ -10,6 +10,18 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
+		},
+		"./computation": {
+			"types": "./dist/computation/index.d.ts",
+			"import": "./dist/computation/index.js"
+		},
+		"./project": {
+			"types": "./dist/project/index.d.ts",
+			"import": "./dist/project/index.js"
+		},
+		"./source-products": {
+			"types": "./dist/source-products/index.d.ts",
+			"import": "./dist/source-products/index.js"
 		}
 	},
 	"scripts": {

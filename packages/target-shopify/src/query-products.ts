@@ -4,9 +4,11 @@ import {
 	defineComputation,
 	defineProduct,
 	jsonComputationCodec,
+} from "@nazare/compiler/computation";
+import {
 	type ProjectFileId,
 	serializeProjectFileId,
-} from "@nazare/compiler";
+} from "@nazare/compiler/project";
 import {
 	type ShopifyBehavior,
 	type ShopifyDeclaration,

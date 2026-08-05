@@ -1,28 +1,34 @@
 import {
-	type CapabilityProvider,
 	type CompiledComponent,
-	type ComputationContext,
-	type ComputationGraph,
 	compileArtifact,
 	createOwnedOutputPlan,
 	createProtectedOwnedOutputPlan,
+	type ExistingOutputState,
+	emitTheme,
+	type OwnedOutputFile,
+	type OwnedOutputPlan,
+	type PortableApplicationModel,
+	portableApplicationModel,
+} from "@nazare/compiler";
+import {
+	type CapabilityProvider,
+	type ComputationContext,
+	type ComputationGraph,
 	defineCapability,
 	defineCapabilityProvider,
 	defineComputation,
 	defineProduct,
-	type ExistingOutputState,
-	emitTheme,
 	jsonComputationCodec,
-	type OwnedOutputFile,
-	type OwnedOutputPlan,
-	type PortableApplicationModel,
 	type ProductKey,
+} from "@nazare/compiler/computation";
+import {
 	type ProjectFileId,
-	portableApplicationModel,
-	type SourceFact,
 	serializeProjectFileId,
+} from "@nazare/compiler/project";
+import {
+	type SourceFact,
 	sourceProducts,
-} from "@nazare/compiler";
+} from "@nazare/compiler/source-products";
 import type { Diagnostic } from "@nazare/core";
 import { shopifyProducts } from "./products.js";
 import {

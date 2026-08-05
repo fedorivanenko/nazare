@@ -5,10 +5,12 @@ import {
 	fingerprintProductKey,
 	jsonComputationCodec,
 	type ProductKey,
-	type ProjectFileId,
+} from "@nazare/compiler/computation";
+import type { ProjectFileId } from "@nazare/compiler/project";
+import {
 	type SourceFact,
 	sourceProducts,
-} from "@nazare/compiler";
+} from "@nazare/compiler/source-products";
 import type { Diagnostic } from "@nazare/core";
 import {
 	type ShopifyBehavior,

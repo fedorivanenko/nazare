@@ -5,10 +5,9 @@ import {
 	defineComputationRegistrar,
 	defineProduct,
 	jsonComputationCodec,
-	type ProjectFileId,
-	projectFileId,
-	sourceProducts,
-} from "@nazare/compiler";
+} from "@nazare/compiler/computation";
+import { type ProjectFileId, projectFileId } from "@nazare/compiler/project";
+import { sourceProducts } from "@nazare/compiler/source-products";
 import type { Diagnostic, NazareManifestStory } from "@nazare/core";
 import {
 	type PreviewComponent,

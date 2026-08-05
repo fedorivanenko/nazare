@@ -1,20 +1,26 @@
 import {
+	type PortableApplicationModel,
+	type PortableApplicationPlan,
+	type PortableRenderEdge,
+	type PortableRenderTree,
+	portableApplicationModel,
+} from "@nazare/compiler";
+import {
 	type ComputationGraph,
 	type ComputationRegistrar,
 	defineComputation,
 	defineComputationRegistrar,
 	fingerprintProductKey,
 	jsonComputationCodec,
-	type ParsedSourceFile,
-	type PortableApplicationModel,
-	type PortableApplicationPlan,
-	type PortableRenderEdge,
-	type PortableRenderTree,
+} from "@nazare/compiler/computation";
+import {
 	type ProjectFileId,
-	portableApplicationModel,
 	serializeProjectFileId,
+} from "@nazare/compiler/project";
+import {
+	type ParsedSourceFile,
 	sourceProducts,
-} from "@nazare/compiler";
+} from "@nazare/compiler/source-products";
 import {
 	type ShopifyDeclaration,
 	type ShopifyFileClassification,

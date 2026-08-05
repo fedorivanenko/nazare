@@ -6,11 +6,13 @@ import {
 	defineComputation,
 	defineProduct,
 	jsonComputationCodec,
+} from "@nazare/compiler/computation";
+import {
 	normalizeProjectPath,
 	type ProjectFileId,
 	projectFileId,
 	serializeProjectFileId,
-} from "@nazare/compiler";
+} from "@nazare/compiler/project";
 import type { Diagnostic } from "@nazare/core";
 import {
 	type ShopifyDeclaration,
