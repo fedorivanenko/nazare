@@ -326,7 +326,7 @@ Do not mechanically move generic scheduler/store utilities; rename and retain th
 - [x] Register per-file target fact products.
 - [x] Register per-file declarations and references.
 - [x] Adapt declaration, reference, and resolution passes into computation products.
-- [ ] Adapt remaining incremental passes into computation products.
+- [x] Adapt remaining incremental passes into computation products.
 - [x] Partition records by stable owner/source IDs.
 - [x] Model render resolution and data flow through SCC-local products.
 - [x] Preserve explicit convergence budgets and product-owned diagnostics.
@@ -503,7 +503,7 @@ CLI only knows typed requests, capabilities, sessions, and events.
 - [ ] Replace `packages/compiler/src/index.ts` giant barrel with intentional public modules.
 - [x] Delete old theme workspace/session/computation/build exports.
 - [x] Delete old caches superseded by computation cache.
-- [ ] Delete duplicate path, diagnostic, and graph stores.
+- [x] Delete duplicate path, diagnostic, and graph stores.
 - [ ] Remove deprecated aliases and compatibility classes.
 - [ ] Rename remaining generic `theme-*` files to domain-neutral names.
 - [x] Verify package dependency direction.

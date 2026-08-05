@@ -15,11 +15,7 @@ import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 // Types only: erased at build, so naming the compiler here costs nothing at
 // runtime. Its values are loaded by the commands that need them — see below.
-import type {
-	compileNazareArtifact,
-	ThemeInputFile,
-	ThemeMetafieldIdentity,
-} from "@nazare/compiler";
+import type { compileNazareArtifact, ThemeInputFile } from "@nazare/compiler";
 import {
 	collectThemeInputFiles,
 	isMissingFileError,
@@ -677,7 +673,13 @@ function inspectQueryFormat(
 	return format;
 }
 
-function parseMetafieldIdentity(identifier: string): ThemeMetafieldIdentity {
+type MetafieldIdentity = {
+	owner: string;
+	namespace: string;
+	key: string;
+};
+
+function parseMetafieldIdentity(identifier: string): MetafieldIdentity {
 	const parts = identifier.split(".");
 	if (
 		parts.length !== 3 ||
