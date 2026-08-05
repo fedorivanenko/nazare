@@ -154,8 +154,13 @@ export async function main(
 		}
 
 		if (command === "build" || command === "check") {
-			const { runThemeBuild } = await import("./build-command.js");
-			return await runThemeBuild(
+			const { runThemeBuild, runThemeBuildWatch } = await import(
+				"./build-command.js"
+			);
+			const executeBuild = cliOptions.watch
+				? runThemeBuildWatch
+				: runThemeBuild;
+			return await executeBuild(
 				projectRoot,
 				cliOptions.positionals[0],
 				cliOptions,

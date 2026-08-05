@@ -154,41 +154,57 @@ export function diffProjectFileSnapshots(
 	);
 }
 
-async function* watchProjectFiles(options: {
+function watchProjectFiles(options: {
 	root: string;
 	files: ProjectHost<ProjectFileId, ProjectFile>["files"];
 	discover(): Promise<readonly ProjectFileId[]>;
 	debounceMs: number;
 }): AsyncIterable<readonly InputChange<ProjectFileId>[]> {
-	let previous = await fingerprintDiscoveredFiles(
-		options.files,
-		await options.discover(),
-	);
-	const queue = createAsyncSignalQueue();
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	const watcher = watchFileSystem(options.root, { recursive: true }, () => {
-		if (timer) clearTimeout(timer);
-		timer = setTimeout(() => queue.push(), options.debounceMs);
-	});
-	watcher.on("error", (error) => queue.fail(error));
-
-	try {
-		while (true) {
-			// A bounded wait lets AsyncIterator.return() enter this generator's
-			// finally block even when the filesystem is idle.
-			if (!(await queue.next(100))) continue;
-			const current = await fingerprintDiscoveredFiles(
-				options.files,
-				await options.discover(),
-			);
-			const changes = diffProjectFileSnapshots(previous, current);
-			previous = current;
-			if (changes.length > 0) yield changes;
-		}
-	} finally {
-		if (timer) clearTimeout(timer);
-		watcher.close();
-	}
+	return {
+		[Symbol.asyncIterator]() {
+			let previous = options
+				.discover()
+				.then((ids) => fingerprintDiscoveredFiles(options.files, ids));
+			const queue = createAsyncSignalQueue();
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			let closed = false;
+			const watcher = watchFileSystem(options.root, { recursive: true }, () => {
+				if (timer) clearTimeout(timer);
+				timer = setTimeout(() => queue.push(), options.debounceMs);
+			});
+			watcher.on("error", (error) => queue.fail(error));
+			const close = (): void => {
+				if (closed) return;
+				closed = true;
+				if (timer) clearTimeout(timer);
+				watcher.close();
+			};
+			return {
+				async next(): Promise<
+					IteratorResult<readonly InputChange<ProjectFileId>[]>
+				> {
+					while (!closed) {
+						if (!(await queue.next(100))) continue;
+						if (closed) break;
+						const current = await fingerprintDiscoveredFiles(
+							options.files,
+							await options.discover(),
+						);
+						const changes = diffProjectFileSnapshots(await previous, current);
+						previous = Promise.resolve(current);
+						if (changes.length > 0) return { done: false, value: changes };
+					}
+					return { done: true, value: undefined };
+				},
+				return(): Promise<
+					IteratorResult<readonly InputChange<ProjectFileId>[]>
+				> {
+					close();
+					return Promise.resolve({ done: true, value: undefined });
+				},
+			};
+		},
+	};
 }
 
 async function fingerprintDiscoveredFiles(

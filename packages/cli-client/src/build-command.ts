@@ -12,6 +12,10 @@ import { collectThemeInputFiles } from "./inspect-input.js";
 import type { CliOptions } from "./options.js";
 import type { Output } from "./output.js";
 import {
+	executeRevisionUpdates,
+	type RevisionedExecutionEvent,
+} from "./revision-execution.js";
+import {
 	type ShopifyBuildProductsResult,
 	ShopifyQuerySession,
 } from "./shopify-query-session.js";
@@ -92,7 +96,11 @@ export async function runThemeBuild(
 	target: string | undefined,
 	cliOptions: CliOptions,
 	output: Output = console,
-	mode: { checkOnly?: boolean } = {},
+	mode: {
+		checkOnly?: boolean;
+		session?: ShopifyQuerySession;
+		throwOnFailure?: boolean;
+	} = {},
 ): Promise<number> {
 	try {
 		// Both paths are explicit: an explicit CLI flag/positional wins, else the
@@ -148,7 +156,7 @@ export async function runThemeBuild(
 			? dirname(sourceRootAbsolute)
 			: sourceRootAbsolute;
 		const inputs = await collectThemeInputFiles(analysisRoot, projectRoot);
-		const session = await ShopifyQuerySession.create(inputs);
+		const session = mode.session ?? (await ShopifyQuerySession.create(inputs));
 		const request = {
 			scope: sourceRootStat.isFile()
 				? {
@@ -208,9 +216,157 @@ export async function runThemeBuild(
 		}
 		return hasErrors(result.issues) || result.conflicts.length > 0 ? 1 : 0;
 	} catch (error) {
+		if (mode.throwOnFailure) throw error;
 		output.error(error instanceof Error ? error.message : String(error));
 		return 1;
 	}
+}
+
+export async function runThemeBuildWatch(
+	projectRoot: string,
+	target: string | undefined,
+	cliOptions: CliOptions,
+	output: Output = console,
+	mode: { checkOnly?: boolean; signal?: AbortSignal } = {},
+): Promise<number> {
+	const config = await readProjectConfig(projectRoot);
+	const sourceRoot =
+		target ?? cliOptions.sourceRoot ?? config.build?.sourceRoot;
+	if (!sourceRoot) {
+		throw new Error(
+			'No source root. Pass it as a positional argument or set "build.sourceRoot" in nazare.theme.json.',
+		);
+	}
+	const sourceRootAbsolute = resolve(projectRoot, sourceRoot);
+	const sourceRootStat = await stat(sourceRootAbsolute);
+	const analysisRoot = sourceRootStat.isFile()
+		? dirname(sourceRootAbsolute)
+		: sourceRootAbsolute;
+	const session = await ShopifyQuerySession.open(analysisRoot);
+	const controller = new AbortController();
+	const abortFromCaller = () => controller.abort(mode.signal?.reason);
+	mode.signal?.addEventListener("abort", abortFromCaller, { once: true });
+	if (mode.signal?.aborted) abortFromCaller();
+	let latestCode = 0;
+	const execute = async (
+		pullData: boolean,
+	): Promise<CapturedBuildExecution> => {
+		const captured = captureOutput();
+		const code = await runThemeBuild(
+			projectRoot,
+			target,
+			{ ...cliOptions, watch: false, pullData },
+			captured.output,
+			{
+				checkOnly: mode.checkOnly,
+				session,
+				throwOnFailure: true,
+			},
+		);
+		return { code, errors: captured.errors, logs: captured.logs };
+	};
+	const publish = (
+		event: RevisionedExecutionEvent<CapturedBuildExecution>,
+	): void => {
+		if (event.type === "update-failed") {
+			latestCode = 1;
+			if (cliOptions.json) {
+				output.log(
+					JSON.stringify({
+						type: event.type,
+						revision: event.revision,
+						durationMs: event.durationMs,
+						error:
+							event.error instanceof Error
+								? event.error.message
+								: String(event.error),
+					}),
+				);
+			} else {
+				output.error(
+					`update-failed revision ${event.revision}: ${event.error instanceof Error ? event.error.message : String(event.error)}`,
+				);
+			}
+			return;
+		}
+		latestCode = event.result.code;
+		if (cliOptions.json) {
+			output.log(JSON.stringify(event));
+			return;
+		}
+		for (const message of event.result.logs) output.log(message);
+		for (const message of event.result.errors) output.error(message);
+		output.log(
+			`result revision ${event.revision} in ${Math.round(event.durationMs)}ms`,
+		);
+	};
+
+	const initialStarted = performance.now();
+	try {
+		const result = await execute(cliOptions.pullData ?? false);
+		publish({
+			type: "result",
+			revision: session.session.snapshot().revision,
+			durationMs: performance.now() - initialStarted,
+			result,
+		});
+	} catch (error) {
+		publish({
+			type: "update-failed",
+			revision: session.session.snapshot().revision,
+			durationMs: performance.now() - initialStarted,
+			error,
+		});
+	}
+
+	const shutdown = () => controller.abort("Build watch stopped");
+	process.once("SIGINT", shutdown);
+	process.once("SIGTERM", shutdown);
+	try {
+		await executeRevisionUpdates({
+			updates: session.session.watch(),
+			revision(update) {
+				if (!update.committed) {
+					for (const diagnostic of update.diagnostics) {
+						output.error(`${diagnostic.code}: ${diagnostic.message}`);
+					}
+					return undefined;
+				}
+				return update.revision;
+			},
+			run: () => execute(false),
+			onEvent: publish,
+			signal: controller.signal,
+		});
+	} finally {
+		process.removeListener("SIGINT", shutdown);
+		process.removeListener("SIGTERM", shutdown);
+		mode.signal?.removeEventListener("abort", abortFromCaller);
+	}
+	return latestCode;
+}
+
+type CapturedBuildExecution = {
+	code: number;
+	logs: string[];
+	errors: string[];
+};
+
+function captureOutput(): {
+	output: Output;
+	logs: string[];
+	errors: string[];
+} {
+	const logs: string[] = [];
+	const errors: string[] = [];
+	return {
+		logs,
+		errors,
+		output: {
+			log: (...values) => logs.push(values.map(String).join(" ")),
+			error: (...values) => errors.push(values.map(String).join(" ")),
+		},
+	};
 }
 
 async function loadExtensions(

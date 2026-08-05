@@ -1,29 +1,52 @@
-export async function* mergeAsyncIterables<Value>(
+export function mergeAsyncIterables<Value>(
 	iterables: readonly AsyncIterable<Value>[],
 ): AsyncIterable<Value> {
-	if (iterables.length === 0) return;
-	const iterators = iterables.map((iterable) =>
-		iterable[Symbol.asyncIterator](),
-	);
-	const pending = new Map<number, Promise<IteratorEvent<Value>>>();
-	for (let index = 0; index < iterators.length; index++) {
-		pending.set(index, readNext(iterators[index], index));
-	}
-
-	try {
-		while (pending.size > 0) {
-			const event = await Promise.race(pending.values());
-			if (event.kind === "error") throw event.error;
-			if (event.result.done) {
-				pending.delete(event.index);
-				continue;
+	return {
+		[Symbol.asyncIterator]() {
+			const iterators = iterables.map((iterable) =>
+				iterable[Symbol.asyncIterator](),
+			);
+			const pending = new Map<number, Promise<IteratorEvent<Value>>>();
+			let closed = false;
+			for (let index = 0; index < iterators.length; index++) {
+				pending.set(index, readNext(iterators[index], index));
 			}
-			pending.set(event.index, readNext(iterators[event.index], event.index));
-			yield event.result.value;
-		}
-	} finally {
-		await Promise.allSettled(iterators.map((iterator) => iterator.return?.()));
-	}
+			const close = async (): Promise<void> => {
+				if (closed) return;
+				closed = true;
+				pending.clear();
+				await Promise.allSettled(
+					iterators.map((iterator) => iterator.return?.()),
+				);
+			};
+			return {
+				async next(): Promise<IteratorResult<Value>> {
+					while (!closed && pending.size > 0) {
+						const event = await Promise.race(pending.values());
+						if (closed) break;
+						if (event.kind === "error") {
+							await close();
+							throw event.error;
+						}
+						if (event.result.done) {
+							pending.delete(event.index);
+							continue;
+						}
+						pending.set(
+							event.index,
+							readNext(iterators[event.index], event.index),
+						);
+						return { done: false, value: event.result.value };
+					}
+					return { done: true, value: undefined };
+				},
+				async return(): Promise<IteratorResult<Value>> {
+					await close();
+					return { done: true, value: undefined };
+				},
+			};
+		},
+	};
 }
 
 type IteratorEvent<Value> =

@@ -257,7 +257,7 @@ export async function createProjectSession(input: {
 			return graph.get(product, { ...options, revision: graph.revision });
 		},
 		apply,
-		async *watch() {
+		watch() {
 			const watchers: AsyncIterable<ProjectChangeBatch>[] = [];
 			if (input.host.watchFiles) {
 				watchers.push(mapFileChanges(input.host.watchFiles()));
@@ -269,9 +269,23 @@ export async function createProjectSession(input: {
 					);
 				}
 			}
-			for await (const batch of mergeAsyncIterables(watchers)) {
-				yield await apply(batch);
-			}
+			return {
+				[Symbol.asyncIterator]() {
+					const batches = mergeAsyncIterables(watchers)[Symbol.asyncIterator]();
+					return {
+						async next(): Promise<IteratorResult<ProjectSessionUpdate>> {
+							const item = await batches.next();
+							return item.done
+								? { done: true, value: undefined }
+								: { done: false, value: await apply(item.value) };
+						},
+						async return(): Promise<IteratorResult<ProjectSessionUpdate>> {
+							await batches.return?.();
+							return { done: true, value: undefined };
+						},
+					};
+				},
+			};
 		},
 	};
 }
@@ -375,17 +389,42 @@ function hasErrors(diagnostics: readonly Diagnostic[]): boolean {
 	return diagnostics.some((diagnostic) => diagnostic.severity === "error");
 }
 
-async function* mapFileChanges(
+function mapFileChanges(
 	changes: AsyncIterable<readonly InputChange<ProjectFileId>[]>,
 ): AsyncIterable<ProjectChangeBatch> {
-	for await (const batch of changes) yield { kind: "files", changes: batch };
+	return mapChanges(changes, (batch) => ({ kind: "files", changes: batch }));
 }
 
-async function* mapExternalChanges(
+function mapExternalChanges(
 	providerId: string,
 	changes: AsyncIterable<readonly InputChange<string>[]>,
 ): AsyncIterable<ProjectChangeBatch> {
-	for await (const batch of changes) {
-		yield { kind: "external", providerId, changes: batch };
-	}
+	return mapChanges(changes, (batch) => ({
+		kind: "external",
+		providerId,
+		changes: batch,
+	}));
+}
+
+function mapChanges<Input, Output>(
+	values: AsyncIterable<Input>,
+	map: (value: Input) => Output,
+): AsyncIterable<Output> {
+	return {
+		[Symbol.asyncIterator]() {
+			const iterator = values[Symbol.asyncIterator]();
+			return {
+				async next(): Promise<IteratorResult<Output>> {
+					const item = await iterator.next();
+					return item.done
+						? { done: true, value: undefined }
+						: { done: false, value: map(item.value) };
+				},
+				async return(): Promise<IteratorResult<Output>> {
+					await iterator.return?.();
+					return { done: true, value: undefined };
+				},
+			};
+		},
+	};
 }

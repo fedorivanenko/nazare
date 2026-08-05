@@ -35,6 +35,7 @@ export type CliOptions = {
 	store?: string;
 	theme?: string;
 	json?: boolean;
+	watch?: boolean;
 	format?: string;
 	/** preview serve: the port to listen on. */
 	port?: string;
@@ -149,6 +150,10 @@ export function parseCliOptions(args: string[]): CliOptions {
 			options.json = true;
 			continue;
 		}
+		if (arg === "--watch") {
+			options.watch = true;
+			continue;
+		}
 		if (arg.startsWith("--")) {
 			throw new Error(`Unknown option ${arg}`);
 		}
@@ -238,6 +243,7 @@ Options:
   --store <domain>                   build --pull-data: Shopify store to pull from
   --theme <id|name>                  build --pull-data: theme to pull from
   --json                             build: print the raw result as JSON
+  --watch                            build/check/inspect: stream revision results on changes
   --port <number>                    preview serve: port to listen on (default 4173)
   --as <name>                        preview fixtures pull: fixture name (default product)
   --format json|text|dot             source analyze requires JSON; inspect theme also supports text/dot
