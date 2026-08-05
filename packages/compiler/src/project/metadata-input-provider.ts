@@ -38,17 +38,23 @@ export function createProjectMetadataInputProvider(
 			(entry): entry is [string, ProductKey] => entry[1] !== undefined,
 		),
 	);
-	const batches: Array<readonly InputChange<string>[]> = [];
-	const waiters: Array<
-		(value: IteratorResult<readonly InputChange<string>[]>) => void
-	> = [];
+	type Subscriber = {
+		batches: Array<readonly InputChange<string>[]>;
+		waiter?: (value: IteratorResult<readonly InputChange<string>[]>) => void;
+		closed: boolean;
+	};
+	const subscribers = new Set<Subscriber>();
 	let closed = false;
 
 	const emit = (change: InputChange<string>): void => {
 		if (closed) throw new Error("Project metadata input provider is closed");
-		const waiter = waiters.shift();
-		if (waiter) waiter({ done: false, value: [change] });
-		else batches.push([change]);
+		for (const subscriber of subscribers) {
+			if (subscriber.waiter) {
+				const waiter = subscriber.waiter;
+				subscriber.waiter = undefined;
+				waiter({ done: false, value: [change] });
+			} else subscriber.batches.push([change]);
+		}
 	};
 
 	const provider = defineInputProvider<string, ProductKey>({
@@ -63,16 +69,32 @@ export function createProjectMetadataInputProvider(
 		watch() {
 			return {
 				[Symbol.asyncIterator]() {
+					const subscriber: Subscriber = {
+						batches: [],
+						closed,
+					};
+					subscribers.add(subscriber);
+					const finish = (): IteratorResult<
+						readonly InputChange<string>[]
+					> => ({
+						done: true,
+						value: undefined,
+					});
 					return {
 						next(): Promise<IteratorResult<readonly InputChange<string>[]>> {
-							const batch = batches.shift();
+							const batch = subscriber.batches.shift();
 							if (batch) return Promise.resolve({ done: false, value: batch });
-							if (closed)
-								return Promise.resolve({ done: true, value: undefined });
-							return new Promise((resolve) => waiters.push(resolve));
+							if (subscriber.closed) return Promise.resolve(finish());
+							return new Promise((resolve) => {
+								subscriber.waiter = resolve;
+							});
 						},
 						return(): Promise<IteratorResult<readonly InputChange<string>[]>> {
-							return Promise.resolve({ done: true, value: undefined });
+							subscriber.closed = true;
+							subscribers.delete(subscriber);
+							subscriber.waiter?.(finish());
+							subscriber.waiter = undefined;
+							return Promise.resolve(finish());
 						},
 					};
 				},
@@ -105,9 +127,12 @@ export function createProjectMetadataInputProvider(
 		close() {
 			if (closed) return;
 			closed = true;
-			for (const waiter of waiters.splice(0)) {
-				waiter({ done: true, value: undefined });
+			for (const subscriber of subscribers) {
+				subscriber.closed = true;
+				subscriber.waiter?.({ done: true, value: undefined });
+				subscriber.waiter = undefined;
 			}
+			subscribers.clear();
 		},
 	};
 }

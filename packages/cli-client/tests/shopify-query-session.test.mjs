@@ -33,6 +33,20 @@ test("shared Shopify session plans and publishes reachable build output", async 
 	);
 });
 
+test("filesystem Shopify sessions open shared build products", async () => {
+	const root = await mkdtemp(join(tmpdir(), "nazare-filesystem-session-"));
+	await mkdir(join(root, "snippets"), { recursive: true });
+	const path = join(root, "snippets/card.liquid");
+	await writeFile(path, "<span>One</span>");
+	const session = await ShopifyQuerySession.open(root);
+	assert.deepEqual(
+		(
+			await session.buildProducts({ scope: { kind: "workspace" } })
+		).model.files.map((file) => file.path),
+		["snippets/card.liquid"],
+	);
+});
+
 test("publication refuses unowned and modified output conflicts", async () => {
 	const session = await ShopifyQuerySession.create([
 		{ path: "snippets/card.liquid", contents: "generated" },

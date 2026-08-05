@@ -15,6 +15,7 @@ import {
 	readExistingOutputState,
 } from "@nazare/compiler/output";
 import {
+	createFileSystemProjectHost,
 	createProjectMetadataInputProvider,
 	createProjectSession,
 	defineInputProvider,
@@ -213,6 +214,45 @@ export class ShopifyQuerySession {
 		shopifySemanticTarget().registerComputations(session.graph);
 		shopifyPortableTransform().registerComputations(session.graph);
 		shopifyBuildOutput().registerComputations(session.graph);
+		return new ShopifyQuerySession(session, files, metadata, externalValues);
+	}
+
+	static async open(
+		root: string,
+		externalInputs: ShopifyQueryExternalInputs = {},
+	): Promise<ShopifyQuerySession> {
+		const metadata = createProjectMetadataInputProvider(externalInputs);
+		const fileHost = createFileSystemProjectHost({
+			root,
+			workspace: "graph-server",
+			package: "theme",
+		});
+		const host = defineProjectHost({
+			...fileHost,
+			externalInputs: [metadata],
+		});
+		const session = await createProjectSession({ host });
+		createSourceProductRegistrar({
+			host,
+			frontends: createDefaultSourceFrontendRegistry(),
+		}).registerComputations(session.graph);
+		shopifySemanticTarget().registerComputations(session.graph);
+		shopifyPortableTransform().registerComputations(session.graph);
+		shopifyBuildOutput().registerComputations(session.graph);
+		const files = new Map<string, ShopifyQueryInputFile>();
+		for (const id of session.snapshot().fileIds) {
+			const snapshot = await fileHost.files.read(id);
+			files.set(id.path, {
+				path: id.path,
+				contents: snapshot.value.contents,
+			});
+		}
+		const externalValues = new Map<ProjectMetadataKey, ProductKey>(
+			Object.entries(externalInputs).filter(
+				(entry): entry is [ProjectMetadataKey, ProductKey] =>
+					entry[1] !== undefined,
+			),
+		);
 		return new ShopifyQuerySession(session, files, metadata, externalValues);
 	}
 

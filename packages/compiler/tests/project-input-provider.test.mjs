@@ -37,6 +37,7 @@ test("project metadata provider revisions config and external Shopify inputs", a
 		{ inspect: { exclude: ["generated/**"] } },
 	);
 	const watcher = metadata.provider.watch()[Symbol.asyncIterator]();
+	const secondWatcher = metadata.provider.watch()[Symbol.asyncIterator]();
 	metadata.set(
 		PROJECT_METADATA_KEYS.themeCheck,
 		"extends: theme-check:recommended",
@@ -44,9 +45,14 @@ test("project metadata provider revisions config and external Shopify inputs", a
 	const added = await watcher.next();
 	assert.equal(added.value[0].kind, "added");
 	assert.equal(added.value[0].key, PROJECT_METADATA_KEYS.themeCheck);
+	assert.deepEqual((await secondWatcher.next()).value, added.value);
 	metadata.remove(PROJECT_METADATA_KEYS.metafields);
 	const removed = await watcher.next();
 	assert.equal(removed.value[0].kind, "removed");
+	assert.deepEqual((await secondWatcher.next()).value, removed.value);
+	const pendingSecond = secondWatcher.next();
+	await secondWatcher.return();
+	assert.equal((await pendingSecond).done, true);
 	metadata.close();
 	assert.equal((await watcher.next()).done, true);
 });
