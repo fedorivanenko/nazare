@@ -393,7 +393,7 @@ unused-files
 - [x] Migrate direct CLI metafield-impact inspection to Shopify query products.
 - [x] Migrate full CLI theme graph/report inspection to Shopify query products.
 - [x] Delete `ThemeComputation` and `ThemeProgram`.
-- [ ] Delete old direct graph-query and persisted-inspection cache helpers.
+- [x] Delete old compiler-owned direct graph-query and persisted-inspection cache helpers.
 
 Exit gate:
 

@@ -283,11 +283,6 @@ export {
 } from "./symbols.js";
 export { syntaxFromAst } from "./syntax.js";
 export {
-	type PersistedThemeInspection,
-	parsePersistedThemeInspection,
-	serializePersistedThemeInspection,
-} from "./theme-analysis-cache.js";
-export {
 	type ThemeBehaviorConnection,
 	type ThemeBehaviorConnectionsResult,
 	ThemeBehaviorIndex,
@@ -380,8 +375,6 @@ export type {
 	SemanticThemeGraphEdge,
 	SemanticThemeGraphNode,
 	ThemeAnalysis,
-	ThemeAnalysisCache,
-	ThemeAnalysisCacheEntry,
 	ThemeBehaviorFact,
 	ThemeBehaviorRecord,
 	ThemeBlockInstanceRecord,
@@ -490,20 +483,6 @@ export {
 	type ThemePassTrace,
 	type ThemeSchedulerResult,
 } from "./theme-pass-scheduler.js";
-export {
-	getThemeAffectedPages,
-	getThemeDependencies,
-	getThemeDependents,
-	getThemeEdgesFrom,
-	getThemeEdgesTo,
-	getThemeFileImpact,
-	getThemeFileImpacts,
-	getThemeNode,
-	summarizeThemeGraph,
-	type ThemeFileImpact,
-	type ThemeGraphSummary,
-	themeGraphToDot,
-} from "./theme-queries.js";
 export {
 	collectThemeReferences,
 	createThemeReferencePass,

@@ -96,7 +96,7 @@ test("an unknown command does not load them either", async () => {
 	assert.equal(loadsPreview(specifiers), false);
 });
 
-test("a warm impact query loads cache projection without compiler frontends", async () => {
+test("a warm impact query loads no compiler code", async () => {
 	const project = mkdtempSync(join(tmpdir(), "nazare-warm-impact-"));
 	try {
 		await mkdir(join(project, "snippets"), { recursive: true });
@@ -122,8 +122,7 @@ test("a warm impact query loads cache projection without compiler frontends", as
 			["inspect", "impact", "snippets/card.liquid", ".", "--format", "json"],
 			project,
 		);
-		assert.ok(specifiers.includes("@nazare/compiler/inspect-cache"));
-		assert.equal(specifiers.includes("@nazare/compiler"), false);
+		assert.equal(loadsCompiler(specifiers), false);
 		assert.equal(
 			specifiers.some(
 				(specifier) =>

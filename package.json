@@ -6,7 +6,6 @@
 	"packageManager": "pnpm@10.0.0",
 	"scripts": {
 		"typecheck": "tsc -b",
-		"check:fact-cache-revision": "node scripts/generate-fact-cache-revision.mjs --check",
 		"dev:website": "pnpm --filter @nazare/website dev",
 		"check:no-dist": "test -z \"$(git ls-files '*/dist/*')\"",
 		"test:compiler": "pnpm -s build && node --test --test-concurrency=32 packages/compiler/tests/*.test.mjs",
@@ -24,7 +23,7 @@
 		"test:cli:smoke": "pnpm -s build && node --test --test-concurrency=32 packages/cli-client/tests/cli.test.mjs",
 		"format": "biome format --write .",
 		"lint": "biome check .",
-		"build": "node scripts/generate-fact-cache-revision.mjs && tsc -b",
+		"build": "tsc -b",
 		"test:source": "pnpm -s build && pnpm --dir packages/tree-sitter-nazare-liquid test && node --test packages/source/tests/*.test.mjs",
 		"test:package": "./scripts/package-cli.sh smoke && ./scripts/package-source-cli.sh smoke && ./scripts/smoke-packaged-cli.sh .release/nazare-cli-*.tar.gz && ./scripts/smoke-packaged-source-cli.sh .release/nazare-source-*.tar.gz && ./scripts/smoke-installer.sh smoke cli && ./scripts/smoke-installer.sh smoke source",
 		"benchmark:shopify-parser": "pnpm -s build >/dev/null && node --expose-gc packages/source/scripts/benchmark-shopify-parser.mjs",

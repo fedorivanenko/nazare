@@ -27,12 +27,10 @@ import { fileURLToPath } from "node:url";
 // runtime. Its values are loaded by the commands that need them — see below.
 import type {
 	compileNazareArtifact,
-	PersistedThemeInspection,
-	ThemeAnalysisCache,
-	ThemeFileImpact,
 	ThemeInputFile,
 	ThemeMetafieldIdentity,
 } from "@nazare/compiler";
+import type { Diagnostic } from "@nazare/core";
 import {
 	collectThemeInputFiles,
 	isMissingFileError,
@@ -49,20 +47,21 @@ import {
 	printHelp,
 } from "./options.js";
 import { type Output, processOutput } from "./output.js";
-import {
-	PROJECT_METADATA_KEYS,
-	type ShopifyFileImpact,
-	type ShopifyInspection,
-	type ShopifyMetafieldImpact,
+import type {
+	ShopifyFileImpact,
+	ShopifyInspection,
+	ShopifyMetafieldImpact,
 	ShopifyQuerySession,
 } from "./shopify-query-session.js";
 
 /** Heavy modules, loaded only by commands that use them. */
 const compiler = () => import("@nazare/compiler");
-const inspectCache = () => import("@nazare/compiler/inspect-cache");
 const registry = () => import("@nazare/registry");
+const shopifyQueries = () => import("./shopify-query-session.js");
 
 const THEME_MANIFEST = "nazare.theme.json";
+const INSPECTION_CACHE_VERSION = 4;
+const LEGACY_FACT_REVISION = "theme-facts-6bf1c6938f7aa0d3";
 
 /**
  * Compiler facts: one file in, JSON out. Debugging views rather than daily
@@ -748,6 +747,35 @@ function parseMetafieldIdentity(identifier: string): ThemeMetafieldIdentity {
 	return { owner: parts[0], namespace: parts[1], key: parts[2] };
 }
 
+type CachedThemeFact = {
+	kind: string;
+	path?: string;
+	fromPath?: string;
+	[key: string]: unknown;
+};
+
+type ThemeAnalysisCache = {
+	version: 1;
+	entries: Record<
+		string,
+		{
+			fingerprint: string;
+			facts: CachedThemeFact[];
+			issues: Diagnostic[];
+		}
+	>;
+};
+
+type ThemeFileImpact = ShopifyFileImpact;
+
+type PersistedThemeInspection = {
+	inputFingerprint: string;
+	root: string;
+	issues: Diagnostic[];
+	impacts: Record<string, ThemeFileImpact>;
+	factCache: ThemeAnalysisCache;
+};
+
 type PreparedThemeInspection = {
 	root: string;
 	files: ThemeInputFile[];
@@ -904,8 +932,11 @@ async function prepareThemeInspection(
 async function querySessionForInspection(
 	prepared: PreparedThemeInspection,
 ): Promise<ShopifyQuerySession> {
-	const compilerModule = await compiler();
-	return ShopifyQuerySession.create(
+	const [compilerModule, queryModule] = await Promise.all([
+		compiler(),
+		shopifyQueries(),
+	]);
+	return queryModule.ShopifyQuerySession.create(
 		prepared.files.filter(
 			(file) =>
 				!prepared.exclude.some((pattern) =>
@@ -913,12 +944,20 @@ async function querySessionForInspection(
 				),
 		),
 		{
-			[PROJECT_METADATA_KEYS.config]: { exclude: prepared.exclude },
+			[queryModule.PROJECT_METADATA_KEYS.config]: {
+				exclude: prepared.exclude,
+			},
 			...(prepared.metafields
-				? { [PROJECT_METADATA_KEYS.metafields]: prepared.metafields.contents }
+				? {
+						[queryModule.PROJECT_METADATA_KEYS.metafields]:
+							prepared.metafields.contents,
+					}
 				: {}),
 			...(prepared.themeCheck
-				? { [PROJECT_METADATA_KEYS.themeCheck]: prepared.themeCheck.contents }
+				? {
+						[queryModule.PROJECT_METADATA_KEYS.themeCheck]:
+							prepared.themeCheck.contents,
+					}
 				: {}),
 		},
 	);
@@ -1126,6 +1165,143 @@ function themeInspectionInputFingerprint(input: {
 	return hash.digest("hex");
 }
 
+function parsePersistedThemeInspection(
+	value: unknown,
+): PersistedThemeInspection {
+	if (!isRecord(value) || value.version !== INSPECTION_CACHE_VERSION) {
+		throw new Error(
+			`expected persisted theme inspection cache version ${INSPECTION_CACHE_VERSION}`,
+		);
+	}
+	if (value.factRevision !== LEGACY_FACT_REVISION) {
+		throw new Error(`expected fact revision ${LEGACY_FACT_REVISION}`);
+	}
+	if (typeof value.inputFingerprint !== "string" || !value.inputFingerprint) {
+		throw new Error("expected non-empty inputFingerprint");
+	}
+	if (typeof value.root !== "string" || !isSafeCachedPath(value.root, true)) {
+		throw new Error("expected safe theme root");
+	}
+	if (!Array.isArray(value.issues) || !value.issues.every(isCachedDiagnostic)) {
+		throw new Error("expected issues array");
+	}
+	if (!isRecord(value.entries) || !isRecord(value.impacts)) {
+		throw new Error("expected entries and impacts objects");
+	}
+	const entries: ThemeAnalysisCache["entries"] = {};
+	for (const [path, candidate] of Object.entries(value.entries)) {
+		if (!isSafeCachedPath(path) || !isRecord(candidate)) {
+			throw new Error(`invalid cache entry for ${JSON.stringify(path)}`);
+		}
+		if (
+			typeof candidate.fingerprint !== "string" ||
+			!Array.isArray(candidate.facts) ||
+			!Array.isArray(candidate.issues) ||
+			!candidate.issues.every(isCachedDiagnostic) ||
+			!candidate.facts.every(
+				(fact) =>
+					isRecord(fact) &&
+					typeof fact.kind === "string" &&
+					(fact.path === undefined || fact.path === path) &&
+					(fact.fromPath === undefined || fact.fromPath === path),
+			)
+		) {
+			throw new Error(`invalid cache entry for ${JSON.stringify(path)}`);
+		}
+		entries[path] = candidate as ThemeAnalysisCache["entries"][string];
+	}
+	const impacts: Record<string, ThemeFileImpact> = {};
+	for (const [path, candidate] of Object.entries(value.impacts)) {
+		if (!isSafeCachedPath(path) || !isCachedFileImpact(candidate, path)) {
+			throw new Error(`invalid impact for ${JSON.stringify(path)}`);
+		}
+		impacts[path] = candidate;
+	}
+	const factPaths = Object.entries(entries)
+		.filter(([, entry]) => entry.facts.some((fact) => fact.kind === "file"))
+		.map(([path]) => path)
+		.sort();
+	if (
+		JSON.stringify(factPaths) !== JSON.stringify(Object.keys(impacts).sort())
+	) {
+		throw new Error("impact paths do not match cached file facts");
+	}
+	return {
+		inputFingerprint: value.inputFingerprint,
+		root: value.root,
+		issues: value.issues,
+		impacts,
+		factCache: { version: 1, entries },
+	};
+}
+
+function serializePersistedThemeInspection(
+	inspection: PersistedThemeInspection,
+): string {
+	return JSON.stringify({
+		version: INSPECTION_CACHE_VERSION,
+		factRevision: LEGACY_FACT_REVISION,
+		inputFingerprint: inspection.inputFingerprint,
+		root: inspection.root,
+		issues: inspection.issues,
+		entries: Object.fromEntries(
+			Object.entries(inspection.factCache.entries).sort(([left], [right]) =>
+				left.localeCompare(right),
+			),
+		),
+		impacts: Object.fromEntries(
+			Object.entries(inspection.impacts).sort(([left], [right]) =>
+				left.localeCompare(right),
+			),
+		),
+	});
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isCachedDiagnostic(value: unknown): value is Diagnostic {
+	return (
+		isRecord(value) &&
+		["error", "warning", "info"].includes(String(value.severity)) &&
+		typeof value.code === "string" &&
+		typeof value.message === "string"
+	);
+}
+
+function isCachedFileImpact(
+	value: unknown,
+	path: string,
+): value is ThemeFileImpact {
+	return (
+		isRecord(value) &&
+		value.version === 1 &&
+		value.path === path &&
+		typeof value.fileKind === "string" &&
+		["entry", "used", "unused", "unknown"].includes(String(value.usage)) &&
+		["complete", "partial"].includes(String(value.certainty)) &&
+		["uncertainty", "dependencies", "dependents", "affectedPages"].every(
+			(key) => Array.isArray(value[key]) && value[key].every(isString),
+		) &&
+		Array.isArray(value.issues) &&
+		value.issues.every(isCachedDiagnostic)
+	);
+}
+
+function isString(value: unknown): value is string {
+	return typeof value === "string";
+}
+
+function isSafeCachedPath(path: string, allowRoot = false): boolean {
+	return (
+		(allowRoot && path === ".") ||
+		(!path.startsWith("/") &&
+			!path.includes("\\") &&
+			!path.split("/").some((segment) => segment === ".." || segment === ""))
+	);
+}
+
 /**
  * Reads the persisted inspection cache without importing compiler frontends.
  * The cache is an optimization, never an input: anything unusable is discarded
@@ -1158,9 +1334,7 @@ async function readPersistedThemeInspection(path: string): Promise<{
 		};
 	}
 	try {
-		const persisted = (await inspectCache()).parsePersistedThemeInspection(
-			parsed,
-		);
+		const persisted = parsePersistedThemeInspection(parsed);
 		return { persisted, factCache: persisted.factCache };
 	} catch (error) {
 		return { factCache: empty, discardedReason: errorMessage(error) };
@@ -1175,7 +1349,7 @@ async function writePersistedThemeInspection(
 	try {
 		await writeFile(
 			temporaryPath,
-			(await inspectCache()).serializePersistedThemeInspection(inspection),
+			serializePersistedThemeInspection(inspection),
 		);
 		await rename(temporaryPath, path);
 	} catch (error) {

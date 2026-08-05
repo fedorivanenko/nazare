@@ -10,10 +10,6 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
-		},
-		"./inspect-cache": {
-			"types": "./dist/theme-analysis-cache.d.ts",
-			"import": "./dist/theme-analysis-cache.js"
 		}
 	},
 	"scripts": {

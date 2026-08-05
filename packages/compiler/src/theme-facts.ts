@@ -17,18 +17,6 @@ export interface ThemeInputFile {
 	contents: string;
 }
 
-export interface ThemeAnalysisCacheEntry {
-	fingerprint: string;
-	facts: ThemeFact[];
-	issues: Diagnostic[];
-	artifact?: ThemeBuiltArtifact;
-}
-
-export interface ThemeAnalysisCache {
-	version: 1;
-	entries: Record<string, ThemeAnalysisCacheEntry>;
-}
-
 export interface ThemeAnalysisMemo {
 	fingerprint: string;
 	model: ThemeSemanticModel;
@@ -45,8 +33,6 @@ export interface AnalyzeNazareThemeOptions {
 	strictness?: "strict" | "loose";
 	/** strict validates HTML and Liquid; liquid-only masks HTML but validates Liquid structure. */
 	plainLiquidParseMode?: "strict" | "liquid-only";
-	/** Mutable per-file fact and component artifact cache. */
-	cache?: ThemeAnalysisCache;
 	/** @internal Skip canonical semantic construction for persistent warm sessions. */
 	factsOnly?: boolean;
 	/** Session-local semantic model memo. Do not persist this value. */
