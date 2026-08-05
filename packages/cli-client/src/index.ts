@@ -1,18 +1,8 @@
 #!/usr/bin/env node
-import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
-import {
-	access,
-	mkdir,
-	readFile,
-	realpath,
-	rename,
-	rm,
-	writeFile,
-} from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import {
 	basename,
-	dirname,
 	extname,
 	isAbsolute,
 	join,
@@ -30,7 +20,6 @@ import type {
 	ThemeInputFile,
 	ThemeMetafieldIdentity,
 } from "@nazare/compiler";
-import type { Diagnostic } from "@nazare/core";
 import {
 	collectThemeInputFiles,
 	isMissingFileError,
@@ -60,8 +49,6 @@ const registry = () => import("@nazare/registry");
 const shopifyQueries = () => import("./shopify-query-session.js");
 
 const THEME_MANIFEST = "nazare.theme.json";
-const INSPECTION_CACHE_VERSION = 4;
-const LEGACY_FACT_REVISION = "theme-facts-6bf1c6938f7aa0d3";
 
 /**
  * Compiler facts: one file in, JSON out. Debugging views rather than daily
@@ -627,18 +614,6 @@ async function runInspectFileImpact(
 		cliOptions,
 		output,
 	);
-	if (prepared.persisted?.inputFingerprint === prepared.inputFingerprint) {
-		const cached = prepared.persisted.impacts[path];
-		if (cached) {
-			output.log(
-				format === "json"
-					? JSON.stringify({ root: prepared.root, ...cached }, null, 2)
-					: renderThemeFileImpact(cached),
-			);
-			return hasErrors(prepared.persisted.issues) ? 1 : 0;
-		}
-	}
-
 	const impact = await (await querySessionForInspection(prepared)).fileImpact(
 		path,
 	);
@@ -653,29 +628,6 @@ async function runInspectFileImpact(
 			? JSON.stringify({ root: prepared.root, ...impact }, null, 2)
 			: renderThemeFileImpact(impact),
 	);
-	await mkdir(dirname(prepared.cachePath), { recursive: true });
-	await writePersistedThemeInspection(prepared.cachePath, {
-		inputFingerprint: prepared.inputFingerprint,
-		root: prepared.root,
-		issues: [...impact.issues],
-		impacts: { [path]: impact as ThemeFileImpact },
-		factCache: {
-			version: 1,
-			entries: {
-				[path]: {
-					fingerprint: prepared.inputFingerprint,
-					facts: [
-						{
-							kind: "file",
-							path,
-							fileKind: (impact as ThemeFileImpact).fileKind,
-						},
-					],
-					issues: [],
-				},
-			},
-		},
-	});
 	return hasErrors(impact.issues) ? 1 : 0;
 }
 
@@ -737,46 +689,12 @@ function parseMetafieldIdentity(identifier: string): ThemeMetafieldIdentity {
 	return { owner: parts[0], namespace: parts[1], key: parts[2] };
 }
 
-type CachedThemeFact = {
-	kind: string;
-	path?: string;
-	fromPath?: string;
-	[key: string]: unknown;
-};
-
-type ThemeAnalysisCache = {
-	version: 1;
-	entries: Record<
-		string,
-		{
-			fingerprint: string;
-			facts: CachedThemeFact[];
-			issues: Diagnostic[];
-		}
-	>;
-};
-
-type ThemeFileImpact = ShopifyFileImpact;
-
-type PersistedThemeInspection = {
-	inputFingerprint: string;
-	root: string;
-	issues: Diagnostic[];
-	impacts: Record<string, ThemeFileImpact>;
-	factCache: ThemeAnalysisCache;
-};
-
 type PreparedThemeInspection = {
 	root: string;
 	files: ThemeInputFile[];
 	exclude: string[];
 	metafields?: { path: string; contents: string };
 	themeCheck?: { path: string; contents: string };
-	strictness: CliOptions["strictness"];
-	inputFingerprint: string;
-	cachePath: string;
-	factCache: ThemeAnalysisCache;
-	persisted?: PersistedThemeInspection;
 };
 
 async function loadThemeInspection(
@@ -815,46 +733,17 @@ async function loadThemeInspection(
 				]
 			: [];
 	});
-	const result = {
+	return {
 		...inspection,
 		issues: [...inspection.issues, ...excludedIssues],
 	};
-	if (prepared.persisted?.inputFingerprint !== prepared.inputFingerprint) {
-		const impacts: Record<string, ThemeFileImpact> = {};
-		const entries: ThemeAnalysisCache["entries"] = {};
-		for (const node of inspection.nodes) {
-			const impact = await session.fileImpact(node.path);
-			if (!impact) continue;
-			impacts[node.path] = impact as ThemeFileImpact;
-			entries[node.path] = {
-				fingerprint: prepared.inputFingerprint,
-				facts: [
-					{
-						kind: "file",
-						path: node.path,
-						fileKind: impact.fileKind as ThemeFileImpact["fileKind"],
-					},
-				],
-				issues: [],
-			};
-		}
-		await mkdir(dirname(prepared.cachePath), { recursive: true });
-		await writePersistedThemeInspection(prepared.cachePath, {
-			inputFingerprint: prepared.inputFingerprint,
-			root: prepared.root,
-			issues: result.issues,
-			impacts,
-			factCache: { version: 1, entries },
-		});
-	}
-	return result;
 }
 
 async function prepareThemeInspection(
 	projectRoot: string,
 	dirArg: string | undefined,
-	cliOptions: CliOptions,
-	output: Output,
+	_cliOptions: CliOptions,
+	_output: Output,
 ): Promise<PreparedThemeInspection> {
 	const manifest = await readProjectManifest(projectRoot);
 	const exclude = validateInspectConfiguration(manifest.inspect);
@@ -878,44 +767,12 @@ async function prepareThemeInspection(
 	const themeCheck = await readThemeCheckPolicy(projectRoot);
 	const relativeRoot =
 		relative(canonicalProjectRoot, canonicalRoot).split(sep).join("/") || ".";
-	const inputFingerprint = themeInspectionInputFingerprint({
-		root: relativeRoot,
-		files,
-		exclude,
-		metafields,
-		themeCheck,
-		strictness: cliOptions.strictness ?? "strict",
-	});
-	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v4.json");
-	const { persisted, factCache, discardedReason, missing } =
-		await readPersistedThemeInspection(cachePath);
-	if (discardedReason) {
-		output.error(
-			`Discarded theme inspection cache ${cachePath} (${discardedReason}); analyzing from source.`,
-		);
-	} else if (missing) {
-		const legacyCachePath = join(
-			projectRoot,
-			".nazare-out",
-			"inspect-cache-v3.json",
-		);
-		if (await fileExists(legacyCachePath)) {
-			output.error(
-				`Ignored legacy theme analysis cache ${legacyCachePath}; writing version 4 cache after source analysis.`,
-			);
-		}
-	}
 	return {
 		root: relativeRoot,
 		files,
 		exclude,
 		metafields,
 		themeCheck,
-		strictness: cliOptions.strictness,
-		inputFingerprint,
-		cachePath,
-		factCache,
-		persisted,
 	};
 }
 
@@ -957,9 +814,7 @@ function themeInspectionStatus(inspected: ShopifyInspection): number {
 	return inspected.issues.some((issue) => issue.severity === "error") ? 1 : 0;
 }
 
-function renderThemeFileImpact(
-	impact: ThemeFileImpact | ShopifyFileImpact,
-): string {
+function renderThemeFileImpact(impact: ShopifyFileImpact): string {
 	const lines = [
 		`Impact: ${impact.path}`,
 		`Kind ${impact.fileKind} · usage ${impact.usage} · certainty ${impact.certainty}`,
@@ -1113,258 +968,6 @@ function isOutsideRoot(root: string, path: string): boolean {
 		relativePath.startsWith(`..${sep}`) ||
 		isAbsolute(relativePath)
 	);
-}
-
-function themeInspectionInputFingerprint(input: {
-	root: string;
-	files: ThemeInputFile[];
-	exclude: string[];
-	metafields?: { path: string; contents: string };
-	themeCheck?: { path: string; contents: string };
-	strictness: "strict" | "loose";
-}): string {
-	const hash = createHash("sha256");
-	const add = (value: string): void => {
-		hash.update(`${Buffer.byteLength(value, "utf8")}:`);
-		hash.update(value);
-	};
-	add("nazare-theme-inspection-input-v1");
-	add(input.root);
-	add(input.strictness);
-	add("liquid-only");
-	add(`exclude:${input.exclude.length}`);
-	for (const pattern of input.exclude) add(pattern);
-	add(`files:${input.files.length}`);
-	for (const file of [...input.files].sort((left, right) =>
-		left.path.localeCompare(right.path),
-	)) {
-		add(file.path);
-		add(file.contents);
-	}
-	for (const [name, artifact] of [
-		["metafields", input.metafields],
-		["themeCheck", input.themeCheck],
-	] as const) {
-		add(name);
-		add(artifact ? "present" : "absent");
-		if (artifact) {
-			add(artifact.path);
-			add(artifact.contents);
-		}
-	}
-	return hash.digest("hex");
-}
-
-function parsePersistedThemeInspection(
-	value: unknown,
-): PersistedThemeInspection {
-	if (!isRecord(value) || value.version !== INSPECTION_CACHE_VERSION) {
-		throw new Error(
-			`expected persisted theme inspection cache version ${INSPECTION_CACHE_VERSION}`,
-		);
-	}
-	if (value.factRevision !== LEGACY_FACT_REVISION) {
-		throw new Error(`expected fact revision ${LEGACY_FACT_REVISION}`);
-	}
-	if (typeof value.inputFingerprint !== "string" || !value.inputFingerprint) {
-		throw new Error("expected non-empty inputFingerprint");
-	}
-	if (typeof value.root !== "string" || !isSafeCachedPath(value.root, true)) {
-		throw new Error("expected safe theme root");
-	}
-	if (!Array.isArray(value.issues) || !value.issues.every(isCachedDiagnostic)) {
-		throw new Error("expected issues array");
-	}
-	if (!isRecord(value.entries) || !isRecord(value.impacts)) {
-		throw new Error("expected entries and impacts objects");
-	}
-	const entries: ThemeAnalysisCache["entries"] = {};
-	for (const [path, candidate] of Object.entries(value.entries)) {
-		if (!isSafeCachedPath(path) || !isRecord(candidate)) {
-			throw new Error(`invalid cache entry for ${JSON.stringify(path)}`);
-		}
-		if (
-			typeof candidate.fingerprint !== "string" ||
-			!Array.isArray(candidate.facts) ||
-			!Array.isArray(candidate.issues) ||
-			!candidate.issues.every(isCachedDiagnostic) ||
-			!candidate.facts.every(
-				(fact) =>
-					isRecord(fact) &&
-					typeof fact.kind === "string" &&
-					(fact.path === undefined || fact.path === path) &&
-					(fact.fromPath === undefined || fact.fromPath === path),
-			)
-		) {
-			throw new Error(`invalid cache entry for ${JSON.stringify(path)}`);
-		}
-		entries[path] = candidate as ThemeAnalysisCache["entries"][string];
-	}
-	const impacts: Record<string, ThemeFileImpact> = {};
-	for (const [path, candidate] of Object.entries(value.impacts)) {
-		if (!isSafeCachedPath(path) || !isCachedFileImpact(candidate, path)) {
-			throw new Error(`invalid impact for ${JSON.stringify(path)}`);
-		}
-		impacts[path] = candidate;
-	}
-	const factPaths = Object.entries(entries)
-		.filter(([, entry]) => entry.facts.some((fact) => fact.kind === "file"))
-		.map(([path]) => path)
-		.sort();
-	if (
-		JSON.stringify(factPaths) !== JSON.stringify(Object.keys(impacts).sort())
-	) {
-		throw new Error("impact paths do not match cached file facts");
-	}
-	return {
-		inputFingerprint: value.inputFingerprint,
-		root: value.root,
-		issues: value.issues,
-		impacts,
-		factCache: { version: 1, entries },
-	};
-}
-
-function serializePersistedThemeInspection(
-	inspection: PersistedThemeInspection,
-): string {
-	return JSON.stringify({
-		version: INSPECTION_CACHE_VERSION,
-		factRevision: LEGACY_FACT_REVISION,
-		inputFingerprint: inspection.inputFingerprint,
-		root: inspection.root,
-		issues: inspection.issues,
-		entries: Object.fromEntries(
-			Object.entries(inspection.factCache.entries).sort(([left], [right]) =>
-				left.localeCompare(right),
-			),
-		),
-		impacts: Object.fromEntries(
-			Object.entries(inspection.impacts).sort(([left], [right]) =>
-				left.localeCompare(right),
-			),
-		),
-	});
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isCachedDiagnostic(value: unknown): value is Diagnostic {
-	return (
-		isRecord(value) &&
-		["error", "warning", "info"].includes(String(value.severity)) &&
-		typeof value.code === "string" &&
-		typeof value.message === "string"
-	);
-}
-
-function isCachedFileImpact(
-	value: unknown,
-	path: string,
-): value is ThemeFileImpact {
-	return (
-		isRecord(value) &&
-		value.version === 1 &&
-		value.path === path &&
-		typeof value.fileKind === "string" &&
-		["entry", "used", "unused", "unknown"].includes(String(value.usage)) &&
-		["complete", "partial"].includes(String(value.certainty)) &&
-		["uncertainty", "dependencies", "dependents", "affectedPages"].every(
-			(key) => Array.isArray(value[key]) && value[key].every(isString),
-		) &&
-		Array.isArray(value.issues) &&
-		value.issues.every(isCachedDiagnostic)
-	);
-}
-
-function isString(value: unknown): value is string {
-	return typeof value === "string";
-}
-
-function isSafeCachedPath(path: string, allowRoot = false): boolean {
-	return (
-		(allowRoot && path === ".") ||
-		(!path.startsWith("/") &&
-			!path.includes("\\") &&
-			!path.split("/").some((segment) => segment === ".." || segment === ""))
-	);
-}
-
-/**
- * Reads the persisted inspection cache without importing compiler frontends.
- * The cache is an optimization, never an input: anything unusable is discarded
- * and reported before source analysis rebuilds it.
- */
-async function readPersistedThemeInspection(path: string): Promise<{
-	persisted?: PersistedThemeInspection;
-	factCache: ThemeAnalysisCache;
-	discardedReason?: string;
-	missing?: boolean;
-}> {
-	const empty: ThemeAnalysisCache = { version: 1, entries: {} };
-	let raw: string;
-	try {
-		raw = await readFile(path, "utf8");
-	} catch (error) {
-		if (isMissingFileError(error)) return { factCache: empty, missing: true };
-		return {
-			factCache: empty,
-			discardedReason: `unreadable: ${errorMessage(error)}`,
-		};
-	}
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch (error) {
-		return {
-			factCache: empty,
-			discardedReason: `invalid JSON: ${errorMessage(error)}`,
-		};
-	}
-	try {
-		const persisted = parsePersistedThemeInspection(parsed);
-		return { persisted, factCache: persisted.factCache };
-	} catch (error) {
-		return { factCache: empty, discardedReason: errorMessage(error) };
-	}
-}
-
-async function writePersistedThemeInspection(
-	path: string,
-	inspection: PersistedThemeInspection,
-): Promise<void> {
-	const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
-	try {
-		await writeFile(
-			temporaryPath,
-			serializePersistedThemeInspection(inspection),
-		);
-		await rename(temporaryPath, path);
-	} catch (error) {
-		try {
-			await rm(temporaryPath, { force: true });
-		} catch (cleanupError) {
-			throw new AggregateError(
-				[error, cleanupError],
-				`Unable to write theme inspection cache ${path} and remove temporary file ${temporaryPath}`,
-			);
-		}
-		throw new Error(
-			`Unable to write theme inspection cache ${path}: ${errorMessage(error)}`,
-		);
-	}
-}
-
-async function fileExists(path: string): Promise<boolean> {
-	try {
-		await access(path);
-		return true;
-	} catch (error) {
-		if (isMissingFileError(error)) return false;
-		throw new Error(`Unable to inspect ${path}: ${errorMessage(error)}`);
-	}
 }
 
 function errorMessage(error: unknown): string {

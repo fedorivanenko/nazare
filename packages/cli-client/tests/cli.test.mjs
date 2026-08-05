@@ -5,7 +5,6 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
-	statSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -801,10 +800,6 @@ test("cli: inspect impact answers what a file can affect", async () => {
 				"Uncertainty: none",
 				"Issues: none",
 			]);
-			const cachePath = join(cwd, ".nazare-out", "inspect-cache-v4.json");
-			const coldCache = readFileSync(cachePath, "utf8");
-			const coldCacheInode = statSync(cachePath).ino;
-
 			const json = await runCli(
 				cwd,
 				"inspect",
@@ -818,13 +813,6 @@ test("cli: inspect impact answers what a file can affect", async () => {
 			const impact = JSON.parse(json.stdout);
 			assert.equal(impact.version, 1);
 			assert.deepEqual(impact.affectedPages, ["templates/product.json"]);
-			assert.equal(readFileSync(cachePath, "utf8"), coldCache);
-			assert.equal(
-				statSync(cachePath).ino,
-				coldCacheInode,
-				"a warm impact query must not rewrite its cache",
-			);
-
 			writeFileSync(join(cwd, "sections/main.liquid"), "<section></section>");
 			const changed = await runCli(
 				cwd,
@@ -839,7 +827,6 @@ test("cli: inspect impact answers what a file can affect", async () => {
 			const changedImpact = JSON.parse(changed.stdout);
 			assert.equal(changedImpact.usage, "unused");
 			assert.deepEqual(changedImpact.dependents, []);
-			assert.notEqual(statSync(cachePath).ino, coldCacheInode);
 		},
 	);
 });
@@ -938,7 +925,7 @@ fetch("/api/graphql.json", { method: "POST", body: JSON.stringify({ query }) });
 	);
 });
 
-test("cli: warm impact cache preserves analysis error status", async () => {
+test("cli: repeated impact inspection preserves analysis error status", async () => {
 	await withProject(
 		{
 			"sections/broken.liquid": `{% schema %}{"name":"Broken","settings":[]}{% endschema %}
@@ -991,106 +978,6 @@ test("cli: inspect can render a concise human report", async () => {
 			]);
 		},
 	);
-});
-
-test("cli: inspect reports migration from the legacy cache", async () => {
-	await withProject(
-		{
-			"snippets/card.liquid": "{{ product.title }}",
-			".nazare-out/inspect-cache-v3.json": "{}",
-		},
-		async (cwd) => {
-			const result = await runCli(
-				cwd,
-				"inspect",
-				"impact",
-				"snippets/card.liquid",
-				".",
-				"--format",
-				"json",
-			);
-			assert.equal(result.status, 0, result.stderr);
-			assert.match(result.stderr, /Ignored legacy theme analysis cache/);
-			assert.equal(
-				existsSync(join(cwd, ".nazare-out", "inspect-cache-v4.json")),
-				true,
-			);
-		},
-	);
-});
-
-test("cli: inspect discards a malformed cache and analyzes from source", async () => {
-	await withProject(
-		{
-			"snippets/card.liquid": "{{ product.title }}",
-			".nazare-out/inspect-cache-v4.json": "{invalid",
-		},
-		async (cwd) => {
-			const result = await runCli(
-				cwd,
-				"inspect",
-				"theme",
-				".",
-				"--format",
-				"json",
-			);
-			// A cache is an optimization. An unusable one is reported and replaced,
-			// never a reason to fail the command.
-			assert.equal(result.status, 0, result.stderr);
-			assert.match(result.stderr, /Discarded theme inspection cache/);
-			assert.match(result.stderr, /invalid JSON/);
-			const graph = JSON.parse(result.stdout);
-			assert.ok(
-				graph.nodes.some((node) => node.id === "file:snippets/card.liquid"),
-			);
-		},
-	);
-});
-
-test("cli: inspect discards cache facts owned by another source", async () => {
-	await withProject({ "snippets/card.liquid": "{{ title }}" }, async (cwd) => {
-		const first = await runCli(
-			cwd,
-			"inspect",
-			"theme",
-			".",
-			"--format",
-			"json",
-		);
-		assert.equal(first.status, 0, first.stderr);
-		const cachePath = join(cwd, ".nazare-out", "inspect-cache-v4.json");
-		const cache = JSON.parse(readFileSync(cachePath, "utf8"));
-		cache.entries["snippets/card.liquid"].facts = [
-			{ kind: "file", path: "snippets/other.liquid", fileKind: "snippet" },
-		];
-		writeFileSync(cachePath, JSON.stringify(cache));
-
-		const second = await runCli(
-			cwd,
-			"inspect",
-			"theme",
-			".",
-			"--format",
-			"json",
-		);
-		// Ownership validation still rejects the entry; it just costs a cold
-		// rebuild rather than the whole command.
-		assert.equal(second.status, 0, second.stderr);
-		assert.match(second.stderr, /Discarded theme inspection cache/);
-		assert.match(second.stderr, /snippets\/card\.liquid/);
-		const graph = JSON.parse(second.stdout);
-		assert.ok(
-			graph.nodes.some((node) => node.id === "file:snippets/card.liquid"),
-		);
-		// The discarded cache is replaced by a valid one, so the next run is warm
-		// and every cached fact belongs to the file that owns the entry.
-		const rewritten = JSON.parse(readFileSync(cachePath, "utf8"));
-		const entry = rewritten.entries["snippets/card.liquid"];
-		assert.ok(entry.facts.length > 0);
-		for (const fact of entry.facts) {
-			assert.equal(fact.path ?? fact.fromPath, "snippets/card.liquid");
-		}
-	});
 });
 
 test("cli: inspect honors inspect.exclude and reports every excluded file", async () => {

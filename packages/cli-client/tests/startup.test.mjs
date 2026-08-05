@@ -96,45 +96,6 @@ test("an unknown command does not load them either", async () => {
 	assert.equal(loadsPreview(specifiers), false);
 });
 
-test("a warm impact query loads no compiler code", async () => {
-	const project = mkdtempSync(join(tmpdir(), "nazare-warm-impact-"));
-	try {
-		await mkdir(join(project, "snippets"), { recursive: true });
-		await writeFile(
-			join(project, "snippets", "card.liquid"),
-			"{{ product.title }}",
-		);
-		await run(
-			process.execPath,
-			[
-				cli,
-				"inspect",
-				"impact",
-				"snippets/card.liquid",
-				".",
-				"--format",
-				"json",
-			],
-			{ cwd: project },
-		);
-
-		const specifiers = await specifiersLoadedBy(
-			["inspect", "impact", "snippets/card.liquid", ".", "--format", "json"],
-			project,
-		);
-		assert.equal(loadsCompiler(specifiers), false);
-		assert.equal(
-			specifiers.some(
-				(specifier) =>
-					specifier === "typescript" || specifier.includes("/typescript/"),
-			),
-			false,
-		);
-	} finally {
-		await rm(project, { recursive: true, force: true });
-	}
-});
-
 test("cold JavaScript theme inspection never loads TypeScript", async () => {
 	const project = mkdtempSync(join(tmpdir(), "nazare-js-inspect-"));
 	try {
