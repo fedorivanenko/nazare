@@ -4,9 +4,9 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import {
+	matchesThemeGlob,
 	ThemeBuildSession,
 	type ThemeInputFile,
-	ThemeProgram,
 } from "@nazare/compiler";
 import type { ShopifyBehavior } from "@nazare/target-shopify";
 import {
@@ -38,8 +38,7 @@ export async function serveThemeGraph(
 	output: Writable,
 	options: ThemeGraphServerOptions,
 ): Promise<void> {
-	const initial = await loadProgramState(root, options.projectRoot);
-	let session = initial.program;
+	const initial = await loadServerState(root, options.projectRoot);
 	let buildSession = initial.buildSession;
 	let querySession = initial.querySession;
 	let stopWatching: (() => void) | undefined;
@@ -87,10 +86,6 @@ export async function serveThemeGraph(
 				request,
 				root,
 				options.projectRoot,
-				() => session,
-				(next) => {
-					session = next;
-				},
 				() => buildSession,
 				(next) => {
 					buildSession = next;
@@ -157,8 +152,6 @@ async function handleRequest(
 	request: GraphRequest,
 	root: string,
 	projectRoot: string,
-	getSession: () => ThemeProgram,
-	setSession: (session: ThemeProgram) => void,
 	getBuildSession: () => ThemeBuildSession,
 	setBuildSession: (session: ThemeBuildSession) => void,
 	getQuerySession: () => ShopifyQuerySession,
@@ -191,8 +184,6 @@ async function handleRequest(
 				},
 				root,
 				projectRoot,
-				getSession,
-				setSession,
 				getBuildSession,
 				setBuildSession,
 				getQuerySession,
@@ -228,12 +219,11 @@ async function handleRequest(
 		};
 	}
 	if (request.method === "reload" || request.method === "inspect") {
-		const state = await loadProgramState(root, projectRoot);
-		setSession(state.program);
+		const state = await loadServerState(root, projectRoot);
 		setBuildSession(state.buildSession);
 		setQuerySession(state.querySession);
 		return request.method === "inspect"
-			? state.program.getGraph()
+			? state.querySession.projectModel()
 			: state.querySession.projectGraph();
 	}
 	const querySession = getQuerySession();
@@ -280,8 +270,8 @@ async function handleRequest(
 			startWatcher(
 				root,
 				projectRoot,
-				getSession,
 				getBuildSession,
+				setBuildSession,
 				getQuerySession,
 				notify,
 				debounceMs,
@@ -433,8 +423,8 @@ const DEFAULT_WATCH_DEBOUNCE_MS = 40;
 function startWatcher(
 	root: string,
 	projectRoot: string,
-	getSession: () => ThemeProgram,
 	getBuildSession: () => ThemeBuildSession,
+	setBuildSession: (session: ThemeBuildSession) => void,
 	getQuerySession: () => ShopifyQuerySession,
 	notify: (update: unknown) => void,
 	debounceMs: number,
@@ -482,7 +472,6 @@ function startWatcher(
 
 	async function processWatchedPath(relativePath: string): Promise<void> {
 		if (closed) return;
-		const session = getSession();
 		if (isInspectThemeFile(relativePath)) {
 			try {
 				const contents = await readFile(join(root, relativePath), "utf8");
@@ -518,15 +507,23 @@ function startWatcher(
 			".shopify/metafields.json",
 		);
 		const themeCheck = await optionalFile(projectRoot, ".theme-check.yml");
-		const update = await session.updateExternalArtifacts({
-			exclude,
-			metafields,
-			themeCheck,
-		});
+		setBuildSession(
+			new ThemeBuildSession(await collectThemeInputFiles(root, projectRoot), {
+				exclude,
+				metafields,
+				themeCheck,
+			}),
+		);
 		const querySession = getQuerySession();
 		const previousQueryRevision = querySession.session.snapshot().revision;
 		let queryRevision = previousQueryRevision;
 		if (relativePath === "nazare.theme.json") {
+			queryRevision = await querySession.replaceFiles(
+				(await collectThemeInputFiles(root, projectRoot)).filter(
+					(file) =>
+						!exclude.some((pattern) => matchesThemeGlob(file.path, pattern)),
+				),
+			);
 			queryRevision = await querySession.updateExternalInput(
 				PROJECT_METADATA_KEYS.config,
 				{ exclude },
@@ -544,14 +541,10 @@ function startWatcher(
 				themeCheck?.contents ?? null,
 			);
 		}
-		if (
-			!closed &&
-			(update.changedPaths.length > 0 ||
-				queryRevision !== previousQueryRevision)
-		) {
+		if (!closed && queryRevision !== previousQueryRevision) {
 			notify({
 				method: "graph/update",
-				params: { ...update, revision: queryRevision },
+				params: { changedPaths: [relativePath], revision: queryRevision },
 			});
 		}
 	}
@@ -584,11 +577,10 @@ function isNotFound(error: unknown): boolean {
 	);
 }
 
-async function loadProgramState(
+async function loadServerState(
 	root: string,
 	projectRoot: string,
 ): Promise<{
-	program: ThemeProgram;
 	buildSession: ThemeBuildSession;
 	querySession: ShopifyQuerySession;
 }> {
@@ -599,24 +591,27 @@ async function loadProgramState(
 		".shopify/metafields.json",
 	);
 	const themeCheck = await optionalFile(projectRoot, ".theme-check.yml");
-	const program = new ThemeProgram(files, {
-		exclude,
-		metafields,
-		themeCheck,
-		graphProjection: "eager",
-	});
 	return {
-		program,
-		buildSession: new ThemeBuildSession(files, {}, program),
-		querySession: await ShopifyQuerySession.create(files, {
-			[PROJECT_METADATA_KEYS.config]: { exclude },
-			...(metafields
-				? { [PROJECT_METADATA_KEYS.metafields]: metafields.contents }
-				: {}),
-			...(themeCheck
-				? { [PROJECT_METADATA_KEYS.themeCheck]: themeCheck.contents }
-				: {}),
+		buildSession: new ThemeBuildSession(files, {
+			exclude,
+			metafields,
+			themeCheck,
 		}),
+		querySession: await ShopifyQuerySession.create(
+			files.filter(
+				(file) =>
+					!exclude.some((pattern) => matchesThemeGlob(file.path, pattern)),
+			),
+			{
+				[PROJECT_METADATA_KEYS.config]: { exclude },
+				...(metafields
+					? { [PROJECT_METADATA_KEYS.metafields]: metafields.contents }
+					: {}),
+				...(themeCheck
+					? { [PROJECT_METADATA_KEYS.themeCheck]: themeCheck.contents }
+					: {}),
+			},
+		),
 	};
 }
 

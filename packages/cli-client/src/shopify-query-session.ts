@@ -166,6 +166,24 @@ export class ShopifyQuerySession {
 		);
 	}
 
+	async replaceFiles(
+		inputs: readonly ShopifyQueryInputFile[],
+	): Promise<number> {
+		const next = new Map(inputs.map((file) => [file.path, file]));
+		let revision = this.session.snapshot().revision;
+		for (const path of [...this.files.keys()].sort()) {
+			if (!next.has(path)) revision = await this.removeFile(path);
+		}
+		for (const file of [...next.values()].sort((left, right) =>
+			left.path.localeCompare(right.path),
+		)) {
+			const current = this.files.get(file.path);
+			if (current?.contents !== file.contents)
+				revision = await this.updateFile(file);
+		}
+		return revision;
+	}
+
 	async updateExternalInput(
 		key: ProjectMetadataKey,
 		value: ProductKey | null,

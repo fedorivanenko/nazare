@@ -388,7 +388,8 @@ unused-files
 - [x] Preserve uncertainty and evidence in query results.
 - [x] Migrate graph-server query requests through `ProjectSession.get(product)`.
 - [x] Move graph-server external-input watch notifications to shared providers.
-- [ ] Delete `ThemeComputation` and direct query helpers after consumers migrate.
+- [x] Remove graph-server `ThemeProgram` and `ThemeComputation` query dependencies.
+- [ ] Delete `ThemeComputation` and direct query helpers after remaining consumers migrate.
 
 Exit gate:
 

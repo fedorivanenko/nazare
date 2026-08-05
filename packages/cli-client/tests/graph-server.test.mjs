@@ -318,19 +318,12 @@ test("graph server uses inspect file selection and exclusion policy", async () =
 			[{ id: 1, method: "inspect" }],
 			root,
 		);
+		assert.equal(response.result.version, 1);
 		assert.deepEqual(
-			response.result.nodes
-				.filter((node) => node.kind === "file")
-				.map((node) => node.path),
-			["templates/index.json"],
-		);
-		assert.equal(
-			response.result.issues.some(
-				(issue) =>
-					issue.code === "THEME_FILE_EXCLUDED" &&
-					issue.span.file === "snippets/generated.liquid",
+			response.result.classifications.map(
+				(classification) => classification.file.path,
 			),
-			true,
+			["templates/index.json"],
 		);
 	} finally {
 		await rm(root, { recursive: true, force: true });
@@ -448,6 +441,27 @@ test("watcher revisions external metadata through shared input providers", async
 		);
 		assert.equal(update.params.changedPaths.includes(".theme-check.yml"), true);
 		assert.equal(update.params.revision > 0, true);
+
+		await writeFile(
+			join(root, "nazare.theme.json"),
+			JSON.stringify({ inspect: { exclude: ["*.nz.liquid"] } }),
+		);
+		await waitFor(
+			() =>
+				server.messages.some(
+					(message) =>
+						message.method === "graph/update" &&
+						message.params.changedPaths.includes("nazare.theme.json"),
+				),
+			"config input revision",
+		);
+		server.send({ id: 2, method: "projectModel" });
+		await waitFor(
+			() => server.messages.some((message) => message.id === 2),
+			"project model response",
+		);
+		const model = server.messages.find((message) => message.id === 2);
+		assert.deepEqual(model.result.classifications, []);
 	} finally {
 		server?.close();
 		await server?.done;
