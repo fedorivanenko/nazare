@@ -134,6 +134,7 @@ export type {
 	NazareExtensionContext,
 	NazareExtensionRegistration,
 } from "./extensions.js";
+export { FileSystemAtomicOutputStore } from "./file-system-output-store.js";
 export type {
 	CompileInput,
 	CompilerFrontend,

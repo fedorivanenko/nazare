@@ -425,8 +425,8 @@ OutputTransaction
 - [x] Detect output collisions before writes.
 - [x] Preserve merchant-owned data through explicit owned-path deletion plans.
 - [ ] Preserve schema locks, migrations, locale merge, and build manifest ownership.
-- [ ] Stage writes and stale owned-file deletions.
-- [ ] Atomically commit output transaction.
+- [x] Stage writes and stale owned-file deletions.
+- [x] Atomically publish or roll back output transaction.
 - [x] Keep check-only mode as build without emission.
 - [x] Prevent obsolete revisions from committing output.
 - [ ] Delete `ThemeBuildSession` compatibility subclass and old workspace build API.
