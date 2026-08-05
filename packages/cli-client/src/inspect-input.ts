@@ -1,6 +1,37 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 
+const inspectGlobCache = new Map<string, RegExp>();
+
+export function matchesInspectGlob(path: string, pattern: string): boolean {
+	let compiled = inspectGlobCache.get(pattern);
+	if (!compiled) {
+		let source = "";
+		const normalized = pattern.split("\\").join("/");
+		for (let index = 0; index < normalized.length; index++) {
+			const character = normalized[index];
+			if (character === "*") {
+				if (normalized[index + 1] === "*") {
+					index++;
+					if (normalized[index + 1] === "/") {
+						index++;
+						source += "(?:.*/)?";
+					} else source += ".*";
+				} else source += "[^/]*";
+				continue;
+			}
+			if (character === "?") {
+				source += "[^/]";
+				continue;
+			}
+			source += character.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+		}
+		compiled = new RegExp(`^${source}$`);
+		inspectGlobCache.set(pattern, compiled);
+	}
+	return compiled.test(path.split("\\").join("/"));
+}
+
 export function validateInspectConfiguration(configured: unknown): string[] {
 	if (configured === undefined) return [];
 	if (

@@ -3,11 +3,11 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
-import { matchesThemeGlob } from "@nazare/compiler";
 import type { ShopifyBehavior } from "@nazare/target-shopify";
 import {
 	collectThemeInputFiles,
 	isInspectThemeFile,
+	matchesInspectGlob,
 	readInspectExcludePatterns,
 } from "./inspect-input.js";
 import {
@@ -514,7 +514,7 @@ function startWatcher(
 			queryRevision = await querySession.replaceFiles(
 				(await collectThemeInputFiles(root, projectRoot)).filter(
 					(file) =>
-						!exclude.some((pattern) => matchesThemeGlob(file.path, pattern)),
+						!exclude.some((pattern) => matchesInspectGlob(file.path, pattern)),
 				),
 			);
 			queryRevision = await querySession.updateExternalInput(
@@ -584,7 +584,7 @@ async function loadQuerySession(
 	return ShopifyQuerySession.create(
 		files.filter(
 			(file) =>
-				!exclude.some((pattern) => matchesThemeGlob(file.path, pattern)),
+				!exclude.some((pattern) => matchesInspectGlob(file.path, pattern)),
 		),
 		{
 			[PROJECT_METADATA_KEYS.config]: { exclude },

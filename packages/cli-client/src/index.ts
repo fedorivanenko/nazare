@@ -23,6 +23,7 @@ import type {
 import {
 	collectThemeInputFiles,
 	isMissingFileError,
+	matchesInspectGlob,
 	readOptionalInspectArtifact,
 	validateInspectConfiguration,
 } from "./inspect-input.js";
@@ -712,10 +713,9 @@ async function loadThemeInspection(
 	const session = await querySessionForInspection(prepared);
 	const inspection = await session.inspection();
 	const position = { line: 1, column: 1 };
-	const compilerModule = await compiler();
 	const excludedIssues = prepared.files.flatMap((file) => {
 		const pattern = prepared.exclude.find((candidate) =>
-			compilerModule.matchesThemeGlob(file.path, candidate),
+			matchesInspectGlob(file.path, candidate),
 		);
 		return pattern
 			? [
@@ -779,15 +779,12 @@ async function prepareThemeInspection(
 async function querySessionForInspection(
 	prepared: PreparedThemeInspection,
 ): Promise<ShopifyQuerySession> {
-	const [compilerModule, queryModule] = await Promise.all([
-		compiler(),
-		shopifyQueries(),
-	]);
+	const queryModule = await shopifyQueries();
 	return queryModule.ShopifyQuerySession.create(
 		prepared.files.filter(
 			(file) =>
 				!prepared.exclude.some((pattern) =>
-					compilerModule.matchesThemeGlob(file.path, pattern),
+					matchesInspectGlob(file.path, pattern),
 				),
 		),
 		{

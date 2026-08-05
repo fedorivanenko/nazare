@@ -489,7 +489,7 @@ raw argv
 - [ ] Stream revisioned result/update-failed events.
 - [x] Keep text/JSON/DOT formatting outside compiler.
 - [x] Remove `check` implementation; route alias to build check-only if alias remains.
-- [ ] Remove source/graph-server direct compiler plumbing after replacement.
+- [x] Remove source/graph-server direct compiler plumbing after replacement.
 - [ ] Delete old CLI adapters rather than retaining compatibility wrappers.
 
 Exit gate:
