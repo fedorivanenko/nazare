@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
 	createDefaultSourceFrontendRegistry,
@@ -11,6 +15,7 @@ import {
 } from "@nazare/compiler";
 import {
 	createPreviewProductRegistrar,
+	PreviewProjectSession,
 	previewProducts,
 } from "../dist/index.js";
 
@@ -182,6 +187,32 @@ test("invalidates only preview products that depend on an edited file", async ()
 	const afterComponentEdit = await session.get(product);
 	assert.notEqual(afterComponentEdit, before);
 	assert.match(afterComponentEdit.stories[0].html, /After Hello/);
+});
+
+test("opens preview products over the shared filesystem project session", async () => {
+	const root = mkdtempSync(join(tmpdir(), "nazare-preview-products-"));
+	try {
+		await mkdir(join(root, "snippets"), { recursive: true });
+		await writeFile(
+			join(root, "snippets/card.liquid"),
+			"<article>{{ title }}</article>",
+		);
+		await writeFile(
+			join(root, "snippets/card.stories.json"),
+			JSON.stringify({
+				stories: [{ name: "default", props: { title: "Hello" } }],
+			}),
+		);
+		const session = await PreviewProjectSession.open(root);
+		const rendered = await session.render(
+			"snippets/card.liquid",
+			"snippets/card.stories.json",
+		);
+		assert.match(rendered.stories[0].html, /Hello/);
+		assert.ok(session.revision >= 1);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });
 
 test("reads fixture JSON as a revisioned project input", async () => {

@@ -57,6 +57,7 @@ export {
 	renderComponentStories,
 } from "./render.js";
 export { type RenderCall, renderCall } from "./render-call.js";
+export { PreviewProjectSession } from "./session.js";
 export {
 	changedProps,
 	declaredStories,
