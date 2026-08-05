@@ -163,7 +163,7 @@ Goal: retain semantic confidence while contracts are deleted.
   - `.theme-check.yml`-only change
   - output collision
   - failed output transaction
-- [ ] Assert stable IDs and canonical ordering independently from current API shapes.
+- [x] Assert stable IDs and canonical ordering independently from current API shapes.
 - [ ] Assert telemetry counts for warm edits: parsed files, processed pass keys, replaced records, graph deltas.
 
 Exit gate:
@@ -238,7 +238,7 @@ analysis-plan.ts
 ```
 
 - [x] Introduce stable `ProjectFileId { workspace, package, path }`.
-- [ ] Replace absolute-path identity with project-relative identity.
+- [x] Replace absolute-path identity with project-relative identity.
 - [x] Implement lazy filesystem `InputProvider`.
 - [x] Model revisioned external project data through generic input providers.
 - [x] Add revisioned config, Theme Check, metafield snapshot, and remote-data metadata inputs.

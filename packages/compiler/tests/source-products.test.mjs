@@ -85,6 +85,16 @@ async function createSourceSession(sources, calls = { parse: 0, facts: 0 }) {
 	return { session, calls };
 }
 
+async function createDefaultSession(sources) {
+	const host = createMemoryHost(sources);
+	const session = await createProjectSession({ host });
+	createSourceProductRegistrar({
+		host,
+		frontends: createDefaultSourceFrontendRegistry(),
+	}).registerComputations(session.graph);
+	return session;
+}
+
 test("default frontends classify supported languages and opaque inputs", async () => {
 	const host = createMemoryHost({
 		"component.nz.liquid": "{% import Card from './card.nz.liquid' %}",
@@ -157,6 +167,46 @@ test("default frontends emit neutral language facts and direct dependencies", as
 		),
 		false,
 	);
+});
+
+test("source fact IDs and closure ordering ignore discovery order", async () => {
+	const sources = [
+		["components/card.nz.liquid", "<div>Card</div>"],
+		[
+			"components/page.nz.liquid",
+			"{% import Card from './card.nz.liquid' %}<Card />",
+		],
+	];
+	const forward = await createDefaultSession(Object.fromEntries(sources));
+	const reverse = await createDefaultSession(
+		Object.fromEntries(sources.toReversed()),
+	);
+	const facts = async (session) =>
+		session.get(sourceProducts.facts.product(id("components/page.nz.liquid")));
+	const closure = async (session) =>
+		session.get(
+			sourceProducts.closure.product({
+				roots: [id("components/page.nz.liquid")],
+				files: session.snapshot().fileIds,
+			}),
+		);
+	const [forwardFacts, reverseFacts, forwardClosure, reverseClosure] =
+		await Promise.all([
+			facts(forward),
+			facts(reverse),
+			closure(forward),
+			closure(reverse),
+		]);
+
+	assert.deepEqual(
+		forwardFacts.facts.map((fact) => fact.id),
+		reverseFacts.facts.map((fact) => fact.id),
+	);
+	assert.deepEqual(
+		forwardClosure.files.map((file) => file.path),
+		reverseClosure.files.map((file) => file.path),
+	);
+	assert.deepEqual(forwardClosure.edges, reverseClosure.edges);
 });
 
 test("frontend registry rejects ambiguous non-fallback classification", () => {
