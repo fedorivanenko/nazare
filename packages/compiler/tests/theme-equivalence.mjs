@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import {
 	analyzeNazareTheme,
-	buildNazareThemeWorkspace,
 	computeNazareTheme,
 	inspectNazareTheme,
 	ThemeImpactIndex,
@@ -55,8 +54,4 @@ export function assertProgramEqualsCold(program, files, options = {}) {
 			`affected pages diverged for ${node.id}`,
 		);
 	}
-}
-
-export function assertBuildEqualsCold(session, files) {
-	assert.deepEqual(session.getBuild(), buildNazareThemeWorkspace(files));
 }

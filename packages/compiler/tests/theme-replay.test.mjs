@@ -1,9 +1,6 @@
 import test from "node:test";
-import { ThemeBuildSession, ThemeProgram } from "../dist/index.js";
-import {
-	assertBuildEqualsCold,
-	assertProgramEqualsCold,
-} from "./theme-equivalence.mjs";
+import { ThemeProgram } from "../dist/index.js";
+import { assertProgramEqualsCold } from "./theme-equivalence.mjs";
 
 function replaceFile(files, file) {
 	return [
@@ -28,37 +25,28 @@ test("file replay matrix equals cold semantic, graph, query, and output rebuilds
 		{ path: "snippets/card.liquid", contents: "Card" },
 	];
 	const program = new ThemeProgram(files);
-	const build = new ThemeBuildSession(files);
-	const verify = () => {
-		assertProgramEqualsCold(program, files);
-		assertBuildEqualsCold(build, files);
-	};
+	const verify = () => assertProgramEqualsCold(program, files);
 	verify();
 
 	const edit = { path: "child.nz.liquid", contents: "<strong>Edited</strong>" };
 	files = replaceFile(files, edit);
 	program.updateFile(edit);
-	build.updateFile(edit);
 	verify();
 
 	const added = { path: "extra.nz.liquid", contents: "<aside>Added</aside>" };
 	files = replaceFile(files, added);
 	program.updateFile(added);
-	build.updateFile(added);
 	verify();
 
 	files = removeFile(files, "extra.nz.liquid");
 	program.removeFile("extra.nz.liquid");
-	build.removeFile("extra.nz.liquid");
 	verify();
 
 	files = removeFile(files, "snippets/card.liquid");
 	program.removeFile("snippets/card.liquid");
-	build.removeFile("snippets/card.liquid");
 	const renamed = { path: "snippets/tile.liquid", contents: "Card" };
 	files = replaceFile(files, renamed);
 	program.updateFile(renamed);
-	build.updateFile(renamed);
 	verify();
 
 	const imported = {
@@ -72,9 +60,7 @@ test("file replay matrix equals cold semantic, graph, query, and output rebuilds
 	};
 	files = replaceFile(replaceFile(files, replacement), imported);
 	program.updateFile(replacement);
-	build.updateFile(replacement);
 	program.updateFile(imported);
-	build.updateFile(imported);
 	verify();
 
 	const malformed = {
@@ -83,12 +69,10 @@ test("file replay matrix equals cold semantic, graph, query, and output rebuilds
 	};
 	files = replaceFile(files, malformed);
 	program.updateFile(malformed);
-	build.updateFile(malformed);
 	verify();
 
 	files = replaceFile(files, replacement);
 	program.updateFile(replacement);
-	build.updateFile(replacement);
 	verify();
 });
 

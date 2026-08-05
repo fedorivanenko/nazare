@@ -297,10 +297,6 @@ export {
 	type ThemeBehaviorUncertainSource,
 } from "./theme-behavior-index.js";
 export {
-	ThemeBuildSession,
-	type ThemeBuildUpdate,
-} from "./theme-build-session.js";
-export {
 	createThemeCapabilityPass,
 	deriveThemeCapabilities,
 	type ThemeCapabilityPassContext,

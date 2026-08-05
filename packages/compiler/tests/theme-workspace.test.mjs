@@ -12,7 +12,6 @@ import {
 	shareThemeGraphRecords,
 	summarizeThemeGraph,
 	THEME_PASS_CONVERGENCE_BUDGET,
-	ThemeBuildSession,
 	ThemeFactIndex,
 	ThemeFactStore,
 	ThemeGraphStore,
@@ -500,25 +499,6 @@ test("fact store replaces only one source bucket", () => {
 		/Cannot store fact for wrong.liquid/,
 	);
 	assert.equal(store.getFile("a.liquid").length, 1);
-});
-
-test("build session reports emitted output deltas", () => {
-	const session = new ThemeBuildSession([
-		{ path: "card.nz.liquid", contents: "<span>Card</span>" },
-	]);
-	const unchanged = session.updateFile({
-		path: "card.nz.liquid",
-		contents: "<span>Card</span>",
-	});
-	assert.equal(unchanged.revision, 0);
-	const changed = session.updateFile({
-		path: "card.nz.liquid",
-		contents: "<span>Updated</span>",
-	});
-	assert.equal(changed.revision, 1);
-	assert.deepEqual(changed.changedPaths, ["card.nz.liquid"]);
-	assert.deepEqual(changed.recomputedPaths, ["card.nz.liquid"]);
-	assert.ok(changed.changedOutputPaths.length > 0);
 });
 
 test("semantic model memo reuses unchanged resolved models", () => {

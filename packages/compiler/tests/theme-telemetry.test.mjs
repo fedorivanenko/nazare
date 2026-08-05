@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-	buildNazareThemeWorkspace,
-	ThemeBuildSession,
-	ThemeProgram,
-} from "../dist/index.js";
+import { buildNazareThemeWorkspace, ThemeProgram } from "../dist/index.js";
 
 function fixture() {
 	return [
@@ -69,28 +65,6 @@ test("no-op, edit, dependency, and snapshot updates report deterministic work", 
 	});
 	assert.ok(eagerEdit.telemetry.graphRecordsReplaced > 0);
 	assert.ok(eagerEdit.graph);
-
-	const build = new ThemeBuildSession(files);
-	const unrelated = build.updateFile({
-		path: "unrelated.nz.liquid",
-		contents: "<aside>Updated other</aside>",
-	});
-	assertTelemetryShape(unrelated.telemetry);
-	assert.deepEqual(unrelated.recomputedPaths, ["unrelated.nz.liquid"]);
-	assert.equal(unrelated.telemetry.filesParsed, 1);
-	assert.equal(unrelated.telemetry.outputsEmitted, 1);
-
-	const dependency = build.updateFile({
-		path: "child.nz.liquid",
-		contents: "<strong>Updated child</strong>",
-	});
-	assertTelemetryShape(dependency.telemetry);
-	assert.deepEqual(dependency.recomputedPaths, [
-		"child.nz.liquid",
-		"parent.nz.liquid",
-	]);
-	assert.equal(dependency.telemetry.filesParsed, 1);
-	assert.equal(dependency.telemetry.outputsEmitted, 2);
 
 	const snapshot = program.updateExternalArtifacts({
 		metafields: {

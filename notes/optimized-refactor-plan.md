@@ -435,7 +435,8 @@ OutputTransaction
 - [x] Atomically publish or roll back output transaction.
 - [x] Keep check-only mode as build without emission.
 - [x] Prevent obsolete revisions from committing output.
-- [ ] Delete `ThemeBuildSession` compatibility subclass and old workspace build API.
+- [x] Delete `ThemeBuildSession` compatibility API.
+- [ ] Delete old workspace build API.
 
 Exit gate:
 
