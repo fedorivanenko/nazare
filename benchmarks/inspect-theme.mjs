@@ -36,7 +36,7 @@ import {
 	isParsedThemeInputPath,
 	isThemeInputPath,
 } from "../fixtures/theme-fixture.mjs";
-import { scaleCorpus } from "../packages/compiler/scripts/benchmark-incremental.mjs";
+import { scaleCorpus } from "./scale-corpus.mjs";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURE_CORPUS_PATH = "fixtures/canonical-theme";
