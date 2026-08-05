@@ -12,7 +12,7 @@ import {
 	mergeAsyncIterables,
 	projectFileId,
 	projectFileRevisionInput,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 function createMemoryProject(initial) {
 	const files = new Map(

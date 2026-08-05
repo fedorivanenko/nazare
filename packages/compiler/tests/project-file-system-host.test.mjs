@@ -9,7 +9,7 @@ import {
 	discoverProjectFiles,
 	fingerprintProductKey,
 	projectFileId,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 async function withDirectory(run) {
 	const directory = await mkdtemp(join(tmpdir(), "nazare-project-host-"));

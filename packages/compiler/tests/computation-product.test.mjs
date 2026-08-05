@@ -4,7 +4,7 @@ import {
 	canonicalProductKey,
 	defineComputation,
 	defineProduct,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 test("canonical product keys ignore object insertion order", () => {
 	const left = canonicalProductKey({

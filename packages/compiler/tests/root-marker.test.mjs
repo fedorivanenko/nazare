@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compileNazareArtifact, emitTheme } from "../dist/index.js";
+import { compileNazareArtifact, emitTheme } from "../dist/testing.js";
 
 function buildWorkspaceFile(source, file, options = {}) {
 	const compiled = compileNazareArtifact(source, file);

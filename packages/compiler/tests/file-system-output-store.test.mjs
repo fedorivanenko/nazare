@@ -15,7 +15,7 @@ import {
 	executeOutputTransaction,
 	FileSystemAtomicOutputStore,
 	ObsoleteOutputRevisionError,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 test("filesystem output store publishes owned writes and deletions only", async () => {
 	const temporary = await mkdtemp(join(tmpdir(), "nazare-output-"));

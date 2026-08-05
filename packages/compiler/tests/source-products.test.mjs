@@ -11,7 +11,7 @@ import {
 	fingerprintProductKey,
 	projectFileId,
 	sourceProducts,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 function id(path) {
 	return projectFileId({ workspace: "test", package: "theme", path });

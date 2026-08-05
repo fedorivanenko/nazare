@@ -10,7 +10,7 @@ import {
 	defineProduct,
 	fingerprintProductKey,
 	productKeyCodec,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 async function withCacheDirectory(run) {
 	const directory = await mkdtemp(join(tmpdir(), "nazare-computation-cache-"));

@@ -5,7 +5,7 @@ import {
 	compileNazareArtifact,
 	componentSymbolIdForFile,
 	mergeArtifactIR,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 // A parent that imports a child by the child's canonical build path (the
 // identity model: import path == file path). Both compile independently.

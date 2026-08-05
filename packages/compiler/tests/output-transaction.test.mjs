@@ -5,7 +5,7 @@ import {
 	executeOutputTransaction,
 	ObsoleteOutputRevisionError,
 	OutputPlanValidationError,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 function memoryStore(files = new Map()) {
 	return {

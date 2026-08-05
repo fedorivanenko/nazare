@@ -15,7 +15,7 @@ import {
 	projectTreeSitterNazareAst,
 	resolveAssetImports,
 	treeSitterNazareLiquidFrontend,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 function buildWorkspaceFile(source, file, options = {}) {
 	const compiled = compileArtifact({
@@ -296,7 +296,7 @@ test("check category APIs expose the strict check groups", () => {
 
 test("checking dependencies is an explicit call, not a compile-time policy", async () => {
 	const { checkDependencies, projectTreeSitterNazareAst: project } =
-		await import("../dist/index.js");
+		await import("../dist/testing.js");
 	const parse = (source, file) => project(source, file).ast;
 	const source = `{% import Child from "./child.nz.liquid" %}\n{% render Child {} %}`;
 	const files = {
@@ -323,7 +323,7 @@ test("checking dependencies is an explicit call, not a compile-time policy", asy
 
 test("dependency checking surfaces nested import graph failures", async () => {
 	const { checkDependencies, projectTreeSitterNazareAst: project } =
-		await import("../dist/index.js");
+		await import("../dist/testing.js");
 	const parse = (source, file) => project(source, file).ast;
 	const source = `{% import Child from "./child.nz.liquid" %}\n{% render Child {} %}`;
 	const files = {
@@ -343,7 +343,7 @@ test("dependency checking surfaces nested import graph failures", async () => {
 
 test("dependency checking reports import cycles per requester", async () => {
 	const { checkDependencies, projectTreeSitterNazareAst: project } =
-		await import("../dist/index.js");
+		await import("../dist/testing.js");
 	const parse = (source, file) => project(source, file).ast;
 	const source = `{% import A from "./a.nz.liquid" %}\n{% import B from "./b.nz.liquid" %}`;
 	const files = {
@@ -365,7 +365,7 @@ test("dependency checking reports import cycles per requester", async () => {
 
 test("dependency checking reuses parsed transitive imports", async () => {
 	const { checkDependencies, projectTreeSitterNazareAst: project } =
-		await import("../dist/index.js");
+		await import("../dist/testing.js");
 	const parse = (source, file) => project(source, file).ast;
 	const source = `{% import A from "./a.nz.liquid" %}\n{% import B from "./b.nz.liquid" %}`;
 	const files = {

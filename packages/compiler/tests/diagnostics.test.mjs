@@ -5,7 +5,7 @@
 // diagnostic should be one row here.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compileNazareArtifact, emitTheme } from "../dist/index.js";
+import { compileNazareArtifact, emitTheme } from "../dist/testing.js";
 
 const LINK = `{% props { href: url.required(), text: string.required() } %}`;
 const SPECIAL_LITERALS = `{% props { href: url.required(), color: color.required(), handle: handle.required(), text: string.required() } %}`;

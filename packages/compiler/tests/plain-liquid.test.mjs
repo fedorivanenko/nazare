@@ -6,7 +6,7 @@ import {
 	compileNazareArtifact,
 	compilePlainLiquid,
 	treeSitterPlainLiquidFrontend,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 import { collectPlainLiquidThemeFacts } from "../dist/theme-liquid-facts.js";
 
 test("plain Liquid frontend parses schema, settings reads, and static dependencies", () => {

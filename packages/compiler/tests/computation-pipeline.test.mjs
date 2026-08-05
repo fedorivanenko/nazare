@@ -9,7 +9,7 @@ import {
 	definePipeline,
 	pipelineIdentity,
 	registerPipelineComputations,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 const buildCapability = defineCapability("build");
 const inspectCapability = defineCapability("inspect");

@@ -8,7 +8,7 @@ import {
 	defineProduct,
 	ObsoleteComputationRevisionError,
 	productKeyCodec,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 function inputComputation(id, inputKey, calls) {
 	const definition = defineProduct({

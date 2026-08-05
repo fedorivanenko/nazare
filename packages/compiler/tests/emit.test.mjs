@@ -14,7 +14,7 @@ import {
 	compilePlainLiquid,
 	emitTheme,
 	validateArtifactIR,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..");
