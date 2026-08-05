@@ -9,11 +9,14 @@ import {
 } from "../javascript-ast.js";
 import { analyzeJavaScriptNetwork } from "../javascript-network-analysis.js";
 import { spanFromOffsets } from "../source.js";
-import type { SourceAnalysisUncertainty } from "../source-analysis-types.js";
-import type { ThemeFact, ThemeJavaScriptOwner } from "../theme-facts.js";
+import type {
+	AnalyzedSourceFact,
+	SourceAnalysisUncertainty,
+	JavaScriptSourceOwner as ThemeJavaScriptOwner,
+} from "../source-analysis-types.js";
 
 export type JavaScriptSourceAnalysis = {
-	facts: ThemeFact[];
+	facts: AnalyzedSourceFact[];
 	issues: Diagnostic[];
 	uncertainty: SourceAnalysisUncertainty[];
 };
@@ -45,7 +48,7 @@ export function analyzeJavaScriptSource(
 	const exportsByBinding = collectExportKinds(program);
 	const network = analyzeJavaScriptNetwork(path, source, program);
 
-	const facts: ThemeFact[] = [...network.facts];
+	const facts: AnalyzedSourceFact[] = [...network.facts];
 	const issues: Diagnostic[] = [];
 	const uncertainty: SourceAnalysisUncertainty[] = [...network.uncertainty];
 	walkJavaScript(program, (node, parent, ancestors) => {

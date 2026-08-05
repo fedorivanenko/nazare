@@ -2,11 +2,15 @@ import type { Program } from "acorn";
 import { parse } from "graphql";
 import { type JavaScriptNode, walkJavaScript } from "./javascript-ast.js";
 import { spanFromOffsets } from "./source.js";
-import type { SourceAnalysisUncertainty } from "./source-analysis-types.js";
-import type { ThemeFact } from "./theme-facts.js";
+import type {
+	AnalyzedSourceFact,
+	GraphqlRequestKind,
+	NetworkTransport,
+	SourceAnalysisUncertainty,
+} from "./source-analysis-types.js";
 
 export type JavaScriptNetworkAnalysis = {
-	facts: ThemeFact[];
+	facts: AnalyzedSourceFact[];
 	uncertainty: SourceAnalysisUncertainty[];
 };
 
@@ -25,7 +29,7 @@ export function analyzeJavaScriptNetwork(
 	source: string,
 	program: Program,
 ): JavaScriptNetworkAnalysis {
-	const facts: ThemeFact[] = [];
+	const facts: AnalyzedSourceFact[] = [];
 	const uncertainty: SourceAnalysisUncertainty[] = [];
 	const bindings = new JavaScriptBindingResolver(program);
 
@@ -41,9 +45,7 @@ export function analyzeJavaScriptNetwork(
 			callee?.type === "MemberExpression"
 				? bindings.graphqlClientKind(asNode(callee.object), call.start)
 				: undefined;
-		let transport:
-			| Extract<ThemeFact, { kind: "accessesNetwork" }>["transport"]
-			| undefined;
+		let transport: NetworkTransport | undefined;
 		let endpointNode: JavaScriptNode | undefined;
 		let optionsNode: JavaScriptNode | undefined;
 		let queryNode: JavaScriptNode | undefined;
@@ -92,8 +94,7 @@ export function analyzeJavaScriptNetwork(
 			graphqlQueryFromRequest(endpoint, optionsNode, bindings);
 		const endpointLooksGraphql =
 			endpoint?.toLowerCase().includes("graphql") === true;
-		let graphql: Extract<ThemeFact, { kind: "accessesNetwork" }>["graphql"] =
-			"none";
+		let graphql: GraphqlRequestKind = "none";
 
 		if (queryText !== undefined) {
 			try {
@@ -245,7 +246,7 @@ function graphqlQueryFromRequest(
 }
 
 function requestMethod(
-	transport: Extract<ThemeFact, { kind: "accessesNetwork" }>["transport"],
+	transport: NetworkTransport,
 	args: JavaScriptNode[],
 	options: JavaScriptNode | undefined,
 	bindings: JavaScriptBindingResolver,
