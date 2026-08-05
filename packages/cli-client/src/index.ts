@@ -15,7 +15,7 @@ import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 // Types only: erased at build, so naming the compiler here costs nothing at
 // runtime. Its values are loaded by the commands that need them — see below.
-import type { compileNazareArtifact, ThemeInputFile } from "@nazare/compiler";
+import type { compileNazareArtifact } from "@nazare/compiler/compile";
 import {
 	collectThemeInputFiles,
 	isMissingFileError,
@@ -41,7 +41,7 @@ import type {
 } from "./shopify-query-session.js";
 
 /** Heavy modules, loaded only by commands that use them. */
-const compiler = () => import("@nazare/compiler");
+const compiler = () => import("@nazare/compiler/compile");
 const registry = () => import("@nazare/registry");
 const shopifyQueries = () => import("./shopify-query-session.js");
 
@@ -691,6 +691,8 @@ function parseMetafieldIdentity(identifier: string): MetafieldIdentity {
 	}
 	return { owner: parts[0], namespace: parts[1], key: parts[2] };
 }
+
+type ThemeInputFile = { path: string; contents: string };
 
 type PreparedThemeInspection = {
 	root: string;

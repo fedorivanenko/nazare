@@ -2,7 +2,7 @@ import {
 	type CompiledComponent,
 	compileArtifact,
 	emitTheme,
-} from "@nazare/compiler";
+} from "@nazare/compiler/compile";
 import {
 	type CapabilityProvider,
 	type ComputationContext,

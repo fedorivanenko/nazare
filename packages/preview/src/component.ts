@@ -6,7 +6,7 @@ import {
 	collectPlainLiquidThemeFacts,
 	compileArtifact,
 	emitTheme,
-} from "@nazare/compiler";
+} from "@nazare/compiler/compile";
 import type { ArtifactContract, ComponentKind, Diagnostic } from "@nazare/core";
 import { controlsFromContract, type PreviewControl } from "./controls.js";
 import { plainLiquidControls } from "./plain-controls.js";

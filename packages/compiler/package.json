@@ -11,6 +11,10 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
+		"./compile": {
+			"types": "./dist/compile/index.d.ts",
+			"import": "./dist/compile/index.js"
+		},
 		"./computation": {
 			"types": "./dist/computation/index.d.ts",
 			"import": "./dist/computation/index.js"
