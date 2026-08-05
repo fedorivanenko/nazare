@@ -6,6 +6,7 @@ import test from "node:test";
 import {
 	createComputationGraph,
 	createFileSystemComputationCache,
+	createMemoryComputationCache,
 	defineComputation,
 	defineProduct,
 	fingerprintProductKey,
@@ -20,6 +21,32 @@ async function withCacheDirectory(run) {
 		await rm(directory, { recursive: true, force: true });
 	}
 }
+
+test("memory cache evicts least recently used entries when bounded", async () => {
+	const cache = createMemoryComputationCache({ maxEntries: 2 });
+	const entry = (value) => ({
+		value,
+		valueFingerprint: fingerprintProductKey(value),
+		productFingerprint: fingerprintProductKey("product"),
+		dependencies: [],
+	});
+
+	await cache.write("first", entry("first"));
+	await cache.write("second", entry("second"));
+	await cache.read("first");
+	await cache.write("third", entry("third"));
+
+	assert.deepEqual(await cache.read("first"), entry("first"));
+	assert.equal(await cache.read("second"), undefined);
+	assert.deepEqual(await cache.read("third"), entry("third"));
+});
+
+test("memory cache rejects invalid retention limits", () => {
+	assert.throws(
+		() => createMemoryComputationCache({ maxEntries: 0 }),
+		/Memory computation cache maxEntries must be a positive integer/,
+	);
+});
 
 test("filesystem cache round-trips validated computation entries", async () => {
 	await withCacheDirectory(async (directory) => {

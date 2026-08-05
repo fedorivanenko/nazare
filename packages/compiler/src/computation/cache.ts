@@ -41,15 +41,38 @@ export type ComputationCache = {
 	delete(cacheKey: string): Promise<void>;
 };
 
-export function createMemoryComputationCache(): ComputationCache {
+export function createMemoryComputationCache(
+	options: { maxEntries?: number } = {},
+): ComputationCache {
+	const maxEntries = options.maxEntries;
+	if (
+		maxEntries !== undefined &&
+		(!Number.isSafeInteger(maxEntries) || maxEntries < 1)
+	) {
+		throw new TypeError(
+			"Memory computation cache maxEntries must be a positive integer",
+		);
+	}
+
 	const entries = new Map<string, CachedComputation>();
 
 	return {
 		async read(cacheKey) {
-			return entries.get(cacheKey);
+			const value = entries.get(cacheKey);
+			if (value === undefined) return undefined;
+			entries.delete(cacheKey);
+			entries.set(cacheKey, value);
+			return value;
 		},
 		async write(cacheKey, value) {
+			entries.delete(cacheKey);
 			entries.set(cacheKey, value);
+			if (maxEntries === undefined) return;
+			while (entries.size > maxEntries) {
+				const oldest = entries.keys().next().value;
+				if (oldest === undefined) return;
+				entries.delete(oldest);
+			}
 		},
 		async delete(cacheKey) {
 			entries.delete(cacheKey);
