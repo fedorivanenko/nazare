@@ -344,17 +344,6 @@ export type {
 	ThemeSourceUncertainty,
 } from "./theme-source-frontend.js";
 export {
-	analyzeThemeSource,
-	assetThemeSourceFrontend,
-	cssThemeSourceFrontend,
-	DEFAULT_THEME_SOURCE_FRONTENDS,
-	javaScriptThemeSourceFrontend,
-	jsonThemeSourceFrontend,
-	nazareLiquidThemeSourceFrontend,
-	opaqueThemeSourceFrontend,
-	plainLiquidThemeSourceFrontend,
-} from "./theme-source-frontends.js";
-export {
 	projectTreeSitterNazareAst,
 	type TreeSitterNazareProjection,
 } from "./tree-sitter-nazare-projector.js";
