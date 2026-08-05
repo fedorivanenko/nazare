@@ -508,7 +508,7 @@ CLI only knows typed requests, capabilities, sessions, and events.
 - [ ] Rename remaining generic `theme-*` files to domain-neutral names.
 - [x] Verify package dependency direction.
 - [ ] Regenerate fact/product cache revisions.
-- [ ] Update README and architecture notes.
+- [x] Update README and architecture notes.
 
 Exit gate:
 
