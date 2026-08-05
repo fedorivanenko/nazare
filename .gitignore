@@ -19,7 +19,6 @@ notes/
 notes/*
 !notes/adr-tree-sitter-source-runtime.md
 !notes/tree-sitter-performance.md
-!notes/refactor.ts
 !notes/optimized-refactor.ts
 !notes/optimized-refactor-plan.md
 
