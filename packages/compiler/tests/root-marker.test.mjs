@@ -1,18 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-	buildNazareThemeWorkspace,
-	compileNazareArtifact,
-} from "../dist/index.js";
+import { compileNazareArtifact, emitTheme } from "../dist/index.js";
 
 function buildWorkspaceFile(source, file, options = {}) {
-	const built = buildNazareThemeWorkspace([{ path: file, contents: source }], {
-		...options,
-		scope: { kind: "file", path: file },
+	const compiled = compileNazareArtifact(source, file);
+	const emitted = emitTheme(source, compiled, {
+		name: options.name ?? "component",
 	});
 	return {
-		emitted: built.emitted,
-		issues: built.issues,
+		emitted,
+		issues: [...compiled.issues, ...emitted.issues],
 	};
 }
 

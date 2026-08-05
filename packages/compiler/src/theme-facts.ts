@@ -782,7 +782,7 @@ export type ThemeBuiltArtifact = {
 	contracts: ArtifactContract[];
 	canEmit: boolean;
 	notes: Diagnostic[];
-	/** This artifact's own emitted files; set by buildNazareThemeWorkspace. */
+	/** This artifact's own emitted files. */
 	emitted?: EmitResult;
 };
 

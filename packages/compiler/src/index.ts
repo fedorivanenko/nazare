@@ -3,7 +3,7 @@
  *
  * Explicit flow:
  * frontend → semantic facts → graph/check/validate. Workspace build is separate;
- * buildNazareThemeWorkspace analyzes theme files, selects a scope, emits, and aggregates issues.
+ * Build products analyze reachable files, emit output plans, and aggregate diagnostics.
  */
 import type {
 	ArtifactContract,
@@ -317,14 +317,6 @@ export {
 	deriveThemeClassifications,
 	type ThemeClassificationPassContext,
 } from "./theme-classification-pass.js";
-export {
-	THEME_METAFIELD_IMPACT_SCOPE,
-	ThemeComputation,
-	type ThemeFileImpact,
-	type ThemeMetafieldImpact,
-	type ThemeMetafieldImpactScope,
-	type ThemeRenderOccurrence,
-} from "./theme-computation.js";
 export { ThemeRenderDependencyIndex } from "./theme-data-flow-index.js";
 export {
 	collectThemeDataFlowInputs,
@@ -508,6 +500,7 @@ export {
 	getThemeFileImpacts,
 	getThemeNode,
 	summarizeThemeGraph,
+	type ThemeFileImpact,
 	type ThemeGraphSummary,
 	themeGraphToDot,
 } from "./theme-queries.js";
@@ -542,14 +535,6 @@ export {
 	ThemeSemanticStore,
 	ThemeSemanticTransaction,
 } from "./theme-semantic-store.js";
-export {
-	THEME_PROGRAM_DEFAULTS,
-	type ThemeGraphUpdate,
-	ThemeProgram,
-	type ThemeProgramOptions,
-	type ThemeUpdateTelemetry,
-	ThemeWorkspaceSession,
-} from "./theme-session.js";
 export type {
 	ThemeSourceAnalysis,
 	ThemeSourceCompleteness,
@@ -569,14 +554,6 @@ export {
 	opaqueThemeSourceFrontend,
 	plainLiquidThemeSourceFrontend,
 } from "./theme-source-frontends.js";
-export {
-	analyzeNazareTheme,
-	buildNazareThemeWorkspace,
-	computeNazareTheme,
-	inspectNazareTheme,
-	THEME_ANALYSIS_DEFAULTS,
-	THEME_BUILD_DEFAULTS,
-} from "./theme-workspace.js";
 export {
 	projectTreeSitterNazareAst,
 	type TreeSitterNazareProjection,

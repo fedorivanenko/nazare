@@ -28,7 +28,6 @@
 		"test:source": "pnpm -s build && pnpm --dir packages/tree-sitter-nazare-liquid test && node --test packages/source/tests/*.test.mjs",
 		"test:package": "./scripts/package-cli.sh smoke && ./scripts/package-source-cli.sh smoke && ./scripts/smoke-packaged-cli.sh .release/nazare-cli-*.tar.gz && ./scripts/smoke-packaged-source-cli.sh .release/nazare-source-*.tar.gz && ./scripts/smoke-installer.sh smoke cli && ./scripts/smoke-installer.sh smoke source",
 		"benchmark:shopify-parser": "pnpm -s build >/dev/null && node --expose-gc packages/source/scripts/benchmark-shopify-parser.mjs",
-		"benchmark:incremental": "pnpm -s build >/dev/null && node packages/compiler/scripts/benchmark-incremental.mjs",
 		"benchmark:inspect": "pnpm -s build >/dev/null && node benchmarks/inspect-theme.mjs",
 		"benchmark:scaffold": "node benchmarks/scaffold-theme.mjs"
 	},

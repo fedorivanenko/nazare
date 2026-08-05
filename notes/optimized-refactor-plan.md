@@ -392,7 +392,8 @@ unused-files
 - [x] Migrate direct CLI file-impact inspection to Shopify query products.
 - [x] Migrate direct CLI metafield-impact inspection to Shopify query products.
 - [x] Migrate full CLI theme graph/report inspection to Shopify query products.
-- [ ] Delete `ThemeComputation` and direct query helpers after remaining consumers migrate.
+- [x] Delete `ThemeComputation` and `ThemeProgram`.
+- [ ] Delete old direct graph-query and persisted-inspection cache helpers.
 
 Exit gate:
 
@@ -440,7 +441,7 @@ OutputTransaction
 - [x] Prevent obsolete revisions from committing output.
 - [x] Delete `ThemeBuildSession` compatibility API.
 - [x] Delete obsolete `@nazare/theme` orchestration package.
-- [ ] Delete old compiler workspace build API.
+- [x] Delete old compiler workspace build API.
 
 Exit gate:
 
