@@ -6,9 +6,9 @@ import type {
 } from "@nazare/core";
 import type { NazareAst } from "./ast.js";
 import type { EmitResult } from "./emit.js";
-import type { ThemeEvidenceStrength } from "./theme-evidence-strength.js";
-import type { ThemeEvidenceRecord } from "./theme-evidence-types.js";
-import type { ThemeFileKind } from "./theme-file-classifier.js";
+import type { ThemeEvidenceStrength } from "./evidence-strength.js";
+import type { ThemeEvidenceRecord } from "./evidence-types.js";
+import type { ThemeFileKind } from "./file-classifier.js";
 
 export interface ThemeInputFile {
 	path: string;
@@ -638,7 +638,7 @@ export type ThemeClassificationRecord = {
 	uncertainty: string[];
 };
 
-export type { ThemeEvidenceRecord } from "./theme-evidence-types.js";
+export type { ThemeEvidenceRecord } from "./evidence-types.js";
 
 export type ThemeExpectedInputRecord = {
 	id: string;

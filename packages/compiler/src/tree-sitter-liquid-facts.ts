@@ -1,13 +1,13 @@
 import type { SourceSpan } from "@nazare/core";
 import type { HtmlMarkupFacts, LiquidSyntaxFacts } from "@nazare/source";
-import { spanFromOffsets } from "./source.js";
-import { renderSiteKey, type ThemeFact } from "./theme-facts.js";
+import { renderSiteKey, type ThemeFact } from "./analysis-types.js";
 import {
 	LIQUID_GLOBAL_NAMES,
 	lookupCapabilityRules,
 	SHOPIFY_DATA_OBJECTS,
 	textCapabilityRules,
-} from "./theme-liquid-policy.js";
+} from "./liquid-policy.js";
+import { spanFromOffsets } from "./source.js";
 
 type Range = { start: number; end: number };
 type Binding = {

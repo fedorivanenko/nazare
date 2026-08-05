@@ -6,9 +6,11 @@ import {
 	liquidSyntaxFacts,
 	parseSourceDocument,
 } from "@nazare/source";
+import { renderSiteKey, type ThemeFact } from "./analysis-types.js";
 import type { AuthoredSchema, SettingsRead } from "./ast.js";
 import { checkVanillaSchema } from "./check-vanilla.js";
 import { parseLiquidCrash } from "./diagnostics.js";
+import { themeNameFromPath } from "./file-classifier.js";
 import { markDiagnostics } from "./pipeline.js";
 import {
 	invalidDependencyName,
@@ -16,9 +18,7 @@ import {
 	validateDependencyName,
 } from "./plain-liquid.js";
 import { spanFromOffsets } from "./source.js";
-import { renderSiteKey, type ThemeFact } from "./theme-facts.js";
-import { themeNameFromPath } from "./theme-file-classifier.js";
-import { collectTreeSitterSourceThemeFacts } from "./theme-tree-sitter-facts.js";
+import { collectTreeSitterSourceThemeFacts } from "./tree-sitter-liquid-facts.js";
 
 export function collectPlainLiquidThemeFacts(
 	path: string,

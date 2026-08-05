@@ -5,7 +5,7 @@
 // reads or literals are evidence of a storefront capability. They live apart
 // from both the reference extractor and the scanner adapter because both read
 // them, and a second copy would be a second answer.
-import type { ThemeEvidenceStrength } from "./theme-evidence-strength.js";
+import type { ThemeEvidenceStrength } from "./evidence-strength.js";
 
 export const SHOPIFY_DATA_OBJECTS = new Set([
 	"article",

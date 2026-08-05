@@ -16,6 +16,43 @@ export type {
 	ArtifactSyntaxNode,
 } from "@nazare/core";
 export type {
+	AnalyzeNazareThemeOptions,
+	BuildNazareThemeWorkspaceOptions,
+	BuildThemeScope,
+	InspectNazareThemeOptions,
+	ThemeAnalysis,
+	ThemeBehaviorFact,
+	ThemeBehaviorRecord,
+	ThemeBlockInstanceRecord,
+	ThemeBlockRecord,
+	ThemeBlockSettingRecord,
+	ThemeBuildResult,
+	ThemeCapabilityRecord,
+	ThemeCapabilitySignalRecord,
+	ThemeClassificationRecord,
+	ThemeDataAccessRecord,
+	ThemeDomHookKind,
+	ThemeEvidenceRecord,
+	ThemeExpectedInputRecord,
+	ThemeFact,
+	ThemeInputFile,
+	ThemeJavaScriptOwner,
+	ThemeLocaleKeyRecord,
+	ThemeLocaleReferenceRecord,
+	ThemeLocaleTranslationRecord,
+	ThemeMetafieldDefinitionRecord,
+	ThemeMetafieldReadRecord,
+	ThemeNetworkAccessRecord,
+	ThemePageRecord,
+	ThemeRenderArgumentRecord,
+	ThemeRenderSiteRecord,
+	ThemeSectionInstanceRecord,
+	ThemeSemanticModel,
+	ThemeSettingReadRecord,
+	ThemeSourceAnalysisRecord,
+	ThemeSourceLanguage,
+} from "./analysis-types.js";
+export type {
 	AuthoredSchema,
 	NazareAst,
 	NazareImportNode,
@@ -106,6 +143,10 @@ export {
 	emitScriptFiles,
 	emitTheme,
 } from "./emit.js";
+export {
+	strongerThemeEvidence,
+	type ThemeEvidenceStrength,
+} from "./evidence-strength.js";
 export type {
 	NazareComponent,
 	NazareExtension,
@@ -133,6 +174,11 @@ export { treeSitterNazareLiquidFrontend } from "./frontends/tree-sitter-nazare-l
 export { treeSitterPlainLiquidFrontend } from "./frontends/tree-sitter-plain-liquid.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
+// A single plain-Liquid file's facts, without standing up a theme session:
+// `{% doc %}` @param declarations are the author's own statement of a
+// component's interface, and tooling outside the graph (the preview's controls)
+// needs them for one file at a time.
+export { collectPlainLiquidThemeFacts } from "./liquid-facts.js";
 export { mergeArtifactIR } from "./merge.js";
 export {
 	type AtomicOutputCommit,
@@ -260,52 +306,6 @@ export {
 	contractFromIR,
 } from "./symbols.js";
 export { syntaxFromAst } from "./syntax.js";
-export {
-	strongerThemeEvidence,
-	type ThemeEvidenceStrength,
-} from "./theme-evidence-strength.js";
-export type {
-	AnalyzeNazareThemeOptions,
-	BuildNazareThemeWorkspaceOptions,
-	BuildThemeScope,
-	InspectNazareThemeOptions,
-	ThemeAnalysis,
-	ThemeBehaviorFact,
-	ThemeBehaviorRecord,
-	ThemeBlockInstanceRecord,
-	ThemeBlockRecord,
-	ThemeBlockSettingRecord,
-	ThemeBuildResult,
-	ThemeCapabilityRecord,
-	ThemeCapabilitySignalRecord,
-	ThemeClassificationRecord,
-	ThemeDataAccessRecord,
-	ThemeDomHookKind,
-	ThemeEvidenceRecord,
-	ThemeExpectedInputRecord,
-	ThemeFact,
-	ThemeInputFile,
-	ThemeJavaScriptOwner,
-	ThemeLocaleKeyRecord,
-	ThemeLocaleReferenceRecord,
-	ThemeLocaleTranslationRecord,
-	ThemeMetafieldDefinitionRecord,
-	ThemeMetafieldReadRecord,
-	ThemeNetworkAccessRecord,
-	ThemePageRecord,
-	ThemeRenderArgumentRecord,
-	ThemeRenderSiteRecord,
-	ThemeSectionInstanceRecord,
-	ThemeSemanticModel,
-	ThemeSettingReadRecord,
-	ThemeSourceAnalysisRecord,
-	ThemeSourceLanguage,
-} from "./theme-facts.js";
-// A single plain-Liquid file's facts, without standing up a theme session:
-// `{% doc %}` @param declarations are the author's own statement of a
-// component's interface, and tooling outside the graph (the preview's controls)
-// needs them for one file at a time.
-export { collectPlainLiquidThemeFacts } from "./theme-liquid-facts.js";
 export {
 	projectTreeSitterNazareAst,
 	type TreeSitterNazareProjection,

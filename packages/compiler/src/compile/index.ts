@@ -264,5 +264,5 @@ export {
 	type EmittedFile,
 	emitTheme,
 } from "../emit.js";
+export { collectPlainLiquidThemeFacts } from "../liquid-facts.js";
 export { themeSchemaFromIR } from "../schema.js";
-export { collectPlainLiquidThemeFacts } from "../theme-liquid-facts.js";
