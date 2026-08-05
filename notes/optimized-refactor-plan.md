@@ -276,7 +276,7 @@ closure.ts
 - [x] Make `dependencyEdges(fileId)` partitioned by source.
 - [x] Resolve closure by demand from analysis roots.
 - [x] Preserve opaque frontend and uncertainty behavior.
-- [ ] Remove whole-scope parsing from command paths.
+- [x] Remove eager whole-scope parsing from command paths; workspace inspection remains an explicit whole-project projection.
 
 Reuse from current code:
 

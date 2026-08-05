@@ -122,7 +122,7 @@ function compileComponent(
 		readFile: (path: string) => string | undefined;
 	},
 ): PreviewComponent {
-	const key = `${dir}\0${file}\0${options.packageId ?? ""}\0${options.kind ?? ""}`;
+	const key = compiledComponentKey(dir, file, options);
 	const cached = compiledComponents.get(key);
 	if (
 		cached &&
@@ -143,6 +143,31 @@ function compileComponent(
 	});
 	compiledComponents.set(key, { reads, source, component });
 	return component;
+}
+
+type CompiledComponentIdentity = {
+	packageId?: string;
+	kind?: NazareManifest["kind"];
+};
+
+function compiledComponentKey(
+	dir: string,
+	file: string,
+	options: CompiledComponentIdentity,
+): string {
+	return `${dir}\0${file}\0${options.packageId ?? ""}\0${options.kind ?? ""}`;
+}
+
+function componentReads(
+	dir: string,
+	file: string,
+	options: CompiledComponentIdentity,
+): readonly string[] {
+	return [
+		...(compiledComponents
+			.get(compiledComponentKey(dir, file, options))
+			?.reads.keys() ?? []),
+	];
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -424,6 +449,16 @@ async function collectPackages(
 	// sibling (`../notice/notice.nz.liquid`) addresses it across the folder
 	// boundary, so the entry path has to be collection-relative too.
 	const readCollectionFile = (path: string) => readSync(join(dir, path));
+	const candidates = new Map<
+		string,
+		{
+			file: string;
+			source: string;
+			manifest: NazareManifest;
+			stories: PreviewStory[];
+			storyFile: string;
+		}
+	>();
 
 	for (const folder of (await readdir(dir)).sort()) {
 		const manifestPath = join(dir, folder, "nazare.json");
@@ -459,30 +494,58 @@ async function collectPackages(
 		const file = `${folder}/${manifest.entry}`;
 		const source = await readIfPresent(join(dir, file));
 		if (source === undefined) continue;
-		const component = compileComponent(dir, source, file, {
-			readFile: readCollectionFile,
-			packageId: manifest.id,
-			// A function package was already skipped, so the kind is a template one.
-			kind: manifest.kind as Exclude<NazareManifest["kind"], "function">,
-		});
 		let stories: PreviewStory[];
 		try {
 			stories = storiesFor({ manifest, readFixture });
 		} catch (error) {
 			collection.malformed.push(errorText(error));
-			collection.malformedComponents.push(component.name);
+			collection.malformedComponents.push(manifest.id);
 			stories = [];
 		}
+		const storyFile = `${folder}/nazare.json`;
+		candidates.set(file, { file, source, manifest, stories, storyFile });
+		if (stories.length === 0) collection.undeclared.push(file);
+	}
+
+	const pending = [...candidates.values()]
+		.filter((candidate) => candidate.stories.length > 0)
+		.map((candidate) => candidate.file);
+	const compiled = new Set<string>();
+	while (pending.length > 0) {
+		const file = pending.shift();
+		if (!file || compiled.has(file)) continue;
+		const candidate = candidates.get(file);
+		if (!candidate) continue;
+		const options = {
+			readFile: readCollectionFile,
+			packageId: candidate.manifest.id,
+			kind: candidate.manifest.kind as Exclude<
+				NazareManifest["kind"],
+				"function"
+			>,
+		};
+		const component = compileComponent(dir, candidate.source, file, options);
+		compiled.add(file);
 		const entryRecord = {
 			component,
-			stories,
+			stories: candidate.stories,
 			file,
-			storyFile: `${folder}/nazare.json`,
+			storyFile: candidate.storyFile,
 		};
 		collection.compiled.push(entryRecord);
-		if (stories.length > 0) collection.previewed.push(entryRecord);
-		else collection.undeclared.push(entryRecord.file);
+		if (candidate.stories.length > 0) collection.previewed.push(entryRecord);
+		for (const dependency of componentReads(dir, file, options)) {
+			if (candidates.has(dependency) && !compiled.has(dependency)) {
+				pending.push(dependency);
+			}
+		}
 	}
+	collection.compiled.sort((left, right) =>
+		left.file.localeCompare(right.file),
+	);
+	collection.previewed.sort((left, right) =>
+		left.file.localeCompare(right.file),
+	);
 	return collection;
 }
 

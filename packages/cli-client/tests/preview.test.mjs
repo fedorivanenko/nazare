@@ -510,6 +510,46 @@ test("JavaScript scripts do not require a type checker", async () => {
 	});
 });
 
+test("package preview compiles only story roots and imported package closure", async () => {
+	const manifest = (id, entry, stories = []) =>
+		JSON.stringify({
+			id,
+			version: "0.1.0",
+			kind: "snippet",
+			entry,
+			license: "MIT",
+			files: [entry],
+			preview: { stories },
+		});
+	await withProject(
+		{
+			"ui/card/nazare.json": manifest("@acme/card", "card.nz.liquid", [
+				{ name: "default" },
+			]),
+			"ui/card/card.nz.liquid":
+				"{% import Badge from '../badge/badge.nz.liquid' %}<Badge />",
+			"ui/badge/nazare.json": manifest("@acme/badge", "badge.nz.liquid"),
+			"ui/badge/badge.nz.liquid": "<span>Badge</span>",
+			"ui/unused/nazare.json": manifest("@acme/unused", "unused.nz.liquid"),
+			"ui/unused/unused.nz.liquid": "{% broken",
+		},
+		async (cwd) => {
+			const { collectPreview } = await previewCommand();
+			const preview = await collectPreview(join(cwd, "ui"));
+
+			assert.deepEqual(
+				preview.compiled.map((entry) => entry.file),
+				["badge/badge.nz.liquid", "card/card.nz.liquid"],
+			);
+			assert.deepEqual(preview.undeclared, [
+				"badge/badge.nz.liquid",
+				"unused/unused.nz.liquid",
+			]);
+			assert.equal(preview.previewed.length, 1);
+		},
+	);
+});
+
 test("packages are detected by their manifests, not by a flag", async () => {
 	await withProject(
 		{
