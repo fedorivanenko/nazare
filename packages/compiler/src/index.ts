@@ -307,14 +307,6 @@ export type {
 // component's interface, and tooling outside the graph (the preview's controls)
 // needs them for one file at a time.
 export { collectPlainLiquidThemeFacts } from "./theme-liquid-facts.js";
-export type {
-	ThemeSourceAnalysis,
-	ThemeSourceCompleteness,
-	ThemeSourceFrontend,
-	ThemeSourceFrontendContext,
-	ThemeSourceInput,
-	ThemeSourceUncertainty,
-} from "./theme-source-frontend.js";
 export {
 	projectTreeSitterNazareAst,
 	type TreeSitterNazareProjection,

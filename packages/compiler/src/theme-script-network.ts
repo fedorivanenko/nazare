@@ -10,15 +10,15 @@ import {
 } from "graphql";
 import { type JavaScriptNode, walkJavaScript } from "./javascript-ast.js";
 import { spanFromOffsets } from "./source.js";
+import type { SourceAnalysisUncertainty } from "./source-analysis-types.js";
 import type {
 	ThemeFact,
 	ThemeNetworkMetafieldReference,
 } from "./theme-facts.js";
-import type { ThemeSourceUncertainty } from "./theme-source-frontend.js";
 
 export type ThemeScriptNetworkAnalysis = {
 	facts: ThemeFact[];
-	uncertainty: ThemeSourceUncertainty[];
+	uncertainty: SourceAnalysisUncertainty[];
 };
 
 /**
@@ -37,7 +37,7 @@ export function analyzeThemeScriptNetwork(
 	program: Program,
 ): ThemeScriptNetworkAnalysis {
 	const facts: ThemeFact[] = [];
-	const uncertainty: ThemeSourceUncertainty[] = [];
+	const uncertainty: SourceAnalysisUncertainty[] = [];
 	const bindings = new JavaScriptBindingResolver(program);
 
 	walkJavaScript(program, (node) => {

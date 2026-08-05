@@ -8,14 +8,14 @@ import {
 	walkJavaScript,
 } from "../javascript-ast.js";
 import { spanFromOffsets } from "../source.js";
+import type { SourceAnalysisUncertainty } from "../source-analysis-types.js";
 import type { ThemeFact, ThemeJavaScriptOwner } from "../theme-facts.js";
 import { analyzeThemeScriptNetwork } from "../theme-script-network.js";
-import type { ThemeSourceUncertainty } from "../theme-source-frontend.js";
 
 export type ThemeScriptAnalysis = {
 	facts: ThemeFact[];
 	issues: Diagnostic[];
-	uncertainty: ThemeSourceUncertainty[];
+	uncertainty: SourceAnalysisUncertainty[];
 };
 
 export function analyzeThemeScript(
@@ -47,7 +47,7 @@ export function analyzeThemeScript(
 
 	const facts: ThemeFact[] = [...network.facts];
 	const issues: Diagnostic[] = [];
-	const uncertainty: ThemeSourceUncertainty[] = [...network.uncertainty];
+	const uncertainty: SourceAnalysisUncertainty[] = [...network.uncertainty];
 	walkJavaScript(program, (node, parent, ancestors) => {
 		if (
 			(node.type === "ImportDeclaration" ||

@@ -12,7 +12,7 @@ import {
 import { fingerprintProductKey } from "../computation/canonical-key.js";
 import { analyzeThemeCss } from "../frontends/theme-css.js";
 import { analyzeThemeScript } from "../frontends/theme-script.js";
-import type { ThemeFact } from "../theme-facts.js";
+import type { AnalyzedSourceFact } from "../source-analysis-types.js";
 import {
 	type ClassifiedSourceFile,
 	createSourceFrontendRegistry,
@@ -212,7 +212,7 @@ function analyzedThemeFrontend(input: {
 		path: string,
 		source: string,
 	): {
-		facts: ThemeFact[];
+		facts: AnalyzedSourceFact[];
 		issues: Diagnostic[];
 		uncertainty: Array<{ code: string; message: string }>;
 	};

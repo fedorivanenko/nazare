@@ -2,13 +2,15 @@ import type { Diagnostic } from "@nazare/core";
 import postcss from "postcss";
 import selectorParser from "postcss-selector-parser";
 import { spanFromOffsets } from "../source.js";
-import type { ThemeFact } from "../theme-facts.js";
-import type { ThemeSourceUncertainty } from "../theme-source-frontend.js";
+import type {
+	AnalyzedSourceFact,
+	SourceAnalysisUncertainty,
+} from "../source-analysis-types.js";
 
 export type ThemeCssAnalysis = {
-	facts: ThemeFact[];
+	facts: AnalyzedSourceFact[];
 	issues: Diagnostic[];
-	uncertainty: ThemeSourceUncertainty[];
+	uncertainty: SourceAnalysisUncertainty[];
 };
 
 export function analyzeThemeCss(
@@ -25,9 +27,9 @@ export function analyzeThemeCss(
 			uncertainty: [],
 		};
 	}
-	const facts: ThemeFact[] = [];
+	const facts: AnalyzedSourceFact[] = [];
 	const issues: Diagnostic[] = [];
-	const uncertainty: ThemeSourceUncertainty[] = [];
+	const uncertainty: SourceAnalysisUncertainty[] = [];
 	const lineStarts = lineStartOffsets(source);
 	root.walkRules((rule) => {
 		const ruleOffset = rule.source?.start
