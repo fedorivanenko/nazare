@@ -331,9 +331,17 @@ async function collectTheme(
 		malformed: [],
 		malformedComponents: [],
 	};
-	// The compiler's filesystem is theme-relative and synchronous.
-	const readThemeFile = (path: string) => readSync(join(dir, path));
+	const candidates: Array<{
+		file: string;
+		name: string;
+		source: string;
+		stories: PreviewStory[];
+		storyFile: string;
+	}> = [];
 
+	// Discover authored stories before compiling templates. A theme with no
+	// stories should not parse every section and snippet just to report that
+	// there is nothing to preview.
 	for (const name of THEME_DIRS) {
 		if (!existsSync(join(dir, name))) continue;
 		for (const entry of (await readdir(join(dir, name))).sort()) {
@@ -341,37 +349,60 @@ async function collectTheme(
 			const file = `${name}/${entry}`;
 			const source = await readIfPresent(join(dir, file));
 			if (source === undefined) continue;
-			const component = compileComponent(dir, source, file, {
-				readFile: readThemeFile,
-			});
-
-			// card.liquid → card.stories.json, beside the template.
-			const storyPath = `${name}/${basename(entry, ".liquid")}.stories.json`;
-			const raw = await readIfPresent(join(dir, storyPath));
+			const componentName = basename(entry, ".liquid");
+			const storyFile = `${name}/${componentName}.stories.json`;
+			const raw = await readIfPresent(join(dir, storyFile));
 			let stories: PreviewStory[] = [];
-			if (raw !== undefined) {
+			if (raw === undefined) {
+				collection.undeclared.push(file);
+			} else {
 				try {
-					// parseStoryFile names the path itself; JSON.parse does not.
 					let parsed: unknown;
 					try {
 						parsed = JSON.parse(raw);
 					} catch (error) {
-						throw new Error(`${storyPath}: invalid JSON: ${errorText(error)}`);
+						throw new Error(`${storyFile}: invalid JSON: ${errorText(error)}`);
 					}
 					stories = storiesFor({
-						sidecar: parseStoryFile(parsed, storyPath),
+						sidecar: parseStoryFile(parsed, storyFile),
 						readFixture,
 					});
 				} catch (error) {
 					collection.malformed.push(errorText(error));
-					collection.malformedComponents.push(component.name);
+					collection.malformedComponents.push(componentName);
 				}
 			}
-			const entryRecord = { component, stories, file, storyFile: storyPath };
-			collection.compiled.push(entryRecord);
-			if (stories.length > 0) collection.previewed.push(entryRecord);
-			else if (raw === undefined) collection.undeclared.push(file);
+			candidates.push({
+				file,
+				name,
+				source,
+				stories,
+				storyFile,
+			});
 		}
+	}
+
+	const hasStories = candidates.some(
+		(candidate) => candidate.stories.length > 0,
+	);
+	if (!hasStories) return collection;
+	// Story components are demanded directly. Snippets remain available to the
+	// Liquid renderer as a library; unrelated sections and blocks stay unparsed.
+	const readThemeFile = (path: string) => readSync(join(dir, path));
+	for (const candidate of candidates) {
+		if (candidate.stories.length === 0 && candidate.name !== "snippets")
+			continue;
+		const component = compileComponent(dir, candidate.source, candidate.file, {
+			readFile: readThemeFile,
+		});
+		const entryRecord = {
+			component,
+			stories: candidate.stories,
+			file: candidate.file,
+			storyFile: candidate.storyFile,
+		};
+		collection.compiled.push(entryRecord);
+		if (candidate.stories.length > 0) collection.previewed.push(entryRecord);
 	}
 	return collection;
 }

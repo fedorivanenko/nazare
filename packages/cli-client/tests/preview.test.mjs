@@ -348,10 +348,13 @@ test("a directory that is neither a theme nor packages says so", async () => {
 	});
 });
 
-test("a theme with no story files at all points at scaffold", async () => {
+test("a theme with no story files at all points at scaffold without compiling", async () => {
 	await withProject({ "snippets/icon.liquid": ICON }, async (cwd) => {
+		const { collectPreview } = await previewCommand();
+		const collection = await collectPreview(cwd);
 		const { status, stderr } = await runCli(cwd, "preview", "check", ".");
 
+		assert.deepEqual(collection.compiled, []);
 		assert.equal(status, 1);
 		assert.match(stderr, /No story files/);
 		assert.match(stderr, /nazare preview scaffold/);
