@@ -21,6 +21,13 @@ async function TypeScriptFiles(directory) {
 
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+function importsPackage(source, dependency, exact) {
+	const suffix = exact ? "" : "(?:/[^\"']*)?";
+	return new RegExp(
+		`(?:from\\s+|import\\s*(?:\\(|(?=["'])))s*(["'])${escapeRegExp(dependency)}${suffix}\\1`,
+	).test(source);
+}
+
 async function assertNoPackageImports(
 	packageName,
 	forbidden,
@@ -32,9 +39,7 @@ async function assertNoPackageImports(
 		)) {
 			const source = await readFile(path, "utf8");
 			for (const dependency of forbidden) {
-				const importsDependency = new RegExp(
-					`(?:from\\s+|import\\s*\\()(["'])${escapeRegExp(dependency)}(?:/[^"']*)?\\1`,
-				).test(source);
+				const importsDependency = importsPackage(source, dependency, false);
 				assert.equal(
 					importsDependency,
 					false,
@@ -56,9 +61,7 @@ async function assertNoExactPackageImports(
 		)) {
 			const source = await readFile(path, "utf8");
 			for (const dependency of forbidden) {
-				const importsDependency = new RegExp(
-					`(?:from\\s+|import\\s*\\()(["'])${escapeRegExp(dependency)}\\1`,
-				).test(source);
+				const importsDependency = importsPackage(source, dependency, true);
 				assert.equal(
 					importsDependency,
 					false,
@@ -68,6 +71,21 @@ async function assertNoExactPackageImports(
 		}
 	}
 }
+
+test("package boundary matcher recognizes static, dynamic, and side-effect imports", () => {
+	for (const source of [
+		'import { product } from "@nazare/compiler/computation";',
+		'import("@nazare/compiler/project");',
+		'import "@nazare/compiler/source-products";',
+	]) {
+		assert.equal(importsPackage(source, "@nazare/compiler", false), true);
+		assert.equal(importsPackage(source, "@nazare/compiler", true), false);
+	}
+	assert.equal(
+		importsPackage('import "@nazare/compiler";', "@nazare/compiler", true),
+		true,
+	);
+});
 
 test("package dependencies preserve the compiler architecture direction", async () => {
 	const compiler = JSON.parse(
@@ -113,7 +131,7 @@ test("package dependencies preserve the compiler architecture direction", async 
 
 test("packages do not import another package's private build paths", async () => {
 	const privatePackageImport =
-		/(?:from\s+|import\s*\()(["'])@nazare\/[^/"']+\/(?:src|dist)(?:\/[^"']*)?\1/;
+		/(?:from\s+|import\s*(?:\(|(?=["'])))\s*(["'])@nazare\/[^/"']+\/(?:src|dist)(?:\/[^"']*)?\1/;
 	for (const packageName of await readdir(root)) {
 		for (const directory of ["src", "tests"]) {
 			try {
