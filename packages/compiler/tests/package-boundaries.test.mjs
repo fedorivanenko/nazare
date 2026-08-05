@@ -53,4 +53,7 @@ test("package dependencies preserve the compiler architecture direction", async 
 		"@nazare/target-shopify",
 		"@nazare/preview",
 	]);
+	await assertNoImports("target-shopify", ["@nazare/compiler"]);
+	await assertNoImports("preview", ["@nazare/compiler"]);
+	await assertNoImports("cli-client", ["@nazare/compiler"]);
 });
