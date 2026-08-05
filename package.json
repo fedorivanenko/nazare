@@ -23,7 +23,7 @@
 		"test:cli:smoke": "pnpm -s build && node --test --test-concurrency=32 packages/cli-client/tests/cli.test.mjs",
 		"format": "biome format --write .",
 		"lint": "biome check .",
-		"build": "tsc -b",
+		"build": "tsc -b --force",
 		"test:source": "pnpm -s build && pnpm --dir packages/tree-sitter-nazare-liquid test && node --test packages/source/tests/*.test.mjs",
 		"test:package": "./scripts/package-cli.sh smoke && ./scripts/package-source-cli.sh smoke && ./scripts/smoke-packaged-cli.sh .release/nazare-cli-*.tar.gz && ./scripts/smoke-packaged-source-cli.sh .release/nazare-source-*.tar.gz && ./scripts/smoke-installer.sh smoke cli && ./scripts/smoke-installer.sh smoke source",
 		"benchmark:shopify-parser": "pnpm -s build >/dev/null && node --expose-gc packages/source/scripts/benchmark-shopify-parser.mjs",

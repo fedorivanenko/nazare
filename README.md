@@ -66,7 +66,7 @@ The compiler cannot import targets, Preview, or CLI packages. Architecture tests
 
 ```sh
 pnpm install
-pnpm exec tsc -b
+pnpm build
 biome check .
 node --test packages/compiler/tests/*.test.mjs
 node --test packages/target-shopify/tests/*.test.mjs
