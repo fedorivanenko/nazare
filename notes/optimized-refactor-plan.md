@@ -506,7 +506,7 @@ CLI only knows typed requests, capabilities, sessions, and events.
 - [ ] Delete duplicate path, diagnostic, and graph stores.
 - [ ] Remove deprecated aliases and compatibility classes.
 - [ ] Rename remaining generic `theme-*` files to domain-neutral names.
-- [ ] Verify package dependency direction.
+- [x] Verify package dependency direction.
 - [ ] Regenerate fact/product cache revisions.
 - [ ] Update README and architecture notes.
 
