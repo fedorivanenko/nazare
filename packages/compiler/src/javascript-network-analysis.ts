@@ -16,7 +16,7 @@ import type {
 	ThemeNetworkMetafieldReference,
 } from "./theme-facts.js";
 
-export type ThemeScriptNetworkAnalysis = {
+export type JavaScriptNetworkAnalysis = {
 	facts: ThemeFact[];
 	uncertainty: SourceAnalysisUncertainty[];
 };
@@ -31,11 +31,11 @@ export type ThemeScriptNetworkAnalysis = {
  * - Runtime responses, app proxies, remote app code, and server-side app data
  *   are opaque. This pass never guesses what those systems return.
  */
-export function analyzeThemeScriptNetwork(
+export function analyzeJavaScriptNetwork(
 	path: string,
 	source: string,
 	program: Program,
-): ThemeScriptNetworkAnalysis {
+): JavaScriptNetworkAnalysis {
 	const facts: ThemeFact[] = [];
 	const uncertainty: SourceAnalysisUncertainty[] = [];
 	const bindings = new JavaScriptBindingResolver(program);

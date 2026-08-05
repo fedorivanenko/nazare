@@ -7,16 +7,16 @@ import type {
 	SourceAnalysisUncertainty,
 } from "../source-analysis-types.js";
 
-export type ThemeCssAnalysis = {
+export type CssSourceAnalysis = {
 	facts: AnalyzedSourceFact[];
 	issues: Diagnostic[];
 	uncertainty: SourceAnalysisUncertainty[];
 };
 
-export function analyzeThemeCss(
+export function analyzeCssSource(
 	path: string,
 	source: string,
-): ThemeCssAnalysis {
+): CssSourceAnalysis {
 	let root: postcss.Root;
 	try {
 		root = postcss.parse(source, { from: path });

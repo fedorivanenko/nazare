@@ -10,8 +10,8 @@ import {
 	type SourceParseIssue,
 } from "@nazare/source";
 import { fingerprintProductKey } from "../computation/canonical-key.js";
-import { analyzeThemeCss } from "../frontends/theme-css.js";
-import { analyzeThemeScript } from "../frontends/theme-script.js";
+import { analyzeCssSource } from "../frontends/css-analysis.js";
+import { analyzeJavaScriptSource } from "../frontends/javascript-analysis.js";
 import type { AnalyzedSourceFact } from "../source-analysis-types.js";
 import {
 	type ClassifiedSourceFile,
@@ -104,14 +104,14 @@ export const cssSourceFrontend = analyzedThemeFrontend({
 	id: "nazare.source.css",
 	language: "css",
 	accepts: (path) => path.endsWith(".css"),
-	analyze: analyzeThemeCss,
+	analyze: analyzeCssSource,
 });
 
 export const javaScriptSourceFrontend = analyzedThemeFrontend({
 	id: "nazare.source.javascript",
 	language: "javascript",
 	accepts: (path) => /\.(?:js|mjs|cjs)$/.test(path),
-	analyze: analyzeThemeScript,
+	analyze: analyzeJavaScriptSource,
 });
 
 export const assetSourceFrontend = defineSourceFrontend({

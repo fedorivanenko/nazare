@@ -7,21 +7,21 @@ import {
 	parseJavaScript,
 	walkJavaScript,
 } from "../javascript-ast.js";
+import { analyzeJavaScriptNetwork } from "../javascript-network-analysis.js";
 import { spanFromOffsets } from "../source.js";
 import type { SourceAnalysisUncertainty } from "../source-analysis-types.js";
 import type { ThemeFact, ThemeJavaScriptOwner } from "../theme-facts.js";
-import { analyzeThemeScriptNetwork } from "../theme-script-network.js";
 
-export type ThemeScriptAnalysis = {
+export type JavaScriptSourceAnalysis = {
 	facts: ThemeFact[];
 	issues: Diagnostic[];
 	uncertainty: SourceAnalysisUncertainty[];
 };
 
-export function analyzeThemeScript(
+export function analyzeJavaScriptSource(
 	path: string,
 	source: string,
-): ThemeScriptAnalysis {
+): JavaScriptSourceAnalysis {
 	const parsed = parseJavaScript(source);
 	if (!parsed.ok) {
 		return {
@@ -43,7 +43,7 @@ export function analyzeThemeScript(
 	}
 	const program = parsed.program;
 	const exportsByBinding = collectExportKinds(program);
-	const network = analyzeThemeScriptNetwork(path, source, program);
+	const network = analyzeJavaScriptNetwork(path, source, program);
 
 	const facts: ThemeFact[] = [...network.facts];
 	const issues: Diagnostic[] = [];
