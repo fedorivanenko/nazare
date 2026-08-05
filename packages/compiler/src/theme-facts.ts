@@ -779,16 +779,3 @@ export interface ThemeBuildResult {
 	issues: Diagnostic[];
 	emittedOnError: boolean;
 }
-
-export type {
-	SemanticThemeGraphEdge,
-	SemanticThemeGraphNode,
-} from "./theme-graph-types.js";
-
-export type {
-	InspectNazareThemeResult,
-	ThemeGraphView,
-	ThemeGraphViews,
-	ThemeImpactSummary,
-	ThemeMetafieldQueries,
-} from "./theme-inspect-types.js";

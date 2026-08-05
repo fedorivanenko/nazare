@@ -501,8 +501,8 @@ CLI only knows typed requests, capabilities, sessions, and events.
 ## Phase 9 — exports and dead-code deletion
 
 - [ ] Replace `packages/compiler/src/index.ts` giant barrel with intentional public modules.
-- [ ] Delete old theme workspace/session/computation/build exports.
-- [ ] Delete old caches superseded by computation cache.
+- [x] Delete old theme workspace/session/computation/build exports.
+- [x] Delete old caches superseded by computation cache.
 - [ ] Delete duplicate path, diagnostic, and graph stores.
 - [ ] Remove deprecated aliases and compatibility classes.
 - [ ] Rename remaining generic `theme-*` files to domain-neutral names.

@@ -371,9 +371,6 @@ export type {
 	BuildNazareThemeWorkspaceOptions,
 	BuildThemeScope,
 	InspectNazareThemeOptions,
-	InspectNazareThemeResult,
-	SemanticThemeGraphEdge,
-	SemanticThemeGraphNode,
 	ThemeAnalysis,
 	ThemeBehaviorFact,
 	ThemeBehaviorRecord,
@@ -389,16 +386,12 @@ export type {
 	ThemeEvidenceRecord,
 	ThemeExpectedInputRecord,
 	ThemeFact,
-	ThemeGraphView,
-	ThemeGraphViews,
-	ThemeImpactSummary,
 	ThemeInputFile,
 	ThemeJavaScriptOwner,
 	ThemeLocaleKeyRecord,
 	ThemeLocaleReferenceRecord,
 	ThemeLocaleTranslationRecord,
 	ThemeMetafieldDefinitionRecord,
-	ThemeMetafieldQueries,
 	ThemeMetafieldReadRecord,
 	ThemeNetworkAccessRecord,
 	ThemeNetworkMetafieldReference,
@@ -411,10 +404,6 @@ export type {
 	ThemeSourceAnalysisRecord,
 	ThemeSourceLanguage,
 } from "./theme-facts.js";
-export {
-	ThemeImpactIndex,
-	type ThemeImpactIndexDelta,
-} from "./theme-impact-index.js";
 export {
 	collectThemeInstances,
 	createThemeInstancePass,
