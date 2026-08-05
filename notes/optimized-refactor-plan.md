@@ -418,6 +418,8 @@ ownedOutputPlan(emittedFiles)
 OutputTransaction
 ```
 
+- [x] Add validated `OwnedOutputPlan` collision and stale-owned deletion planning.
+- [x] Add revision-guarded `AtomicOutputStore` transaction contract.
 - [ ] Preserve build scopes as analysis roots: workspace, closure, file, files.
 - [ ] Compile only reachable source closure.
 - [ ] Detect output collisions before writes.

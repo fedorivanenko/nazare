@@ -152,6 +152,17 @@ export { treeSitterPlainLiquidFrontend } from "./frontends/tree-sitter-plain-liq
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
 export { mergeArtifactIR } from "./merge.js";
+export {
+	type AtomicOutputCommit,
+	type AtomicOutputStore,
+	createOwnedOutputPlan,
+	executeOutputTransaction,
+	ObsoleteOutputRevisionError,
+	OutputPlanValidationError,
+	type OutputTransactionResult,
+	type OwnedOutputFile,
+	type OwnedOutputPlan,
+} from "./output-transaction.js";
 export { baseNameOf, resolveImportPath } from "./paths.js";
 export type {
 	BuildPlainLiquidOptions,
