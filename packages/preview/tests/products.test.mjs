@@ -44,6 +44,20 @@ async function createSession(sources) {
 		frontends: createDefaultSourceFrontendRegistry(),
 	}).registerComputations(session.graph);
 	createPreviewProductRegistrar().registerComputations(session.graph);
+	session.updateFile = async (path, contents) => {
+		files.set(path, { id: id(path), contents });
+		const update = await session.apply({
+			kind: "files",
+			changes: [
+				{
+					kind: "changed",
+					key: id(path),
+					fingerprint: fingerprintProductKey(contents),
+				},
+			],
+		});
+		assert.equal(update.committed, true);
+	};
 	return session;
 }
 
@@ -137,6 +151,37 @@ test("renders story products independently through a concurrent pure plan", asyn
 	);
 	assert.match(plan.stories[0].html, /One/);
 	assert.match(plan.stories[1].html, /Two/);
+});
+
+test("invalidates only preview products that depend on an edited file", async () => {
+	const session = await createSession({
+		"snippets/card.liquid": "<article>Before {{ title }}</article>",
+		"snippets/card.stories.json": JSON.stringify({
+			stories: [{ name: "default", props: { title: "Hello" } }],
+		}),
+		"snippets/unrelated.liquid": "<div>Unrelated</div>",
+	});
+	const model = {
+		component: id("snippets/card.liquid"),
+		story: id("snippets/card.stories.json"),
+		files: [id("snippets/card.liquid"), id("snippets/unrelated.liquid")],
+	};
+	const product = previewProducts.renderPlan.product({ model });
+	const before = await session.get(product);
+	await session.updateFile(
+		"snippets/unrelated.liquid",
+		"<div>Changed but unrelated</div>",
+	);
+	const afterUnrelatedEdit = await session.get(product);
+	assert.equal(afterUnrelatedEdit, before);
+
+	await session.updateFile(
+		"snippets/card.liquid",
+		"<article>After {{ title }}</article>",
+	);
+	const afterComponentEdit = await session.get(product);
+	assert.notEqual(afterComponentEdit, before);
+	assert.match(afterComponentEdit.stories[0].html, /After Hello/);
 });
 
 test("reads fixture JSON as a revisioned project input", async () => {
