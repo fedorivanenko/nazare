@@ -73,6 +73,27 @@ export type ShopifyBuildRequest = {
 	additionalDiagnostics?: readonly Diagnostic[];
 };
 
+export type ShopifyMetafieldImpact = {
+	version: 2;
+	identity: { owner: string; namespace: string; key: string };
+	scope: { excluded: readonly string[] };
+	definition?: { id: string; type?: string };
+	reads: readonly { fromPath: string }[];
+	apiReads: readonly {
+		fromPath: string;
+		transport: string;
+		endpoint?: string;
+	}[];
+	affectedSources: readonly string[];
+	affectedPages: readonly string[];
+	snapshot: { state: "present" | "missing"; path: string; pulledAt?: string };
+	certainty: "complete" | "partial";
+	uncertainty: readonly string[];
+	uncertainSources: readonly { path: string; reasons: readonly string[] }[];
+	localNetworkAccessCount: number;
+	issues: readonly Diagnostic[];
+};
+
 export type ShopifyFileImpact = {
 	version: 1;
 	path: string;
@@ -110,6 +131,7 @@ export class ShopifyQuerySession {
 	readonly session: ProjectSession;
 	private readonly files: Map<string, ShopifyQueryInputFile>;
 	private readonly metadata: ProjectMetadataInputProvider;
+	private readonly externalInputs: Map<ProjectMetadataKey, ProductKey>;
 	private readonly metadataChanges: AsyncIterator<
 		readonly InputChange<string>[]
 	>;
@@ -118,10 +140,12 @@ export class ShopifyQuerySession {
 		session: ProjectSession,
 		files: Map<string, ShopifyQueryInputFile>,
 		metadata: ProjectMetadataInputProvider,
+		externalInputs: Map<ProjectMetadataKey, ProductKey>,
 	) {
 		this.session = session;
 		this.files = files;
 		this.metadata = metadata;
+		this.externalInputs = externalInputs;
 		this.metadataChanges = metadata.provider
 			.watch?.()
 			[Symbol.asyncIterator]() as AsyncIterator<readonly InputChange<string>[]>;
@@ -144,6 +168,12 @@ export class ShopifyQuerySession {
 				};
 			},
 		});
+		const externalValues = new Map<ProjectMetadataKey, ProductKey>(
+			Object.entries(externalInputs).filter(
+				(entry): entry is [ProjectMetadataKey, ProductKey] =>
+					entry[1] !== undefined,
+			),
+		);
 		const metadata = createProjectMetadataInputProvider(externalInputs);
 		const host = defineProjectHost({
 			files: provider,
@@ -160,7 +190,7 @@ export class ShopifyQuerySession {
 		shopifySemanticTarget().registerComputations(session.graph);
 		shopifyPortableTransform().registerComputations(session.graph);
 		shopifyBuildOutput().registerComputations(session.graph);
-		return new ShopifyQuerySession(session, files, metadata);
+		return new ShopifyQuerySession(session, files, metadata, externalValues);
 	}
 
 	async buildProducts(
@@ -395,6 +425,81 @@ export class ShopifyQuerySession {
 		);
 	}
 
+	async metafieldImpact(identity: {
+		owner: string;
+		namespace: string;
+		key: string;
+	}): Promise<ShopifyMetafieldImpact> {
+		const index = await this.metafieldIndex({
+			ownerType: identity.owner,
+			namespace: identity.namespace,
+		});
+		const records = index.records.filter(
+			(record) => record.key === identity.key,
+		);
+		const affectedSources = [
+			...new Set(records.map((record) => record.owner.path)),
+		].sort();
+		const pages = await Promise.all(
+			affectedSources.map((path) => this.affectedPages(path)),
+		);
+		const affectedPages = [
+			...new Set(
+				pages.flatMap((result) => result.pages.map((page) => page.path)),
+			),
+		].sort();
+		const apiReads = records
+			.filter(
+				(record): record is typeof record & { transport: string } =>
+					typeof record.transport === "string",
+			)
+			.map((record) => ({
+				fromPath: record.owner.path,
+				transport: record.transport,
+				...(record.endpoint ? { endpoint: record.endpoint } : {}),
+			}));
+		const reads = records
+			.filter((record) => !record.transport)
+			.map((record) => ({ fromPath: record.owner.path }));
+		const uncertainty = [
+			...new Set([
+				...index.records
+					.filter((record) => record.dynamic)
+					.map(
+						(record) => `Dynamic metafield identity in ${record.owner.path}`,
+					),
+			]),
+		];
+		const snapshot = this.externalInputs.get(PROJECT_METADATA_KEYS.metafields);
+		const definition = findMetafieldDefinition(snapshot, identity);
+		return {
+			version: 2,
+			identity,
+			scope: {
+				excluded: [
+					"remoteAppRuntime",
+					"runtimeNetworkResponses",
+					"appProxyResponses",
+					"serverSideAppData",
+				],
+			},
+			...(definition ? { definition } : {}),
+			reads,
+			apiReads,
+			affectedSources,
+			affectedPages,
+			snapshot: {
+				state: snapshot === undefined ? "missing" : "present",
+				path: ".shopify/metafields.json",
+			},
+			certainty: uncertainty.length > 0 ? "partial" : "complete",
+			uncertainty,
+			uncertainSources: [],
+			localNetworkAccessCount: apiReads.length,
+			issues: [],
+		};
+	}
+
 	async metafieldIndex(input: {
 		ownerType: string | null;
 		namespace: string | null;
@@ -445,6 +550,8 @@ export class ShopifyQuerySession {
 			value === null
 				? this.metadata.remove(key)
 				: this.metadata.set(key, value);
+		if (value === null) this.externalInputs.delete(key);
+		else this.externalInputs.set(key, value);
 		if (!change) return this.session.snapshot().revision;
 		const next = await this.metadataChanges.next();
 		if (next.done) throw new Error("Project metadata watcher closed");
@@ -530,6 +637,48 @@ export class ShopifyQuerySession {
 	private fileIds(): readonly ProjectFileId[] {
 		return this.session.snapshot().fileIds;
 	}
+}
+
+function findMetafieldDefinition(
+	snapshot: ProductKey | undefined,
+	identity: { owner: string; namespace: string; key: string },
+): { id: string; type?: string } | undefined {
+	let value: unknown = snapshot;
+	if (typeof value === "string") {
+		try {
+			value = JSON.parse(value);
+		} catch {
+			return undefined;
+		}
+	}
+	if (!value || typeof value !== "object" || Array.isArray(value))
+		return undefined;
+	const definitions = (value as Record<string, unknown>)[identity.owner];
+	if (!Array.isArray(definitions)) return undefined;
+	for (const candidate of definitions) {
+		if (!candidate || typeof candidate !== "object" || Array.isArray(candidate))
+			continue;
+		const record = candidate as Record<string, unknown>;
+		if (record.namespace !== identity.namespace || record.key !== identity.key)
+			continue;
+		const nestedType =
+			record.type &&
+			typeof record.type === "object" &&
+			!Array.isArray(record.type)
+				? (record.type as Record<string, unknown>).name
+				: undefined;
+		const type =
+			typeof record.type === "string"
+				? record.type
+				: typeof nestedType === "string"
+					? nestedType
+					: undefined;
+		return {
+			id: `${identity.owner}.${identity.namespace}.${identity.key}`,
+			...(type ? { type } : {}),
+		};
+	}
+	return undefined;
 }
 
 function shopifyFileKind(path: string): string {

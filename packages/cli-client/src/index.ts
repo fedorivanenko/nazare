@@ -55,6 +55,7 @@ import { type Output, processOutput } from "./output.js";
 import {
 	PROJECT_METADATA_KEYS,
 	type ShopifyFileImpact,
+	type ShopifyMetafieldImpact,
 	ShopifyQuerySession,
 } from "./shopify-query-session.js";
 
@@ -712,14 +713,15 @@ async function runInspectMetafieldImpact(
 		cliOptions,
 		output,
 	);
-	const computation = await computePreparedThemeInspection(prepared);
-	const impact = computation.getMetafieldImpact(identity);
+	const impact = await (
+		await querySessionForInspection(prepared)
+	).metafieldImpact(identity);
 	output.log(
 		format === "json"
-			? JSON.stringify({ root: computation.model.root, ...impact }, null, 2)
+			? JSON.stringify({ root: prepared.root, ...impact }, null, 2)
 			: renderMetafieldImpact(impact),
 	);
-	return hasErrors(computation.model.issues) ? 1 : 0;
+	return hasErrors(impact.issues) ? 1 : 0;
 }
 
 function inspectQueryFormat(
@@ -918,7 +920,9 @@ function renderThemeFileImpact(
 	return lines.join("\n");
 }
 
-function renderMetafieldImpact(impact: ThemeMetafieldImpact): string {
+function renderMetafieldImpact(
+	impact: ThemeMetafieldImpact | ShopifyMetafieldImpact,
+): string {
 	const identifier = `${impact.identity.owner}.${impact.identity.namespace}.${impact.identity.key}`;
 	const definition = impact.definition
 		? impact.definition.type

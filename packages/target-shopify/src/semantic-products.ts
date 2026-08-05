@@ -37,6 +37,8 @@ export type ShopifyMetafieldRead = {
 	namespace?: string;
 	key?: string;
 	dynamic: boolean;
+	transport?: string;
+	endpoint?: string;
 };
 
 export type ShopifyCapability = {
@@ -127,8 +129,14 @@ export function registerShopifySemanticComputations(
 		defineComputation(
 			shopifySemanticProducts.metafields,
 			async (context, file) => {
-				const source = await context.get(sourceProducts.facts.product(file));
-				return source.facts.flatMap((fact) => metafieldRead(file, fact));
+				const [source, classified] = await Promise.all([
+					context.get(sourceProducts.facts.product(file)),
+					context.get(sourceProducts.classified.product(file)),
+				]);
+				return [
+					...source.facts.flatMap((fact) => metafieldRead(file, fact)),
+					...embeddedJsonMetafieldReads(file, classified.contents),
+				];
 			},
 			{ cache: jsonComputationCodec() },
 		),
@@ -319,10 +327,69 @@ function unknownSettingReadDiagnostics(
 	});
 }
 
+function embeddedJsonMetafieldReads(
+	file: ProjectFileId,
+	contents: string,
+): ShopifyMetafieldRead[] {
+	if (!file.path.endsWith(".json")) return [];
+	const reads: ShopifyMetafieldRead[] = [];
+	for (const [index, match] of [
+		...contents.matchAll(
+			/([a-zA-Z_][\w]*)\.metafields\.([a-zA-Z_][\w]*)\.([a-zA-Z_][\w]*)/g,
+		),
+	].entries()) {
+		const ownerType = match[1];
+		const namespace = match[2];
+		const key = match[3];
+		if (!ownerType || !namespace || !key) continue;
+		reads.push({
+			id: `shopify-metafield:${fingerprintProductKey({ file, index, ownerType, namespace, key })}`,
+			owner: file,
+			ownerType,
+			namespace,
+			key,
+			dynamic: false,
+		});
+	}
+	return reads;
+}
+
 function metafieldRead(
 	file: ProjectFileId,
 	fact: SourceFact,
 ): ShopifyMetafieldRead[] {
+	if (fact.kind === "source.accessesNetwork" && isRecord(fact.data)) {
+		const data = fact.data;
+		return Array.isArray(data.metafieldReferences)
+			? data.metafieldReferences.flatMap((reference, index) => {
+					if (!isRecord(reference)) return [];
+					const ownerType =
+						typeof reference.owner === "string" ? reference.owner : "unknown";
+					const namespace =
+						typeof reference.namespace === "string"
+							? reference.namespace
+							: undefined;
+					const key =
+						typeof reference.key === "string" ? reference.key : undefined;
+					return [
+						{
+							id: `shopify-metafield:${fingerprintProductKey({ file, sourceFact: fact.id, index })}`,
+							owner: file,
+							ownerType,
+							...(namespace ? { namespace } : {}),
+							...(key ? { key } : {}),
+							dynamic: reference.certainty !== "exact",
+							...(typeof data.transport === "string"
+								? { transport: data.transport }
+								: {}),
+							...(typeof data.endpoint === "string"
+								? { endpoint: data.endpoint }
+								: {}),
+						},
+					];
+				})
+			: [];
+	}
 	if (fact.kind !== "liquid.read" || !isRecord(fact.data)) return [];
 	if (
 		typeof fact.data.root !== "string" ||
