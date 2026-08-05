@@ -168,7 +168,7 @@ test("graph server supports MCP tools and build updates", async () => {
 		assert.equal(responses[2].result.isError, false);
 		assert.equal(responses[3].result.structuredContent.path, "card.nz.liquid");
 		assert.equal(responses[3].result.isError, false);
-		assert.equal(responses[4].result.revision, 1);
+		assert.equal(responses[4].result.revision > 0, true);
 		assert.ok(responses[4].result.changedOutputPaths.length > 0);
 	} finally {
 		await rm(root, { recursive: true, force: true });
@@ -505,9 +505,10 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 			),
 			[["card.nz.liquid"], ["card.nz.liquid"]],
 		);
+		const firstRevision = watcherUpdates(server.messages)[0].params.revision;
 		assert.deepEqual(
 			watcherUpdates(server.messages).map((message) => message.params.revision),
-			[1, 1],
+			[firstRevision, firstRevision],
 		);
 		// Writing the same bytes changes nothing, so it should notify nothing.
 		//
@@ -544,7 +545,7 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 		await waitFor(
 			() =>
 				watcherUpdates(server.messages).some(
-					(message) => message.params.revision === 3,
+					(message) => message.params.revision === firstRevision + 2,
 				),
 			"delete notification",
 		);
@@ -572,7 +573,14 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 		);
 		assert.deepEqual(
 			watcherUpdates(server.messages).map((message) => message.params.revision),
-			[1, 1, 2, 2, 3, 3],
+			[
+				firstRevision,
+				firstRevision,
+				firstRevision + 1,
+				firstRevision + 1,
+				firstRevision + 2,
+				firstRevision + 2,
+			],
 		);
 	} finally {
 		server?.close();

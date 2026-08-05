@@ -3,11 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
-import {
-	matchesThemeGlob,
-	ThemeBuildSession,
-	type ThemeInputFile,
-} from "@nazare/compiler";
+import { matchesThemeGlob } from "@nazare/compiler";
 import type { ShopifyBehavior } from "@nazare/target-shopify";
 import {
 	collectThemeInputFiles,
@@ -38,9 +34,7 @@ export async function serveThemeGraph(
 	output: Writable,
 	options: ThemeGraphServerOptions,
 ): Promise<void> {
-	const initial = await loadServerState(root, options.projectRoot);
-	let buildSession = initial.buildSession;
-	let querySession = initial.querySession;
+	let querySession = await loadQuerySession(root, options.projectRoot);
 	let stopWatching: (() => void) | undefined;
 	let mcpInitialized = false;
 	const readline = createInterface({ input, crlfDelay: Infinity });
@@ -86,10 +80,6 @@ export async function serveThemeGraph(
 				request,
 				root,
 				options.projectRoot,
-				() => buildSession,
-				(next) => {
-					buildSession = next;
-				},
 				() => querySession,
 				(next) => {
 					querySession = next;
@@ -152,8 +142,6 @@ async function handleRequest(
 	request: GraphRequest,
 	root: string,
 	projectRoot: string,
-	getBuildSession: () => ThemeBuildSession,
-	setBuildSession: (session: ThemeBuildSession) => void,
 	getQuerySession: () => ShopifyQuerySession,
 	setQuerySession: (session: ShopifyQuerySession) => void,
 	setWatcher: (stop: () => void) => void,
@@ -184,8 +172,6 @@ async function handleRequest(
 				},
 				root,
 				projectRoot,
-				getBuildSession,
-				setBuildSession,
 				getQuerySession,
 				setQuerySession,
 				setWatcher,
@@ -219,12 +205,11 @@ async function handleRequest(
 		};
 	}
 	if (request.method === "reload" || request.method === "inspect") {
-		const state = await loadServerState(root, projectRoot);
-		setBuildSession(state.buildSession);
-		setQuerySession(state.querySession);
+		const session = await loadQuerySession(root, projectRoot);
+		setQuerySession(session);
 		return request.method === "inspect"
-			? state.querySession.projectModel()
-			: state.querySession.projectGraph();
+			? session.projectModel()
+			: session.projectGraph();
 	}
 	const querySession = getQuerySession();
 	if (request.method === "projectModel") return querySession.projectModel();
@@ -246,36 +231,26 @@ async function handleRequest(
 	if (request.method === "unusedFiles") {
 		return querySession.unusedFiles(requiredStrings(request.params, "roots"));
 	}
-	if (request.method === "build") return getBuildSession().getBuild();
-	if (request.method === "updateFile") {
-		const file = requiredFile(request.params);
-		const result = getBuildSession().updateFile(file).graphUpdate;
-		await querySession.updateFile(file);
-		return result;
+	if (request.method === "build") {
+		return querySession.buildProducts({ scope: { kind: "workspace" } });
 	}
-	if (request.method === "buildUpdate") {
+	if (request.method === "updateFile" || request.method === "buildUpdate") {
 		const file = requiredFile(request.params);
-		const result = getBuildSession().updateFile(file);
-		await querySession.updateFile(file);
-		return result;
+		const previousRevision = querySession.session.snapshot().revision;
+		const revision = await querySession.updateFile(file);
+		return request.method === "buildUpdate"
+			? buildUpdate(querySession, file.path, previousRevision, revision)
+			: graphUpdate(file.path, previousRevision, revision);
 	}
 	if (request.method === "removeFile") {
 		const path = requiredString(request.params, "path");
-		const result = getBuildSession().removeFile(path).graphUpdate;
-		await querySession.removeFile(path);
-		return result;
+		const previousRevision = querySession.session.snapshot().revision;
+		const revision = await querySession.removeFile(path);
+		return graphUpdate(path, previousRevision, revision);
 	}
 	if (request.method === "watch") {
 		setWatcher(
-			startWatcher(
-				root,
-				projectRoot,
-				getBuildSession,
-				setBuildSession,
-				getQuerySession,
-				notify,
-				debounceMs,
-			),
+			startWatcher(root, projectRoot, getQuerySession, notify, debounceMs),
 		);
 		return { watching: true };
 	}
@@ -417,14 +392,44 @@ async function handleRequest(
 	throw new RpcError(-32601, `Method not found: ${request.method}`);
 }
 
+function graphUpdate(
+	path: string,
+	previousRevision: number,
+	revision: number,
+): { changedPaths: string[]; revision: number } {
+	return {
+		changedPaths: revision === previousRevision ? [] : [path],
+		revision,
+	};
+}
+
+async function buildUpdate(
+	session: ShopifyQuerySession,
+	path: string,
+	previousRevision: number,
+	revision: number,
+): Promise<{
+	changedPaths: string[];
+	changedOutputPaths: string[];
+	revision: number;
+}> {
+	if (revision === previousRevision) {
+		return { changedPaths: [], changedOutputPaths: [], revision };
+	}
+	const build = await session.buildProducts({ scope: { kind: "workspace" } });
+	return {
+		changedPaths: [path],
+		changedOutputPaths: build.emission.files.map((file) => file.path),
+		revision,
+	};
+}
+
 /** Long enough to coalesce an editor's save, short enough to feel immediate. */
 const DEFAULT_WATCH_DEBOUNCE_MS = 40;
 
 function startWatcher(
 	root: string,
 	projectRoot: string,
-	getBuildSession: () => ThemeBuildSession,
-	setBuildSession: (session: ThemeBuildSession) => void,
 	getQuerySession: () => ShopifyQuerySession,
 	notify: (update: unknown) => void,
 	debounceMs: number,
@@ -473,32 +478,27 @@ function startWatcher(
 	async function processWatchedPath(relativePath: string): Promise<void> {
 		if (closed) return;
 		if (isInspectThemeFile(relativePath)) {
+			const session = getQuerySession();
+			const previousRevision = session.session.snapshot().revision;
+			let revision: number;
 			try {
 				const contents = await readFile(join(root, relativePath), "utf8");
-				const file = { path: relativePath, contents };
-				const buildUpdate = getBuildSession().updateFile(file);
-				await getQuerySession().updateFile(file);
-				const graphUpdate = buildUpdate.graphUpdate;
-				if (closed) return;
-				if (graphUpdate.changedPaths.length > 0) {
-					notify({ method: "graph/update", params: graphUpdate });
-				}
-				if (buildUpdate.changedPaths.length > 0) {
-					notify({ method: "build/update", params: buildUpdate });
-				}
+				revision = await session.updateFile({ path: relativePath, contents });
 			} catch (error) {
 				if (!isNotFound(error)) throw error;
-				const buildUpdate = getBuildSession().removeFile(relativePath);
-				await getQuerySession().removeFile(relativePath);
-				const graphUpdate = buildUpdate.graphUpdate;
-				if (closed) return;
-				if (graphUpdate.changedPaths.length > 0) {
-					notify({ method: "graph/update", params: graphUpdate });
-				}
-				if (buildUpdate.changedPaths.length > 0) {
-					notify({ method: "build/update", params: buildUpdate });
-				}
+				revision = await session.removeFile(relativePath);
 			}
+			if (closed || revision === previousRevision) return;
+			const graph = graphUpdate(relativePath, previousRevision, revision);
+			const build = await buildUpdate(
+				session,
+				relativePath,
+				previousRevision,
+				revision,
+			);
+			if (closed) return;
+			notify({ method: "graph/update", params: graph });
+			notify({ method: "build/update", params: build });
 			return;
 		}
 		const exclude = await readInspectExcludePatterns(projectRoot);
@@ -507,13 +507,6 @@ function startWatcher(
 			".shopify/metafields.json",
 		);
 		const themeCheck = await optionalFile(projectRoot, ".theme-check.yml");
-		setBuildSession(
-			new ThemeBuildSession(await collectThemeInputFiles(root, projectRoot), {
-				exclude,
-				metafields,
-				themeCheck,
-			}),
-		);
 		const querySession = getQuerySession();
 		const previousQueryRevision = querySession.session.snapshot().revision;
 		let queryRevision = previousQueryRevision;
@@ -577,13 +570,10 @@ function isNotFound(error: unknown): boolean {
 	);
 }
 
-async function loadServerState(
+async function loadQuerySession(
 	root: string,
 	projectRoot: string,
-): Promise<{
-	buildSession: ThemeBuildSession;
-	querySession: ShopifyQuerySession;
-}> {
+): Promise<ShopifyQuerySession> {
 	const files = await collectThemeInputFiles(root, projectRoot);
 	const exclude = await readInspectExcludePatterns(projectRoot);
 	const metafields = await optionalFile(
@@ -591,28 +581,21 @@ async function loadServerState(
 		".shopify/metafields.json",
 	);
 	const themeCheck = await optionalFile(projectRoot, ".theme-check.yml");
-	return {
-		buildSession: new ThemeBuildSession(files, {
-			exclude,
-			metafields,
-			themeCheck,
-		}),
-		querySession: await ShopifyQuerySession.create(
-			files.filter(
-				(file) =>
-					!exclude.some((pattern) => matchesThemeGlob(file.path, pattern)),
-			),
-			{
-				[PROJECT_METADATA_KEYS.config]: { exclude },
-				...(metafields
-					? { [PROJECT_METADATA_KEYS.metafields]: metafields.contents }
-					: {}),
-				...(themeCheck
-					? { [PROJECT_METADATA_KEYS.themeCheck]: themeCheck.contents }
-					: {}),
-			},
+	return ShopifyQuerySession.create(
+		files.filter(
+			(file) =>
+				!exclude.some((pattern) => matchesThemeGlob(file.path, pattern)),
 		),
-	};
+		{
+			[PROJECT_METADATA_KEYS.config]: { exclude },
+			...(metafields
+				? { [PROJECT_METADATA_KEYS.metafields]: metafields.contents }
+				: {}),
+			...(themeCheck
+				? { [PROJECT_METADATA_KEYS.themeCheck]: themeCheck.contents }
+				: {}),
+		},
+	);
 }
 
 async function optionalFile(
@@ -814,9 +797,10 @@ function requiredEnum<const Values extends readonly string[]>(
 	return value;
 }
 
-function requiredFile(
-	params: Record<string, unknown> | undefined,
-): ThemeInputFile {
+function requiredFile(params: Record<string, unknown> | undefined): {
+	path: string;
+	contents: string;
+} {
 	const path = requiredString(params, "path");
 	const contents = params?.contents;
 	if (typeof contents !== "string") {

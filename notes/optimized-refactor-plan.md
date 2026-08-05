@@ -430,6 +430,7 @@ OutputTransaction
 - [x] Add run-once migration application and three-way locale merge products.
 - [x] Persist output, schema lock, migration ledger, and locale base in one transaction.
 - [x] Migrate CLI build orchestration from `buildTheme()` to demand-driven products.
+- [x] Remove graph-server `ThemeBuildSession` ownership.
 - [x] Stage writes and stale owned-file deletions.
 - [x] Atomically publish or roll back output transaction.
 - [x] Keep check-only mode as build without emission.
