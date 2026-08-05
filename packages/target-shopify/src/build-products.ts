@@ -70,6 +70,9 @@ export type ShopifyBuildPlan = {
 	migrations: readonly ShopifyMigration[];
 	appliedMigrationIds: readonly string[];
 	localeBase: Readonly<Record<string, ProductKey>>;
+	additionalOutputFiles?: readonly OwnedOutputFile[];
+	strictness?: "loose" | "strict";
+	additionalDiagnostics?: readonly Diagnostic[];
 };
 
 export type ShopifyBuildModel = {
@@ -202,7 +205,10 @@ export function registerShopifyBuildComputations(
 					sources.map((source) => [source.id.path, source.contents]),
 				);
 				const files: OwnedOutputFile[] = [];
-				const diagnostics: Diagnostic[] = [...model.diagnostics];
+				const diagnostics: Diagnostic[] = [
+					...model.diagnostics,
+					...(plan.additionalDiagnostics ?? []),
+				];
 				for (const source of sources) {
 					if (source.language !== "nazare-liquid") {
 						files.push({
@@ -219,11 +225,10 @@ export function registerShopifyBuildComputations(
 						source: source.contents,
 						file: source.id.path,
 						readFile: (path) => sourceByPath.get(path),
+						strictness: plan.strictness,
 					});
-					if (!compiled.ok || !compiled.ast) {
-						diagnostics.push(...compiled.issues);
-						continue;
-					}
+					diagnostics.push(...compiled.issues, ...compiled.notes);
+					if (!compiled.ok || !compiled.ast) continue;
 					const emitted = emitTheme(
 						source.contents,
 						compiled as CompiledComponent,
@@ -240,6 +245,7 @@ export function registerShopifyBuildComputations(
 						})),
 					);
 				}
+				files.push(...(plan.additionalOutputFiles ?? []));
 				diagnostics.push(
 					...createOwnedOutputPlan({ writes: files }).diagnostics,
 				);

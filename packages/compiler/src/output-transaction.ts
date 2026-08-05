@@ -67,7 +67,8 @@ export function createOwnedOutputPlan(input: {
 	}
 	const diagnostics: Diagnostic[] = [];
 	for (const [path, candidates] of byPath) {
-		if (candidates.length < 2) continue;
+		if (new Set(candidates.map((candidate) => candidate.contents)).size < 2)
+			continue;
 		diagnostics.push({
 			severity: "error",
 			code: "OUTPUT_PATH_COLLISION",
@@ -87,11 +88,10 @@ export function createOwnedOutputPlan(input: {
 		version: 1,
 		writes: Object.freeze(
 			writes
-				.filter((file, index) =>
-					writes.every(
-						(candidate, candidateIndex) =>
-							candidate.path !== file.path || candidateIndex === index,
-					),
+				.filter(
+					(file, index) =>
+						writes.findIndex((candidate) => candidate.path === file.path) ===
+						index,
 				)
 				.sort((left, right) => left.path.localeCompare(right.path)),
 		),

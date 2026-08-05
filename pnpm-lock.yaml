@@ -71,10 +71,6 @@ importers:
       '@nazare/target-shopify':
         specifier: workspace:^
         version: link:../target-shopify
-      '@nazare/theme':
-        specifier: workspace:^
-        version: link:../theme
-
   packages/compiler:
     dependencies:
       '@nazare/core':

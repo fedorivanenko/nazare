@@ -25,6 +25,7 @@ import {
 	projectFileId,
 	readExistingOutputState,
 } from "@nazare/compiler";
+import type { Diagnostic } from "@nazare/core";
 import {
 	parseShopifyMigrations,
 	type ShopifyAffectedPagesResult,
@@ -67,6 +68,9 @@ export type ShopifyBuildRequest = {
 	migrations?: readonly ShopifyMigration[];
 	appliedMigrationIds?: readonly string[];
 	localeBase?: Readonly<Record<string, ProductKey>>;
+	additionalOutputFiles?: readonly OwnedOutputFile[];
+	strictness?: "loose" | "strict";
+	additionalDiagnostics?: readonly Diagnostic[];
 };
 
 export type ShopifyBuildPersistenceOptions = {
@@ -454,6 +458,9 @@ export class ShopifyQuerySession {
 			migrations: request.migrations ?? [],
 			appliedMigrationIds: request.appliedMigrationIds ?? [],
 			localeBase: request.localeBase ?? {},
+			additionalOutputFiles: request.additionalOutputFiles ?? [],
+			...(request.strictness ? { strictness: request.strictness } : {}),
+			additionalDiagnostics: request.additionalDiagnostics ?? [],
 		};
 	}
 

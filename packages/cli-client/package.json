@@ -21,7 +21,6 @@
 		"@nazare/preview": "workspace:^",
     "@nazare/registry": "workspace:^",
     "@nazare/source-cli": "workspace:^",
-    "@nazare/theme": "workspace:^",
     "@nazare/target-shopify": "workspace:^"
   }
 }

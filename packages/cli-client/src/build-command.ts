@@ -1,11 +1,20 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, readFile } from "node:fs/promises";
-import { extname, join, relative, resolve, sep } from "node:path";
+import { mkdir, readFile, stat } from "node:fs/promises";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { NazareExtensionRegistration } from "@nazare/compiler";
-import { buildTheme } from "@nazare/theme";
+import type {
+	NazareComponent,
+	NazareExtensionRegistration,
+	OwnedOutputFile,
+} from "@nazare/compiler";
+import type { Diagnostic } from "@nazare/core";
+import { collectThemeInputFiles } from "./inspect-input.js";
 import type { CliOptions } from "./options.js";
 import type { Output } from "./output.js";
+import {
+	type ShopifyBuildProductsResult,
+	ShopifyQuerySession,
+} from "./shopify-query-session.js";
 
 const THEME_MANIFEST = "nazare.theme.json";
 const EXTENSIONS_DIR = "nazare.extensions";
@@ -117,18 +126,71 @@ export async function runThemeBuild(
 				output,
 			);
 		}
-		const result = await buildTheme({
-			projectRoot,
-			sourceRoot,
-			outDir,
-			strictness: cliOptions.strictness,
-			extensions: await loadExtensions(projectRoot, config.extensions ?? []),
-			// Key the run-once migrations ledger by the pulled store/theme so each
-			// target tracks its own applied history; falls back to the output dir.
-			targetId:
-				[cliOptions.store, cliOptions.theme].filter(Boolean).join("#") ||
-				undefined,
-		});
+		const sourceRootAbsolute = resolve(projectRoot, sourceRoot);
+		let sourceRootStat: Awaited<ReturnType<typeof stat>>;
+		try {
+			sourceRootStat = await stat(sourceRootAbsolute);
+		} catch (error) {
+			if (
+				error instanceof Error &&
+				"code" in error &&
+				(error as NodeJS.ErrnoException).code === "ENOENT"
+			) {
+				throw new Error(`Source path not found: ${sourceRoot}`);
+			}
+			throw error;
+		}
+		const analysisRoot = sourceRootStat.isFile()
+			? dirname(sourceRootAbsolute)
+			: sourceRootAbsolute;
+		const inputs = await collectThemeInputFiles(analysisRoot, projectRoot);
+		const session = await ShopifyQuerySession.create(inputs);
+		const request = {
+			scope: sourceRootStat.isFile()
+				? {
+						kind: "closure" as const,
+						root: relative(analysisRoot, sourceRootAbsolute)
+							.split(sep)
+							.join("/"),
+					}
+				: { kind: "workspace" as const },
+			...(cliOptions.strictness ? { strictness: cliOptions.strictness } : {}),
+		};
+		const preview = await session.buildProducts(request);
+		const extensionOutput = await runBuildExtensions(
+			await loadExtensions(projectRoot, config.extensions ?? []),
+			{
+				projectRoot,
+				sourceRoot,
+				outDir,
+				componentFiles: [
+					...new Set([
+						...preview.model.application.components.map(
+							(component) => `${sourceRoot}/${component.source.path}`,
+						),
+						...inputs
+							.filter((file) => file.path.endsWith(".nz.liquid"))
+							.map((file) => `${sourceRoot}/${file.path}`),
+					]),
+				],
+			},
+		);
+		const buildRequest = {
+			...request,
+			additionalOutputFiles: extensionOutput.files,
+			additionalDiagnostics: extensionOutput.diagnostics,
+		};
+		const preflight = await session.buildProducts(buildRequest);
+		const products = hasErrors(preflight.ownedOutput.diagnostics)
+			? preflight
+			: await session.publishPersistentBuild(buildRequest, {
+					projectRoot,
+					outputRoot: resolve(projectRoot, outDir),
+					targetId:
+						[cliOptions.store, cliOptions.theme].filter(Boolean).join("#") ||
+						outDir,
+				});
+		const result = commandBuildResult(products, inputs, sourceRoot, outDir);
 		if (cliOptions.json) {
 			output.log(
 				JSON.stringify({ ...result, components: result.compiled }, null, 2),
@@ -209,11 +271,113 @@ function assertAllowedExtensionModule(
 	}
 }
 
+type ThemeBuildCommandResult = {
+	compiled: string[];
+	copied: string[];
+	seeded: string[];
+	preserved: string[];
+	written: string[];
+	issues: Diagnostic[];
+	notes: Diagnostic[];
+	conflicts: string[];
+	drift: readonly { code: string; message: string }[];
+	manifestPath: string;
+	migrated: readonly string[];
+	applied: readonly string[];
+	mergedLocales: readonly string[];
+};
+
+function commandBuildResult(
+	products: ShopifyBuildProductsResult,
+	inputs: readonly { path: string; contents: string }[],
+	sourceRoot: string,
+	outDir: string,
+): ThemeBuildCommandResult {
+	const sourcePath = (path: string): string =>
+		`${sourceRoot.replace(/\/$/, "")}/${path}`;
+	const compiled = inputs
+		.filter((file) => file.path.endsWith(".nz.liquid"))
+		.map((file) => sourcePath(file.path))
+		.sort();
+	const conflicts = products.ownedOutput.diagnostics
+		.filter((diagnostic) => diagnostic.code.startsWith("OUTPUT_"))
+		.map((diagnostic) => diagnostic.message);
+	return {
+		compiled,
+		copied: inputs
+			.filter((file) => !file.path.endsWith(".nz.liquid"))
+			.map((file) => sourcePath(file.path))
+			.sort(),
+		seeded: [],
+		preserved: [],
+		written: products.ownedOutput.writes.map(
+			(file) => `${outDir.replace(/\/$/, "")}/${file.path}`,
+		),
+		issues: [...products.emission.diagnostics],
+		notes: [],
+		conflicts,
+		drift: products.model.schemaDrift,
+		manifestPath: "nazare.schema-lock.json",
+		migrated: products.emission.migratedPaths,
+		applied: products.emission.appliedMigrationIds,
+		mergedLocales: products.emission.mergedLocalePaths,
+	};
+}
+
+async function runBuildExtensions(
+	registrations: readonly NazareExtensionRegistration[],
+	context: {
+		projectRoot: string;
+		sourceRoot: string;
+		outDir: string;
+		componentFiles: readonly string[];
+	},
+): Promise<{ files: OwnedOutputFile[]; diagnostics: Diagnostic[] }> {
+	const files: OwnedOutputFile[] = [];
+	const diagnostics: Diagnostic[] = [];
+	const components = context.componentFiles.map(
+		(file) => ({ file }) as NazareComponent,
+	);
+	for (const registration of registrations) {
+		if (!registration.extension.emit) continue;
+		try {
+			const result = await registration.extension.emit({
+				projectRoot: context.projectRoot,
+				sourceRoot: context.sourceRoot,
+				outDir: context.outDir,
+				components,
+				options: registration.options,
+			});
+			for (const file of result.files) {
+				files.push({
+					path: file.path,
+					contents: file.contents,
+					ownerId: `extension:${registration.extension.name}`,
+				});
+			}
+			diagnostics.push(
+				...result.issues.map((diagnostic) => ({
+					...diagnostic,
+					phase: diagnostic.phase ?? ("emit" as const),
+				})),
+			);
+		} catch (error) {
+			diagnostics.push({
+				severity: "error",
+				phase: "emit",
+				code: "THEME_EXTENSION_ERROR",
+				message: `Extension ${registration.extension.name} failed: ${error instanceof Error ? error.message : String(error)}`,
+			});
+		}
+	}
+	return { files, diagnostics };
+}
+
 // Human-readable build summary. Leads with what was produced, then the
 // reconciliation outcomes (what was kept from the live theme, migrated, or
 // merged), then warnings and errors. `--json` prints the raw result instead.
 function printBuildSummary(
-	result: Awaited<ReturnType<typeof buildTheme>>,
+	result: ThemeBuildCommandResult,
 	outDir: string,
 	output: Output,
 ): void {
@@ -293,7 +457,7 @@ function pullThemeData(
 }
 
 function hasErrors(
-	issues: { severity: "error" | "warning" | "info" }[],
+	issues: readonly { severity: "error" | "warning" | "info" }[],
 ): boolean {
 	return issues.some((issue) => issue.severity === "error");
 }
