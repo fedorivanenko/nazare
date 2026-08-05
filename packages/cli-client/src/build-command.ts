@@ -70,7 +70,7 @@ function validateProjectConfig(config: ThemeProjectConfig): void {
 }
 
 // Merchant-owned data the Shopify theme editor writes back. `nazare build
-// --pull-data` fetches only these into the output dir so buildTheme can carry the
+// --pull-data` fetches only these into the output dir so build products carry the
 // live theme's settings, section instances, and block values forward. Code is
 // regenerated from source, so there is no reason to pull it.
 const MERCHANT_DATA_PATTERNS = [
@@ -112,7 +112,7 @@ export async function runThemeBuild(
 			);
 		}
 		// Reconcile against a live theme: pull its merchant-owned data into the
-		// output dir first, so buildTheme snapshots and preserves it instead of
+		// output dir first, so build products snapshot and preserve it instead of
 		// resetting it to the source seeds.
 		if (cliOptions.pullData) {
 			const outDirAbs = join(projectRoot, outDir);

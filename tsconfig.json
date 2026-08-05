@@ -9,7 +9,6 @@
 		{ "path": "packages/source" },
 		{ "path": "packages/source-cli" },
     { "path": "packages/preview" },
-    { "path": "packages/theme" },
     { "path": "packages/target-shopify" },
   ]
 }

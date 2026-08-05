@@ -152,15 +152,6 @@ importers:
         specifier: workspace:^
         version: link:../core
 
-  packages/theme:
-    dependencies:
-      '@nazare/compiler':
-        specifier: workspace:^
-        version: link:../compiler
-      '@nazare/core':
-        specifier: workspace:^
-        version: link:../core
-
   packages/tree-sitter-liquid:
     dependencies:
       node-addon-api:

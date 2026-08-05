@@ -436,7 +436,8 @@ OutputTransaction
 - [x] Keep check-only mode as build without emission.
 - [x] Prevent obsolete revisions from committing output.
 - [x] Delete `ThemeBuildSession` compatibility API.
-- [ ] Delete old workspace build API.
+- [x] Delete obsolete `@nazare/theme` orchestration package.
+- [ ] Delete old compiler workspace build API.
 
 Exit gate:
 
