@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import {
+	mkdir,
+	mkdtemp,
+	readFile,
+	stat,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -66,6 +73,34 @@ test("filesystem output store discards staging when revision becomes obsolete", 
 	await assert.rejects(readFile(join(outputRoot, "assets/new.js"), "utf8"), {
 		code: "ENOENT",
 	});
+});
+
+test("filesystem output store rolls back publication failures", async () => {
+	const temporary = await mkdtemp(join(tmpdir(), "nazare-output-rollback-"));
+	const outputRoot = join(temporary, "theme");
+	await mkdir(join(outputRoot, "z-directory"), { recursive: true });
+	await writeFile(join(outputRoot, "a.txt"), "old");
+	const plan = createOwnedOutputPlan({
+		writes: [
+			{ path: "a.txt", contents: "new", ownerId: "component:a" },
+			{ path: "z-directory", contents: "invalid", ownerId: "component:z" },
+		],
+	});
+
+	await assert.rejects(
+		executeOutputTransaction({
+			plan,
+			expectedRevision: 1,
+			currentRevision: () => 1,
+			store: new FileSystemAtomicOutputStore(outputRoot),
+		}),
+		/Output path is not a regular file/,
+	);
+	assert.equal(await readFile(join(outputRoot, "a.txt"), "utf8"), "old");
+	assert.equal(
+		(await stat(join(outputRoot, "z-directory"))).isDirectory(),
+		true,
+	);
 });
 
 test("filesystem output store rejects symbolic-link output traversal", async () => {

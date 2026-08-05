@@ -94,6 +94,10 @@ async function rollback(input: {
 }
 
 async function assertSafeOutputPath(root: string, path: string): Promise<void> {
+	const rootStatus = await optionalStatus(root);
+	if (rootStatus?.isSymbolicLink()) {
+		throw new Error(`Output root is a symbolic link: ${root}`);
+	}
 	const segments = path.split("/");
 	let current = root;
 	for (const segment of segments) {
