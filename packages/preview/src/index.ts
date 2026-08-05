@@ -41,6 +41,16 @@ export {
 	plainLiquidControls,
 } from "./plain-controls.js";
 export {
+	createPreviewProductRegistrar,
+	type PreviewFixtureInput,
+	type PreviewModel,
+	type PreviewModelQuery,
+	type PreviewRenderPlanQuery,
+	type PreviewStoryDiscovery,
+	type PreviewStoryRenderQuery,
+	previewProducts,
+} from "./products.js";
+export {
 	type RenderedComponent,
 	type RenderedStory,
 	type RenderStoriesOptions,

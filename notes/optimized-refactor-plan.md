@@ -453,15 +453,15 @@ Failed builds and stale revisions cannot mutate output.
 ## Phase 7 — preview products
 
 - [x] Remove direct preview component compilation from old workspace build API.
-- [ ] Define story discovery as products keyed by story file.
-- [ ] Define fixture inputs through providers.
-- [ ] Define preview model by component/story roots.
-- [ ] Render stories independently and concurrently.
-- [ ] Cache pure render plans, not publication side effects.
+- [x] Define story discovery as products keyed by story file.
+- [x] Define fixture inputs through providers.
+- [x] Define preview model by component/story roots.
+- [x] Render stories independently and concurrently.
+- [x] Cache pure render plans, not publication side effects.
 - [ ] Move preview serve watcher to the shared `ProjectSession`.
 - [ ] Cancel stale renders on revision changes.
-- [ ] Keep scaffold and fixture management outside project analysis.
-- [ ] Delete preview-specific compiler workspace orchestration.
+- [x] Keep scaffold and fixture management outside project analysis.
+- [x] Delete preview-specific compiler workspace orchestration.
 
 Exit gate:
 
