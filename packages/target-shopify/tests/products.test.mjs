@@ -3,20 +3,26 @@ import test from "node:test";
 import {
 	createCapabilityRegistry,
 	createComputationGraph,
-	createDefaultSourceFrontendRegistry,
-	createProjectSession,
-	createSourceFrontendRegistry,
-	createSourceProductRegistrar,
-	defineInputProvider,
 	definePipeline,
-	definePortableOutputProvider,
-	defineProjectHost,
 	fingerprintProductKey,
 	pipelineIdentity,
+} from "@nazare/compiler/computation";
+import {
+	definePortableOutputProvider,
 	portableApplicationModel,
 	portableOutputCapability,
+} from "@nazare/compiler/portable";
+import {
+	createProjectSession,
+	defineInputProvider,
+	defineProjectHost,
 	projectFileId,
-} from "@nazare/compiler";
+} from "@nazare/compiler/project";
+import {
+	createDefaultSourceFrontendRegistry,
+	createSourceFrontendRegistry,
+	createSourceProductRegistrar,
+} from "@nazare/compiler/source-products";
 import {
 	classifyShopifyFile,
 	shopifyBuildOutput,

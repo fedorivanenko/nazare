@@ -4,15 +4,17 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fingerprintProductKey } from "@nazare/compiler/computation";
 import {
-	createDefaultSourceFrontendRegistry,
 	createProjectSession,
-	createSourceProductRegistrar,
 	defineInputProvider,
 	defineProjectHost,
-	fingerprintProductKey,
 	projectFileId,
-} from "@nazare/compiler";
+} from "@nazare/compiler/project";
+import {
+	createDefaultSourceFrontendRegistry,
+	createSourceProductRegistrar,
+} from "@nazare/compiler/source-products";
 import {
 	createPreviewProductRegistrar,
 	PreviewProjectSession,
