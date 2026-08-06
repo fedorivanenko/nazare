@@ -62,8 +62,9 @@ export function defineComputation<
 
 export type ProductKeySnapshot = {
 	kind: "product-key-snapshot";
-	version: 1;
-	value: ProductKeySnapshotValue;
+	version: 2;
+	root: ProductKeySnapshotValue;
+	objects: readonly ProductKeySnapshotObject[];
 };
 
 type ProductKeySnapshotValue =
@@ -71,6 +72,9 @@ type ProductKeySnapshotValue =
 	| { kind: "boolean"; value: boolean }
 	| { kind: "number"; value: number | "-0" }
 	| { kind: "string"; value: string }
+	| { kind: "reference"; id: number };
+
+type ProductKeySnapshotObject =
 	| {
 			kind: "array";
 			extensible: boolean;
@@ -92,13 +96,20 @@ type ProductKeySnapshotProperty = {
 	value: ProductKeySnapshotValue;
 };
 
+type ProductKeySnapshotEncoding = {
+	ancestors: WeakSet<object>;
+	ids: WeakMap<object, number>;
+	objects: ProductKeySnapshotObject[];
+};
+
 /**
  * Cache a ProductKey result through an explicit runtime-shape snapshot.
  *
  * Product keys identify products; their snapshot is independent persistence data.
  * The codec preserves supported plain/null-prototype object and array descriptors,
- * extensibility, and negative zero. Accessors, symbols, functions, exotic
- * prototypes, cycles, and non-finite numbers are rejected before cache writes.
+ * extensibility, negative zero, and shared-reference identity. Accessors, symbols,
+ * functions, exotic prototypes, cycles, and non-finite numbers are rejected before
+ * cache writes.
  */
 export function productKeyCodec<Result extends ProductKey>(): ComputationCodec<
 	Result,
@@ -106,17 +117,20 @@ export function productKeyCodec<Result extends ProductKey>(): ComputationCodec<
 > {
 	return {
 		encode(result) {
+			const encoding: ProductKeySnapshotEncoding = {
+				ancestors: new WeakSet<object>(),
+				ids: new WeakMap<object, number>(),
+				objects: [],
+			};
 			return {
 				kind: "product-key-snapshot",
-				version: 1,
-				value: encodeProductKeySnapshotValue(result, new WeakSet<object>()),
+				version: 2,
+				root: encodeProductKeySnapshotValue(result, encoding),
+				objects: encoding.objects,
 			};
 		},
 		decode(snapshot) {
-			if (snapshot.kind !== "product-key-snapshot" || snapshot.version !== 1) {
-				throw new TypeError("Invalid ProductKey cache snapshot");
-			}
-			return decodeProductKeySnapshotValue(snapshot.value) as Result;
+			return decodeProductKeySnapshot(snapshot) as Result;
 		},
 	};
 }
@@ -153,7 +167,7 @@ export function optionalProductKeyCodec<
 
 function encodeProductKeySnapshotValue(
 	value: unknown,
-	ancestors: WeakSet<object>,
+	encoding: ProductKeySnapshotEncoding,
 ): ProductKeySnapshotValue {
 	if (value === null) return { kind: "null" };
 	switch (typeof value) {
@@ -167,7 +181,7 @@ function encodeProductKeySnapshotValue(
 		case "string":
 			return { kind: "string", value };
 		case "object":
-			return encodeObjectSnapshot(value, ancestors);
+			return encodeObjectSnapshot(value, encoding);
 		default:
 			throw new TypeError(
 				"Product key values must be null, booleans, finite numbers, strings, arrays, or plain objects",
@@ -177,16 +191,28 @@ function encodeProductKeySnapshotValue(
 
 function encodeObjectSnapshot(
 	value: object,
-	ancestors: WeakSet<object>,
+	encoding: ProductKeySnapshotEncoding,
 ): ProductKeySnapshotValue {
-	if (ancestors.has(value)) {
+	if (encoding.ancestors.has(value)) {
 		throw new TypeError("Product key values must not contain cycles");
 	}
-	ancestors.add(value);
+	const knownId = encoding.ids.get(value);
+	if (knownId !== undefined) return { kind: "reference", id: knownId };
+
+	const id = encoding.objects.length;
+	encoding.ids.set(value, id);
+	encoding.objects.push({
+		kind: "object",
+		prototype: "object",
+		extensible: true,
+		properties: [],
+	});
+	encoding.ancestors.add(value);
 	try {
 		if (Reflect.ownKeys(value).some((key) => typeof key === "symbol")) {
 			throw new TypeError("Product key values must not have symbol properties");
 		}
+		let snapshot: ProductKeySnapshotObject;
 		if (Array.isArray(value)) {
 			if (Object.getPrototypeOf(value) !== Array.prototype) {
 				throw new TypeError("Product key arrays must use Array.prototype");
@@ -203,33 +229,36 @@ function encodeObjectSnapshot(
 			) {
 				throw new TypeError("Product key arrays must have a standard length");
 			}
-			return {
+			snapshot = {
 				kind: "array",
 				extensible: Object.isExtensible(value),
 				length: { value: length.value, writable: length.writable ?? false },
-				properties: encodeProperties(value, ancestors, new Set(["length"])),
+				properties: encodeProperties(value, encoding, new Set(["length"])),
+			};
+		} else {
+			const prototype = Object.getPrototypeOf(value);
+			if (prototype !== Object.prototype && prototype !== null) {
+				throw new TypeError(
+					"Product key objects must be plain objects or null-prototype objects",
+				);
+			}
+			snapshot = {
+				kind: "object",
+				prototype: prototype === null ? "null" : "object",
+				extensible: Object.isExtensible(value),
+				properties: encodeProperties(value, encoding),
 			};
 		}
-		const prototype = Object.getPrototypeOf(value);
-		if (prototype !== Object.prototype && prototype !== null) {
-			throw new TypeError(
-				"Product key objects must be plain objects or null-prototype objects",
-			);
-		}
-		return {
-			kind: "object",
-			prototype: prototype === null ? "null" : "object",
-			extensible: Object.isExtensible(value),
-			properties: encodeProperties(value, ancestors),
-		};
+		encoding.objects[id] = snapshot;
+		return { kind: "reference", id };
 	} finally {
-		ancestors.delete(value);
+		encoding.ancestors.delete(value);
 	}
 }
 
 function encodeProperties(
 	value: object,
-	ancestors: WeakSet<object>,
+	encoding: ProductKeySnapshotEncoding,
 	excluded = new Set<string>(),
 ): ProductKeySnapshotProperty[] {
 	return Object.getOwnPropertyNames(value)
@@ -246,98 +275,147 @@ function encodeProperties(
 				enumerable: descriptor.enumerable ?? false,
 				configurable: descriptor.configurable ?? false,
 				writable: descriptor.writable ?? false,
-				value: encodeProductKeySnapshotValue(descriptor.value, ancestors),
+				value: encodeProductKeySnapshotValue(descriptor.value, encoding),
 			};
 		});
 }
 
-function decodeProductKeySnapshotValue(value: unknown): ProductKey {
+function decodeProductKeySnapshot(snapshot: ProductKeySnapshot): ProductKey {
+	if (
+		!isSnapshotRecord(snapshot) ||
+		!hasOnlyKeys(snapshot, ["kind", "version", "root", "objects"]) ||
+		snapshot.kind !== "product-key-snapshot" ||
+		snapshot.version !== 2 ||
+		!Array.isArray(snapshot.objects)
+	) {
+		throw new TypeError("Invalid ProductKey cache snapshot");
+	}
+	validateSnapshotGraph(snapshot.root, snapshot.objects);
+	const objects = snapshot.objects.map(createSnapshotObject);
+	for (let id = 0; id < snapshot.objects.length; id++) {
+		const value = snapshot.objects[id];
+		const target = objects[id];
+		defineSnapshotProperties(target, value.properties, objects);
+		if (value.kind === "array") {
+			Object.defineProperty(target, "length", {
+				value: value.length.value,
+				writable: value.length.writable,
+				enumerable: false,
+				configurable: false,
+			});
+		}
+		if (!value.extensible) Object.preventExtensions(target);
+	}
+	return decodeProductKeySnapshotValue(snapshot.root, objects);
+}
+
+function validateSnapshotGraph(
+	root: unknown,
+	objects: readonly unknown[],
+): void {
+	const states = new Array<"visiting" | "visited" | undefined>(objects.length);
+	const visitValue = (value: unknown): void => {
+		if (!isSnapshotRecord(value) || typeof value.kind !== "string") {
+			throw new TypeError("Invalid ProductKey cache snapshot");
+		}
+		switch (value.kind) {
+			case "null":
+				if (hasOnlyKeys(value, ["kind"])) return;
+				break;
+			case "boolean":
+				if (
+					hasOnlyKeys(value, ["kind", "value"]) &&
+					typeof value.value === "boolean"
+				)
+					return;
+				break;
+			case "number":
+				if (
+					hasOnlyKeys(value, ["kind", "value"]) &&
+					(typeof value.value === "number" || value.value === "-0") &&
+					(value.value === "-0" || Number.isFinite(value.value))
+				) {
+					return;
+				}
+				break;
+			case "string":
+				if (
+					hasOnlyKeys(value, ["kind", "value"]) &&
+					typeof value.value === "string"
+				)
+					return;
+				break;
+			case "reference": {
+				if (
+					!hasOnlyKeys(value, ["kind", "id"]) ||
+					typeof value.id !== "number" ||
+					!Number.isSafeInteger(value.id) ||
+					value.id < 0 ||
+					value.id >= objects.length
+				) {
+					break;
+				}
+				if (states[value.id] === "visiting") {
+					throw new TypeError(
+						"Product key cache snapshots must not contain cycles",
+					);
+				}
+				if (states[value.id] === "visited") return;
+				states[value.id] = "visiting";
+				validateSnapshotObject(objects[value.id], visitValue);
+				states[value.id] = "visited";
+				return;
+			}
+		}
+		throw new TypeError("Invalid ProductKey cache snapshot");
+	};
+	visitValue(root);
+	for (let id = 0; id < objects.length; id++) {
+		if (states[id] !== "visited") {
+			throw new TypeError("Invalid ProductKey cache snapshot");
+		}
+	}
+}
+
+function validateSnapshotObject(
+	value: unknown,
+	visitValue: (value: unknown) => void,
+): asserts value is ProductKeySnapshotObject {
 	if (!isSnapshotRecord(value) || typeof value.kind !== "string") {
 		throw new TypeError("Invalid ProductKey cache snapshot");
 	}
-	switch (value.kind) {
-		case "null":
-			if (hasOnlyKeys(value, ["kind"])) return null;
-			break;
-		case "boolean":
-			if (
-				hasOnlyKeys(value, ["kind", "value"]) &&
-				typeof value.value === "boolean"
-			) {
-				return value.value;
-			}
-			break;
-		case "number":
-			if (
-				hasOnlyKeys(value, ["kind", "value"]) &&
-				(typeof value.value === "number" || value.value === "-0") &&
-				(value.value === "-0" || Number.isFinite(value.value))
-			) {
-				return value.value === "-0" ? -0 : value.value;
-			}
-			break;
-		case "string":
-			if (
-				hasOnlyKeys(value, ["kind", "value"]) &&
-				typeof value.value === "string"
-			) {
-				return value.value;
-			}
-			break;
-		case "object":
-			return decodeObjectSnapshot(value);
-		case "array":
-			return decodeArraySnapshot(value);
+	if (value.kind === "object") {
+		if (
+			!hasOnlyKeys(value, ["kind", "prototype", "extensible", "properties"]) ||
+			(value.prototype !== "object" && value.prototype !== "null") ||
+			typeof value.extensible !== "boolean" ||
+			!Array.isArray(value.properties)
+		) {
+			throw new TypeError("Invalid ProductKey object cache snapshot");
+		}
+	} else if (value.kind === "array") {
+		if (
+			!hasOnlyKeys(value, ["kind", "extensible", "length", "properties"]) ||
+			typeof value.extensible !== "boolean" ||
+			!isSnapshotRecord(value.length) ||
+			!hasOnlyKeys(value.length, ["value", "writable"]) ||
+			typeof value.length.value !== "number" ||
+			!Number.isSafeInteger(value.length.value) ||
+			value.length.value < 0 ||
+			typeof value.length.writable !== "boolean" ||
+			!Array.isArray(value.properties)
+		) {
+			throw new TypeError("Invalid ProductKey array cache snapshot");
+		}
+	} else {
+		throw new TypeError("Invalid ProductKey cache snapshot");
 	}
-	throw new TypeError("Invalid ProductKey cache snapshot");
+	validateSnapshotProperties(value.properties, visitValue);
 }
 
-function decodeObjectSnapshot(value: Record<string, unknown>): ProductKey {
-	if (
-		!hasOnlyKeys(value, ["kind", "prototype", "extensible", "properties"]) ||
-		(value.prototype !== "object" && value.prototype !== "null") ||
-		typeof value.extensible !== "boolean" ||
-		!Array.isArray(value.properties)
-	) {
-		throw new TypeError("Invalid ProductKey object cache snapshot");
-	}
-	const result = Object.create(
-		value.prototype === "null" ? null : Object.prototype,
-	) as Record<string, ProductKey>;
-	defineSnapshotProperties(result, value.properties);
-	if (!value.extensible) Object.preventExtensions(result);
-	return result;
-}
-
-function decodeArraySnapshot(value: Record<string, unknown>): ProductKey {
-	if (
-		!hasOnlyKeys(value, ["kind", "extensible", "length", "properties"]) ||
-		typeof value.extensible !== "boolean" ||
-		!isSnapshotRecord(value.length) ||
-		!hasOnlyKeys(value.length, ["value", "writable"]) ||
-		typeof value.length.value !== "number" ||
-		!Number.isSafeInteger(value.length.value) ||
-		value.length.value < 0 ||
-		typeof value.length.writable !== "boolean" ||
-		!Array.isArray(value.properties)
-	) {
-		throw new TypeError("Invalid ProductKey array cache snapshot");
-	}
-	const result: ProductKey[] = [];
-	defineSnapshotProperties(result, value.properties);
-	Object.defineProperty(result, "length", {
-		value: value.length.value,
-		writable: value.length.writable,
-		enumerable: false,
-		configurable: false,
-	});
-	if (!value.extensible) Object.preventExtensions(result);
-	return result;
-}
-
-function defineSnapshotProperties(
-	target: object,
+function validateSnapshotProperties(
 	properties: readonly unknown[],
+	visitValue: (value: unknown) => void,
 ): void {
 	const keys = new Set<string>();
 	for (const property of properties) {
@@ -359,8 +437,40 @@ function defineSnapshotProperties(
 			throw new TypeError("Invalid ProductKey property cache snapshot");
 		}
 		keys.add(property.key);
+		visitValue(property.value);
+	}
+}
+
+function createSnapshotObject(value: ProductKeySnapshotObject): object {
+	if (value.kind === "array") return [];
+	return Object.create(value.prototype === "null" ? null : Object.prototype);
+}
+
+function decodeProductKeySnapshotValue(
+	value: ProductKeySnapshotValue,
+	objects: readonly object[],
+): ProductKey {
+	switch (value.kind) {
+		case "null":
+			return null;
+		case "boolean":
+		case "string":
+			return value.value;
+		case "number":
+			return value.value === "-0" ? -0 : value.value;
+		case "reference":
+			return objects[value.id] as ProductKey;
+	}
+}
+
+function defineSnapshotProperties(
+	target: object,
+	properties: readonly ProductKeySnapshotProperty[],
+	objects: readonly object[],
+): void {
+	for (const property of properties) {
 		Object.defineProperty(target, property.key, {
-			value: decodeProductKeySnapshotValue(property.value),
+			value: decodeProductKeySnapshotValue(property.value, objects),
 			enumerable: property.enumerable,
 			configurable: property.configurable,
 			writable: property.writable,

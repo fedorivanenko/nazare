@@ -6,6 +6,7 @@ import {
 	createMemoryComputationCache,
 	defineComputation,
 	defineProduct,
+	fingerprintProductKey,
 	ObsoleteComputationRevisionError,
 	optionalProductKeyCodec,
 	productKeyCodec,
@@ -92,6 +93,12 @@ test("reports non-fatal cache read, write, and delete faults", async () => {
 		version: 1,
 	});
 	const product = definition.product("file");
+	const malformedSnapshot = {
+		kind: "product-key-snapshot",
+		version: 2,
+		root: { kind: "reference", id: 0 },
+		objects: [],
+	};
 	const expected = [
 		[
 			"read",
@@ -117,9 +124,12 @@ test("reports non-fatal cache read, write, and delete faults", async () => {
 			"delete",
 			{
 				read: async () => ({
-					snapshot: "stale",
-					snapshotFingerprint: "invalid",
-					productFingerprint: "invalid",
+					snapshot: malformedSnapshot,
+					snapshotFingerprint: fingerprintProductKey(malformedSnapshot),
+					productFingerprint: fingerprintProductKey({
+						product: product.cacheKey,
+						dependencies: [],
+					}),
 					dependencies: [],
 				}),
 				write: async () => {},
@@ -145,7 +155,9 @@ test("reports non-fatal cache read, write, and delete faults", async () => {
 		);
 
 		assert.equal(await graph.get(product), "computed");
-		const fault = events.find((event) => event.type === "cache-fault");
+		const fault = events.find(
+			(event) => event.type === "cache-fault" && event.operation === operation,
+		);
 		assert.deepEqual(
 			{
 				type: fault?.type,
@@ -166,6 +178,77 @@ test("reports non-fatal cache read, write, and delete faults", async () => {
 			},
 		);
 	}
+});
+
+test("treats well-fingerprinted malformed memory snapshots as cache misses", async () => {
+	let calls = 0;
+	let deletes = 0;
+	const events = [];
+	const memory = createMemoryComputationCache();
+	const cache = {
+		read: memory.read,
+		write: memory.write,
+		delete: async (cacheKey) => {
+			deletes++;
+			await memory.delete(cacheKey);
+		},
+	};
+	const definition = defineProduct({
+		namespace: "test",
+		id: "malformed-memory-snapshot",
+		version: 1,
+	});
+	const computation = defineComputation(
+		definition,
+		async () => {
+			calls++;
+			return { value: "fresh" };
+		},
+		{ cache: productKeyCodec() },
+	);
+	const evaluate = async () => {
+		const graph = createComputationGraph({
+			cache,
+			onTelemetry(event) {
+				events.push(event);
+			},
+		});
+		graph.register(computation);
+		return graph.get(computation.product("key"));
+	};
+
+	assert.deepEqual(await evaluate(), { value: "fresh" });
+	const malformed = {
+		kind: "product-key-snapshot",
+		version: 2,
+		root: { kind: "reference", id: 0 },
+		objects: [],
+	};
+	const cacheKey = computation.product("key").cacheKey;
+	const cached = await cache.read(cacheKey);
+	await cache.write(cacheKey, {
+		...cached,
+		snapshot: malformed,
+		snapshotFingerprint: fingerprintProductKey(malformed),
+	});
+	events.length = 0;
+
+	assert.deepEqual(await evaluate(), { value: "fresh" });
+	assert.equal(calls, 2);
+	assert.equal(deletes, 1);
+	assert.deepEqual(
+		events.find((event) => event.type === "cache-fault"),
+		{
+			type: "cache-fault",
+			operation: "decode",
+			cacheKey,
+			revision: 0,
+			error: {
+				name: "TypeError",
+				message: "Invalid ProductKey cache snapshot",
+			},
+		},
+	);
 });
 
 test("cache codecs preserve supported values across cold and warm graphs", async () => {

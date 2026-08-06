@@ -209,6 +209,142 @@ test("filesystem cache restores deeply frozen output-plan-like runtime values", 
 	});
 });
 
+test("filesystem cache preserves shared aliases and their runtime shape", async () => {
+	await withCacheDirectory(async (directory) => {
+		let calls = 0;
+		const shared = Object.preventExtensions(
+			Object.defineProperty(Object.create(null), "path", {
+				value: "sections/example.liquid",
+				enumerable: false,
+				configurable: false,
+				writable: false,
+			}),
+		);
+		const expected = Object.freeze({
+			first: shared,
+			second: shared,
+			nested: Object.freeze({ shared }),
+			arrays: Object.freeze([
+				Object.freeze([shared]),
+				Object.freeze([shared, { shared }]),
+			]),
+		});
+		const definition = defineProduct({
+			namespace: "test",
+			id: "persistent-shared-aliases",
+			version: 1,
+		});
+		const computation = defineComputation(
+			definition,
+			async () => {
+				calls++;
+				return expected;
+			},
+			{ cache: productKeyCodec() },
+		);
+		const evaluate = async () => {
+			const graph = createComputationGraph({
+				cache: createFileSystemComputationCache({ directory }),
+			});
+			graph.register(computation);
+			return graph.get(computation.product("key"));
+		};
+
+		assert.equal(await evaluate(), expected);
+		const restored = await evaluate();
+		assert.notEqual(restored, expected);
+		assert.equal(restored.first, restored.second);
+		assert.equal(restored.first, restored.nested.shared);
+		assert.equal(restored.first, restored.arrays[0][0]);
+		assert.equal(restored.first, restored.arrays[1][0]);
+		assert.equal(restored.first, restored.arrays[1][1].shared);
+		assert.equal(Object.getPrototypeOf(restored.first), null);
+		assert.equal(Object.isExtensible(restored.first), false);
+		assert.deepEqual(
+			Object.getOwnPropertyDescriptor(restored.first, "path"),
+			Object.getOwnPropertyDescriptor(shared, "path"),
+		);
+		assert.equal(calls, 1);
+	});
+});
+
+test("filesystem cache treats well-fingerprinted malformed snapshots as misses", async () => {
+	await withCacheDirectory(async (directory) => {
+		let calls = 0;
+		let deletes = 0;
+		const events = [];
+		const definition = defineProduct({
+			namespace: "test",
+			id: "malformed-filesystem-snapshot",
+			version: 1,
+		});
+		const computation = defineComputation(
+			definition,
+			async () => {
+				calls++;
+				return { value: "fresh" };
+			},
+			{ cache: productKeyCodec() },
+		);
+		const fileCache = createFileSystemComputationCache({ directory });
+		const cache = {
+			read: fileCache.read,
+			write: fileCache.write,
+			delete: async (cacheKey) => {
+				deletes++;
+				await fileCache.delete(cacheKey);
+			},
+		};
+		const evaluate = async () => {
+			const graph = createComputationGraph({
+				cache,
+				onTelemetry(event) {
+					events.push(event);
+				},
+			});
+			graph.register(computation);
+			return graph.get(computation.product("key"));
+		};
+
+		assert.deepEqual(await evaluate(), { value: "fresh" });
+		const cached = await fileCache.read(computation.product("key").cacheKey);
+		assert.ok(cached);
+		const malformed = {
+			kind: "product-key-snapshot",
+			version: 2,
+			root: { kind: "reference", id: 0 },
+			objects: [],
+		};
+		await fileCache.write(computation.product("key").cacheKey, {
+			...cached,
+			snapshot: malformed,
+			snapshotFingerprint: fingerprintProductKey(malformed),
+		});
+		events.length = 0;
+
+		assert.deepEqual(await evaluate(), { value: "fresh" });
+		assert.equal(calls, 2);
+		assert.equal(deletes, 1);
+		assert.deepEqual(
+			events.find((event) => event.type === "cache-fault"),
+			{
+				type: "cache-fault",
+				operation: "decode",
+				cacheKey: computation.product("key").cacheKey,
+				revision: 0,
+				error: {
+					name: "TypeError",
+					message: "Invalid ProductKey cache snapshot",
+				},
+			},
+		);
+		assert.notDeepEqual(
+			(await fileCache.read(computation.product("key").cacheKey)).snapshot,
+			malformed,
+		);
+	});
+});
+
 test("filesystem cache rejects snapshot fingerprint corruption and recomputes", async () => {
 	await withCacheDirectory(async (directory) => {
 		let calls = 0;
@@ -246,7 +382,10 @@ test("filesystem cache rejects snapshot fingerprint corruption and recomputes", 
 	});
 });
 
-test("cache codecs reject accessors, functions, and symbol keys", async () => {
+test("cache codecs reject cycles, accessors, functions, and symbol keys", async () => {
+	const cyclic = {};
+	cyclic.self = cyclic;
+
 	const accessor = {};
 	Object.defineProperty(accessor, "value", {
 		get: () => true,
@@ -255,6 +394,7 @@ test("cache codecs reject accessors, functions, and symbol keys", async () => {
 	const symbol = { value: true };
 	symbol[Symbol("hidden")] = "hidden";
 	for (const [index, value] of [
+		cyclic,
 		accessor,
 		{ value: () => true },
 		symbol,

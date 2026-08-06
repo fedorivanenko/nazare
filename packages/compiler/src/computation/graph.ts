@@ -40,7 +40,7 @@ export type ComputationTelemetryEvent =
 	  }
 	| {
 			type: "cache-fault";
-			operation: "read" | "write" | "delete";
+			operation: "read" | "write" | "delete" | "decode";
 			cacheKey: string;
 			revision: number;
 			error: ComputationTelemetryError;
@@ -495,7 +495,14 @@ class DefaultComputationGraph implements ComputationGraph {
 		if (!this.canCommitNode(node, generation, evaluation, controller)) {
 			return { hit: false };
 		}
-		const value = computation.cache.decode(cached.snapshot);
+		let value: unknown;
+		try {
+			value = computation.cache.decode(cached.snapshot);
+		} catch (error) {
+			this.emitCacheFault("decode", product.cacheKey, error);
+			await this.deleteCache(product.cacheKey);
+			return { hit: false };
+		}
 		this.replaceDependencies(product.cacheKey, node, dependencies);
 		node.value = value;
 		node.fingerprint = cached.productFingerprint;
@@ -649,7 +656,7 @@ class DefaultComputationGraph implements ComputationGraph {
 	}
 
 	private emitCacheFault(
-		operation: "read" | "write" | "delete",
+		operation: "read" | "write" | "delete" | "decode",
 		cacheKey: string,
 		error: unknown,
 	): void {

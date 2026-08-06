@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { canonicalProductKey, type ProductKey } from "./canonical-key.js";
 
-const FILESYSTEM_CACHE_VERSION = 3;
+const FILESYSTEM_CACHE_VERSION = 4;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 /** Default LRU capacity; prevents long-lived sessions retaining unbounded results. */
 export const DEFAULT_MEMORY_COMPUTATION_CACHE_MAX_ENTRIES = 1_024;
