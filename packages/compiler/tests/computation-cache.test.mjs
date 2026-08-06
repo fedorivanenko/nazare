@@ -12,6 +12,7 @@ import {
 	defineProduct,
 	fingerprintProductKey,
 	productKeyCodec,
+	productKeyValueCodec,
 } from "../dist/testing.js";
 
 const entry = (value) => ({
@@ -147,6 +148,75 @@ test("filesystem cache restores graph products across graph instances", async ()
 		assert.equal(await evaluate(), "cached!");
 		assert.equal(calls, 1);
 	});
+});
+
+test("filesystem cache restores null-prototype objects and negative zero", async () => {
+	await withCacheDirectory(async (directory) => {
+		let calls = 0;
+		const nullPrototype = Object.create(null);
+		nullPrototype.nested = -0;
+		const expected = {
+			negativeZero: -0,
+			nullPrototype,
+			values: [-0, "value"],
+		};
+		const definition = defineProduct({
+			namespace: "test",
+			id: "persistent-shape",
+			version: 1,
+		});
+		const computation = defineComputation(
+			definition,
+			async () => {
+				calls++;
+				return expected;
+			},
+			{ cache: productKeyValueCodec() },
+		);
+		const evaluate = async () => {
+			const graph = createComputationGraph({
+				cache: createFileSystemComputationCache({ directory }),
+			});
+			graph.register(computation);
+			return graph.get(computation.product("key"));
+		};
+
+		assert.deepEqual(await evaluate(), expected);
+		const restored = await evaluate();
+		assert.deepEqual(restored, expected);
+		assert.equal(Object.getPrototypeOf(restored.nullPrototype), null);
+		assert.equal(Object.is(restored.negativeZero, -0), true);
+		assert.equal(Object.is(restored.values[0], -0), true);
+		assert.equal(calls, 1);
+	});
+});
+
+test("cache codecs reject sparse arrays and hidden properties", async () => {
+	const sparse = [];
+	sparse.length = 1;
+	const withSymbol = { value: true };
+	withSymbol[Symbol("hidden")] = "hidden";
+	const withNonEnumerable = { value: true };
+	Object.defineProperty(withNonEnumerable, "hidden", { value: "hidden" });
+	for (const [index, value] of [
+		sparse,
+		withSymbol,
+		withNonEnumerable,
+	].entries()) {
+		const graph = createComputationGraph({
+			cache: createMemoryComputationCache(),
+		});
+		const definition = defineProduct({
+			namespace: "test",
+			id: `lossy-shape-${index}`,
+			version: 1,
+		});
+		const computation = defineComputation(definition, async () => value, {
+			cache: productKeyValueCodec(),
+		});
+		graph.register(computation);
+		await assert.rejects(graph.get(computation.product("key")), /Product key/);
+	}
 });
 
 test("filesystem cache hashes cache keys into contained paths", async () => {

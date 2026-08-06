@@ -481,60 +481,62 @@ test("rejects computation cycles instead of deadlocking", async () => {
 	await assert.rejects(graph.get(left.product("file")), ComputationCycleError);
 });
 
-test("rejects concurrent wait-for cycles instead of hanging", async () => {
+test("rejects three-node concurrent wait cycles with two roots", async () => {
 	const graph = createComputationGraph();
-	const leftDefinition = defineProduct({
-		namespace: "test",
-		id: "concurrent-left",
-		version: 1,
+	const definition = (id) =>
+		defineProduct({ namespace: "test", id, version: 1 });
+	const aDefinition = definition("concurrent-a");
+	const bDefinition = definition("concurrent-b");
+	const cDefinition = definition("concurrent-c");
+	const deferred = () => {
+		let resolve;
+		const promise = new Promise((done) => {
+			resolve = done;
+		});
+		return { promise, resolve };
+	};
+	const roots = deferred();
+	const children = deferred();
+	const aStarted = deferred();
+	const bStarted = deferred();
+	const cStarted = deferred();
+	const a = defineComputation(aDefinition, async (context, key) => {
+		aStarted.resolve();
+		await roots.promise;
+		return context.get(b.product(key));
 	});
-	const rightDefinition = defineProduct({
-		namespace: "test",
-		id: "concurrent-right",
-		version: 1,
+	const b = defineComputation(bDefinition, async (context, key) => {
+		bStarted.resolve();
+		await children.promise;
+		return context.get(c.product(key));
 	});
-	let leftStarted;
-	let rightStarted;
-	let release;
-	const started = new Promise((resolve) => {
-		leftStarted = () => resolve();
+	const c = defineComputation(cDefinition, async (context, key) => {
+		cStarted.resolve();
+		await children.promise;
+		return context.get(a.product(key));
 	});
-	const rightIsStarted = new Promise((resolve) => {
-		rightStarted = () => resolve();
-	});
-	const barrier = new Promise((resolve) => {
-		release = resolve;
-	});
-	const left = defineComputation(leftDefinition, async (context, key) => {
-		leftStarted();
-		await barrier;
-		return context.get(right.product(key));
-	});
-	const right = defineComputation(rightDefinition, async (context, key) => {
-		rightStarted();
-		await barrier;
-		return context.get(left.product(key));
-	});
-	graph.register(left);
-	graph.register(right);
+	graph.register(a);
+	graph.register(b);
+	graph.register(c);
 
 	const pending = Promise.allSettled([
-		graph.get(left.product("file")),
-		graph.get(right.product("file")),
+		graph.get(a.product("file")),
+		graph.get(c.product("file")),
 	]);
-	await Promise.all([started, rightIsStarted]);
-	release();
+	await Promise.all([aStarted.promise, cStarted.promise]);
+	roots.resolve();
+	await bStarted.promise;
+	children.resolve();
+
 	const results = await pending;
 	assert.equal(
-		results.every((result) => result.status === "rejected"),
+		results.every(
+			(result) =>
+				result.status === "rejected" &&
+				result.reason instanceof ComputationCycleError,
+		),
 		true,
 	);
-	for (const result of results) {
-		assert.equal(result.status, "rejected");
-		if (result.status === "rejected") {
-			assert.equal(result.reason instanceof ComputationCycleError, true);
-		}
-	}
 });
 
 test("rejects requests pinned to obsolete revisions", async () => {

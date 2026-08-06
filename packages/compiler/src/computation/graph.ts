@@ -131,7 +131,7 @@ class DefaultComputationGraph implements ComputationGraph {
 	private readonly inputFingerprints = new Map<string, string>();
 	private readonly nodes = new Map<string, ProductNode>();
 	private readonly dependentsByDependency = new Map<string, Set<string>>();
-	private readonly pendingWaitsByProduct = new Map<string, Set<string>>();
+	private readonly waitCountsByProduct = new Map<string, Map<string, number>>();
 	private revisionValue = 0;
 
 	constructor(
@@ -305,12 +305,7 @@ class DefaultComputationGraph implements ComputationGraph {
 			return node.value as Result;
 		}
 		if (node.pending) {
-			return this.waitForPending(
-				evaluation.producer,
-				product.cacheKey,
-				node.pending as Promise<Result>,
-				requestSignal,
-			);
+			return waitForRequest(node.pending as Promise<Result>, requestSignal);
 		}
 
 		const generation = node.generation;
@@ -365,10 +360,10 @@ class DefaultComputationGraph implements ComputationGraph {
 			): Promise<DependencyResult> => {
 				const dependencyId = productDependency(dependency.cacheKey);
 				dependencies.add(dependencyId);
-				const result = await this.evaluate(
-					dependency,
-					evaluation,
-					controller.signal,
+				const result = await this.waitForDependency(
+					product.cacheKey,
+					dependency.cacheKey,
+					() => this.evaluate(dependency, evaluation, controller.signal),
 				);
 				const dependencyNode = this.node(dependency.cacheKey);
 				if (!dependencyNode.fingerprint) {
@@ -483,7 +478,11 @@ class DefaultComputationGraph implements ComputationGraph {
 				await this.deleteCache(product.cacheKey);
 				return { hit: false };
 			}
-			await this.evaluate(restoredProduct, evaluation, controller.signal);
+			await this.waitForDependency(
+				evaluation.producer,
+				restoredProduct.cacheKey,
+				() => this.evaluate(restoredProduct, evaluation, controller.signal),
+			);
 			if (
 				this.node(restoredProduct.cacheKey).fingerprint !==
 				dependency.fingerprint
@@ -594,41 +593,45 @@ class DefaultComputationGraph implements ComputationGraph {
 		}
 	}
 
-	private waitForPending<Result>(
+	private async waitForDependency<Result>(
 		producer: string | undefined,
-		pendingProduct: string,
-		pending: Promise<Result>,
-		signal?: AbortSignal,
+		dependency: string,
+		evaluate: () => Promise<Result>,
 	): Promise<Result> {
-		if (!producer) return waitForRequest(pending, signal);
-		this.addPendingWait(producer, pendingProduct);
-		return waitForRequest(pending, signal).finally(() => {
-			this.removePendingWait(producer, pendingProduct);
-		});
+		if (!producer) return evaluate();
+		this.addWait(producer, dependency);
+		try {
+			return await evaluate();
+		} finally {
+			this.removeWait(producer, dependency);
+		}
 	}
 
-	private addPendingWait(from: string, to: string): void {
-		const path = this.pendingWaitPath(to, from);
+	private addWait(from: string, to: string): void {
+		const path = this.waitPath(to, from);
 		if (path) throw new ComputationCycleError([from, ...path]);
-		const waits = this.pendingWaitsByProduct.get(from) ?? new Set<string>();
-		waits.add(to);
-		this.pendingWaitsByProduct.set(from, waits);
+		const waits =
+			this.waitCountsByProduct.get(from) ?? new Map<string, number>();
+		waits.set(to, (waits.get(to) ?? 0) + 1);
+		this.waitCountsByProduct.set(from, waits);
 	}
 
-	private removePendingWait(from: string, to: string): void {
-		const waits = this.pendingWaitsByProduct.get(from);
-		if (!waits) return;
-		waits.delete(to);
-		if (waits.size === 0) this.pendingWaitsByProduct.delete(from);
+	private removeWait(from: string, to: string): void {
+		const waits = this.waitCountsByProduct.get(from);
+		const count = waits?.get(to);
+		if (!waits || count === undefined) return;
+		if (count > 1) waits.set(to, count - 1);
+		else waits.delete(to);
+		if (waits.size === 0) this.waitCountsByProduct.delete(from);
 	}
 
-	private pendingWaitPath(from: string, target: string): string[] | undefined {
+	private waitPath(from: string, target: string): string[] | undefined {
 		const visit = (
 			current: string,
 			path: readonly string[],
 		): string[] | undefined => {
 			if (current === target) return [...path, current];
-			for (const next of this.pendingWaitsByProduct.get(current) ?? []) {
+			for (const next of this.waitCountsByProduct.get(current)?.keys() ?? []) {
 				if (path.includes(next)) continue;
 				const found = visit(next, [...path, current]);
 				if (found) return found;

@@ -50,6 +50,7 @@ function serializeObject(
 
 	try {
 		if (Array.isArray(value)) {
+			assertDenseDataArray(value);
 			return `array:[${value
 				.map((item) => serialize(item, ancestors))
 				.join(",")}]`;
@@ -62,14 +63,77 @@ function serializeObject(
 			);
 		}
 
-		const record = value as { readonly [key: string]: ProductKey };
-		return `object:{${Object.keys(record)
-			.sort()
+		const entries = dataEntries(
+			value as { readonly [key: string]: ProductKey },
+		);
+		return `object:{${entries
+			.sort(([left], [right]) => left.localeCompare(right))
 			.map(
-				(key) => `${JSON.stringify(key)}:${serialize(record[key], ancestors)}`,
+				([key, item]) => `${JSON.stringify(key)}:${serialize(item, ancestors)}`,
 			)
 			.join(",")}}`;
 	} finally {
 		ancestors.delete(value);
 	}
+}
+
+function assertDenseDataArray(value: readonly ProductKey[]): void {
+	const keys = Reflect.ownKeys(value);
+	const indexKeys = keys.filter(
+		(key): key is string => typeof key === "string" && key !== "length",
+	);
+	if (keys.some((key) => typeof key === "symbol")) {
+		throw new TypeError("Product key arrays must not have symbol properties");
+	}
+	if (indexKeys.length !== value.length) {
+		throw new TypeError(
+			"Product key arrays must be dense and have no extra properties",
+		);
+	}
+	for (const key of indexKeys) {
+		const index = Number(key);
+		const descriptor = Object.getOwnPropertyDescriptor(value, key);
+		if (
+			!Number.isSafeInteger(index) ||
+			index < 0 ||
+			String(index) !== key ||
+			index >= value.length ||
+			!isEnumerableDataDescriptor(descriptor)
+		) {
+			throw new TypeError(
+				"Product key arrays must be dense data arrays with no extra properties",
+			);
+		}
+	}
+}
+
+function dataEntries(value: {
+	readonly [key: string]: ProductKey;
+}): [string, ProductKey][] {
+	const keys = Reflect.ownKeys(value);
+	if (keys.some((key) => typeof key === "symbol")) {
+		throw new TypeError("Product key objects must not have symbol properties");
+	}
+	return keys.map((key) => {
+		if (typeof key !== "string") {
+			throw new TypeError(
+				"Product key objects must not have symbol properties",
+			);
+		}
+		const descriptor = Object.getOwnPropertyDescriptor(value, key);
+		if (!isEnumerableDataDescriptor(descriptor)) {
+			throw new TypeError(
+				"Product key objects must have only enumerable data properties",
+			);
+		}
+		return [key, descriptor.value as ProductKey];
+	});
+}
+
+function isEnumerableDataDescriptor(
+	descriptor: PropertyDescriptor | undefined,
+): descriptor is PropertyDescriptor & { value: unknown } {
+	return (
+		!!descriptor && descriptor.enumerable === true && "value" in descriptor
+	);
 }
