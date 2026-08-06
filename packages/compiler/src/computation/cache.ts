@@ -5,6 +5,8 @@ import type { ProductKey } from "./canonical-key.js";
 
 const FILESYSTEM_CACHE_VERSION = 1;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
+/** Default LRU capacity; prevents long-lived sessions retaining unbounded results. */
+export const DEFAULT_MEMORY_COMPUTATION_CACHE_MAX_ENTRIES = 1_024;
 
 export type CachedInputDependency = {
 	kind: "input";
@@ -44,7 +46,8 @@ export type ComputationCache = {
 export function createMemoryComputationCache(
 	options: { maxEntries?: number } = {},
 ): ComputationCache {
-	const maxEntries = options.maxEntries;
+	const maxEntries =
+		options.maxEntries ?? DEFAULT_MEMORY_COMPUTATION_CACHE_MAX_ENTRIES;
 	if (
 		maxEntries !== undefined &&
 		(!Number.isSafeInteger(maxEntries) || maxEntries < 1)
@@ -67,7 +70,6 @@ export function createMemoryComputationCache(
 		async write(cacheKey, value) {
 			entries.delete(cacheKey);
 			entries.set(cacheKey, value);
-			if (maxEntries === undefined) return;
 			while (entries.size > maxEntries) {
 				const oldest = entries.keys().next().value;
 				if (oldest === undefined) return;

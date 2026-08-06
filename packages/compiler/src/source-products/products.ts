@@ -2,7 +2,7 @@ import { posix } from "node:path";
 import type { Diagnostic } from "@nazare/core";
 import {
 	defineComputation,
-	jsonComputationCodec,
+	productKeyValueCodec,
 } from "../computation/computation.js";
 import type { ComputationGraph } from "../computation/graph.js";
 import { defineProduct } from "../computation/product.js";
@@ -118,7 +118,7 @@ function registerSourceProducts(
 				}
 				return current.value;
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -136,7 +136,7 @@ function registerSourceProducts(
 					frontendVersion: frontend.version,
 				};
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -170,7 +170,7 @@ function registerSourceProducts(
 				return frontend.extractFacts(parsed, context);
 			},
 			{
-				cache: jsonComputationCodec(),
+				cache: productKeyValueCodec(),
 				diagnostics: (result) => result.diagnostics,
 				uncertainty: (result) => result.uncertainty,
 			},
@@ -184,7 +184,7 @@ function registerSourceProducts(
 				const facts = await context.get(sourceProducts.facts.product(key));
 				return facts.facts.flatMap((fact) => dependencyEdge(fact) ?? []);
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -225,7 +225,7 @@ function registerSourceProducts(
 				};
 			},
 			{
-				cache: jsonComputationCodec(),
+				cache: productKeyValueCodec(),
 				diagnostics: (result) => result.diagnostics,
 			},
 		),

@@ -4,7 +4,7 @@ import {
 	defineComputation,
 	defineComputationRegistrar,
 	defineProduct,
-	jsonComputationCodec,
+	productKeyValueCodec,
 } from "@nazare/compiler/computation";
 import { type ProjectFileId, projectFileId } from "@nazare/compiler/project";
 import { sourceProducts } from "@nazare/compiler/source-products";
@@ -122,7 +122,7 @@ function registerPreviewProducts(graph: ComputationGraph): void {
 				};
 			},
 			{
-				cache: jsonComputationCodec<PreviewStoryDiscovery>(),
+				cache: productKeyValueCodec<PreviewStoryDiscovery>(),
 				diagnostics: (result) => result.diagnostics,
 			},
 		),
@@ -146,7 +146,7 @@ function registerPreviewProducts(graph: ComputationGraph): void {
 				}
 			},
 			{
-				cache: jsonComputationCodec<PreviewFixtureInput>(),
+				cache: productKeyValueCodec<PreviewFixtureInput>(),
 				diagnostics: (result) => result.diagnostics,
 			},
 		),
@@ -207,7 +207,7 @@ function registerPreviewProducts(graph: ComputationGraph): void {
 				};
 			},
 			{
-				cache: jsonComputationCodec<PreviewModel>(),
+				cache: productKeyValueCodec<PreviewModel>(),
 				diagnostics: (result) => result.diagnostics,
 			},
 		),
@@ -237,7 +237,7 @@ function registerPreviewProducts(graph: ComputationGraph): void {
 					throw new Error("Preview story renderer returned no result");
 				return result;
 			},
-			{ cache: jsonComputationCodec<RenderedStory>() },
+			{ cache: productKeyValueCodec<RenderedStory>() },
 		),
 	);
 	graph.register(
@@ -260,7 +260,7 @@ function registerPreviewProducts(graph: ComputationGraph): void {
 				);
 				return { component: model.component, stories };
 			},
-			{ cache: jsonComputationCodec<RenderedComponent>() },
+			{ cache: productKeyValueCodec<RenderedComponent>() },
 		),
 	);
 }

@@ -7,7 +7,9 @@ import {
 	defineComputation,
 	defineProduct,
 	ObsoleteComputationRevisionError,
+	optionalProductKeyCodec,
 	productKeyCodec,
+	productKeyValueCodec,
 } from "../dist/testing.js";
 
 function inputComputation(id, inputKey, calls) {
@@ -82,6 +84,182 @@ test("reports revisioned compute, reuse, and invalidation telemetry", async () =
 		events.every((event) => event.cacheKey === product.cacheKey),
 		true,
 	);
+});
+
+test("reports non-fatal cache read, write, and delete faults", async () => {
+	const definition = defineProduct({
+		namespace: "test",
+		id: "cache-fault",
+		version: 1,
+	});
+	const product = definition.product("file");
+	const expected = [
+		[
+			"read",
+			{
+				read: async () => {
+					throw Object.assign(new Error("read denied"), { code: "EACCES" });
+				},
+				write: async () => {},
+				delete: async () => {},
+			},
+		],
+		[
+			"write",
+			{
+				read: async () => undefined,
+				write: async () => {
+					throw new Error("write denied");
+				},
+				delete: async () => {},
+			},
+		],
+		[
+			"delete",
+			{
+				read: async () => ({
+					value: "stale",
+					valueFingerprint: "invalid",
+					productFingerprint: "invalid",
+					dependencies: [],
+				}),
+				write: async () => {},
+				delete: async () => {
+					throw new Error("delete denied");
+				},
+			},
+		],
+	];
+
+	for (const [operation, cache] of expected) {
+		const events = [];
+		const graph = createComputationGraph({
+			cache,
+			onTelemetry(event) {
+				events.push(event);
+			},
+		});
+		graph.register(
+			defineComputation(definition, async () => "computed", {
+				cache: productKeyCodec(),
+			}),
+		);
+
+		assert.equal(await graph.get(product), "computed");
+		const fault = events.find((event) => event.type === "cache-fault");
+		assert.deepEqual(
+			{
+				type: fault?.type,
+				operation: fault?.operation,
+				cacheKey: fault?.cacheKey,
+				revision: fault?.revision,
+				error: fault?.error,
+			},
+			{
+				type: "cache-fault",
+				operation,
+				cacheKey: product.cacheKey,
+				revision: 0,
+				error:
+					operation === "read"
+						? { name: "Error", message: "read denied", code: "EACCES" }
+						: { name: "Error", message: `${operation} denied` },
+			},
+		);
+	}
+});
+
+test("cache codecs preserve supported values across cold and warm graphs", async () => {
+	const entries = new Map();
+	const cache = {
+		async read(cacheKey) {
+			const value = entries.get(cacheKey);
+			return value === undefined ? undefined : structuredClone(value);
+		},
+		async write(cacheKey, value) {
+			entries.set(cacheKey, structuredClone(value));
+		},
+		async delete(cacheKey) {
+			entries.delete(cacheKey);
+		},
+	};
+	const values = [
+		null,
+		["array", { nested: true }],
+		{ record: { value: 1 }, empty: [] },
+	];
+
+	for (const [index, value] of values.entries()) {
+		let calls = 0;
+		const definition = defineProduct({
+			namespace: "test",
+			id: `codec-parity-${index}`,
+			version: 1,
+		});
+		const computation = defineComputation(
+			definition,
+			async () => {
+				calls++;
+				return value;
+			},
+			{ cache: productKeyValueCodec() },
+		);
+		const evaluate = async () => {
+			const graph = createComputationGraph({ cache });
+			graph.register(computation);
+			return graph.get(computation.product("key"));
+		};
+
+		assert.deepEqual(await evaluate(), value);
+		assert.deepEqual(await evaluate(), value);
+		assert.equal(calls, 1);
+	}
+
+	let calls = 0;
+	const optionalDefinition = defineProduct({
+		namespace: "test",
+		id: "optional-codec-parity",
+		version: 1,
+	});
+	const optional = defineComputation(
+		optionalDefinition,
+		async () => {
+			calls++;
+			return undefined;
+		},
+		{ cache: optionalProductKeyCodec() },
+	);
+	const evaluateOptional = async () => {
+		const graph = createComputationGraph({ cache });
+		graph.register(optional);
+		return graph.get(optional.product("key"));
+	};
+	assert.equal(await evaluateOptional(), undefined);
+	assert.equal(await evaluateOptional(), undefined);
+	assert.equal(calls, 1);
+});
+
+test("cache codecs reject unsupported runtime shapes before caching", async () => {
+	for (const [index, value] of [
+		undefined,
+		new Map(),
+		new Set(),
+		new Date(),
+	].entries()) {
+		const graph = createComputationGraph({
+			cache: createMemoryComputationCache(),
+		});
+		const definition = defineProduct({
+			namespace: "test",
+			id: `unsupported-codec-${index}`,
+			version: 1,
+		});
+		const computation = defineComputation(definition, async () => value, {
+			cache: productKeyValueCodec(),
+		});
+		graph.register(computation);
+		await assert.rejects(graph.get(computation.product("key")), /Product key/);
+	}
 });
 
 test("invalidates only transitive dependents of changed inputs", async () => {
@@ -301,6 +479,62 @@ test("rejects computation cycles instead of deadlocking", async () => {
 	graph.register(right);
 
 	await assert.rejects(graph.get(left.product("file")), ComputationCycleError);
+});
+
+test("rejects concurrent wait-for cycles instead of hanging", async () => {
+	const graph = createComputationGraph();
+	const leftDefinition = defineProduct({
+		namespace: "test",
+		id: "concurrent-left",
+		version: 1,
+	});
+	const rightDefinition = defineProduct({
+		namespace: "test",
+		id: "concurrent-right",
+		version: 1,
+	});
+	let leftStarted;
+	let rightStarted;
+	let release;
+	const started = new Promise((resolve) => {
+		leftStarted = () => resolve();
+	});
+	const rightIsStarted = new Promise((resolve) => {
+		rightStarted = () => resolve();
+	});
+	const barrier = new Promise((resolve) => {
+		release = resolve;
+	});
+	const left = defineComputation(leftDefinition, async (context, key) => {
+		leftStarted();
+		await barrier;
+		return context.get(right.product(key));
+	});
+	const right = defineComputation(rightDefinition, async (context, key) => {
+		rightStarted();
+		await barrier;
+		return context.get(left.product(key));
+	});
+	graph.register(left);
+	graph.register(right);
+
+	const pending = Promise.allSettled([
+		graph.get(left.product("file")),
+		graph.get(right.product("file")),
+	]);
+	await Promise.all([started, rightIsStarted]);
+	release();
+	const results = await pending;
+	assert.equal(
+		results.every((result) => result.status === "rejected"),
+		true,
+	);
+	for (const result of results) {
+		assert.equal(result.status, "rejected");
+		if (result.status === "rejected") {
+			assert.equal(result.reason instanceof ComputationCycleError, true);
+		}
+	}
 });
 
 test("rejects requests pinned to obsolete revisions", async () => {

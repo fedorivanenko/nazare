@@ -3,7 +3,7 @@ import {
 	defineComputation,
 	defineProduct,
 	fingerprintProductKey,
-	jsonComputationCodec,
+	productKeyValueCodec,
 } from "@nazare/compiler/computation";
 import {
 	type ProjectFileId,
@@ -100,7 +100,7 @@ export function registerShopifyGraphComputations(
 					(fact): fact is ShopifyDataRead => fact.kind === "dataRead",
 				);
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -123,7 +123,7 @@ export function registerShopifyGraphComputations(
 						: [],
 				);
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -148,7 +148,7 @@ export function registerShopifyGraphComputations(
 					.sort((left, right) => left.id.localeCompare(right.id));
 				return { nodes, edges, sccs: partitionSccs(nodes, edges) };
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -216,7 +216,7 @@ export function registerShopifyGraphComputations(
 				);
 			},
 			{
-				cache: jsonComputationCodec(),
+				cache: productKeyValueCodec(),
 				diagnostics: (result) => result.diagnostics,
 			},
 		),

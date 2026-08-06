@@ -32,6 +32,10 @@ function serialize(value: ProductKey, ancestors: WeakSet<object>): string {
 			return `string:${JSON.stringify(value)}`;
 		case "object":
 			return serializeObject(value, ancestors);
+		default:
+			throw new TypeError(
+				"Product keys must be null, booleans, finite numbers, strings, arrays, or plain objects",
+			);
 	}
 }
 

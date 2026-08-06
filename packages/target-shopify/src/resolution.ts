@@ -5,7 +5,7 @@ import {
 	type ComputationUncertainty,
 	defineComputation,
 	defineProduct,
-	jsonComputationCodec,
+	productKeyValueCodec,
 } from "@nazare/compiler/computation";
 import {
 	normalizeProjectPath,
@@ -104,7 +104,7 @@ export function registerShopifyResolutionComputations(
 					)
 					.sort((left, right) => left.id.localeCompare(right.id));
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -126,7 +126,7 @@ export function registerShopifyResolutionComputations(
 				return resolveReference(context, reference, query.files);
 			},
 			{
-				cache: jsonComputationCodec(),
+				cache: productKeyValueCodec(),
 				diagnostics: (result) => result.diagnostics,
 				uncertainty: (result) => result.uncertainty,
 			},
@@ -152,7 +152,7 @@ export function registerShopifyResolutionComputations(
 					),
 				);
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 }

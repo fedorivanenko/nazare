@@ -237,7 +237,7 @@ export async function createProjectSession(input: {
 			return {
 				committed: false,
 				revision: graph.revision,
-				diagnostics: [],
+				diagnostics: [projectSessionUpdateFailedDiagnostic(error)],
 				error,
 			};
 		}
@@ -312,20 +312,42 @@ export function externalProjectInput(
 	return `project-external:${providerId}@${providerVersion}:${key}`;
 }
 
+type NormalizedFileChange = Exclude<
+	InputChange<ProjectFileId>,
+	{ kind: "moved" }
+>;
+
 function normalizeFileChanges(
 	changes: readonly InputChange<ProjectFileId>[],
-): readonly Exclude<InputChange<ProjectFileId>, { kind: "moved" }>[] {
+): readonly NormalizedFileChange[] {
 	return coalesceInputChanges(
-		changes.map((change) =>
-			change.kind === "moved"
-				? {
-						...change,
-						from: projectFileId(change.from),
+		changes.flatMap((change): readonly NormalizedFileChange[] => {
+			if (change.kind === "moved") {
+				return [
+					{ kind: "removed", key: projectFileId(change.from) },
+					{
+						kind: "added",
 						key: projectFileId(change.key),
-					}
-				: { ...change, key: projectFileId(change.key) },
-		),
-	) as readonly Exclude<InputChange<ProjectFileId>, { kind: "moved" }>[];
+						fingerprint: change.fingerprint,
+					},
+				];
+			}
+			return [{ ...change, key: projectFileId(change.key) }];
+		}),
+	);
+}
+
+function projectSessionUpdateFailedDiagnostic(error: unknown): Diagnostic {
+	return {
+		severity: "error",
+		code: "PROJECT_SESSION_UPDATE_FAILED",
+		message: `Project session update failed: ${errorMessage(error)}`,
+		phase: "validate",
+	};
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 function snapshotFromState(

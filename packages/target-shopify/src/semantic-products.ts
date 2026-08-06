@@ -3,8 +3,8 @@ import {
 	defineComputation,
 	defineProduct,
 	fingerprintProductKey,
-	jsonComputationCodec,
 	type ProductKey,
+	productKeyValueCodec,
 } from "@nazare/compiler/computation";
 import type { ProjectFileId } from "@nazare/compiler/project";
 import {
@@ -122,7 +122,7 @@ export function registerShopifySemanticComputations(
 				};
 			},
 			{
-				cache: jsonComputationCodec(),
+				cache: productKeyValueCodec(),
 				diagnostics: (result) => result.diagnostics,
 			},
 		),
@@ -141,7 +141,7 @@ export function registerShopifySemanticComputations(
 					...embeddedJsonMetafieldReads(file, classified.contents),
 				];
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -154,7 +154,7 @@ export function registerShopifySemanticComputations(
 					(fact): fact is ShopifyBehavior => fact.kind === "behavior",
 				);
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -178,7 +178,7 @@ export function registerShopifySemanticComputations(
 					references,
 				);
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -203,7 +203,7 @@ export function registerShopifySemanticComputations(
 						: [];
 				});
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -236,7 +236,7 @@ export function registerShopifySemanticComputations(
 						.map(() => "Dynamic references prevent complete classification"),
 				};
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 }

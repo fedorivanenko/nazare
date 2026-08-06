@@ -1,4 +1,7 @@
-export { coalesceInputChanges } from "./change-batch.js";
+export {
+	type CoalescedInputChange,
+	coalesceInputChanges,
+} from "./change-batch.js";
 export {
 	compareProjectFileIds,
 	normalizeProjectPath,

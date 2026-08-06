@@ -117,6 +117,29 @@ test("applies moves as one atomic remove and add revision", async () => {
 	);
 });
 
+test("normalizes moved file changes before applying later changes", async () => {
+	const before = id("before.liquid");
+	const after = id("after.liquid");
+	const project = createMemoryProject([{ id: before, contents: "same" }]);
+	const session = await createProjectSession({ host: project.host });
+	const update = await session.apply({
+		kind: "files",
+		changes: [
+			{
+				kind: "moved",
+				from: before,
+				key: after,
+				fingerprint: fingerprintProductKey("same"),
+			},
+			{ kind: "removed", key: after },
+		],
+	});
+
+	assert.equal(update.committed, true);
+	assert.deepEqual(session.snapshot().fileIds, []);
+	assert.deepEqual(update.changedFileIds, [before]);
+});
+
 test("external inputs participate in snapshots and graph invalidation", async () => {
 	const project = createMemoryProject([{ id: id("a.liquid"), contents: "a" }]);
 	const values = new Map([["schema", { version: 1 }]]);
@@ -207,6 +230,25 @@ test("failed session validation preserves the previous revision", async () => {
 		session.snapshot().fileIds.map((file) => file.path),
 		["a.liquid"],
 	);
+});
+
+test("surfaces apply exceptions as a project-session diagnostic", async () => {
+	const project = createMemoryProject([{ id: id("a.liquid"), contents: "a" }]);
+	const session = await createProjectSession({ host: project.host });
+	const update = await session.apply({
+		kind: "external",
+		providerId: "missing-provider",
+		changes: [],
+	});
+
+	assert.equal(update.committed, false);
+	assert.equal(update.diagnostics.length > 0, true);
+	assert.equal(update.diagnostics[0].code, "PROJECT_SESSION_UPDATE_FAILED");
+	assert.match(
+		update.diagnostics[0].message,
+		/Unknown external input provider/,
+	);
+	assert.equal(update.error instanceof Error, true);
 });
 
 test("merged watchers forward values from every provider", async () => {

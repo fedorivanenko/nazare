@@ -11,8 +11,8 @@ import {
 	defineCapabilityProvider,
 	defineComputation,
 	defineProduct,
-	jsonComputationCodec,
 	type ProductKey,
+	productKeyValueCodec,
 } from "@nazare/compiler/computation";
 import {
 	createOwnedOutputPlan,
@@ -193,7 +193,7 @@ export function registerShopifyBuildComputations(
 				};
 			},
 			{
-				cache: jsonComputationCodec(),
+				cache: productKeyValueCodec(),
 				diagnostics: (model) => model.diagnostics,
 			},
 		),
@@ -279,7 +279,7 @@ export function registerShopifyBuildComputations(
 				};
 			},
 			{
-				cache: jsonComputationCodec(),
+				cache: productKeyValueCodec(),
 				diagnostics: (emission) => emission.diagnostics,
 			},
 		),
@@ -310,7 +310,7 @@ export function registerShopifyBuildComputations(
 				};
 			},
 			{
-				cache: jsonComputationCodec(),
+				cache: productKeyValueCodec(),
 				diagnostics: (plan) => plan.diagnostics,
 			},
 		),

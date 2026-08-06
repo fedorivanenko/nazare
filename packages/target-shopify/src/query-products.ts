@@ -3,7 +3,7 @@ import {
 	type ComputationGraph,
 	defineComputation,
 	defineProduct,
-	jsonComputationCodec,
+	productKeyValueCodec,
 } from "@nazare/compiler/computation";
 import {
 	type ProjectFileId,
@@ -203,7 +203,7 @@ export function registerShopifyQueryComputations(
 					),
 				};
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -216,7 +216,7 @@ export function registerShopifyQueryComputations(
 					shopifyGraphProducts.renderGraph.product(query),
 				),
 			}),
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -239,7 +239,7 @@ export function registerShopifyQueryComputations(
 					uncertainty: result.uncertainty,
 				};
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -272,7 +272,7 @@ export function registerShopifyQueryComputations(
 					uncertainty: dependencies.uncertainty,
 				};
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -301,7 +301,7 @@ export function registerShopifyQueryComputations(
 				);
 				return { version: 1, records: filtered, evidence };
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -328,7 +328,7 @@ export function registerShopifyQueryComputations(
 				);
 				return { version: 1, records: filtered, evidence };
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -352,7 +352,7 @@ export function registerShopifyQueryComputations(
 				}
 				return { version: 1, pages: pages.sort(compareFiles), impact };
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 
@@ -375,7 +375,7 @@ export function registerShopifyQueryComputations(
 					uncertainty: dependencies.uncertainty,
 				};
 			},
-			{ cache: jsonComputationCodec() },
+			{ cache: productKeyValueCodec() },
 		),
 	);
 }

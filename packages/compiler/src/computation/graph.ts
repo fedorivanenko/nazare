@@ -26,11 +26,25 @@ export type ComputationRequestOptions = {
 	revision?: number;
 };
 
-export type ComputationTelemetryEvent = {
-	type: "computed" | "memory-hit" | "cache-hit" | "invalidated";
-	cacheKey: string;
-	revision: number;
+export type ComputationTelemetryError = {
+	name: string;
+	message: string;
+	code?: string;
 };
+
+export type ComputationTelemetryEvent =
+	| {
+			type: "computed" | "memory-hit" | "cache-hit" | "invalidated";
+			cacheKey: string;
+			revision: number;
+	  }
+	| {
+			type: "cache-fault";
+			operation: "read" | "write" | "delete";
+			cacheKey: string;
+			revision: number;
+			error: ComputationTelemetryError;
+	  };
 
 export type ComputationGraphOptions = {
 	cache?: ComputationCache;
@@ -78,6 +92,7 @@ type Evaluation = {
 	revision: number;
 	priority: ComputationPriority;
 	ancestry: ReadonlySet<string>;
+	producer?: string;
 };
 
 export class ComputationCycleError extends Error {
@@ -116,6 +131,7 @@ class DefaultComputationGraph implements ComputationGraph {
 	private readonly inputFingerprints = new Map<string, string>();
 	private readonly nodes = new Map<string, ProductNode>();
 	private readonly dependentsByDependency = new Map<string, Set<string>>();
+	private readonly pendingWaitsByProduct = new Map<string, Set<string>>();
 	private revisionValue = 0;
 
 	constructor(
@@ -289,7 +305,12 @@ class DefaultComputationGraph implements ComputationGraph {
 			return node.value as Result;
 		}
 		if (node.pending) {
-			return waitForRequest(node.pending as Promise<Result>, requestSignal);
+			return this.waitForPending(
+				evaluation.producer,
+				product.cacheKey,
+				node.pending as Promise<Result>,
+				requestSignal,
+			);
 		}
 
 		const generation = node.generation;
@@ -302,7 +323,7 @@ class DefaultComputationGraph implements ComputationGraph {
 			computation,
 			node,
 			generation,
-			{ ...evaluation, ancestry },
+			{ ...evaluation, ancestry, producer: product.cacheKey },
 			controller,
 		).finally(() => {
 			if (node.pending === pending) node.pending = undefined;
@@ -386,6 +407,23 @@ class DefaultComputationGraph implements ComputationGraph {
 		};
 
 		const result = await computation.compute(context, product.key);
+		const cachedDependencies = [...dependencyRecords.values()];
+		const productFingerprint = fingerprintComputationProduct(
+			product.cacheKey,
+			cachedDependencies,
+		);
+		const cachedValue =
+			this.cache && computation.cache
+				? (() => {
+						const value = computation.cache.encode(result);
+						return {
+							value,
+							valueFingerprint: fingerprintProductKey(value),
+							productFingerprint,
+							dependencies: cachedDependencies,
+						};
+					})()
+				: undefined;
 		this.emitTelemetry("computed", product.cacheKey);
 		if (!this.canCommitNode(node, generation, evaluation, controller)) {
 			return result as Result;
@@ -395,21 +433,9 @@ class DefaultComputationGraph implements ComputationGraph {
 		node.value = result;
 		node.hasValue = true;
 		this.replaceMetadata(node, computation, result);
-		const cachedDependencies = [...dependencyRecords.values()];
-		node.fingerprint = fingerprintComputationProduct(
-			product.cacheKey,
-			cachedDependencies,
-		);
+		node.fingerprint = productFingerprint;
 
-		if (computation.cache) {
-			const encoded = computation.cache.encode(result);
-			await this.writeCache(product.cacheKey, {
-				value: encoded,
-				valueFingerprint: fingerprintProductKey(encoded),
-				productFingerprint: node.fingerprint,
-				dependencies: cachedDependencies,
-			});
-		}
+		if (cachedValue) await this.writeCache(product.cacheKey, cachedValue);
 
 		return result as Result;
 	}
@@ -568,11 +594,69 @@ class DefaultComputationGraph implements ComputationGraph {
 		}
 	}
 
+	private waitForPending<Result>(
+		producer: string | undefined,
+		pendingProduct: string,
+		pending: Promise<Result>,
+		signal?: AbortSignal,
+	): Promise<Result> {
+		if (!producer) return waitForRequest(pending, signal);
+		this.addPendingWait(producer, pendingProduct);
+		return waitForRequest(pending, signal).finally(() => {
+			this.removePendingWait(producer, pendingProduct);
+		});
+	}
+
+	private addPendingWait(from: string, to: string): void {
+		const path = this.pendingWaitPath(to, from);
+		if (path) throw new ComputationCycleError([from, ...path]);
+		const waits = this.pendingWaitsByProduct.get(from) ?? new Set<string>();
+		waits.add(to);
+		this.pendingWaitsByProduct.set(from, waits);
+	}
+
+	private removePendingWait(from: string, to: string): void {
+		const waits = this.pendingWaitsByProduct.get(from);
+		if (!waits) return;
+		waits.delete(to);
+		if (waits.size === 0) this.pendingWaitsByProduct.delete(from);
+	}
+
+	private pendingWaitPath(from: string, target: string): string[] | undefined {
+		const visit = (
+			current: string,
+			path: readonly string[],
+		): string[] | undefined => {
+			if (current === target) return [...path, current];
+			for (const next of this.pendingWaitsByProduct.get(current) ?? []) {
+				if (path.includes(next)) continue;
+				const found = visit(next, [...path, current]);
+				if (found) return found;
+			}
+			return undefined;
+		};
+		return visit(from, []);
+	}
+
 	private emitTelemetry(
-		type: ComputationTelemetryEvent["type"],
+		type: "computed" | "memory-hit" | "cache-hit" | "invalidated",
 		cacheKey: string,
 	): void {
 		this.onTelemetry?.({ type, cacheKey, revision: this.revisionValue });
+	}
+
+	private emitCacheFault(
+		operation: "read" | "write" | "delete",
+		cacheKey: string,
+		error: unknown,
+	): void {
+		this.onTelemetry?.({
+			type: "cache-fault",
+			operation,
+			cacheKey,
+			revision: this.revisionValue,
+			error: normalizeTelemetryError(error),
+		});
 	}
 
 	private abortPendingComputations(): void {
@@ -590,7 +674,8 @@ class DefaultComputationGraph implements ComputationGraph {
 	): Promise<CachedComputation | undefined> {
 		try {
 			return await this.cache?.read(cacheKey);
-		} catch {
+		} catch (error) {
+			this.emitCacheFault("read", cacheKey, error);
 			return undefined;
 		}
 	}
@@ -601,17 +686,36 @@ class DefaultComputationGraph implements ComputationGraph {
 	): Promise<void> {
 		try {
 			await this.cache?.write(cacheKey, value);
-		} catch {
-			// Cache failures cannot fail semantic computation.
+		} catch (error) {
+			this.emitCacheFault("write", cacheKey, error);
 		}
 	}
 
 	private async deleteCache(cacheKey: string): Promise<void> {
 		try {
 			await this.cache?.delete(cacheKey);
-		} catch {
-			// Corrupt cache entries are ignored when deletion fails.
+		} catch (error) {
+			this.emitCacheFault("delete", cacheKey, error);
 		}
+	}
+}
+
+function normalizeTelemetryError(error: unknown): ComputationTelemetryError {
+	if (error instanceof Error) {
+		const code =
+			"code" in error && typeof error.code === "string"
+				? error.code
+				: undefined;
+		return {
+			name: error.name || "Error",
+			message: error.message,
+			...(code ? { code } : {}),
+		};
+	}
+	try {
+		return { name: "Error", message: String(error) };
+	} catch {
+		return { name: "Error", message: "Unprintable cache error" };
 	}
 }
 

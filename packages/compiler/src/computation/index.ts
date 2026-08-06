@@ -4,6 +4,7 @@ export {
 	type ComputationCache,
 	createFileSystemComputationCache,
 	createMemoryComputationCache,
+	DEFAULT_MEMORY_COMPUTATION_CACHE_MAX_ENTRIES,
 } from "./cache.js";
 export {
 	canonicalProductKey,
@@ -26,8 +27,9 @@ export {
 	type ComputationPriority,
 	type ComputationUncertainty,
 	defineComputation,
-	jsonComputationCodec,
+	optionalProductKeyCodec,
 	productKeyCodec,
+	productKeyValueCodec,
 } from "./computation.js";
 export {
 	ComputationCycleError,
@@ -35,6 +37,7 @@ export {
 	type ComputationGraphOptions,
 	type ComputationGraphUpdate,
 	type ComputationRequestOptions,
+	type ComputationTelemetryError,
 	type ComputationTelemetryEvent,
 	createComputationGraph,
 	ObsoleteComputationRevisionError,

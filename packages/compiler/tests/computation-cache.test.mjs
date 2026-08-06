@@ -7,11 +7,19 @@ import {
 	createComputationGraph,
 	createFileSystemComputationCache,
 	createMemoryComputationCache,
+	DEFAULT_MEMORY_COMPUTATION_CACHE_MAX_ENTRIES,
 	defineComputation,
 	defineProduct,
 	fingerprintProductKey,
 	productKeyCodec,
 } from "../dist/testing.js";
+
+const entry = (value) => ({
+	value,
+	valueFingerprint: fingerprintProductKey(value),
+	productFingerprint: fingerprintProductKey("product"),
+	dependencies: [],
+});
 
 async function withCacheDirectory(run) {
 	const directory = await mkdtemp(join(tmpdir(), "nazare-computation-cache-"));
@@ -24,13 +32,6 @@ async function withCacheDirectory(run) {
 
 test("memory cache evicts least recently used entries when bounded", async () => {
 	const cache = createMemoryComputationCache({ maxEntries: 2 });
-	const entry = (value) => ({
-		value,
-		valueFingerprint: fingerprintProductKey(value),
-		productFingerprint: fingerprintProductKey("product"),
-		dependencies: [],
-	});
-
 	await cache.write("first", entry("first"));
 	await cache.write("second", entry("second"));
 	await cache.read("first");
@@ -39,6 +40,23 @@ test("memory cache evicts least recently used entries when bounded", async () =>
 	assert.deepEqual(await cache.read("first"), entry("first"));
 	assert.equal(await cache.read("second"), undefined);
 	assert.deepEqual(await cache.read("third"), entry("third"));
+});
+
+test("memory cache applies a bounded default retention limit", async () => {
+	const cache = createMemoryComputationCache();
+	for (
+		let index = 0;
+		index <= DEFAULT_MEMORY_COMPUTATION_CACHE_MAX_ENTRIES;
+		index++
+	) {
+		await cache.write(String(index), entry(index));
+	}
+
+	assert.equal(await cache.read("0"), undefined);
+	assert.deepEqual(
+		await cache.read(String(DEFAULT_MEMORY_COMPUTATION_CACHE_MAX_ENTRIES)),
+		entry(DEFAULT_MEMORY_COMPUTATION_CACHE_MAX_ENTRIES),
+	);
 });
 
 test("memory cache rejects invalid retention limits", () => {

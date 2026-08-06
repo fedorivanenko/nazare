@@ -2,22 +2,28 @@ import type { ProductKey } from "../computation/canonical-key.js";
 import { canonicalProductKey } from "../computation/canonical-key.js";
 import type { InputChange } from "./input-provider.js";
 
+export type CoalescedInputChange<Key extends ProductKey> = Exclude<
+	InputChange<Key>,
+	{ kind: "moved" }
+>;
+
 export function coalesceInputChanges<Key extends ProductKey>(
 	changes: readonly InputChange<Key>[],
-): readonly InputChange<Key>[] {
-	const byKey = new Map<string, InputChange<Key>>();
+): readonly CoalescedInputChange<Key>[] {
+	const byKey = new Map<string, CoalescedInputChange<Key>>();
 
-	const expanded = changes.flatMap((change): readonly InputChange<Key>[] =>
-		change.kind === "moved"
-			? [
-					{ kind: "removed", key: change.from },
-					{
-						kind: "added",
-						key: change.key,
-						fingerprint: change.fingerprint,
-					},
-				]
-			: [change],
+	const expanded = changes.flatMap(
+		(change): readonly CoalescedInputChange<Key>[] =>
+			change.kind === "moved"
+				? [
+						{ kind: "removed", key: change.from },
+						{
+							kind: "added",
+							key: change.key,
+							fingerprint: change.fingerprint,
+						},
+					]
+				: [change],
 	);
 
 	for (const change of expanded) {

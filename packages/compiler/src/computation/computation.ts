@@ -1,5 +1,5 @@
 import type { Diagnostic, SourceSpan } from "@nazare/core";
-import type { ProductKey } from "./canonical-key.js";
+import { canonicalProductKey, type ProductKey } from "./canonical-key.js";
 import type { Product, ProductDefinition } from "./product.js";
 
 export type ComputationPriority = "interactive" | "background";
@@ -51,11 +51,17 @@ export function defineComputation<Key extends ProductKey, Result>(
 	return Object.freeze({ ...definition, compute, ...options });
 }
 
-export function jsonComputationCodec<Result>(): ComputationCodec<Result> {
+/**
+ * Cache results whose concrete runtime value is a {@link ProductKey}, even when
+ * the result's TypeScript contract cannot express ProductKey structurally.
+ *
+ * This intentionally does not JSON-round-trip values: every supported value
+ * keeps its exact shape and unsupported values fail before cache writes.
+ */
+export function productKeyValueCodec<Result>(): ComputationCodec<Result> {
 	return {
 		encode(result) {
-			const encoded: unknown = JSON.parse(JSON.stringify(result));
-			return encoded as ProductKey;
+			return assertProductKey(result);
 		},
 		decode(value) {
 			return value as Result;
@@ -63,15 +69,49 @@ export function jsonComputationCodec<Result>(): ComputationCodec<Result> {
 	};
 }
 
+/** Cache an optional ProductKey with an explicit, lossless undefined tag. */
+export function optionalProductKeyCodec<
+	Result extends ProductKey,
+>(): ComputationCodec<Result | undefined> {
+	return {
+		encode(result): ProductKey {
+			if (result === undefined) return { kind: "undefined" };
+			return { kind: "value", value: assertProductKey(result) };
+		},
+		decode(value) {
+			if (!isOptionalProductKeyEncoding(value)) {
+				throw new TypeError("Invalid optional ProductKey cache value");
+			}
+			return value.kind === "undefined" ? undefined : (value.value as Result);
+		},
+	};
+}
+
 export function productKeyCodec<
 	Result extends ProductKey,
 >(): ComputationCodec<Result> {
-	return {
-		encode(result) {
-			return result;
-		},
-		decode(value) {
-			return value as Result;
-		},
-	};
+	return productKeyValueCodec<Result>();
+}
+
+function assertProductKey(value: unknown): ProductKey {
+	canonicalProductKey(value as ProductKey);
+	return value as ProductKey;
+}
+
+function isOptionalProductKeyEncoding(
+	value: ProductKey,
+): value is { kind: "undefined" } | { kind: "value"; value: ProductKey } {
+	if (!isRecord(value) || typeof value.kind !== "string") return false;
+	if (value.kind === "undefined") return Object.keys(value).length === 1;
+	return (
+		value.kind === "value" &&
+		Object.keys(value).length === 2 &&
+		"value" in value
+	);
+}
+
+function isRecord(
+	value: ProductKey,
+): value is { readonly [key: string]: ProductKey } {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
