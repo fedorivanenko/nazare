@@ -60,8 +60,8 @@ export type ComputationGraphUpdate = {
 
 export type ComputationGraph = {
 	readonly revision: number;
-	register<Key extends ProductKey, Result>(
-		computation: Computation<Key, Result>,
+	register<Key extends ProductKey, Result, Snapshot extends ProductKey>(
+		computation: Computation<Key, Result, Snapshot>,
 	): void;
 	get<Key extends ProductKey, Result>(
 		product: Product<Key, Result>,
@@ -143,8 +143,8 @@ class DefaultComputationGraph implements ComputationGraph {
 		return this.revisionValue;
 	}
 
-	register<Key extends ProductKey, Result>(
-		computation: Computation<Key, Result>,
+	register<Key extends ProductKey, Result, Snapshot extends ProductKey>(
+		computation: Computation<Key, Result, Snapshot>,
 	): void {
 		const identity = productIdentity(computation);
 		if (this.computations.has(identity)) {
@@ -407,13 +407,13 @@ class DefaultComputationGraph implements ComputationGraph {
 			product.cacheKey,
 			cachedDependencies,
 		);
-		const cachedValue =
+		const cachedEntry =
 			this.cache && computation.cache
 				? (() => {
-						const value = computation.cache.encode(result);
+						const snapshot = computation.cache.encode(result);
 						return {
-							value,
-							valueFingerprint: fingerprintProductKey(value),
+							snapshot,
+							snapshotFingerprint: fingerprintProductKey(snapshot),
 							productFingerprint,
 							dependencies: cachedDependencies,
 						};
@@ -430,7 +430,7 @@ class DefaultComputationGraph implements ComputationGraph {
 		this.replaceMetadata(node, computation, result);
 		node.fingerprint = productFingerprint;
 
-		if (cachedValue) await this.writeCache(product.cacheKey, cachedValue);
+		if (cachedEntry) await this.writeCache(product.cacheKey, cachedEntry);
 
 		return result as Result;
 	}
@@ -446,7 +446,7 @@ class DefaultComputationGraph implements ComputationGraph {
 		if (!this.cache || !computation.cache) return { hit: false };
 		const cached = await this.readCache(product.cacheKey);
 		if (!cached) return { hit: false };
-		if (fingerprintProductKey(cached.value) !== cached.valueFingerprint) {
+		if (fingerprintProductKey(cached.snapshot) !== cached.snapshotFingerprint) {
 			await this.deleteCache(product.cacheKey);
 			return { hit: false };
 		}
@@ -495,7 +495,7 @@ class DefaultComputationGraph implements ComputationGraph {
 		if (!this.canCommitNode(node, generation, evaluation, controller)) {
 			return { hit: false };
 		}
-		const value = computation.cache.decode(cached.value);
+		const value = computation.cache.decode(cached.snapshot);
 		this.replaceDependencies(product.cacheKey, node, dependencies);
 		node.value = value;
 		node.fingerprint = cached.productFingerprint;

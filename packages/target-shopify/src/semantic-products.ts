@@ -4,7 +4,7 @@ import {
 	defineProduct,
 	fingerprintProductKey,
 	type ProductKey,
-	productKeyValueCodec,
+	productKeyCodec,
 } from "@nazare/compiler/computation";
 import type { ProjectFileId } from "@nazare/compiler/project";
 import {
@@ -122,7 +122,7 @@ export function registerShopifySemanticComputations(
 				};
 			},
 			{
-				cache: productKeyValueCodec(),
+				cache: productKeyCodec(),
 				diagnostics: (result) => result.diagnostics,
 			},
 		),
@@ -141,7 +141,7 @@ export function registerShopifySemanticComputations(
 					...embeddedJsonMetafieldReads(file, classified.contents),
 				];
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -154,7 +154,7 @@ export function registerShopifySemanticComputations(
 					(fact): fact is ShopifyBehavior => fact.kind === "behavior",
 				);
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -178,7 +178,7 @@ export function registerShopifySemanticComputations(
 					references,
 				);
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -203,7 +203,7 @@ export function registerShopifySemanticComputations(
 						: [];
 				});
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -236,7 +236,7 @@ export function registerShopifySemanticComputations(
 						.map(() => "Dynamic references prevent complete classification"),
 				};
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 }

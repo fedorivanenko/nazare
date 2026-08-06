@@ -12,7 +12,7 @@ import {
 	defineComputation,
 	defineProduct,
 	type ProductKey,
-	productKeyValueCodec,
+	productKeyCodec,
 } from "@nazare/compiler/computation";
 import {
 	createOwnedOutputPlan,
@@ -193,7 +193,7 @@ export function registerShopifyBuildComputations(
 				};
 			},
 			{
-				cache: productKeyValueCodec(),
+				cache: productKeyCodec(),
 				diagnostics: (model) => model.diagnostics,
 			},
 		),
@@ -279,7 +279,7 @@ export function registerShopifyBuildComputations(
 				};
 			},
 			{
-				cache: productKeyValueCodec(),
+				cache: productKeyCodec(),
 				diagnostics: (emission) => emission.diagnostics,
 			},
 		),
@@ -310,7 +310,7 @@ export function registerShopifyBuildComputations(
 				};
 			},
 			{
-				cache: productKeyValueCodec(),
+				cache: productKeyCodec(),
 				diagnostics: (plan) => plan.diagnostics,
 			},
 		),

@@ -6,7 +6,7 @@ import {
 	defineComputation,
 	defineProduct,
 	fingerprintProductKey,
-	productKeyValueCodec,
+	productKeyCodec,
 } from "@nazare/compiler/computation";
 import type { ProjectFileId } from "@nazare/compiler/project";
 import {
@@ -133,7 +133,7 @@ function registerShopifyComputations(graph: ComputationGraph): void {
 				);
 				return { file: source.id, role: classifyShopifyFile(source.id.path) };
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -162,7 +162,7 @@ function registerShopifyComputations(graph: ComputationGraph): void {
 				}
 				return { file: classification.file, role: classification.role, facts };
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -175,7 +175,7 @@ function registerShopifyComputations(graph: ComputationGraph): void {
 					(fact): fact is ShopifyDeclaration => fact.kind === "declaration",
 				);
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -188,7 +188,7 @@ function registerShopifyComputations(graph: ComputationGraph): void {
 					(fact): fact is ShopifyReference => fact.kind === "reference",
 				);
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 

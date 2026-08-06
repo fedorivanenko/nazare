@@ -9,7 +9,6 @@ import {
 	ObsoleteComputationRevisionError,
 	optionalProductKeyCodec,
 	productKeyCodec,
-	productKeyValueCodec,
 } from "../dist/testing.js";
 
 function inputComputation(id, inputKey, calls) {
@@ -118,8 +117,8 @@ test("reports non-fatal cache read, write, and delete faults", async () => {
 			"delete",
 			{
 				read: async () => ({
-					value: "stale",
-					valueFingerprint: "invalid",
+					snapshot: "stale",
+					snapshotFingerprint: "invalid",
 					productFingerprint: "invalid",
 					dependencies: [],
 				}),
@@ -202,7 +201,7 @@ test("cache codecs preserve supported values across cold and warm graphs", async
 				calls++;
 				return value;
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		);
 		const evaluate = async () => {
 			const graph = createComputationGraph({ cache });
@@ -255,7 +254,7 @@ test("cache codecs reject unsupported runtime shapes before caching", async () =
 			version: 1,
 		});
 		const computation = defineComputation(definition, async () => value, {
-			cache: productKeyValueCodec(),
+			cache: productKeyCodec(),
 		});
 		graph.register(computation);
 		await assert.rejects(graph.get(computation.product("key")), /Product key/);

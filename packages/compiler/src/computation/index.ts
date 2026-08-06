@@ -29,7 +29,7 @@ export {
 	defineComputation,
 	optionalProductKeyCodec,
 	productKeyCodec,
-	productKeyValueCodec,
+	type ProductKeySnapshot,
 } from "./computation.js";
 export {
 	ComputationCycleError,

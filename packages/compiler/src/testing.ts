@@ -119,7 +119,7 @@ export {
 	type ProductKey,
 	pipelineIdentity,
 	productKeyCodec,
-	productKeyValueCodec,
+	type ProductKeySnapshot,
 	registerPipelineComputations,
 	registrarIdentity,
 } from "./computation/index.js";

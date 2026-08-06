@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -12,12 +12,11 @@ import {
 	defineProduct,
 	fingerprintProductKey,
 	productKeyCodec,
-	productKeyValueCodec,
 } from "../dist/testing.js";
 
-const entry = (value) => ({
-	value,
-	valueFingerprint: fingerprintProductKey(value),
+const entry = (snapshot) => ({
+	snapshot,
+	snapshotFingerprint: fingerprintProductKey(snapshot),
 	productFingerprint: fingerprintProductKey("product"),
 	dependencies: [],
 });
@@ -70,10 +69,10 @@ test("memory cache rejects invalid retention limits", () => {
 test("filesystem cache round-trips validated computation entries", async () => {
 	await withCacheDirectory(async (directory) => {
 		const cache = createFileSystemComputationCache({ directory });
-		const value = { files: ["a.liquid"], valid: true };
+		const snapshot = { files: ["a.liquid"], valid: true };
 		const entry = {
-			value,
-			valueFingerprint: fingerprintProductKey(value),
+			snapshot,
+			snapshotFingerprint: fingerprintProductKey(snapshot),
 			productFingerprint: fingerprintProductKey("product"),
 			dependencies: [
 				{
@@ -94,10 +93,10 @@ test("filesystem cache round-trips validated computation entries", async () => {
 test("filesystem cache removes malformed entries", async () => {
 	await withCacheDirectory(async (directory) => {
 		const cache = createFileSystemComputationCache({ directory });
-		const value = "valid";
+		const snapshot = "valid";
 		await cache.write("nazare:test@1:key", {
-			value,
-			valueFingerprint: fingerprintProductKey(value),
+			snapshot,
+			snapshotFingerprint: fingerprintProductKey(snapshot),
 			productFingerprint: fingerprintProductKey("product"),
 			dependencies: [],
 		});
@@ -150,19 +149,42 @@ test("filesystem cache restores graph products across graph instances", async ()
 	});
 });
 
-test("filesystem cache restores null-prototype objects and negative zero", async () => {
+test("filesystem cache restores deeply frozen output-plan-like runtime values", async () => {
 	await withCacheDirectory(async (directory) => {
 		let calls = 0;
 		const nullPrototype = Object.create(null);
-		nullPrototype.nested = -0;
-		const expected = {
-			negativeZero: -0,
-			nullPrototype,
-			values: [-0, "value"],
-		};
+		Object.defineProperty(nullPrototype, "negativeZero", {
+			value: -0,
+			enumerable: false,
+			configurable: false,
+			writable: false,
+		});
+		Object.freeze(nullPrototype);
+		const write = Object.freeze({
+			path: "sections/example.liquid",
+			contents: "<section />",
+			ownerId: "source:example",
+		});
+		const nonExtensible = Object.preventExtensions(
+			Object.defineProperty({}, "hidden", {
+				value: "descriptor",
+				enumerable: false,
+				configurable: true,
+				writable: false,
+			}),
+		);
+		const sealed = Object.seal({ mutable: true });
+		const expected = Object.freeze({
+			version: 1,
+			writes: Object.freeze([write]),
+			deletes: Object.freeze([]),
+			metadata: nullPrototype,
+			nonExtensible,
+			sealed,
+		});
 		const definition = defineProduct({
 			namespace: "test",
-			id: "persistent-shape",
+			id: "persistent-runtime-shape",
 			version: 1,
 		});
 		const computation = defineComputation(
@@ -171,7 +193,7 @@ test("filesystem cache restores null-prototype objects and negative zero", async
 				calls++;
 				return expected;
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		);
 		const evaluate = async () => {
 			const graph = createComputationGraph({
@@ -181,51 +203,133 @@ test("filesystem cache restores null-prototype objects and negative zero", async
 			return graph.get(computation.product("key"));
 		};
 
-		assert.deepEqual(await evaluate(), expected);
-		const restored = await evaluate();
-		assert.deepEqual(restored, expected);
-		assert.equal(Object.getPrototypeOf(restored.nullPrototype), null);
-		assert.equal(Object.is(restored.negativeZero, -0), true);
-		assert.equal(Object.is(restored.values[0], -0), true);
+		assertRuntimeShape(await evaluate(), expected);
+		assertRuntimeShape(await evaluate(), expected);
 		assert.equal(calls, 1);
 	});
 });
 
-test("cache codecs reject sparse arrays and hidden properties", async () => {
-	const sparse = [];
-	sparse.length = 1;
-	const withSymbol = { value: true };
-	withSymbol[Symbol("hidden")] = "hidden";
-	const withNonEnumerable = { value: true };
-	Object.defineProperty(withNonEnumerable, "hidden", { value: "hidden" });
+test("filesystem cache rejects snapshot fingerprint corruption and recomputes", async () => {
+	await withCacheDirectory(async (directory) => {
+		let calls = 0;
+		const definition = defineProduct({
+			namespace: "test",
+			id: "corrupt-snapshot",
+			version: 1,
+		});
+		const computation = defineComputation(
+			definition,
+			async () => {
+				calls++;
+				return Object.freeze({ value: "fresh" });
+			},
+			{ cache: productKeyCodec() },
+		);
+		const evaluate = async () => {
+			const graph = createComputationGraph({
+				cache: createFileSystemComputationCache({ directory }),
+			});
+			graph.register(computation);
+			return graph.get(computation.product("key"));
+		};
+
+		await evaluate();
+		const [path] = (await readdir(directory, { recursive: true }))
+			.filter((entry) => entry.endsWith(".json"))
+			.map((entry) => join(directory, entry));
+		const persisted = JSON.parse(await readFile(path, "utf8"));
+		persisted.entry.snapshotFingerprint = "0".repeat(64);
+		await writeFile(path, JSON.stringify(persisted), "utf8");
+
+		assertRuntimeShape(await evaluate(), Object.freeze({ value: "fresh" }));
+		assert.equal(calls, 2);
+	});
+});
+
+test("cache codecs reject accessors, functions, and symbol keys", async () => {
+	const accessor = {};
+	Object.defineProperty(accessor, "value", {
+		get: () => true,
+		enumerable: true,
+	});
+	const symbol = { value: true };
+	symbol[Symbol("hidden")] = "hidden";
 	for (const [index, value] of [
-		sparse,
-		withSymbol,
-		withNonEnumerable,
+		accessor,
+		{ value: () => true },
+		symbol,
 	].entries()) {
 		const graph = createComputationGraph({
 			cache: createMemoryComputationCache(),
 		});
 		const definition = defineProduct({
 			namespace: "test",
-			id: `lossy-shape-${index}`,
+			id: `unsupported-runtime-shape-${index}`,
 			version: 1,
 		});
 		const computation = defineComputation(definition, async () => value, {
-			cache: productKeyValueCodec(),
+			cache: productKeyCodec(),
 		});
 		graph.register(computation);
 		await assert.rejects(graph.get(computation.product("key")), /Product key/);
 	}
 });
 
+function assertRuntimeShape(actual, expected) {
+	assert.equal(Object.getPrototypeOf(actual), Object.getPrototypeOf(expected));
+	assert.equal(Object.isExtensible(actual), Object.isExtensible(expected));
+	assert.equal(Object.isSealed(actual), Object.isSealed(expected));
+	assert.equal(Object.isFrozen(actual), Object.isFrozen(expected));
+	const actualDescriptors = Object.getOwnPropertyDescriptors(actual);
+	const expectedDescriptors = Object.getOwnPropertyDescriptors(expected);
+	assert.deepEqual(
+		Object.keys(actualDescriptors),
+		Object.keys(expectedDescriptors),
+	);
+	for (const key of Object.keys(expectedDescriptors)) {
+		const actualDescriptor = actualDescriptors[key];
+		const expectedDescriptor = expectedDescriptors[key];
+		assert.deepEqual(
+			{
+				enumerable: actualDescriptor.enumerable,
+				configurable: actualDescriptor.configurable,
+				writable: actualDescriptor.writable,
+			},
+			{
+				enumerable: expectedDescriptor.enumerable,
+				configurable: expectedDescriptor.configurable,
+				writable: expectedDescriptor.writable,
+			},
+		);
+		if (
+			actualDescriptor &&
+			expectedDescriptor &&
+			"value" in actualDescriptor &&
+			"value" in expectedDescriptor
+		) {
+			if (
+				actualDescriptor.value &&
+				typeof actualDescriptor.value === "object"
+			) {
+				assertRuntimeShape(actualDescriptor.value, expectedDescriptor.value);
+			} else {
+				assert.equal(actualDescriptor.value, expectedDescriptor.value);
+				assert.equal(
+					Object.is(actualDescriptor.value, -0),
+					Object.is(expectedDescriptor.value, -0),
+				);
+			}
+		}
+	}
+}
+
 test("filesystem cache hashes cache keys into contained paths", async () => {
 	await withCacheDirectory(async (directory) => {
 		const cache = createFileSystemComputationCache({ directory });
-		const value = "safe";
+		const snapshot = "safe";
 		await cache.write("../../outside/private-source.liquid", {
-			value,
-			valueFingerprint: fingerprintProductKey(value),
+			snapshot,
+			snapshotFingerprint: fingerprintProductKey(snapshot),
 			productFingerprint: fingerprintProductKey("product"),
 			dependencies: [],
 		});

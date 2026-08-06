@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { canonicalProductKey, type ProductKey } from "./canonical-key.js";
 
-const FILESYSTEM_CACHE_VERSION = 2;
+const FILESYSTEM_CACHE_VERSION = 3;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 /** Default LRU capacity; prevents long-lived sessions retaining unbounded results. */
 export const DEFAULT_MEMORY_COMPUTATION_CACHE_MAX_ENTRIES = 1_024;
@@ -31,8 +31,9 @@ export type CachedComputationDependency =
 	| CachedProductDependency;
 
 export type CachedComputation = {
-	value: ProductKey;
-	valueFingerprint: string;
+	/** Canonical codec snapshot; never a computation's runtime result. */
+	snapshot: ProductKey;
+	snapshotFingerprint: string;
 	productFingerprint: string;
 	dependencies: readonly CachedComputationDependency[];
 };
@@ -136,15 +137,15 @@ export function createFileSystemComputationCache(options: {
 
 function serializeFileSystemEntry(value: CachedComputation): unknown {
 	if (
-		!isFingerprint(value.valueFingerprint) ||
+		!isFingerprint(value.snapshotFingerprint) ||
 		!isFingerprint(value.productFingerprint) ||
 		!Array.isArray(value.dependencies)
 	) {
 		throw new TypeError("Invalid computation cache entry");
 	}
 	return {
-		value: encodeProductKey(value.value),
-		valueFingerprint: value.valueFingerprint,
+		snapshot: encodeProductKey(value.snapshot),
+		snapshotFingerprint: value.snapshotFingerprint,
 		productFingerprint: value.productFingerprint,
 		dependencies: value.dependencies.map(encodeCachedDependency),
 	};
@@ -225,20 +226,20 @@ function parseFileSystemEntry(value: unknown): CachedComputation | undefined {
 	const entry = value.entry;
 	if (
 		!isRecord(entry) ||
-		!isFingerprint(entry.valueFingerprint) ||
+		!isFingerprint(entry.snapshotFingerprint) ||
 		!isFingerprint(entry.productFingerprint) ||
 		!Array.isArray(entry.dependencies)
 	) {
 		return undefined;
 	}
-	const decodedValue = decodeProductKey(entry.value);
+	const decodedSnapshot = decodeProductKey(entry.snapshot);
 	const dependencies = entry.dependencies.map(parseCachedDependency);
-	if (decodedValue === undefined || dependencies.some((item) => !item)) {
+	if (decodedSnapshot === undefined || dependencies.some((item) => !item)) {
 		return undefined;
 	}
 	return {
-		value: decodedValue,
-		valueFingerprint: entry.valueFingerprint,
+		snapshot: decodedSnapshot,
+		snapshotFingerprint: entry.snapshotFingerprint,
 		productFingerprint: entry.productFingerprint,
 		dependencies: dependencies as CachedComputationDependency[],
 	};

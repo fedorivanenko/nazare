@@ -3,7 +3,7 @@ import {
 	type ComputationGraph,
 	defineComputation,
 	defineProduct,
-	productKeyValueCodec,
+	productKeyCodec,
 } from "@nazare/compiler/computation";
 import {
 	type ProjectFileId,
@@ -203,7 +203,7 @@ export function registerShopifyQueryComputations(
 					),
 				};
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -216,7 +216,7 @@ export function registerShopifyQueryComputations(
 					shopifyGraphProducts.renderGraph.product(query),
 				),
 			}),
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -239,7 +239,7 @@ export function registerShopifyQueryComputations(
 					uncertainty: result.uncertainty,
 				};
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -272,7 +272,7 @@ export function registerShopifyQueryComputations(
 					uncertainty: dependencies.uncertainty,
 				};
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -301,7 +301,7 @@ export function registerShopifyQueryComputations(
 				);
 				return { version: 1, records: filtered, evidence };
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -328,7 +328,7 @@ export function registerShopifyQueryComputations(
 				);
 				return { version: 1, records: filtered, evidence };
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -352,7 +352,7 @@ export function registerShopifyQueryComputations(
 				}
 				return { version: 1, pages: pages.sort(compareFiles), impact };
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 
@@ -375,7 +375,7 @@ export function registerShopifyQueryComputations(
 					uncertainty: dependencies.uncertainty,
 				};
 			},
-			{ cache: productKeyValueCodec() },
+			{ cache: productKeyCodec() },
 		),
 	);
 }

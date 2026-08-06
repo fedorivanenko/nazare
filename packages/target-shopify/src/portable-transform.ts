@@ -4,7 +4,7 @@ import {
 	defineComputation,
 	defineComputationRegistrar,
 	fingerprintProductKey,
-	productKeyValueCodec,
+	productKeyCodec,
 } from "@nazare/compiler/computation";
 import {
 	type PortableApplicationModel,
@@ -86,7 +86,7 @@ export function registerShopifyPortableTransform(
 				return portableModel(plan, renderGraph, records);
 			},
 			{
-				cache: productKeyValueCodec(),
+				cache: productKeyCodec(),
 				diagnostics: (model) => model.diagnostics,
 				uncertainty: (model) => model.uncertainty,
 			},

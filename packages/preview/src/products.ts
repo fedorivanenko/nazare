@@ -4,7 +4,6 @@ import {
 	defineComputation,
 	defineComputationRegistrar,
 	defineProduct,
-	productKeyValueCodec,
 } from "@nazare/compiler/computation";
 import { type ProjectFileId, projectFileId } from "@nazare/compiler/project";
 import { sourceProducts } from "@nazare/compiler/source-products";
@@ -121,10 +120,7 @@ function registerPreviewProducts(graph: ComputationGraph): void {
 					diagnostics,
 				};
 			},
-			{
-				cache: productKeyValueCodec<PreviewStoryDiscovery>(),
-				diagnostics: (result) => result.diagnostics,
-			},
+			{ diagnostics: (result) => result.diagnostics },
 		),
 	);
 	graph.register(
@@ -145,10 +141,7 @@ function registerPreviewProducts(graph: ComputationGraph): void {
 					};
 				}
 			},
-			{
-				cache: productKeyValueCodec<PreviewFixtureInput>(),
-				diagnostics: (result) => result.diagnostics,
-			},
+			{ diagnostics: (result) => result.diagnostics },
 		),
 	);
 	graph.register(
@@ -206,62 +199,50 @@ function registerPreviewProducts(graph: ComputationGraph): void {
 					diagnostics,
 				};
 			},
-			{
-				cache: productKeyValueCodec<PreviewModel>(),
-				diagnostics: (result) => result.diagnostics,
-			},
+			{ diagnostics: (result) => result.diagnostics },
 		),
 	);
 	graph.register(
-		defineComputation(
-			previewProducts.renderStory,
-			async (context, query) => {
-				const model = await context.get(
-					previewProducts.model.product(query.model),
+		defineComputation(previewProducts.renderStory, async (context, query) => {
+			const model = await context.get(
+				previewProducts.model.product(query.model),
+			);
+			const story = model.stories.find(
+				(candidate) => candidate.name === query.storyName,
+			);
+			if (!story) {
+				throw new Error(
+					`Unknown preview story ${JSON.stringify(query.storyName)}`,
 				);
-				const story = model.stories.find(
-					(candidate) => candidate.name === query.storyName,
-				);
-				if (!story) {
-					throw new Error(
-						`Unknown preview story ${JSON.stringify(query.storyName)}`,
-					);
-				}
-				const rendered = await renderComponentStories(
-					model.component,
-					[story],
-					query.snippets ? { snippets: { ...query.snippets } } : {},
-				);
-				const result = rendered.stories[0];
-				if (!result)
-					throw new Error("Preview story renderer returned no result");
-				return result;
-			},
-			{ cache: productKeyValueCodec<RenderedStory>() },
-		),
+			}
+			const rendered = await renderComponentStories(
+				model.component,
+				[story],
+				query.snippets ? { snippets: { ...query.snippets } } : {},
+			);
+			const result = rendered.stories[0];
+			if (!result) throw new Error("Preview story renderer returned no result");
+			return result;
+		}),
 	);
 	graph.register(
-		defineComputation(
-			previewProducts.renderPlan,
-			async (context, query) => {
-				const model = await context.get(
-					previewProducts.model.product(query.model),
-				);
-				const stories = await Promise.all(
-					model.stories.map((story) =>
-						context.get(
-							previewProducts.renderStory.product({
-								model: query.model,
-								storyName: story.name,
-								...(query.snippets ? { snippets: query.snippets } : {}),
-							}),
-						),
+		defineComputation(previewProducts.renderPlan, async (context, query) => {
+			const model = await context.get(
+				previewProducts.model.product(query.model),
+			);
+			const stories = await Promise.all(
+				model.stories.map((story) =>
+					context.get(
+						previewProducts.renderStory.product({
+							model: query.model,
+							storyName: story.name,
+							...(query.snippets ? { snippets: query.snippets } : {}),
+						}),
 					),
-				);
-				return { component: model.component, stories };
-			},
-			{ cache: productKeyValueCodec<RenderedComponent>() },
-		),
+				),
+			);
+			return { component: model.component, stories };
+		}),
 	);
 }
 

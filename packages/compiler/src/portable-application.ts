@@ -8,7 +8,7 @@ import {
 } from "./computation/capability.js";
 import {
 	defineComputation,
-	productKeyValueCodec,
+	productKeyCodec,
 } from "./computation/computation.js";
 import type { ComputationGraph } from "./computation/graph.js";
 import {
@@ -126,7 +126,7 @@ export function definePortableOutputProvider<Result extends ProductKey>(input: {
 						input.emit(
 							await context.get(portableApplicationModel.product(plan)),
 						),
-					{ cache: productKeyValueCodec() },
+					{ cache: productKeyCodec() },
 				),
 			);
 		},
