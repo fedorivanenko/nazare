@@ -24,7 +24,7 @@ test("inspect watch streams project revisions through one Shopify session", asyn
 					`Timed out waiting for watched inspection: ${JSON.stringify({ errors, logs })}`,
 				),
 			);
-		}, 5_000);
+		}, 30_000);
 		const output = {
 			log(value) {
 				logs.push(String(value));

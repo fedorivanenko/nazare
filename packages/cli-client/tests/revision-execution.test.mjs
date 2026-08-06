@@ -16,6 +16,38 @@ async function* updates(values) {
 	for (const value of values) yield value;
 }
 
+test("revision execution closes updates when already aborted", async () => {
+	const controller = new AbortController();
+	controller.abort("already stopped");
+	let nextCalls = 0;
+	let returnCalls = 0;
+	const iterable = {
+		[Symbol.asyncIterator]() {
+			return {
+				next() {
+					nextCalls += 1;
+					return new Promise(() => {});
+				},
+				return() {
+					returnCalls += 1;
+					return Promise.resolve({ done: true });
+				},
+			};
+		},
+	};
+
+	await executeRevisionUpdates({
+		updates: iterable,
+		revision: (revision) => revision,
+		run: async () => undefined,
+		onEvent() {},
+		signal: controller.signal,
+	});
+
+	assert.equal(nextCalls, 0);
+	assert.equal(returnCalls, 1);
+});
+
 test("revision execution publishes only the latest successful result", async () => {
 	const first = deferred();
 	const second = deferred();

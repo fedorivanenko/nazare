@@ -27,11 +27,19 @@ export async function executeRevisionUpdates<Update, Result>(options: {
 	let active: AbortController | undefined;
 	const pending = new Set<Promise<void>>();
 	const updates = options.updates[Symbol.asyncIterator]();
+	let closing: Promise<void> | undefined;
+	const closeUpdates = (): Promise<void> => {
+		closing ??= Promise.resolve()
+			.then(() => updates.return?.())
+			.then(() => undefined);
+		return closing;
+	};
 	const stop = () => {
 		active?.abort("Revision execution stopped");
-		void updates.return?.();
+		void closeUpdates().catch(() => {});
 	};
 	options.signal?.addEventListener("abort", stop, { once: true });
+	if (options.signal?.aborted) stop();
 	try {
 		while (!options.signal?.aborted) {
 			const item = await updates.next();
@@ -81,6 +89,10 @@ export async function executeRevisionUpdates<Update, Result>(options: {
 	} finally {
 		options.signal?.removeEventListener("abort", stop);
 		if (options.signal?.aborted) active?.abort("Revision execution stopped");
-		await Promise.all(pending);
+		try {
+			await closeUpdates();
+		} finally {
+			await Promise.all(pending);
+		}
 	}
 }

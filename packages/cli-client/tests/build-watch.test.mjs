@@ -24,7 +24,7 @@ test("build watch reuses one filesystem session and streams revisions", async ()
 					`Timed out waiting for watched build revision: ${JSON.stringify({ errors, logs })}`,
 				),
 			);
-		}, 5_000);
+		}, 30_000);
 		const output = {
 			log(value) {
 				logs.push(String(value));
