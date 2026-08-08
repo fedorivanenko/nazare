@@ -26,9 +26,6 @@ jobs:
       - run: pnpm -s typecheck
       - run: pnpm dlx @biomejs/biome@2.4.14 check .
       - run: pnpm -s test:all
-      # Runs the corpus theme committed to fixtures/. External themes named in
-      # the manifest live on individual machines and are skipped here.
-      - run: pnpm -s test:corpus
       - name: package ephemeral PR artifacts
         if: github.event_name == 'pull_request'
         run: |

@@ -1,15 +1,9 @@
 name: performance
 
+# The v5 graph A/B benchmark cannot compare the revisioned v1 graph against
+# the legacy graph contract. Keep manual access while its corpus and budgets
+# are redesigned for the new architecture.
 on:
-  schedule:
-    - cron: "0 4 * * *"
-  pull_request:
-    paths:
-      - "packages/compiler/**"
-      - "packages/source/**"
-      - "packages/cli-client/**"
-      - "benchmarks/**"
-      - ".github/workflows/performance.yml"
   workflow_dispatch:
 
 concurrency:
