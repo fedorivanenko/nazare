@@ -64,6 +64,34 @@ fixture-x96         1,741    21.06 s    21.61 s
 
 From x16 to x96, parsed files grow 5.78× and cold CPU grows 6.84×. This replaces the prior superlinear behavior observed on the pull-request runner, where fixture-x64 and fixture-x96 consumed 48.94 s and 129.62 s CPU respectively.
 
+### Persistent inspection latency gate
+
+Recorded at `2026-08-08` after caching deeply frozen canonical keys, memoizing serialized file identities, and simplifying dependency fingerprint encoding.
+
+Commands:
+
+```sh
+node benchmarks/inspect-theme.mjs --scales 64 --runs 1 --json
+node benchmarks/inspect-incremental.mjs --scale 64 --runs 20 --json
+```
+
+Corpus: fixture-x64, 1,165 parsed content files and 1,166 total query-session files. Initial measurement includes query-session creation plus a complete `inspection()` query. Incremental measurement includes `ProjectSession` update application plus a complete `inspection()` query after adding or removing one metafield read.
+
+```text
+Fresh CLI inspection:       2.93 s wall / 3.51 s CPU
+Persistent initial query:   2.66 s wall / 2.87 s CPU
+Incremental median:       314.39 ms wall
+Incremental p95:          342.95 ms wall
+Incremental maximum:      357.79 ms wall
+```
+
+Automated budgets at fixture-x64:
+
+```text
+Persistent initial wall:       ≤ 10,000 ms
+Incremental median wall:       ≤    500 ms
+```
+
 ## Theme scaffold
 
 Command:

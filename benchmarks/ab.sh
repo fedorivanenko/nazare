@@ -17,6 +17,8 @@ THEME="${THEME:-fixture}"
 SCALES="${SCALES:-1,4,16}"
 RUNS="${RUNS:-3}"
 MAX_COLD_REGRESSION="${MAX_COLD_REGRESSION:-15}"
+MAX_COLD_MS="${MAX_COLD_MS:-}"
+MAX_COLD_SCALE="${MAX_COLD_SCALE:-}"
 # An explicit template rather than -t: GNU mktemp requires the XXXXXX that BSD
 # mktemp treats as optional.
 WORKTREE="${WORKTREE:-$(mktemp -d "${TMPDIR:-/tmp}/nazare-baseline.XXXXXX")}"
@@ -46,12 +48,20 @@ git worktree add --detach "$WORKTREE" "$baseline_sha" >/dev/null
 )
 
 echo "==> benchmarking"
+max_cold_args=()
+if [[ -n "$MAX_COLD_MS" ]]; then
+	max_cold_args=(--max-cold-ms "$MAX_COLD_MS")
+	if [[ -n "$MAX_COLD_SCALE" ]]; then
+		max_cold_args+=(--max-cold-scale "$MAX_COLD_SCALE")
+	fi
+fi
 node benchmarks/inspect-theme.mjs \
 	--theme "$THEME" \
 	--scales "$SCALES" \
 	--runs "$RUNS" \
 	--baseline-cli "$WORKTREE/packages/cli-client/dist/index.js" \
 	--max-cold-regression "$MAX_COLD_REGRESSION" \
+	"${max_cold_args[@]}" \
 	${ALLOW_OUTPUT_CHANGE:+--allow-output-change} \
 	${REPORT_JSON:+--json} \
 	| tee "${REPORT_PATH:-/dev/null}"

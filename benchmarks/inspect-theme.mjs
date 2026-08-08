@@ -78,6 +78,10 @@ export async function main(argumentsList = process.argv.slice(2)) {
 				(regression) =>
 					`${regression.theme}: cold ${regression.metric} regressed ${regression.percent.toFixed(1)}% (${regression.baseline.toFixed(2)}s -> ${regression.candidate.toFixed(2)}s), over the ${regression.allowedPercent}% budget`,
 			),
+			...report.absoluteColdFailures.map(
+				(failure) =>
+					`${failure.theme}: cold wall median ${failure.actualMilliseconds.toFixed(1)}ms exceeds ${failure.allowedMilliseconds}ms`,
+			),
 		];
 		for (const failure of failures) console.error(failure);
 		if (failures.length > 0) process.exitCode = 1;
@@ -102,6 +106,8 @@ export function parseArguments(
 		cli: join(repositoryRoot, "packages/cli-client/dist/index.js"),
 		baselineCli: undefined,
 		maxColdRegression: undefined,
+		maxColdMs: undefined,
+		maxColdScale: undefined,
 		allowOutputChange: false,
 		json: false,
 		keep: false,
@@ -135,6 +141,10 @@ export function parseArguments(
 			options.baselineCli = resolve(requiredValue(argument, value));
 		} else if (argument === "--max-cold-regression") {
 			options.maxColdRegression = nonNegativeNumber(argument, value);
+		} else if (argument === "--max-cold-ms") {
+			options.maxColdMs = positiveNumber(argument, value);
+		} else if (argument === "--max-cold-scale") {
+			options.maxColdScale = positiveInteger(argument, value);
 		} else {
 			throw new Error(`Unknown argument ${argument}`);
 		}
@@ -148,6 +158,16 @@ export function parseArguments(
 	if (options.maxColdRegression !== undefined && !options.baselineCli) {
 		throw new Error(
 			"--max-cold-regression needs --baseline-cli to compare against",
+		);
+	}
+	if (
+		options.maxColdScale !== undefined &&
+		(options.maxColdMs === undefined ||
+			options.theme !== "fixture" ||
+			!options.scales.includes(options.maxColdScale))
+	) {
+		throw new Error(
+			"--max-cold-scale needs --max-cold-ms and must name one of --scales for the fixture corpus",
 		);
 	}
 	return options;
@@ -212,6 +232,7 @@ function runBenchmark(options, workspace) {
 		}
 		cells.push({
 			theme: theme.label,
+			scale: theme.scale,
 			fileCount: theme.fileCount,
 			contentFileCount: theme.contentFileCount,
 			outputBytes: statSync(outputs.candidate).size,
@@ -219,6 +240,11 @@ function runBenchmark(options, workspace) {
 		});
 	}
 	return {
+		absoluteColdFailures: absoluteColdFailures(
+			cells,
+			options.maxColdMs,
+			options.maxColdScale,
+		),
 		coldRegressions: coldRegressions(cells, options.maxColdRegression),
 		environment: {
 			node: process.version,
@@ -231,6 +257,8 @@ function runBenchmark(options, workspace) {
 		},
 		methodology: {
 			theme: options.theme,
+			maxColdMilliseconds: options.maxColdMs,
+			maxColdScale: options.maxColdScale,
 			scales: options.theme === "fixture" ? options.scales : undefined,
 			runs: options.runs,
 			outputChangeAllowed: options.allowOutputChange,
@@ -260,6 +288,7 @@ function prepareThemes(options, workspace) {
 			}
 			return {
 				label: `fixture-x${scale}`,
+				scale,
 				directory,
 				fileCount: files.filter((file) => isThemeInputPath(file.path)).length,
 				contentFileCount: files.filter((file) =>
@@ -471,6 +500,18 @@ function coldRegressions(cells, allowedPercent) {
 	return regressions;
 }
 
+function absoluteColdFailures(cells, allowedMilliseconds, allowedScale) {
+	if (allowedMilliseconds === undefined) return [];
+	return cells.flatMap((cell) => {
+		if (allowedScale !== undefined && cell.scale !== allowedScale) return [];
+		const actualMilliseconds =
+			cell.measurements.candidate.cold.wallSeconds.median * 1_000;
+		return actualMilliseconds > allowedMilliseconds
+			? [{ theme: cell.theme, actualMilliseconds, allowedMilliseconds }]
+			: [];
+	});
+}
+
 /** Labels reach file names, and a path argument carries separators. */
 function fileSafe(label) {
 	return label.replace(/[^A-Za-z0-9._-]+/g, "-");
@@ -630,6 +671,14 @@ function nonNegativeNumber(argument, value) {
 	const parsed = Number(requiredValue(argument, value));
 	if (!Number.isFinite(parsed) || parsed < 0) {
 		throw new Error(`${argument} expects a non-negative number`);
+	}
+	return parsed;
+}
+
+function positiveNumber(argument, value) {
+	const parsed = Number(requiredValue(argument, value));
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		throw new Error(`${argument} expects a positive number`);
 	}
 	return parsed;
 }
