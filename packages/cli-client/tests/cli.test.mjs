@@ -104,29 +104,27 @@ test("cli: lists stable and experimental feature contracts", {
 test("cli: blocks experimental commands at the centralized gateway", {
 	smoke: true,
 }, async () => {
-	for (const args of [
-		["inspect", "serve", "."],
-		["graph-server", "."],
-	]) {
-		const out = await runCli(process.cwd(), ...args);
-		assert.equal(out.status, 1);
-		assert.match(out.stderr, /--enable-experimental graph-server/);
-	}
+	const out = await runCli(process.cwd(), "inspect", "serve", ".");
+	assert.equal(out.status, 1);
+	assert.match(out.stderr, /--enable-experimental inspection-server/);
 });
 
-test("cli: graph-server is a deprecated inspect serve alias", {
+test("cli: removed inspection streams and top-level server command stay absent", {
 	smoke: true,
 }, async () => {
-	const out = await runCli(
+	const removedServer = await runCli(process.cwd(), "graph-server", ".");
+	assert.equal(removedServer.status, 1);
+	assert.match(removedServer.stderr, /Unknown command graph-server/);
+
+	const removedWatch = await runCli(
 		process.cwd(),
-		"graph-server",
-		"missing-inspection-root",
-		"--enable-experimental",
-		"graph-server",
+		"inspect",
+		"theme",
+		".",
+		"--watch",
 	);
-	assert.equal(out.status, 1);
-	assert.match(out.stderr, /Deprecated: nazare graph-server/);
-	assert.match(out.stderr, /use nazare inspect serve instead/);
+	assert.equal(removedWatch.status, 1);
+	assert.match(removedWatch.stderr, /inspect theme --watch was removed/);
 });
 
 test("cli: preview and inspect expose focused help", {

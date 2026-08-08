@@ -38,7 +38,6 @@ import {
 	printHelp,
 } from "./options.js";
 import { type Output, processOutput } from "./output.js";
-import { executeRevisionUpdates } from "./revision-execution.js";
 import type {
 	ShopifyFileImpact,
 	ShopifyInspection,
@@ -71,7 +70,6 @@ type MainOptions = {
 	env?: NodeJS.ProcessEnv;
 	output?: Output;
 	input?: Readable;
-	signal?: AbortSignal;
 };
 
 export async function main(
@@ -144,19 +142,12 @@ export async function main(
 		// component into one theme output. It runs before the single-file setup
 		// below because it targets a directory (from the arg or nazare.theme.json
 		// build.sourceRoot) rather than one entry file.
-		const servesInspection =
-			command === "graph-server" ||
-			(command === "inspect" && cliOptions.positionals[0] === "serve");
-		if (servesInspection) {
-			if (command === "graph-server") {
-				output.error(
-					"Deprecated: nazare graph-server; use nazare inspect serve instead",
-				);
+		if (command === "inspect" && cliOptions.positionals[0] === "serve") {
+			if (cliOptions.watch) {
+				output.error("inspect serve does not accept --watch");
+				return 1;
 			}
-			const rootArgument =
-				command === "graph-server"
-					? cliOptions.positionals[0]
-					: cliOptions.positionals[1];
+			const rootArgument = cliOptions.positionals[1];
 			const manifest = await readProjectManifest(projectRoot);
 			const inspectionRoot = rootArgument ?? manifest.build?.sourceRoot;
 			if (!inspectionRoot) {
@@ -215,9 +206,11 @@ export async function main(
 		// `inspect theme` reads a whole theme from a directory rather than one
 		// entry file, so it dispatches ahead of the per-file views below.
 		if (command === "inspect" && cliOptions.positionals[0] === "theme") {
-			return cliOptions.watch
-				? await runInspectWatch(projectRoot, cliOptions, output, options.signal)
-				: await runInspect(projectRoot, cliOptions, output);
+			if (cliOptions.watch) {
+				output.error("inspect theme --watch was removed; use inspect serve");
+				return 1;
+			}
+			return await runInspect(projectRoot, cliOptions, output);
 		}
 		if (
 			command === "inspect" &&
@@ -594,169 +587,6 @@ async function runPreview(
 	// path describe the same place, and only one of them is worth reading.
 	const { runPreviewBuild } = await import("./preview-command.js");
 	return await runPreviewBuild(dir, resolve(projectRoot, outDir), output, root);
-}
-
-async function runInspectWatch(
-	projectRoot: string,
-	cliOptions: CliOptions,
-	output: Output,
-	signal?: AbortSignal,
-): Promise<number> {
-	const [, dirArg] = cliOptions.positionals;
-	const prepared = await prepareThemeInspection(
-		projectRoot,
-		dirArg,
-		cliOptions,
-		output,
-	);
-	const queryModule = await shopifyQueries();
-	const session = await queryModule.ShopifyQuerySession.open(
-		prepared.absoluteRoot,
-		{
-			[queryModule.PROJECT_METADATA_KEYS.config]: {
-				exclude: prepared.exclude,
-			},
-			...(prepared.metafields
-				? {
-						[queryModule.PROJECT_METADATA_KEYS.metafields]:
-							prepared.metafields.contents,
-					}
-				: {}),
-			...(prepared.themeCheck
-				? {
-						[queryModule.PROJECT_METADATA_KEYS.themeCheck]:
-							prepared.themeCheck.contents,
-					}
-				: {}),
-		},
-		{
-			includeFile: (path) =>
-				!prepared.exclude.some((pattern) => matchesInspectGlob(path, pattern)),
-		},
-	);
-	const controller = new AbortController();
-	const abortFromCaller = () => controller.abort(signal?.reason);
-	signal?.addEventListener("abort", abortFromCaller, { once: true });
-	if (signal?.aborted) abortFromCaller();
-	let latestCode = 0;
-	const execute = async (): Promise<CapturedInspectExecution> => {
-		const captured = captureInspectOutput();
-		const code = await runInspect(
-			projectRoot,
-			{ ...cliOptions, watch: false },
-			captured.output,
-			{ session },
-		);
-		return { code, errors: captured.errors, logs: captured.logs };
-	};
-	const publish = (event: {
-		type: "result" | "update-failed";
-		revision: number;
-		durationMs: number;
-		result?: CapturedInspectExecution;
-		error?: unknown;
-	}): void => {
-		if (event.type === "update-failed" || !event.result) {
-			latestCode = 1;
-			const message =
-				event.error instanceof Error
-					? event.error.message
-					: String(event.error);
-			if (cliOptions.json || cliOptions.format === "json") {
-				output.log(
-					JSON.stringify({
-						type: "update-failed",
-						revision: event.revision,
-						durationMs: event.durationMs,
-						error: message,
-					}),
-				);
-			} else
-				output.error(`update-failed revision ${event.revision}: ${message}`);
-			return;
-		}
-		latestCode = event.result.code;
-		if (cliOptions.json || cliOptions.format === "json") {
-			output.log(JSON.stringify({ ...event, result: event.result }));
-			return;
-		}
-		for (const message of event.result.logs) output.log(message);
-		for (const message of event.result.errors) output.error(message);
-		output.log(
-			`result revision ${event.revision} in ${Math.round(event.durationMs)}ms`,
-		);
-	};
-
-	const started = performance.now();
-	try {
-		const result = await execute();
-		publish({
-			type: "result",
-			revision: session.session.snapshot().revision,
-			durationMs: performance.now() - started,
-			result,
-		});
-	} catch (error) {
-		publish({
-			type: "update-failed",
-			revision: session.session.snapshot().revision,
-			durationMs: performance.now() - started,
-			error,
-		});
-	}
-
-	const shutdown = () => controller.abort("Inspect watch stopped");
-	process.once("SIGINT", shutdown);
-	process.once("SIGTERM", shutdown);
-	try {
-		await executeRevisionUpdates({
-			updates: session.session.watch(),
-			revision(update) {
-				if (!update.committed) {
-					for (const diagnostic of update.diagnostics) {
-						output.error(`${diagnostic.code}: ${diagnostic.message}`);
-					}
-					return undefined;
-				}
-				return update.changedFileIds.some((file) =>
-					session.acceptsFile(file.path),
-				)
-					? update.revision
-					: undefined;
-			},
-			run: execute,
-			onEvent: publish,
-			signal: controller.signal,
-		});
-	} finally {
-		process.removeListener("SIGINT", shutdown);
-		process.removeListener("SIGTERM", shutdown);
-		signal?.removeEventListener("abort", abortFromCaller);
-	}
-	return latestCode;
-}
-
-type CapturedInspectExecution = {
-	code: number;
-	logs: string[];
-	errors: string[];
-};
-
-function captureInspectOutput(): {
-	output: Output;
-	logs: string[];
-	errors: string[];
-} {
-	const logs: string[] = [];
-	const errors: string[] = [];
-	return {
-		logs,
-		errors,
-		output: {
-			log: (...values) => logs.push(values.map(String).join(" ")),
-			error: (...values) => errors.push(values.map(String).join(" ")),
-		},
-	};
 }
 
 async function runInspect(

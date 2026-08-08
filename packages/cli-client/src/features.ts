@@ -54,16 +54,6 @@ export const FEATURES = {
 		consent: "automatic",
 		since: "0.1.0",
 	},
-	"inspection-watch": {
-		id: "inspection-watch",
-		description:
-			"Stream revisioned inspection events over the experimental JSONL protocol",
-		stability: "experimental",
-		effects: ["read"],
-		consent: "explicit",
-		since: "0.1.0",
-		trackingIssue: 153,
-	},
 	"theme-build": {
 		id: "theme-build",
 		description: "Analyze and prepare deterministic theme build products",
@@ -82,9 +72,10 @@ export const FEATURES = {
 		trackingIssue: 150,
 		enableAliases: ["--experimental-publish"],
 	},
-	"graph-server": {
-		id: "graph-server",
-		description: "Serve graph queries over the experimental JSONL protocol",
+	"inspection-server": {
+		id: "inspection-server",
+		description:
+			"Serve inspection tools over the experimental MCP stdio protocol",
 		stability: "experimental",
 		effects: ["read"],
 		consent: "explicit",
@@ -262,7 +253,6 @@ export type InvocationFeatureRule = {
 	commands: readonly string[];
 	feature: FeatureId;
 	firstPositionals?: readonly string[];
-	watch?: boolean;
 };
 
 /**
@@ -272,11 +262,10 @@ export type InvocationFeatureRule = {
 export const INVOCATION_FEATURE_RULES = [
 	{ commands: ["features"], feature: "feature-discovery" },
 	{ commands: ["source"], feature: "source-analysis" },
-	{ commands: ["graph-server"], feature: "graph-server" },
 	{
 		commands: ["inspect"],
 		firstPositionals: ["serve"],
-		feature: "graph-server",
+		feature: "inspection-server",
 	},
 	{ commands: ["build", "check"], feature: "theme-build" },
 	{ commands: ["preview"], feature: "preview" },
@@ -284,12 +273,6 @@ export const INVOCATION_FEATURE_RULES = [
 	{
 		commands: ["registry", "add", "update", "publish"],
 		feature: "registry",
-	},
-	{
-		commands: ["inspect"],
-		firstPositionals: ["theme"],
-		watch: true,
-		feature: "inspection-watch",
 	},
 	{
 		commands: ["inspect"],
@@ -311,8 +294,7 @@ export function featureForInvocation(
 		(rule) =>
 			rule.commands.includes(command) &&
 			(rule.firstPositionals === undefined ||
-				rule.firstPositionals.includes(options.positionals[0] ?? "")) &&
-			(rule.watch === undefined || rule.watch === options.watch),
+				rule.firstPositionals.includes(options.positionals[0] ?? "")),
 	)?.feature;
 }
 

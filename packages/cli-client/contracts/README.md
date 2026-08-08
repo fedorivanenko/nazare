@@ -6,7 +6,7 @@ The stable machine interface is one-shot JSON from:
 - `nazare inspect impact … --format json` — `theme-impact-v1.schema.json`
 - `nazare inspect metafield … --format json` — `theme-metafield-v2.schema.json`
 
-`text` and `dot` formats are human-facing renderings. Their wording, spacing, and layout are not compatibility contracts. `inspect theme --watch` emits a separate experimental JSONL event protocol and requires `--enable-experimental inspection-watch`; these document schemas do not cover that stream.
+`text` and `dot` formats are human-facing renderings. Their wording, spacing, and layout are not compatibility contracts.
 
 ## Compatibility policy
 

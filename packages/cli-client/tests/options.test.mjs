@@ -18,14 +18,14 @@ test("parses repeatable generic experimental feature flags", () => {
 	assert.deepEqual(
 		parseCliOptions([
 			"--enable-experimental",
-			"graph-server",
+			"inspection-server",
 			"--enable-experimental=theme-publication",
 			"--enable-experimental",
-			"graph-server",
+			"inspection-server",
 		]),
 		{
 			positionals: [],
-			enabledExperimentalFeatures: ["graph-server", "theme-publication"],
+			enabledExperimentalFeatures: ["inspection-server", "theme-publication"],
 		},
 	);
 });

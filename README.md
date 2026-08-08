@@ -38,10 +38,10 @@ nazare inspect impact <theme-relative-file> [dir] --format text|json
 nazare inspect metafield <owner.namespace.key> [dir] --format text|json
 
 # Serve inspection tools to editor and agent integrations over MCP stdio
-nazare inspect serve [dir] --enable-experimental graph-server
+nazare inspect serve [dir] --enable-experimental inspection-server
 ```
 
-`dir` defaults to `build.sourceRoot` in `nazare.theme.json`. Theme intelligence analyzes Nazare Liquid, plain Liquid, Shopify JSON, CSS, and JavaScript. `nazare graph-server` remains a deprecated compatibility alias for `nazare inspect serve`.
+`dir` defaults to `build.sourceRoot` in `nazare.theme.json`. Theme intelligence analyzes Nazare Liquid, plain Liquid, Shopify JSON, CSS, and JavaScript.
 
 Theme, impact, and metafield JSON outputs are stable, independently versioned machine contracts. Their committed schemas, golden examples, and compatibility policy live in [`packages/cli-client/contracts`](packages/cli-client/contracts). Text and DOT rendering remain human-facing and may change presentation without a contract-version bump.
 
@@ -55,13 +55,11 @@ nazare features
 nazare features --json
 
 # Enable a read-only experimental feature for one invocation
-nazare inspect serve . --enable-experimental graph-server
+nazare inspect serve . --enable-experimental inspection-server
 
 # Low-level AST/IR/compiler projections are debugging interfaces
 nazare inspect ir component.nz.liquid --enable-experimental compiler-inspection
 
-# Watch uses a separate experimental revision-event protocol
-nazare inspect theme . --watch --enable-experimental inspection-watch
 
 # Publication always requires per-invocation CLI consent
 nazare build --enable-experimental theme-publication
@@ -115,7 +113,7 @@ revisioned project inputs
 → revision-guarded atomic publication
 ```
 
-Build, inspect, and preview share revisioned source products but request different projections. `build --watch`, `check --watch`, experimental `inspect theme --watch`, and Preview serve publish only current revision `result` or `update-failed` events; superseded work is aborted. Dependency reads automatically create invalidation edges. Pure computations may be cached; filesystem publication and other side effects are never cached.
+Build, inspect, and preview share revisioned source products but request different projections. `build --watch`, `check --watch`, and Preview serve publish only current revision `result` or `update-failed` events; superseded work is aborted. Dependency reads automatically create invalidation edges. Pure computations may be cached; filesystem publication and other side effects are never cached.
 
 Stable semantic identity uses project-relative `ProjectFileId` values. Dynamic references and opaque runtime behavior remain explicit uncertainty rather than guessed dependencies.
 
