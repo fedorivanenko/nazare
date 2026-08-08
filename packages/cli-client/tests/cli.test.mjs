@@ -78,6 +78,37 @@ test("cli: reports its development package version", {
 	assert.equal(out.stdout.trim(), "0.0.0");
 });
 
+test("cli: lists stable and experimental feature contracts", {
+	smoke: true,
+}, async () => {
+	const out = await runCli(process.cwd(), "features", "--json");
+	assert.equal(out.status, 0, out.stderr);
+	const result = JSON.parse(out.stdout);
+	assert.equal(result.version, 1);
+	assert.equal(
+		result.features.find((feature) => feature.id === "theme-inspection")
+			.stability,
+		"stable",
+	);
+	assert.equal(
+		result.features.find((feature) => feature.id === "theme-publication")
+			.stability,
+		"experimental",
+	);
+	assert.equal(
+		result.features.some((feature) => feature.stability === "internal"),
+		false,
+	);
+});
+
+test("cli: blocks experimental commands at the centralized gateway", {
+	smoke: true,
+}, async () => {
+	const out = await runCli(process.cwd(), "graph-server", ".");
+	assert.equal(out.status, 1);
+	assert.match(out.stderr, /--enable-experimental graph-server/);
+});
+
 test("cli: preview and inspect expose focused help", {
 	smoke: true,
 }, async () => {
@@ -455,6 +486,31 @@ test("cli: build loads extension modules from nazare.extensions", async () => {
 					),
 				),
 				{ label: "components", files: ["nazare/button.nz.liquid"] },
+			);
+		},
+	);
+});
+
+test("cli: check validates but never executes extension modules", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": JSON.stringify({
+				build: { sourceRoot: "nazare", outDir: "theme" },
+				extensions: ["./nazare.extensions/side-effect.mjs"],
+			}),
+			"nazare/button.nz.liquid": "<button>Button</button>\n",
+			"nazare.extensions/side-effect.mjs": `
+import { writeFileSync } from "node:fs";
+writeFileSync(new URL("./extension-ran", import.meta.url), "ran");
+export default { name: "side-effect", emit() { return { files: [], issues: [] }; } };
+`,
+		},
+		async (cwd) => {
+			const checked = await runCli(cwd, "check");
+			assert.equal(checked.status, 0, checked.stderr);
+			assert.equal(
+				existsSync(join(cwd, "nazare.extensions/extension-ran")),
+				false,
 			);
 		},
 	);

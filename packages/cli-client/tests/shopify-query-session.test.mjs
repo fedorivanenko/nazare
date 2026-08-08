@@ -3,7 +3,12 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { createFeatureGateway } from "../dist/features.js";
 import { ShopifyQuerySession } from "../dist/shopify-query-session.js";
+
+const publicationPermit = createFeatureGateway({
+	cliEnabled: ["theme-publication"],
+}).require("theme-publication");
 
 test("shared Shopify session plans and publishes reachable build output", async () => {
 	const session = await ShopifyQuerySession.create([
@@ -22,7 +27,7 @@ test("shared Shopify session plans and publishes reachable build output", async 
 
 	const temporary = await mkdtemp(join(tmpdir(), "nazare-build-session-"));
 	const outputRoot = join(temporary, "theme");
-	await session.publishBuild(request, outputRoot);
+	await session.publishBuild(request, outputRoot, publicationPermit);
 	assert.equal(
 		await readFile(join(outputRoot, "snippets/card.liquid"), "utf8"),
 		"<span>Card</span>",
@@ -31,6 +36,25 @@ test("shared Shopify session plans and publishes reachable build output", async 
 		readFile(join(outputRoot, "snippets/unused.liquid"), "utf8"),
 		{ code: "ENOENT" },
 	);
+});
+
+test("publication APIs require gateway-issued permits before side effects", async () => {
+	const session = await ShopifyQuerySession.create([
+		{ path: "snippets/card.liquid", contents: "Card" },
+	]);
+	const outputRoot = join(
+		await mkdtemp(join(tmpdir(), "nazare-unpermitted-session-")),
+		"theme",
+	);
+	await assert.rejects(
+		session.publishBuild(
+			{ scope: { kind: "workspace" } },
+			outputRoot,
+			undefined,
+		),
+		/valid theme-publication feature permit/,
+	);
+	await assert.rejects(readFile(outputRoot, "utf8"), { code: "ENOENT" });
 });
 
 test("filesystem Shopify sessions open shared build products", async () => {
@@ -67,31 +91,40 @@ test("publication refuses unowned and modified output conflicts", async () => {
 		),
 		true,
 	);
-	await assert.rejects(session.commitPersistentBuild(prepared), (error) => {
-		assert.equal(error.diagnostics[0].code, "OUTPUT_PATH_NOT_OWNED");
-		return true;
-	});
+	await assert.rejects(
+		session.commitPersistentBuild(prepared, publicationPermit),
+		(error) => {
+			assert.equal(error.diagnostics[0].code, "OUTPUT_PATH_NOT_OWNED");
+			return true;
+		},
+	);
 	assert.equal(
 		await readFile(join(unownedRoot, "snippets/card.liquid"), "utf8"),
 		"merchant",
 	);
 
-	await assert.rejects(session.publishBuild(request, unownedRoot), (error) => {
-		assert.equal(error.diagnostics[0].code, "OUTPUT_PATH_NOT_OWNED");
-		return true;
-	});
+	await assert.rejects(
+		session.publishBuild(request, unownedRoot, publicationPermit),
+		(error) => {
+			assert.equal(error.diagnostics[0].code, "OUTPUT_PATH_NOT_OWNED");
+			return true;
+		},
+	);
 	assert.equal(
 		await readFile(join(unownedRoot, "snippets/card.liquid"), "utf8"),
 		"merchant",
 	);
 
 	const ownedRoot = join(temporary, "owned");
-	await session.publishBuild(request, ownedRoot);
+	await session.publishBuild(request, ownedRoot, publicationPermit);
 	await writeFile(join(ownedRoot, "snippets/card.liquid"), "merchant edit");
-	await assert.rejects(session.publishBuild(request, ownedRoot), (error) => {
-		assert.equal(error.diagnostics[0].code, "OUTPUT_OWNED_FILE_MODIFIED");
-		return true;
-	});
+	await assert.rejects(
+		session.publishBuild(request, ownedRoot, publicationPermit),
+		(error) => {
+			assert.equal(error.diagnostics[0].code, "OUTPUT_OWNED_FILE_MODIFIED");
+			return true;
+		},
+	);
 	assert.equal(
 		await readFile(join(ownedRoot, "snippets/card.liquid"), "utf8"),
 		"merchant edit",
@@ -136,6 +169,7 @@ test("persistent builds commit output and reconciliation metadata together", asy
 	await session.publishPersistentBuild(
 		{ scope: { kind: "workspace" } },
 		{ projectRoot, outputRoot, targetId: "shop#theme" },
+		publicationPermit,
 	);
 
 	const settings = JSON.parse(
@@ -191,6 +225,7 @@ test("persistent build failure rolls output and metadata back together", async (
 		session.publishPersistentBuild(
 			{ scope: { kind: "workspace" } },
 			{ projectRoot, outputRoot, targetId: "theme" },
+			publicationPermit,
 		),
 		/Output path is not a regular file/,
 	);
@@ -230,6 +265,7 @@ test("check-only session builds never plan output deletion", async () => {
 				previouslyOwnedPaths: ["assets/previous.js"],
 			},
 			outputRoot,
+			publicationPermit,
 		),
 		/Check-only builds cannot publish output/,
 	);

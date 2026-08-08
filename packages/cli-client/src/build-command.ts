@@ -8,6 +8,12 @@ import type {
 } from "@nazare/compiler/extensions";
 import type { OwnedOutputFile } from "@nazare/compiler/output";
 import type { Diagnostic } from "@nazare/core";
+import {
+	assertFeaturePermit,
+	createCliFeatureGateway,
+	type FeatureGateway,
+	type FeaturePermit,
+} from "./features.js";
 import { collectThemeInputFiles } from "./inspect-input.js";
 import type { CliOptions } from "./options.js";
 import type { Output } from "./output.js";
@@ -102,10 +108,19 @@ export async function runThemeBuild(
 		throwOnFailure?: boolean;
 		revision?: number;
 		signal?: AbortSignal;
+		featureGateway?: FeatureGateway;
 	} = {},
 ): Promise<number> {
 	try {
 		mode.signal?.throwIfAborted();
+		const featureGateway =
+			mode.featureGateway ?? createCliFeatureGateway(cliOptions);
+		let publicationPermit: FeaturePermit<"theme-publication"> | undefined;
+		const requirePublication = (): FeaturePermit<"theme-publication"> => {
+			publicationPermit ??= featureGateway.require("theme-publication");
+			assertFeaturePermit(publicationPermit, "theme-publication");
+			return publicationPermit;
+		};
 		// Both paths are explicit: an explicit CLI flag/positional wins, else the
 		// nazare.theme.json `build` config. There is no hardcoded default — an
 		// unset path is an error, not a silent `.nazare-out/theme`.
@@ -129,16 +144,8 @@ export async function runThemeBuild(
 		// Reconcile against a live theme: pull its merchant-owned data into the
 		// output dir first, so build products snapshot and preserve it instead of
 		// resetting it to the source seeds.
-		if (
-			cliOptions.pullData &&
-			!mode.checkOnly &&
-			!cliOptions.experimentalPublish
-		) {
-			throw new Error(
-				"Theme publication is unstable. Re-run with --experimental-publish to allow filesystem writes.",
-			);
-		}
 		if (cliOptions.pullData && !mode.checkOnly) {
+			requirePublication();
 			mode.signal?.throwIfAborted();
 			const outDirAbs = join(projectRoot, outDir);
 			await mkdir(outDirAbs, { recursive: true });
@@ -184,24 +191,32 @@ export async function runThemeBuild(
 			...(cliOptions.strictness ? { strictness: cliOptions.strictness } : {}),
 		};
 		const preview = await session.buildProducts(request, execution);
-		const extensionOutput = await runBuildExtensions(
-			await loadExtensions(projectRoot, config.extensions ?? []),
-			{
-				projectRoot,
-				sourceRoot,
-				outDir,
-				componentFiles: [
-					...new Set([
-						...preview.model.application.components.map(
-							(component) => `${sourceRoot}/${component.source.path}`,
-						),
-						...inputs
-							.filter((file) => file.path.endsWith(".nz.liquid"))
-							.map((file) => `${sourceRoot}/${file.path}`),
-					]),
-				],
-			},
-		);
+		validateExtensionConfigs(projectRoot, config.extensions ?? []);
+		let extensionOutput: {
+			files: OwnedOutputFile[];
+			diagnostics: Diagnostic[];
+		} = { files: [], diagnostics: [] };
+		if (!mode.checkOnly) {
+			if ((config.extensions?.length ?? 0) > 0) requirePublication();
+			extensionOutput = await runBuildExtensions(
+				await loadExtensions(projectRoot, config.extensions ?? []),
+				{
+					projectRoot,
+					sourceRoot,
+					outDir,
+					componentFiles: [
+						...new Set([
+							...preview.model.application.components.map(
+								(component) => `${sourceRoot}/${component.source.path}`,
+							),
+							...inputs
+								.filter((file) => file.path.endsWith(".nz.liquid"))
+								.map((file) => `${sourceRoot}/${file.path}`),
+						]),
+					],
+				},
+			);
+		}
 		mode.signal?.throwIfAborted();
 		const buildRequest = {
 			...request,
@@ -226,13 +241,11 @@ export async function runThemeBuild(
 			);
 			products = prepared.products;
 			if (!hasErrors(prepared.transactionPlan.diagnostics)) {
-				if (!cliOptions.experimentalPublish) {
-					throw new Error(
-						"Theme publication is unstable. Re-run with --experimental-publish to allow filesystem writes.",
-					);
-				}
 				mode.signal?.throwIfAborted();
-				products = await session.commitPersistentBuild(prepared);
+				products = await session.commitPersistentBuild(
+					prepared,
+					requirePublication(),
+				);
 			}
 		}
 		const result = commandBuildResult(products, inputs, sourceRoot, outDir);
@@ -258,7 +271,11 @@ export async function runThemeBuildWatch(
 	target: string | undefined,
 	cliOptions: CliOptions,
 	output: Output = console,
-	mode: { checkOnly?: boolean; signal?: AbortSignal } = {},
+	mode: {
+		checkOnly?: boolean;
+		signal?: AbortSignal;
+		featureGateway?: FeatureGateway;
+	} = {},
 ): Promise<number> {
 	const config = await readProjectConfig(projectRoot);
 	const sourceRoot =
@@ -296,6 +313,7 @@ export async function runThemeBuildWatch(
 				throwOnFailure: true,
 				revision,
 				signal,
+				featureGateway: mode.featureGateway,
 			},
 		);
 		return { code, errors: captured.errors, logs: captured.logs };
@@ -408,11 +426,10 @@ function captureOutput(): {
 	};
 }
 
-async function loadExtensions(
+function validateExtensionConfigs(
 	projectRoot: string,
-	configs: ThemeExtensionConfig[],
-): Promise<NazareExtensionRegistration[]> {
-	const loaded: NazareExtensionRegistration[] = [];
+	configs: readonly ThemeExtensionConfig[],
+): void {
 	for (const config of configs) {
 		if (typeof config !== "string" && (!config || typeof config !== "object")) {
 			throw new Error("Extension config must be a module path or object");
@@ -422,6 +439,18 @@ async function loadExtensions(
 			throw new Error("Extension config needs a module path");
 		}
 		assertAllowedExtensionModule(projectRoot, modulePath);
+	}
+}
+
+async function loadExtensions(
+	projectRoot: string,
+	configs: ThemeExtensionConfig[],
+): Promise<NazareExtensionRegistration[]> {
+	validateExtensionConfigs(projectRoot, configs);
+	const loaded: NazareExtensionRegistration[] = [];
+	for (const config of configs) {
+		const modulePath =
+			typeof config === "string" ? config : (config.module as string);
 		const moduleUrl = pathToFileURL(resolve(projectRoot, modulePath)).href;
 		// Fine for a one-shot build. Node caches modules by URL, so a future
 		// watch/dev mode that reloads an edited extension will need a cache-busting

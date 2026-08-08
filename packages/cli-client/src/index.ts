@@ -17,6 +17,11 @@ import { fileURLToPath } from "node:url";
 // runtime. Its values are loaded by the commands that need them — see below.
 import type { compileNazareArtifact } from "@nazare/compiler/compile";
 import {
+	createCliFeatureGateway,
+	featureForInvocation,
+	publicFeatures,
+} from "./features.js";
+import {
 	collectThemeInputFiles,
 	isMissingFileError,
 	matchesInspectGlob,
@@ -103,6 +108,13 @@ export async function main(
 			if (!printCommandHelp(command, output)) printHelp(output);
 			return 0;
 		}
+		const featureGateway = createCliFeatureGateway(cliOptions, env);
+		const invocationFeature = featureForInvocation(command, cliOptions);
+		if (invocationFeature) featureGateway.require(invocationFeature);
+		if (command === "features") {
+			printFeatures(cliOptions, output);
+			return 0;
+		}
 
 		// The project root is the working directory: every file the compiler
 		// sees is identified by its root-relative POSIX path, and readProjectFile
@@ -167,7 +179,10 @@ export async function main(
 				cliOptions.positionals[0],
 				cliOptions,
 				output,
-				{ checkOnly: command === "check" },
+				{
+					checkOnly: command === "check",
+					featureGateway,
+				},
 			);
 		}
 
@@ -330,6 +345,26 @@ export async function main(
 
 if (isCliEntrypoint(process.argv[1])) {
 	process.exit(await main());
+}
+
+function printFeatures(options: CliOptions, output: Output): void {
+	const features = publicFeatures();
+	if (options.json) {
+		output.log(JSON.stringify({ version: 1, features }, null, 2));
+		return;
+	}
+	for (const feature of features) {
+		const optIn =
+			feature.stability === "experimental"
+				? ` · enable: --enable-experimental ${feature.id}`
+				: "";
+		const tracking = feature.trackingIssue
+			? ` · tracking: #${feature.trackingIssue}`
+			: "";
+		output.log(
+			`${feature.id} · ${feature.stability} · ${feature.effects.join(", ")} · consent: ${feature.consent}${optIn}${tracking}\n  ${feature.description}`,
+		);
+	}
 }
 
 function isCliEntrypoint(argument: string | undefined): boolean {

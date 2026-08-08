@@ -38,11 +38,30 @@ nazare inspect impact <theme-relative-file> [dir] --format text|json
 nazare inspect metafield <owner.namespace.key> [dir] --format text|json
 
 # Serve graph queries to editor and agent integrations over JSONL stdio
-nazare graph-server [dir]
+nazare graph-server [dir] --enable-experimental graph-server
 ```
 
 `dir` defaults to `build.sourceRoot` in `nazare.theme.json`. Theme intelligence analyzes Nazare Liquid, plain Liquid, Shopify JSON, CSS, and JavaScript.
 
+## Feature stability gateway
+
+Every public CLI surface declares a feature ID in one code-owned registry. Stable features run automatically. Experimental features require explicit flags and are rejected before protected side effects. Internal features never appear through the public CLI.
+
+```sh
+# Discover stability, effects, consent policy, and tracking issues
+nazare features
+nazare features --json
+
+# Enable a read-only experimental feature for one invocation
+nazare graph-server . --enable-experimental graph-server
+
+# Publication always requires per-invocation CLI consent
+nazare build --enable-experimental theme-publication
+```
+
+`NAZARE_EXPERIMENTAL_FEATURES` can enable read-only experimental features for development and CI. It cannot grant per-invocation publication consent. `--experimental-publish` remains an alias for `--enable-experimental theme-publication`.
+
+Feature definitions are static and versioned with Nazare; remote flags cannot change compiler behavior. Adding or removing a feature updates the central registry, while command declarations and side-effect permits are checked by TypeScript and tests.
 
 ## Other stable features
 
@@ -54,7 +73,7 @@ nazare graph-server [dir]
 
   ```sh
   nazare init
-  nazare build --experimental-publish
+  nazare build --enable-experimental theme-publication
   shopify theme dev --path theme
   ```
 
