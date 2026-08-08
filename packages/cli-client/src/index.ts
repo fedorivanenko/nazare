@@ -177,8 +177,8 @@ export async function main(
 					`${resolvedInspectionRoot} resolves outside the project root ${projectRoot}`,
 				);
 			}
-			const { serveThemeGraph } = await import("./graph-server.js");
-			await serveThemeGraph(
+			const { serveInspection } = await import("./inspection-server.js");
+			await serveInspection(
 				canonicalInspectionRoot,
 				process.stdin,
 				process.stdout,
