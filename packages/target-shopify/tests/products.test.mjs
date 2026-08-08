@@ -164,7 +164,6 @@ test("resolves references through lazy symbol products", async () => {
 	const resolutions = await session.get(
 		shopifyResolutionProducts.fileResolutions.product({
 			file: id("sections/main.liquid"),
-			files: session.snapshot().fileIds,
 		}),
 	);
 
@@ -185,7 +184,6 @@ test("resolves direct relative Nazare imports by stable file identity", async ()
 	const resolutions = await session.get(
 		shopifyResolutionProducts.fileResolutions.product({
 			file: id("components/entry.nz.liquid"),
-			files: session.snapshot().fileIds,
 		}),
 	);
 
@@ -209,7 +207,6 @@ test("owns missing-reference diagnostics on resolution products", async () => {
 	});
 	const product = shopifyResolutionProducts.fileResolutions.product({
 		file: id("sections/main.liquid"),
-		files: session.snapshot().fileIds,
 	});
 	const resolutions = await session.get(product);
 	const metadata = await session.graph.metadata(product);
@@ -224,7 +221,6 @@ test("preserves dynamic references as explicit uncertainty", async () => {
 	});
 	const product = shopifyResolutionProducts.fileResolutions.product({
 		file: id("sections/main.liquid"),
-		files: session.snapshot().fileIds,
 	});
 	const resolutions = await session.get(product);
 	const metadata = await session.graph.metadata(product);
@@ -242,7 +238,6 @@ test("symbol queries preserve ambiguous declarations", async () => {
 		shopifyResolutionProducts.declarationsBySymbol.product({
 			role: "asset",
 			name: "icon.svg",
-			files: session.snapshot().fileIds,
 		}),
 	);
 	assert.equal(declarations.length, 2);

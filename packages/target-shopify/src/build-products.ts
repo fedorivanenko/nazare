@@ -34,6 +34,10 @@ import {
 	sourceProducts,
 } from "@nazare/compiler/source-products";
 import type { Diagnostic } from "@nazare/core";
+import {
+	mapWithConcurrency,
+	SHOPIFY_PRODUCT_CONCURRENCY,
+} from "./concurrency.js";
 import { shopifyProducts } from "./products.js";
 import {
 	applyMigrationsToMerchantData,
@@ -156,8 +160,10 @@ export function registerShopifyBuildComputations(
 				const application = await context.get(
 					portableApplicationModel.product({ files: selected, roots }),
 				);
-				const schemaRecords = await Promise.all(
-					selected.map(async (file) => ({
+				const schemaRecords = await mapWithConcurrency(
+					selected,
+					SHOPIFY_PRODUCT_CONCURRENCY,
+					async (file) => ({
 						file,
 						schema: await context.get(
 							shopifySemanticProducts.schema.product(file),
@@ -166,7 +172,7 @@ export function registerShopifyBuildComputations(
 							shopifyProducts.classification.product(file),
 						),
 						facts: await context.get(sourceProducts.facts.product(file)),
-					})),
+					}),
 				);
 				const schemaLock = createSchemaLock(schemaRecords);
 				const diagnostics = application.diagnostics;
@@ -206,10 +212,10 @@ export function registerShopifyBuildComputations(
 				const model = await context.get(
 					shopifyBuildProducts.model.product(plan),
 				);
-				const sources = await Promise.all(
-					model.files.map((file) =>
-						context.get(sourceProducts.classified.product(file)),
-					),
+				const sources = await mapWithConcurrency(
+					model.files,
+					SHOPIFY_PRODUCT_CONCURRENCY,
+					(file) => context.get(sourceProducts.classified.product(file)),
 				);
 				const sourceByPath = new Map(
 					sources.map((source) => [source.id.path, source.contents]),
@@ -338,10 +344,7 @@ async function selectBuildFiles(
 		if (selected.has(identity)) continue;
 		selected.set(identity, file);
 		const resolutions = await context.get(
-			shopifyResolutionProducts.fileResolutions.product({
-				file,
-				files: plan.files,
-			}),
+			shopifyResolutionProducts.fileResolutions.product({ file }),
 		);
 		for (const resolution of resolutions) {
 			for (const target of resolution.targetFiles) pending.push(target);

@@ -22,6 +22,10 @@ import {
 	sourceProducts,
 } from "@nazare/compiler/source-products";
 import {
+	mapWithConcurrency,
+	SHOPIFY_PRODUCT_CONCURRENCY,
+} from "./concurrency.js";
+import {
 	type ShopifyDeclaration,
 	type ShopifyFileClassification,
 	shopifyProducts,
@@ -63,8 +67,10 @@ export function registerShopifyPortableTransform(
 				const renderGraph = await context.get(
 					shopifyGraphProducts.renderGraph.product({ files }),
 				);
-				const records = await Promise.all(
-					files.map(async (file) => {
+				const records = await mapWithConcurrency(
+					files,
+					SHOPIFY_PRODUCT_CONCURRENCY,
+					async (file) => {
 						const [classification, declarations, schema, metafields, parsed] =
 							await Promise.all([
 								context.get(shopifyProducts.classification.product(file)),
@@ -81,7 +87,7 @@ export function registerShopifyPortableTransform(
 							metafields,
 							parsed,
 						};
-					}),
+					},
 				);
 				return portableModel(plan, renderGraph, records);
 			},
