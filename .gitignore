@@ -12,6 +12,7 @@ dist/
 
 # AI
 .claude/
+tmp/
 
 # personal
 notes/
