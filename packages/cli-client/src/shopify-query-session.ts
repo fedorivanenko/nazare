@@ -55,6 +55,7 @@ import {
 	shopifyQueryProducts,
 	shopifySemanticTarget,
 } from "@nazare/target-shopify";
+import { assertFeaturePermit, type FeaturePermit } from "./features.js";
 
 export type ShopifyQueryInputFile = { path: string; contents: string };
 export type ShopifyQueryExternalInputs = Partial<
@@ -307,8 +308,10 @@ export class ShopifyQuerySession {
 	async publishBuild(
 		request: ShopifyBuildRequest,
 		outputRoot: string,
+		permit: FeaturePermit<"theme-publication">,
 		execution: ShopifyBuildExecution = {},
 	): Promise<ShopifyBuildProductsResult> {
+		assertFeaturePermit(permit, "theme-publication");
 		if (request.checkOnly) {
 			throw new Error("Check-only builds cannot publish output");
 		}
@@ -436,7 +439,9 @@ export class ShopifyQuerySession {
 
 	async commitPersistentBuild(
 		prepared: PreparedShopifyPersistentBuild,
+		permit: FeaturePermit<"theme-publication">,
 	): Promise<ShopifyBuildProductsResult> {
+		assertFeaturePermit(permit, "theme-publication");
 		await executeOutputTransaction({
 			plan: prepared.transactionPlan,
 			expectedRevision: prepared.products.revision,
@@ -449,10 +454,12 @@ export class ShopifyQuerySession {
 	async publishPersistentBuild(
 		request: ShopifyBuildRequest,
 		options: ShopifyBuildPersistenceOptions,
+		permit: FeaturePermit<"theme-publication">,
 		execution: ShopifyBuildExecution = {},
 	): Promise<ShopifyBuildProductsResult> {
 		return this.commitPersistentBuild(
 			await this.preparePersistentBuild(request, options, execution),
+			permit,
 		);
 	}
 

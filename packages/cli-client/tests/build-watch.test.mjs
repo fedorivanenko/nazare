@@ -1,9 +1,29 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { runThemeBuildWatch } from "../dist/build-command.js";
+import { runThemeBuild, runThemeBuildWatch } from "../dist/build-command.js";
+
+test("build rejects forged publication gateways before pull side effects", async () => {
+	const root = await mkdtemp(join(tmpdir(), "nazare-forged-gateway-"));
+	await mkdir(join(root, "theme"));
+	const errors = [];
+	const status = await runThemeBuild(
+		root,
+		"theme",
+		{ outDir: "output", pullData: true, positionals: [] },
+		{ log() {}, error: (value) => errors.push(String(value)) },
+		{
+			featureGateway: {
+				require: (feature) => ({ feature }),
+			},
+		},
+	);
+	assert.equal(status, 1);
+	assert.match(errors.join("\n"), /valid theme-publication feature permit/);
+	await assert.rejects(access(join(root, "output")), { code: "ENOENT" });
+});
 
 test("build watch reuses one filesystem session and streams revisions", async () => {
 	const root = await mkdtemp(join(tmpdir(), "nazare-build-watch-"));
@@ -49,7 +69,7 @@ test("build watch reuses one filesystem session and streams revisions", async ()
 			"theme",
 			{
 				outDir: "output",
-				experimentalPublish: true,
+				enabledExperimentalFeatures: ["theme-publication"],
 				positionals: [],
 			},
 			output,

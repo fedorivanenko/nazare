@@ -1,3 +1,8 @@
+import {
+	experimentalFeatureAliases,
+	experimentalFeatureIds,
+	featureForEnableAlias,
+} from "./features.js";
 import type { Output } from "./output.js";
 
 export const INSPECT_VIEWS = [
@@ -29,8 +34,8 @@ export type CliOptions = {
 	outDir?: string;
 	/** build: reconcile against a live theme's merchant-owned data first. */
 	pullData?: boolean;
-	/** build: explicitly allow unstable filesystem publication. */
-	experimentalPublish?: boolean;
+	/** Explicitly enabled experimental feature IDs for this invocation. */
+	enabledExperimentalFeatures?: string[];
 	force?: boolean;
 	/** registry publish: write the payload locally instead of uploading it. */
 	pack?: boolean;
@@ -128,6 +133,16 @@ export function parseCliOptions(args: string[]): CliOptions {
 			index += format.consumed - 1;
 			continue;
 		}
+		const experimentalFeature = readValueOption(
+			args,
+			index,
+			"--enable-experimental",
+		);
+		if (experimentalFeature) {
+			enableExperimentalFeature(options, experimentalFeature.value);
+			index += experimentalFeature.consumed - 1;
+			continue;
+		}
 		if (arg === "--help" || arg === "-h") {
 			options.help = true;
 			continue;
@@ -140,8 +155,9 @@ export function parseCliOptions(args: string[]): CliOptions {
 			options.pullData = true;
 			continue;
 		}
-		if (arg === "--experimental-publish") {
-			options.experimentalPublish = true;
+		const aliasedExperimentalFeature = featureForEnableAlias(arg);
+		if (aliasedExperimentalFeature) {
+			enableExperimentalFeature(options, aliasedExperimentalFeature);
 			continue;
 		}
 		if (arg === "--pack") {
@@ -167,6 +183,19 @@ export function parseCliOptions(args: string[]): CliOptions {
 	}
 
 	return options;
+}
+
+function enableExperimentalFeature(
+	options: CliOptions,
+	feature: string | undefined,
+): void {
+	if (!feature) {
+		throw new Error("--enable-experimental requires a feature ID");
+	}
+	options.enabledExperimentalFeatures ??= [];
+	if (!options.enabledExperimentalFeatures.includes(feature)) {
+		options.enabledExperimentalFeatures.push(feature);
+	}
 }
 
 function parseSourceLanguage(
@@ -200,6 +229,7 @@ export function printHelp(output: Output = console): void {
   nazare inspect metafield <owner.namespace.key> [dir]
                                      local Liquid/JSON/static GraphQL readers and affected pages
   nazare graph-server [dir]          serve graph queries over newline-delimited JSON stdio
+  nazare features                    list public feature stability and effects
 
 Preview:
   nazare preview serve [dir]             serve the workbench, rebuilding on change
@@ -246,7 +276,14 @@ Options:
   --out-dir <dir>                    build output directory (else nazare.theme.json build.outDir);
                                      preview build writes here too (preview.outDir)
   --pull-data                        build: reconcile against a live theme's merchant-owned data first
-  --experimental-publish             build: allow unstable filesystem publication
+  --enable-experimental <feature>    enable one experimental feature for this invocation
+                                     ${experimentalFeatureIds().join(", ")}
+${experimentalFeatureAliases()
+	.map(
+		({ alias, feature }) =>
+			`  ${alias.padEnd(34)} alias for --enable-experimental ${feature}`,
+	)
+	.join("\n")}
   --store <domain>                   build --pull-data: Shopify store to pull from
   --theme <id|name>                  build --pull-data: theme to pull from
   --json                             build: print the raw result as JSON
@@ -258,6 +295,7 @@ Options:
 Env:
   NAZARE_REGISTRY                    registry base URL, or file:<dir> for a local one
   NAZARE_TOKEN                       bearer token for publish (file: registries ignore it)
+  NAZARE_EXPERIMENTAL_FEATURES       comma-separated read-only experimental features
 
 Nazare builds a theme directory; the Shopify CLI moves it to and from a store
 (\`shopify theme push --path <outDir>\`), which is why there is no push or pull.`);
