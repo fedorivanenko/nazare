@@ -99,6 +99,20 @@ test("project file serialization and ordering are deterministic", () => {
 	assert.equal(compareProjectFileIds(left, right) < 0, true);
 });
 
+test("serialization does not memoize foreign frozen accessors", () => {
+	let path = "first.liquid";
+	const id = Object.freeze({
+		workspace: "a",
+		package: "theme",
+		get path() {
+			return path;
+		},
+	});
+	const first = serializeProjectFileId(id);
+	path = "second.liquid";
+	assert.notEqual(serializeProjectFileId(id), first);
+});
+
 test("filesystem provider reads and fingerprints contained files", async () => {
 	await withDirectory(async (root) => {
 		await mkdir(join(root, "sections"));

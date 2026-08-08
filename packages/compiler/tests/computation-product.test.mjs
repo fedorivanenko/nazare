@@ -25,6 +25,14 @@ test("canonical product keys preserve value types", () => {
 	assert.notEqual(canonicalProductKey(["a"]), canonicalProductKey({ 0: "a" }));
 });
 
+test("frozen key caching does not hide mutable descendants", () => {
+	const child = { value: 1 };
+	const key = Object.freeze({ child });
+	const before = canonicalProductKey(key);
+	child.value = 2;
+	assert.notEqual(canonicalProductKey(key), before);
+});
+
 test("canonical product keys reject unsafe values", () => {
 	assert.throws(() => canonicalProductKey(Number.NaN), /must be finite/);
 	assert.throws(() => canonicalProductKey(Number.POSITIVE_INFINITY), /finite/);

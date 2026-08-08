@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
 
+const frozenSerializationCache = new WeakMap<object, string>();
+const deeplyFrozenProductKeys = new WeakSet<object>();
+
 export type ProductKey =
 	| null
 	| boolean
@@ -43,38 +46,62 @@ function serializeObject(
 	value: readonly ProductKey[] | { readonly [key: string]: ProductKey },
 	ancestors: WeakSet<object>,
 ): string {
+	const cached = frozenSerializationCache.get(value);
+	if (cached !== undefined) return cached;
 	if (ancestors.has(value)) {
 		throw new TypeError("Product keys must not contain cycles");
 	}
 	ancestors.add(value);
 
 	try {
+		let serialized: string;
 		if (Array.isArray(value)) {
 			assertDenseDataArray(value);
-			return `array:[${value
+			serialized = `array:[${value
 				.map((item) => serialize(item, ancestors))
 				.join(",")}]`;
-		}
+		} else {
+			const prototype = Object.getPrototypeOf(value);
+			if (prototype !== Object.prototype && prototype !== null) {
+				throw new TypeError(
+					"Product key objects must be plain objects or null-prototype objects",
+				);
+			}
 
-		const prototype = Object.getPrototypeOf(value);
-		if (prototype !== Object.prototype && prototype !== null) {
-			throw new TypeError(
-				"Product key objects must be plain objects or null-prototype objects",
+			const entries = dataEntries(
+				value as { readonly [key: string]: ProductKey },
 			);
+			serialized = `object:{${entries
+				.sort(([left], [right]) => left.localeCompare(right))
+				.map(
+					([key, item]) =>
+						`${JSON.stringify(key)}:${serialize(item, ancestors)}`,
+				)
+				.join(",")}}`;
 		}
-
-		const entries = dataEntries(
-			value as { readonly [key: string]: ProductKey },
-		);
-		return `object:{${entries
-			.sort(([left], [right]) => left.localeCompare(right))
-			.map(
-				([key, item]) => `${JSON.stringify(key)}:${serialize(item, ancestors)}`,
-			)
-			.join(",")}}`;
+		if (isDeeplyFrozenProductKey(value)) {
+			frozenSerializationCache.set(value, serialized);
+		}
+		return serialized;
 	} finally {
 		ancestors.delete(value);
 	}
+}
+
+function isDeeplyFrozenProductKey(value: object): boolean {
+	if (deeplyFrozenProductKeys.has(value)) return true;
+	if (!Object.isFrozen(value)) return false;
+	for (const item of Object.values(value) as unknown[]) {
+		if (
+			typeof item === "object" &&
+			item !== null &&
+			!isDeeplyFrozenProductKey(item)
+		) {
+			return false;
+		}
+	}
+	deeplyFrozenProductKeys.add(value);
+	return true;
 }
 
 function assertDenseDataArray(value: readonly ProductKey[]): void {

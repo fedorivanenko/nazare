@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
 	CachedComputation,
 	CachedComputationDependency,
@@ -745,26 +746,42 @@ function fingerprintComputationProduct(
 	cacheKey: string,
 	dependencies: readonly CachedComputationDependency[],
 ): string {
-	const dependencyKeys: ProductKey[] = dependencies.map((dependency) =>
-		dependency.kind === "input"
-			? {
-					kind: "input",
-					key: dependency.key,
-					fingerprint: dependency.fingerprint,
-				}
-			: {
-					kind: "product",
-					key: dependency.product.cacheKey,
-					fingerprint: dependency.fingerprint,
-				},
-	);
-	dependencyKeys.sort((left, right) =>
-		canonicalProductKey(left).localeCompare(canonicalProductKey(right)),
-	);
-	return fingerprintProductKey({
-		product: cacheKey,
-		dependencies: dependencyKeys,
-	});
+	const dependencyKeys: [kind: string, key: string, fingerprint: string][] =
+		dependencies.map((dependency) => [
+			dependency.kind,
+			dependency.kind === "input"
+				? dependency.key
+				: dependency.product.cacheKey,
+			dependency.fingerprint,
+		]);
+	dependencyKeys.sort(compareFingerprintRecords);
+	const hash = createHash("sha256");
+	updateLengthPrefixedHash(hash, cacheKey);
+	for (const dependency of dependencyKeys) {
+		for (const field of dependency) updateLengthPrefixedHash(hash, field);
+	}
+	return hash.digest("hex");
+}
+
+function updateLengthPrefixedHash(
+	hash: ReturnType<typeof createHash>,
+	value: string,
+): void {
+	hash.update(`${Buffer.byteLength(value, "utf8")}:`);
+	hash.update(value, "utf8");
+}
+
+function compareFingerprintRecords(
+	left: readonly string[],
+	right: readonly string[],
+): number {
+	for (let index = 0; index < left.length; index += 1) {
+		const leftPart = left[index] as string;
+		const rightPart = right[index] as string;
+		if (leftPart < rightPart) return -1;
+		if (leftPart > rightPart) return 1;
+	}
+	return 0;
 }
 
 function inputDependency(key: string): string {
