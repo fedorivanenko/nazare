@@ -4,7 +4,7 @@ Ship Shopify faster and easier
 
 Nazare is a toolset that lets Shopify developers maintaining long-lived themes cut the time and breakage cost of each change
 
-> **Project status:** Nazare is pre-release and unstable. APIs, cache formats, file formats, compiler behavior, registry behavior, and generated output may change without migration support. Theme publication requires explicit `--experimental-publish`; keep source control and backups enabled, and test generated themes with Theme Check and Shopify CLI before using them on a live storefront.
+> **Project status:** Nazare is pre-release, with stability declared per feature by `nazare features`. Stable machine contracts follow their documented compatibility policies; experimental and internal surfaces may change without migration support. Cache formats and generated theme output are not public compatibility contracts. Theme publication requires `--enable-experimental=theme-publication`; keep source control and backups enabled, and test generated themes with Theme Check and Shopify CLI before using them on a live storefront.
 
 ## Installation
 
@@ -37,11 +37,13 @@ nazare inspect impact <theme-relative-file> [dir] --format text|json
 # Find a metafield's definition, readers, and affected pages
 nazare inspect metafield <owner.namespace.key> [dir] --format text|json
 
-# Serve graph queries to editor and agent integrations over JSONL stdio
-nazare graph-server [dir] --enable-experimental graph-server
+# Serve inspection tools to editor and agent integrations over MCP stdio
+nazare inspect serve [dir] --enable-experimental
 ```
 
 `dir` defaults to `build.sourceRoot` in `nazare.theme.json`. Theme intelligence analyzes Nazare Liquid, plain Liquid, Shopify JSON, CSS, and JavaScript.
+
+Theme, impact, and metafield JSON outputs are stable, independently versioned machine contracts. Their committed schemas, golden examples, and compatibility policy live in [`packages/cli-client/contracts`](packages/cli-client/contracts). Text and DOT rendering remain human-facing and may change presentation without a contract-version bump.
 
 ## Feature stability gateway
 
@@ -53,13 +55,17 @@ nazare features
 nazare features --json
 
 # Enable a read-only experimental feature for one invocation
-nazare graph-server . --enable-experimental graph-server
+nazare inspect serve . --enable-experimental
+
+# Low-level AST/IR/compiler projections are debugging interfaces
+nazare inspect ir component.nz.liquid --enable-experimental
+
 
 # Publication always requires per-invocation CLI consent
-nazare build --enable-experimental theme-publication
+nazare build --enable-experimental=theme-publication
 ```
 
-`NAZARE_EXPERIMENTAL_FEATURES` can enable read-only experimental features for development and CI. It cannot grant per-invocation publication consent. `--experimental-publish` remains an alias for `--enable-experimental theme-publication`.
+`NAZARE_EXPERIMENTAL_FEATURES` can enable read-only experimental features for development and CI. It cannot grant per-invocation publication consent. `--experimental-publish` remains an alias for `--enable-experimental=theme-publication`.
 
 Feature definitions are static and versioned with Nazare; remote flags cannot change compiler behavior. Adding or removing a feature updates the central registry, while command declarations and side-effect permits are checked by TypeScript and tests.
 
@@ -73,7 +79,7 @@ Feature definitions are static and versioned with Nazare; remote flags cannot ch
 
   ```sh
   nazare init
-  nazare build --enable-experimental theme-publication
+  nazare build --enable-experimental=theme-publication
   shopify theme dev --path theme
   ```
 
@@ -107,7 +113,7 @@ revisioned project inputs
 → revision-guarded atomic publication
 ```
 
-Build, inspect, and preview share revisioned source products but request different projections. `build --watch`, `check --watch`, `inspect theme --watch`, and Preview serve publish only current revision `result` or `update-failed` events; superseded work is aborted. Dependency reads automatically create invalidation edges. Pure computations may be cached; filesystem publication and other side effects are never cached.
+Build, inspect, and preview share revisioned source products but request different projections. `build --watch`, `check --watch`, and Preview serve publish only current revision `result` or `update-failed` events; superseded work is aborted. Dependency reads automatically create invalidation edges. Pure computations may be cached; filesystem publication and other side effects are never cached.
 
 Stable semantic identity uses project-relative `ProjectFileId` values. Dynamic references and opaque runtime behavior remain explicit uncertainty rather than guessed dependencies.
 

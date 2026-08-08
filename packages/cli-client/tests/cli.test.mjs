@@ -104,9 +104,27 @@ test("cli: lists stable and experimental feature contracts", {
 test("cli: blocks experimental commands at the centralized gateway", {
 	smoke: true,
 }, async () => {
-	const out = await runCli(process.cwd(), "graph-server", ".");
+	const out = await runCli(process.cwd(), "inspect", "serve", ".");
 	assert.equal(out.status, 1);
-	assert.match(out.stderr, /--enable-experimental graph-server/);
+	assert.match(out.stderr, /Re-run with --enable-experimental\b/);
+});
+
+test("cli: removed inspection streams and top-level server command stay absent", {
+	smoke: true,
+}, async () => {
+	const removedServer = await runCli(process.cwd(), "graph-server", ".");
+	assert.equal(removedServer.status, 1);
+	assert.match(removedServer.stderr, /Unknown command graph-server/);
+
+	const removedWatch = await runCli(
+		process.cwd(),
+		"inspect",
+		"theme",
+		".",
+		"--watch",
+	);
+	assert.equal(removedWatch.status, 1);
+	assert.match(removedWatch.stderr, /inspect theme --watch was removed/);
 });
 
 test("cli: preview and inspect expose focused help", {
@@ -117,6 +135,7 @@ test("cli: preview and inspect expose focused help", {
 		{ args: ["preview", "serve", "-h"], usage: "Usage: nazare preview" },
 		{ args: ["inspect", "--help"], usage: "nazare inspect <ast|ir|graph" },
 		{ args: ["help", "inspect"], usage: "nazare inspect <ast|ir|graph" },
+		{ args: ["inspect", "serve", "-h"], usage: "nazare inspect serve" },
 	]) {
 		const out = await runCli(process.cwd(), ...args);
 		assert.equal(out.status, 0, `${args.join(" ")}\n${out.stderr}`);
@@ -300,6 +319,7 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 				"inspect",
 				"artifact",
 				"component.nz.liquid",
+				"--enable-experimental",
 			);
 			const loose = await runCli(
 				cwd,
@@ -308,6 +328,7 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 				"component.nz.liquid",
 				"--strictness",
 				"loose",
+				"--enable-experimental",
 			);
 
 			assert.notEqual(strict.status, 0);
@@ -771,7 +792,17 @@ test("cli: inspect names the view first and rejects an unknown one", async () =>
 	await withProject(
 		{ "component.nz.liquid": "<div>hi</div>\n" },
 		async (cwd) => {
-			const ir = await runCli(cwd, "inspect", "ir", "component.nz.liquid");
+			const blocked = await runCli(cwd, "inspect", "ir", "component.nz.liquid");
+			assert.equal(blocked.status, 1);
+			assert.match(blocked.stderr, /Re-run with --enable-experimental\b/);
+
+			const ir = await runCli(
+				cwd,
+				"inspect",
+				"ir",
+				"component.nz.liquid",
+				"--enable-experimental",
+			);
 			assert.equal(ir.status, 0, ir.stderr);
 			assert.ok(JSON.parse(ir.stdout).ir);
 

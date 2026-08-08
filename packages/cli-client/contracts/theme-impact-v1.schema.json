@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nazare.dev/contracts/theme-impact-v1.schema.json",
+  "title": "Nazare theme file impact v1",
+  "type": "object",
+  "required": ["root", "version", "path", "fileKind", "usage", "certainty", "dependencies", "dependents", "affectedPages", "uncertainty", "issues"],
+  "properties": {
+    "root": { "type": "string" },
+    "version": { "const": 1 },
+    "path": { "type": "string" },
+    "fileKind": {
+      "enum": [
+        "section",
+        "snippet",
+        "themeBlock",
+        "templateJson",
+        "templateLiquid",
+        "layout",
+        "locale",
+        "asset",
+        "nazareComponent",
+        "other"
+      ]
+    },
+    "usage": { "enum": ["used", "unused"] },
+    "certainty": { "enum": ["complete", "partial"] },
+    "dependencies": { "type": "array", "items": { "type": "string" } },
+    "dependents": { "type": "array", "items": { "type": "string" } },
+    "affectedPages": { "type": "array", "items": { "type": "string" } },
+    "uncertainty": { "type": "array", "items": { "type": "string" } },
+    "issues": {
+      "type": "array",
+      "items": { "$ref": "https://nazare.dev/contracts/diagnostic-v1.schema.json" }
+    }
+  },
+  "additionalProperties": false
+}

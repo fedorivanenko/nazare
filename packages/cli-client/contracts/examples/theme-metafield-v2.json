@@ -1,0 +1,38 @@
+{
+  "root": ".",
+  "version": 2,
+  "identity": {
+    "owner": "product",
+    "namespace": "custom",
+    "key": "subtitle"
+  },
+  "scope": {
+    "excluded": [
+      "remoteAppRuntime",
+      "runtimeNetworkResponses",
+      "appProxyResponses",
+      "serverSideAppData"
+    ]
+  },
+  "reads": [
+    {
+      "fromPath": "snippets/card.liquid"
+    }
+  ],
+  "apiReads": [],
+  "affectedSources": [
+    "snippets/card.liquid"
+  ],
+  "affectedPages": [
+    "templates/product.json"
+  ],
+  "snapshot": {
+    "state": "missing",
+    "path": ".shopify/metafields.json"
+  },
+  "certainty": "complete",
+  "uncertainty": [],
+  "uncertainSources": [],
+  "localNetworkAccessCount": 0,
+  "issues": []
+}

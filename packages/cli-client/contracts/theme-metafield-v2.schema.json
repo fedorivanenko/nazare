@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nazare.dev/contracts/theme-metafield-v2.schema.json",
+  "title": "Nazare theme metafield impact v2",
+  "type": "object",
+  "required": ["root", "version", "identity", "scope", "reads", "apiReads", "affectedSources", "affectedPages", "snapshot", "certainty", "uncertainty", "uncertainSources", "localNetworkAccessCount", "issues"],
+  "properties": {
+    "root": { "type": "string" },
+    "version": { "const": 2 },
+    "identity": {
+      "type": "object",
+      "required": ["owner", "namespace", "key"],
+      "properties": {
+        "owner": { "type": "string" },
+        "namespace": { "type": "string" },
+        "key": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "object",
+      "required": ["excluded"],
+      "properties": {
+        "excluded": {
+          "const": [
+            "remoteAppRuntime",
+            "runtimeNetworkResponses",
+            "appProxyResponses",
+            "serverSideAppData"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "definition": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "reads": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fromPath"],
+        "properties": { "fromPath": { "type": "string" } },
+        "additionalProperties": false
+      }
+    },
+    "apiReads": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fromPath", "transport"],
+        "properties": {
+          "fromPath": { "type": "string" },
+          "transport": {
+            "enum": ["fetch", "xmlHttpRequest", "sendBeacon", "graphqlClient"]
+          },
+          "endpoint": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "affectedSources": { "type": "array", "items": { "type": "string" } },
+    "affectedPages": { "type": "array", "items": { "type": "string" } },
+    "snapshot": {
+      "type": "object",
+      "required": ["state", "path"],
+      "properties": {
+        "state": { "enum": ["present", "missing"] },
+        "path": { "const": ".shopify/metafields.json" },
+        "pulledAt": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "certainty": { "enum": ["complete", "partial"] },
+    "uncertainty": { "type": "array", "items": { "type": "string" } },
+    "uncertainSources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "reasons"],
+        "properties": {
+          "path": { "type": "string" },
+          "reasons": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "localNetworkAccessCount": { "type": "integer", "minimum": 0 },
+    "issues": {
+      "type": "array",
+      "items": { "$ref": "https://nazare.dev/contracts/diagnostic-v1.schema.json" }
+    }
+  },
+  "additionalProperties": false
+}

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
 	assertFeaturePermit,
+	createCliFeatureGateway,
 	createFeatureGateway,
 	experimentalFeatureAliases,
 	featureForEnableAlias,
@@ -17,21 +18,46 @@ test("stable features are automatic and experimental features require enablement
 		"theme-inspection",
 	);
 	assert.throws(
-		() => defaults.require("graph-server"),
-		/--enable-experimental graph-server/,
+		() => defaults.require("inspection-server"),
+		/--enable-experimental=inspection-server/,
 	);
 
-	const enabled = createFeatureGateway({ cliEnabled: ["graph-server"] });
-	assert.equal(enabled.require("graph-server").feature, "graph-server");
+	const enabled = createFeatureGateway({ cliEnabled: ["inspection-server"] });
+	assert.equal(
+		enabled.require("inspection-server").feature,
+		"inspection-server",
+	);
+});
+
+test("bare experimental consent enables the routed invocation feature", () => {
+	const gateway = createCliFeatureGateway(
+		{ positionals: ["serve"], enableInvocationExperimental: true },
+		{},
+		"inspection-server",
+	);
+	assert.equal(
+		gateway.require("inspection-server").feature,
+		"inspection-server",
+	);
 });
 
 test("invocation consent cannot come from environment flags", () => {
 	const gateway = createFeatureGateway({
-		environmentEnabled: ["graph-server", "theme-publication"],
+		environmentEnabled: ["inspection-server", "theme-publication"],
 	});
-	assert.equal(gateway.require("graph-server").feature, "graph-server");
+	assert.equal(
+		gateway.require("inspection-server").feature,
+		"inspection-server",
+	);
 	assert.throws(
 		() => gateway.require("theme-publication"),
+		/per-invocation consent/,
+	);
+	assert.throws(
+		() =>
+			createFeatureGateway({
+				environmentEnabled: ["compiler-inspection"],
+			}).require("compiler-inspection"),
 		/per-invocation consent/,
 	);
 });
@@ -93,8 +119,8 @@ test("command feature routing is centralized and declarative", () => {
 		"compiler-inspection",
 	);
 	assert.equal(
-		featureForInvocation("graph-server", { positionals: [] }),
-		"graph-server",
+		featureForInvocation("inspect", { positionals: ["serve"] }),
+		"inspection-server",
 	);
 	assert.ok(INVOCATION_FEATURE_RULES.length > 0);
 });

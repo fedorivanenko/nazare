@@ -38,15 +38,17 @@ export const FEATURES = {
 	},
 	"compiler-inspection": {
 		id: "compiler-inspection",
-		description: "Inspect compiler projections for one file",
-		stability: "stable",
+		description:
+			"Inspect unstable compiler implementation projections for one file",
+		stability: "experimental",
 		effects: ["read", "filesystem-write"],
-		consent: "automatic",
+		consent: "invocation",
 		since: "0.1.0",
+		trackingIssue: 152,
 	},
 	"theme-inspection": {
 		id: "theme-inspection",
-		description: "Inspect and query the revisioned whole-theme graph",
+		description: "Inspect and query stable one-shot whole-theme JSON contracts",
 		stability: "stable",
 		effects: ["read"],
 		consent: "automatic",
@@ -70,9 +72,10 @@ export const FEATURES = {
 		trackingIssue: 150,
 		enableAliases: ["--experimental-publish"],
 	},
-	"graph-server": {
-		id: "graph-server",
-		description: "Serve graph queries over the experimental JSONL protocol",
+	"inspection-server": {
+		id: "inspection-server",
+		description:
+			"Serve inspection tools over the experimental MCP stdio protocol",
 		stability: "experimental",
 		effects: ["read"],
 		consent: "explicit",
@@ -145,6 +148,7 @@ export function createFeatureGateway(
 	options: {
 		cliEnabled?: Iterable<string>;
 		environmentEnabled?: Iterable<string>;
+		invocationFeature?: FeatureId;
 	} = {},
 ): FeatureGateway {
 	const enablement = new Map<FeatureId, Set<FeatureEnablementSource>>();
@@ -171,11 +175,15 @@ export function createFeatureGateway(
 						"enableAliases" in definition && definition.enableAliases.length > 0
 							? ` (alias: ${definition.enableAliases.join(", ")})`
 							: "";
+					const invocationEnablement =
+						options.invocationFeature === feature
+							? "--enable-experimental"
+							: `--enable-experimental=${feature}`;
 					throw new FeatureAccessError(
 						feature,
 						definition.consent === "invocation"
-							? `Experimental feature ${feature} requires per-invocation consent. Re-run with --enable-experimental ${feature}${aliases}.`
-							: `Experimental feature ${feature} is disabled. Re-run with --enable-experimental ${feature} or set NAZARE_EXPERIMENTAL_FEATURES=${feature}.`,
+							? `Experimental feature ${feature} requires per-invocation consent. Re-run with ${invocationEnablement}${aliases}.`
+							: `Experimental feature ${feature} is disabled. Re-run with ${invocationEnablement} or set NAZARE_EXPERIMENTAL_FEATURES=${feature}.`,
 					);
 				}
 			}
@@ -189,12 +197,19 @@ export function createFeatureGateway(
 export function createCliFeatureGateway(
 	options: CliOptions,
 	environment: NodeJS.ProcessEnv = process.env,
+	invocationFeature?: FeatureId,
 ): FeatureGateway {
 	return createFeatureGateway({
-		cliEnabled: options.enabledExperimentalFeatures,
+		cliEnabled: [
+			...(options.enabledExperimentalFeatures ?? []),
+			...(options.enableInvocationExperimental && invocationFeature
+				? [invocationFeature]
+				: []),
+		],
 		environmentEnabled: parseExperimentalFeatureEnvironment(
 			environment.NAZARE_EXPERIMENTAL_FEATURES,
 		),
+		invocationFeature,
 	});
 }
 
@@ -259,7 +274,11 @@ export type InvocationFeatureRule = {
 export const INVOCATION_FEATURE_RULES = [
 	{ commands: ["features"], feature: "feature-discovery" },
 	{ commands: ["source"], feature: "source-analysis" },
-	{ commands: ["graph-server"], feature: "graph-server" },
+	{
+		commands: ["inspect"],
+		firstPositionals: ["serve"],
+		feature: "inspection-server",
+	},
 	{ commands: ["build", "check"], feature: "theme-build" },
 	{ commands: ["preview"], feature: "preview" },
 	{ commands: ["init"], feature: "project-initialization" },
@@ -272,7 +291,11 @@ export const INVOCATION_FEATURE_RULES = [
 		firstPositionals: ["theme", "impact", "metafield"],
 		feature: "theme-inspection",
 	},
-	{ commands: ["inspect"], feature: "compiler-inspection" },
+	{
+		commands: ["inspect"],
+		firstPositionals: ["ast", "ir", "graph", "schema", "artifact", "dump"],
+		feature: "compiler-inspection",
+	},
 ] as const satisfies readonly InvocationFeatureRule[];
 
 export function featureForInvocation(

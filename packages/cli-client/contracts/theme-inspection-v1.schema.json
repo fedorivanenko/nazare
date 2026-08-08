@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nazare.dev/contracts/theme-inspection-v1.schema.json",
+  "title": "Nazare theme inspection v1",
+  "type": "object",
+  "required": ["version", "nodes", "edges", "issues", "uncertainty", "metafields", "summary"],
+  "properties": {
+    "version": { "const": 1 },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "path", "kind"],
+        "properties": {
+          "id": { "type": "string" },
+          "path": { "type": "string" },
+          "kind": {
+            "enum": [
+              "section",
+              "snippet",
+              "themeBlock",
+              "templateJson",
+              "templateLiquid",
+              "layout",
+              "locale",
+              "asset",
+              "nazareComponent",
+              "other"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "from", "to", "kind"],
+        "properties": {
+          "id": { "type": "string" },
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "kind": {
+            "enum": ["snippet", "section", "section-group", "layout", "nazare-render"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": { "$ref": "https://nazare.dev/contracts/diagnostic-v1.schema.json" }
+    },
+    "uncertainty": { "type": "array", "items": { "type": "string" } },
+    "metafields": {
+      "type": "object",
+      "required": ["state", "consumedDefinitionIds"],
+      "properties": {
+        "state": { "enum": ["present", "unknown"] },
+        "consumedDefinitionIds": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": ["unresolvedCount", "brokenMetafieldReadCount", "affectedPageCount"],
+      "properties": {
+        "unresolvedCount": { "type": "integer", "minimum": 0 },
+        "brokenMetafieldReadCount": { "type": "integer", "minimum": 0 },
+        "affectedPageCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -44,6 +44,7 @@ for pkg in cli-client compiler core preview registry source source-cli target-sh
 	cp "packages/$pkg/package.json" "$out/packages/$pkg/package.json"
 	cp -R "packages/$pkg/dist" "$out/packages/$pkg/dist"
 done
+cp -R packages/cli-client/contracts "$out/packages/cli-client/contracts"
 
 # @nazare/source loads both native grammars at runtime. Generated C sources
 # remain available for provenance; release artifacts carry host-built binaries.

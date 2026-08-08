@@ -14,25 +14,23 @@ test("parses unified watch mode independently from command positionals", () => {
 	);
 });
 
-test("parses repeatable generic experimental feature flags", () => {
+test("parses repeatable named experimental feature flags", () => {
 	assert.deepEqual(
 		parseCliOptions([
-			"--enable-experimental",
-			"graph-server",
+			"--enable-experimental=inspection-server",
 			"--enable-experimental=theme-publication",
-			"--enable-experimental",
-			"graph-server",
+			"--enable-experimental=inspection-server",
 		]),
 		{
 			positionals: [],
-			enabledExperimentalFeatures: ["graph-server", "theme-publication"],
+			enabledExperimentalFeatures: ["inspection-server", "theme-publication"],
 		},
 	);
 });
 
-test("rejects a missing generic experimental feature ID", () => {
-	assert.throws(
-		() => parseCliOptions(["--enable-experimental"]),
-		/requires a feature ID/,
-	);
+test("bare experimental flag enables the current invocation feature", () => {
+	assert.deepEqual(parseCliOptions(["serve", ".", "--enable-experimental"]), {
+		positionals: ["serve", "."],
+		enableInvocationExperimental: true,
+	});
 });

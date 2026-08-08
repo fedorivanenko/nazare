@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nazare.dev/contracts/diagnostic-v1.schema.json",
+  "title": "Nazare diagnostic v1",
+  "type": "object",
+  "required": ["severity", "code", "message"],
+  "properties": {
+    "severity": { "enum": ["error", "warning", "info"] },
+    "code": { "type": "string" },
+    "message": { "type": "string" },
+    "phase": { "enum": ["parse", "resolve", "check", "validate", "emit"] },
+    "nodeId": { "type": "string" },
+    "edgeId": { "type": "string" },
+    "span": {
+      "type": "object",
+      "required": ["file", "start", "end"],
+      "properties": {
+        "file": { "type": "string" },
+        "start": { "$ref": "#/definitions/position" },
+        "end": { "$ref": "#/definitions/position" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "position": {
+      "type": "object",
+      "required": ["line", "column"],
+      "properties": {
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

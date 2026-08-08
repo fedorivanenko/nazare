@@ -34,6 +34,8 @@ export type CliOptions = {
 	outDir?: string;
 	/** build: reconcile against a live theme's merchant-owned data first. */
 	pullData?: boolean;
+	/** Enable the experimental feature selected by the current command. */
+	enableInvocationExperimental?: boolean;
 	/** Explicitly enabled experimental feature IDs for this invocation. */
 	enabledExperimentalFeatures?: string[];
 	force?: boolean;
@@ -133,14 +135,15 @@ export function parseCliOptions(args: string[]): CliOptions {
 			index += format.consumed - 1;
 			continue;
 		}
-		const experimentalFeature = readValueOption(
-			args,
-			index,
-			"--enable-experimental",
-		);
-		if (experimentalFeature) {
-			enableExperimentalFeature(options, experimentalFeature.value);
-			index += experimentalFeature.consumed - 1;
+		if (arg === "--enable-experimental") {
+			options.enableInvocationExperimental = true;
+			continue;
+		}
+		if (arg.startsWith("--enable-experimental=")) {
+			enableExperimentalFeature(
+				options,
+				arg.slice("--enable-experimental=".length),
+			);
 			continue;
 		}
 		if (arg === "--help" || arg === "-h") {
@@ -190,7 +193,7 @@ function enableExperimentalFeature(
 	feature: string | undefined,
 ): void {
 	if (!feature) {
-		throw new Error("--enable-experimental requires a feature ID");
+		throw new Error("--enable-experimental=<feature> requires a feature ID");
 	}
 	options.enabledExperimentalFeatures ??= [];
 	if (!options.enabledExperimentalFeatures.includes(feature)) {
@@ -222,13 +225,13 @@ export function printHelp(output: Output = console): void {
   nazare preview <command>           the component workbench
   nazare source analyze [file]       stable parser facts as JSON; accepts --stdin
   nazare registry <command>          install, author, and choose registries
-  nazare inspect <view> <file>       compiler facts as JSON
+  nazare inspect <view> <file>       experimental compiler facts as JSON
   nazare inspect theme [dir]         semantic graph for a whole theme
                                      dir defaults to nazare.theme.json build.sourceRoot
   nazare inspect impact <file> [dir] change impact for one theme-relative file
   nazare inspect metafield <owner.namespace.key> [dir]
                                      local Liquid/JSON/static GraphQL readers and affected pages
-  nazare graph-server [dir]          serve graph queries over newline-delimited JSON stdio
+  nazare inspect serve [dir]         serve inspection tools over MCP stdio
   nazare features                    list public feature stability and effects
 
 Preview:
@@ -276,18 +279,19 @@ Options:
   --out-dir <dir>                    build output directory (else nazare.theme.json build.outDir);
                                      preview build writes here too (preview.outDir)
   --pull-data                        build: reconcile against a live theme's merchant-owned data first
-  --enable-experimental <feature>    enable one experimental feature for this invocation
+  --enable-experimental              enable current command's experimental feature
+  --enable-experimental=<feature>    enable a named secondary experimental feature
                                      ${experimentalFeatureIds().join(", ")}
 ${experimentalFeatureAliases()
 	.map(
 		({ alias, feature }) =>
-			`  ${alias.padEnd(34)} alias for --enable-experimental ${feature}`,
+			`  ${alias.padEnd(34)} alias for --enable-experimental=${feature}`,
 	)
 	.join("\n")}
   --store <domain>                   build --pull-data: Shopify store to pull from
   --theme <id|name>                  build --pull-data: theme to pull from
   --json                             build: print the raw result as JSON
-  --watch                            build/check/inspect: stream revision results on changes
+  --watch                            build/check: stream revision results on changes
   --port <number>                    preview serve: port to listen on (default 4173)
   --as <name>                        preview fixtures pull: fixture name (default product)
   --format json|text|dot             source analyze requires JSON; inspect theme also supports text/dot
@@ -330,14 +334,16 @@ Options:
   nazare inspect theme [dir] [--format json|text|dot]
   nazare inspect impact <theme-file> [dir] [--format text|json]
   nazare inspect metafield <owner.namespace.key> [dir] [--format text|json]
+  nazare inspect serve [dir] [--enable-experimental]
 
-Views:
+Views (experimental; require --enable-experimental):
   ast, ir, graph, schema   inspect one compiler projection
   artifact                print complete compiled artifact
   dump                    write compiler projections to dump files
   theme                   inspect whole-theme semantic graph
 
 Theme queries:
+  serve                   serve inspection tools over newline-delimited MCP stdio
   impact                  show direct dependencies, dependents, affected pages,
                           usage, diagnostics, and analysis uncertainty for one file
   metafield               show local Liquid, JSON, and static GraphQL readers,

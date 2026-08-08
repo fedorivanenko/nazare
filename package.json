@@ -33,6 +33,7 @@
 	"devDependencies": {
 		"@shopify/liquid-html-parser": "2.9.2",
 		"@types/node": "^26.1.1",
+		"ajv": "8.20.0",
 		"typescript": "^5.5.0"
 	},
 	"pnpm": {

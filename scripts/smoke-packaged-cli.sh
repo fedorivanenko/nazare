@@ -23,6 +23,9 @@ for path in \
 	VERSION \
 	bin/nazare \
 	packages/source/dist/index.js \
+	packages/cli-client/contracts/theme-inspection-v1.schema.json \
+	packages/cli-client/contracts/theme-impact-v1.schema.json \
+	packages/cli-client/contracts/theme-metafield-v2.schema.json \
 	packages/tree-sitter-liquid/src/parser.c \
 	packages/tree-sitter-liquid/src/scanner.c \
 	packages/tree-sitter-liquid/bindings/node/index.js \
