@@ -109,6 +109,9 @@ importers:
       '@nazare/core':
         specifier: workspace:^
         version: link:../core
+      '@nazare/source':
+        specifier: workspace:^
+        version: link:../source
       liquidjs:
         specifier: ^10.21.1
         version: 10.27.2

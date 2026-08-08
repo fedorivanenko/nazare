@@ -3,11 +3,15 @@
 // gallery shows, so a lowering bug is visible here instead of only on a store.
 import {
 	buildPlainLiquid,
-	collectPlainLiquidFacts,
 	compileArtifact,
 	emitTheme,
 } from "@nazare/compiler/compile";
 import type { ArtifactContract, ComponentKind, Diagnostic } from "@nazare/core";
+import {
+	createDefaultSourceParserRegistry,
+	liquidSyntaxFacts,
+	parseSourceDocument,
+} from "@nazare/source";
 import { controlsFromContract, type PreviewControl } from "./controls.js";
 import { plainLiquidControls } from "./plain-controls.js";
 
@@ -122,7 +126,14 @@ export function previewComponentFromSource(
 		// snippet. Both are the author's own statement, and both are already
 		// parsed — reading them is what makes a plain component previewable with
 		// props rather than blank.
-		const { facts } = collectPlainLiquidFacts(file, source);
+		const liquid = liquidSyntaxFacts(
+			parseSourceDocument(
+				createDefaultSourceParserRegistry(),
+				file,
+				"liquid",
+				source,
+			),
+		);
 		return {
 			name,
 			file,
@@ -131,7 +142,10 @@ export function previewComponentFromSource(
 			componentKind: options.kind ?? kindFromPath(file),
 			template: template || source,
 			assets,
-			controls: plainLiquidControls(facts, built.ast.schema?.source),
+			controls: plainLiquidControls(
+				liquid.authoritative ? liquid.docParams : [],
+				built.ast.schema?.source,
+			),
 			issues: built.issues,
 		};
 	}

@@ -12,6 +12,7 @@
 	"dependencies": {
 		"@nazare/compiler": "workspace:^",
 		"@nazare/core": "workspace:^",
+		"@nazare/source": "workspace:^",
 		"liquidjs": "^10.21.1"
 	},
 	"devDependencies": {

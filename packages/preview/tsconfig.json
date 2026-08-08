@@ -6,5 +6,9 @@
     "outDir": "dist"
   },
   "include": ["src/**/*.ts"],
-  "references": [{ "path": "../compiler" }, { "path": "../core" }]
+  "references": [
+    { "path": "../compiler" },
+    { "path": "../core" },
+    { "path": "../source" }
+  ]
 }

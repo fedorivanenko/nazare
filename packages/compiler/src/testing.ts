@@ -16,30 +16,6 @@ export type {
 	ArtifactSyntaxNode,
 } from "@nazare/core";
 export type {
-	SourceAnalysisFact,
-	SourceBehaviorFact,
-	SourceDomHookKind,
-	SourceLanguage,
-	ThemeBlockInstanceRecord,
-	ThemeBlockRecord,
-	ThemeBlockSettingRecord,
-	ThemeCapabilityRecord,
-	ThemeCapabilitySignalRecord,
-	ThemeClassificationRecord,
-	ThemeDataAccessRecord,
-	ThemeEvidenceRecord,
-	ThemeLocaleKeyRecord,
-	ThemeLocaleReferenceRecord,
-	ThemeLocaleTranslationRecord,
-	ThemeMetafieldDefinitionRecord,
-	ThemeMetafieldReadRecord,
-	ThemeNetworkAccessRecord,
-	ThemePageRecord,
-	ThemeRenderArgumentRecord,
-	ThemeSectionInstanceRecord,
-	ThemeSettingReadRecord,
-} from "./analysis-types.js";
-export type {
 	AuthoredSchema,
 	NazareAst,
 	NazareImportNode,
@@ -117,9 +93,9 @@ export {
 	type ProductDefinition,
 	type ProductIdentity,
 	type ProductKey,
+	type ProductKeySnapshot,
 	pipelineIdentity,
 	productKeyCodec,
-	type ProductKeySnapshot,
 	registerPipelineComputations,
 	registrarIdentity,
 } from "./computation/index.js";
@@ -134,10 +110,6 @@ export {
 	emitScriptFiles,
 	emitTheme,
 } from "./emit.js";
-export {
-	strongerThemeEvidence,
-	type ThemeEvidenceStrength,
-} from "./evidence-strength.js";
 export type {
 	NazareComponent,
 	NazareExtension,
@@ -166,11 +138,6 @@ export { treeSitterNazareLiquidFrontend } from "./frontends/tree-sitter-nazare-l
 export { treeSitterPlainLiquidFrontend } from "./frontends/tree-sitter-plain-liquid.js";
 export { artifactGraphFromIR } from "./graph.js";
 export { componentSymbolIdForFile } from "./ids.js";
-// A single plain-Liquid file's facts, without standing up a theme session:
-// `{% doc %}` @param declarations are the author's own statement of a
-// component's interface, and tooling outside the graph (the preview's controls)
-// needs them for one file at a time.
-export { collectPlainLiquidFacts } from "./liquid-facts.js";
 export { mergeArtifactIR } from "./merge.js";
 export {
 	type AtomicOutputCommit,
@@ -183,11 +150,11 @@ export {
 	ObsoleteOutputRevisionError,
 	OUTPUT_OWNERSHIP_MANIFEST_PATH,
 	type OutputOwnershipManifest,
+	type OutputPathPrecondition,
 	OutputPlanValidationError,
 	type OutputTransactionResult,
 	type OwnedOutputFile,
 	type OwnedOutputPlan,
-	type OutputPathPrecondition,
 } from "./output-transaction.js";
 export { baseNameOf, resolveImportPath } from "./paths.js";
 export type {

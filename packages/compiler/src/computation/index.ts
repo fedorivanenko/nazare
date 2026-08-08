@@ -28,8 +28,8 @@ export {
 	type ComputationUncertainty,
 	defineComputation,
 	optionalProductKeyCodec,
-	productKeyCodec,
 	type ProductKeySnapshot,
+	productKeyCodec,
 } from "./computation.js";
 export {
 	ComputationCycleError,
