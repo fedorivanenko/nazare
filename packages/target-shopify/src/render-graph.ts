@@ -11,6 +11,10 @@ import {
 } from "@nazare/compiler/project";
 import type { Diagnostic } from "@nazare/core";
 import {
+	mapWithConcurrency,
+	SHOPIFY_PRODUCT_CONCURRENCY,
+} from "./concurrency.js";
+import {
 	type ShopifyDataRead,
 	type ShopifyReference,
 	shopifyProducts,
@@ -68,10 +72,7 @@ export const shopifyGraphProducts = {
 		id: "file-data-reads",
 		version: 1,
 	}),
-	renderEdges: defineProduct<
-		{ file: ProjectFileId; files: readonly ProjectFileId[] },
-		readonly ShopifyRenderEdge[]
-	>({
+	renderEdges: defineProduct<ProjectFileId, readonly ShopifyRenderEdge[]>({
 		namespace: "nazare.target.shopify",
 		id: "file-render-edges",
 		version: 1,
@@ -107,15 +108,15 @@ export function registerShopifyGraphComputations(
 	graph.register(
 		defineComputation(
 			shopifyGraphProducts.renderEdges,
-			async (context, plan) => {
+			async (context, file) => {
 				const resolutions = await context.get(
-					shopifyResolutionProducts.fileResolutions.product(plan),
+					shopifyResolutionProducts.fileResolutions.product({ file }),
 				);
 				return resolutions.flatMap((resolution) =>
 					isRenderReference(resolution.reference)
 						? resolution.targetFiles.map((target) => ({
 								id: `shopify-render-edge:${resolution.reference.id}:${serializeProjectFileId(target)}`,
-								from: plan.file,
+								from: file,
 								to: target,
 								referenceId: resolution.reference.id,
 								kind: resolution.reference.referenceKind,
@@ -133,15 +134,8 @@ export function registerShopifyGraphComputations(
 			async (context, plan) => {
 				const nodes = [...plan.files].sort(compareFiles);
 				const edges = (
-					await Promise.all(
-						nodes.map((file) =>
-							context.get(
-								shopifyGraphProducts.renderEdges.product({
-									file,
-									files: nodes,
-								}),
-							),
-						),
+					await mapWithConcurrency(nodes, SHOPIFY_PRODUCT_CONCURRENCY, (file) =>
+						context.get(shopifyGraphProducts.renderEdges.product(file)),
 					)
 				)
 					.flat()

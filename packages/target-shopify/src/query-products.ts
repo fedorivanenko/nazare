@@ -10,6 +10,10 @@ import {
 	serializeProjectFileId,
 } from "@nazare/compiler/project";
 import {
+	mapWithConcurrency,
+	SHOPIFY_PRODUCT_CONCURRENCY,
+} from "./concurrency.js";
+import {
 	type ShopifyBehavior,
 	type ShopifyDeclaration,
 	type ShopifyReference,
@@ -176,8 +180,10 @@ export function registerShopifyQueryComputations(
 		defineComputation(
 			shopifyQueryProducts.projectModel,
 			async (context, query) => {
-				const records = await Promise.all(
-					query.files.map(async (file) => ({
+				const records = await mapWithConcurrency(
+					query.files,
+					SHOPIFY_PRODUCT_CONCURRENCY,
+					async (file) => ({
 						declarations: await context.get(
 							shopifyProducts.declarations.product(file),
 						),
@@ -190,7 +196,7 @@ export function registerShopifyQueryComputations(
 						evidence: await context.get(
 							shopifySemanticProducts.evidence.product(file),
 						),
-					})),
+					}),
 				);
 				return {
 					version: 1,
@@ -281,10 +287,11 @@ export function registerShopifyQueryComputations(
 			shopifyQueryProducts.behaviorIndex,
 			async (context, query) => {
 				const records = (
-					await Promise.all(
-						query.files.map((file) =>
+					await mapWithConcurrency(
+						query.files,
+						SHOPIFY_PRODUCT_CONCURRENCY,
+						(file) =>
 							context.get(shopifySemanticProducts.behavior.product(file)),
-						),
 					)
 				).flat();
 				const filtered = query.behaviorKind
@@ -310,10 +317,11 @@ export function registerShopifyQueryComputations(
 			shopifyQueryProducts.metafieldIndex,
 			async (context, query) => {
 				const records = (
-					await Promise.all(
-						query.files.map((file) =>
+					await mapWithConcurrency(
+						query.files,
+						SHOPIFY_PRODUCT_CONCURRENCY,
+						(file) =>
 							context.get(shopifySemanticProducts.metafields.product(file)),
-						),
 					)
 				).flat();
 				const filtered = records.filter(
@@ -388,12 +396,8 @@ async function dependencyRecords(
 	uncertainty: string[];
 }> {
 	const resolutions = (
-		await Promise.all(
-			files.map((file) =>
-				context.get(
-					shopifyResolutionProducts.fileResolutions.product({ file, files }),
-				),
-			),
+		await mapWithConcurrency(files, SHOPIFY_PRODUCT_CONCURRENCY, (file) =>
+			context.get(shopifyResolutionProducts.fileResolutions.product({ file })),
 		)
 	).flat();
 	return {
@@ -423,10 +427,10 @@ async function evidenceForOwners(
 		owners.map((owner) => [serializeProjectFileId(owner), owner]),
 	);
 	return (
-		await Promise.all(
-			[...unique.values()].map((owner) =>
-				context.get(shopifySemanticProducts.evidence.product(owner)),
-			),
+		await mapWithConcurrency(
+			[...unique.values()],
+			SHOPIFY_PRODUCT_CONCURRENCY,
+			(owner) => context.get(shopifySemanticProducts.evidence.product(owner)),
 		)
 	)
 		.flat()

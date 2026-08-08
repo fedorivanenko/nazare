@@ -13,7 +13,15 @@ import {
 	projectFileId,
 	serializeProjectFileId,
 } from "@nazare/compiler/project";
+import {
+	PROJECT_SOURCE_CATALOG_KEY,
+	sourceProducts,
+} from "@nazare/compiler/source-products";
 import type { Diagnostic } from "@nazare/core";
+import {
+	mapWithConcurrency,
+	SHOPIFY_PRODUCT_CONCURRENCY,
+} from "./concurrency.js";
 import {
 	type ShopifyDeclaration,
 	type ShopifyReference,
@@ -28,18 +36,21 @@ import {
 export type ShopifySymbolQuery = {
 	role: ShopifyFileRole;
 	name: string;
-	files: readonly ProjectFileId[];
 };
 
 export type ShopifyReferenceQuery = {
 	owner: ProjectFileId;
 	referenceId: string;
-	files: readonly ProjectFileId[];
 };
 
 export type ShopifyResolutionPlan = {
 	file: ProjectFileId;
+};
+
+export type ShopifyWorkspaceIndex = {
 	files: readonly ProjectFileId[];
+	byPath: Readonly<Record<string, ProjectFileId>>;
+	bySymbol: Readonly<Record<string, readonly ProjectFileId[]>>;
 };
 
 export type ShopifyReferenceResolution = {
@@ -52,6 +63,11 @@ export type ShopifyReferenceResolution = {
 };
 
 export const shopifyResolutionProducts = {
+	workspaceIndex: defineProduct<string, ShopifyWorkspaceIndex>({
+		namespace: "nazare.target.shopify.resolve",
+		id: "workspace-index",
+		version: 1,
+	}),
 	declarationsBySymbol: defineProduct<
 		ShopifySymbolQuery,
 		readonly ShopifyDeclaration[]
@@ -83,17 +99,44 @@ export function registerShopifyResolutionComputations(
 ): void {
 	graph.register(
 		defineComputation(
+			shopifyResolutionProducts.workspaceIndex,
+			async (context) => {
+				const files = await context.get(
+					sourceProducts.catalog.product(PROJECT_SOURCE_CATALOG_KEY),
+				);
+				const byPath: Record<string, ProjectFileId> = {};
+				const bySymbol: Record<string, ProjectFileId[]> = {};
+				for (const file of files) {
+					byPath[serializeProjectFileId(file)] = file;
+					const role = classifyShopifyFile(file.path);
+					const name = shopifyResourceName(file.path);
+					if (!name) continue;
+					const key = symbolKey(role, name);
+					const candidates = bySymbol[key] ?? [];
+					candidates.push(file);
+					bySymbol[key] = candidates;
+				}
+				return { files, byPath, bySymbol };
+			},
+			{ cache: productKeyCodec() },
+		),
+	);
+
+	graph.register(
+		defineComputation(
 			shopifyResolutionProducts.declarationsBySymbol,
 			async (context, query) => {
-				const candidateFiles = query.files.filter(
-					(file) =>
-						classifyShopifyFile(file.path) === query.role &&
-						shopifyResourceName(file.path) === query.name,
-				);
-				const declarations = await Promise.all(
-					candidateFiles.map((file) =>
-						context.get(shopifyProducts.declarations.product(file)),
+				const index = await context.get(
+					shopifyResolutionProducts.workspaceIndex.product(
+						PROJECT_SOURCE_CATALOG_KEY,
 					),
+				);
+				const candidateFiles =
+					index.bySymbol[symbolKey(query.role, query.name)] ?? [];
+				const declarations = await mapWithConcurrency(
+					candidateFiles,
+					SHOPIFY_PRODUCT_CONCURRENCY,
+					(file) => context.get(shopifyProducts.declarations.product(file)),
 				);
 				return declarations
 					.flat()
@@ -123,7 +166,7 @@ export function registerShopifyResolutionComputations(
 						`Shopify reference ${query.referenceId} is not owned by ${query.owner.path}`,
 					);
 				}
-				return resolveReference(context, reference, query.files);
+				return resolveReference(context, reference);
 			},
 			{
 				cache: productKeyCodec(),
@@ -140,16 +183,16 @@ export function registerShopifyResolutionComputations(
 				const references = await context.get(
 					shopifyProducts.references.product(plan.file),
 				);
-				return Promise.all(
-					references.map((reference) =>
+				return mapWithConcurrency(
+					references,
+					SHOPIFY_PRODUCT_CONCURRENCY,
+					(reference) =>
 						context.get(
 							shopifyResolutionProducts.referenceResolution.product({
 								owner: plan.file,
 								referenceId: reference.id,
-								files: plan.files,
 							}),
 						),
-					),
 				);
 			},
 			{ cache: productKeyCodec() },
@@ -160,7 +203,6 @@ export function registerShopifyResolutionComputations(
 async function resolveReference(
 	context: ComputationContext,
 	reference: ShopifyReference,
-	files: readonly ProjectFileId[],
 ): Promise<ShopifyReferenceResolution> {
 	if (!reference.static) {
 		return resolution(
@@ -177,8 +219,13 @@ async function resolveReference(
 			],
 		);
 	}
+	const index = await context.get(
+		shopifyResolutionProducts.workspaceIndex.product(
+			PROJECT_SOURCE_CATALOG_KEY,
+		),
+	);
 	if (reference.targetPath) {
-		const target = resolveTargetFile(reference, files);
+		const target = resolveTargetFile(reference, index);
 		if (!target) return unresolved(reference);
 		return resolution(reference, "resolved", [], [target]);
 	}
@@ -187,7 +234,6 @@ async function resolveReference(
 			shopifyResolutionProducts.declarationsBySymbol.product({
 				role: reference.targetRole,
 				name: reference.targetName,
-				files,
 			}),
 		);
 		if (declarations.length === 0) return unresolved(reference);
@@ -216,7 +262,7 @@ async function resolveReference(
 
 function resolveTargetFile(
 	reference: ShopifyReference,
-	files: readonly ProjectFileId[],
+	index: ShopifyWorkspaceIndex,
 ): ProjectFileId | undefined {
 	if (!reference.targetPath) return undefined;
 	const path = reference.targetRelative
@@ -225,8 +271,11 @@ function resolveTargetFile(
 			)
 		: normalizeProjectPath(reference.targetPath);
 	const expected = projectFileId({ ...reference.owner, path });
-	const identity = serializeProjectFileId(expected);
-	return files.find((file) => serializeProjectFileId(file) === identity);
+	return index.byPath[serializeProjectFileId(expected)];
+}
+
+function symbolKey(role: ShopifyFileRole, name: string): string {
+	return `${role}\0${name}`;
 }
 
 function unresolved(reference: ShopifyReference): ShopifyReferenceResolution {

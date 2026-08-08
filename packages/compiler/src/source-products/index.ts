@@ -24,6 +24,7 @@ export {
 } from "./frontend.js";
 export {
 	createSourceProductRegistrar,
+	PROJECT_SOURCE_CATALOG_KEY,
 	type ReachableSourceClosure,
 	type SourceAnalysisPlan,
 	type SourceDependencyEdge,

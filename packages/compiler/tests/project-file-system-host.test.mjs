@@ -43,6 +43,16 @@ test("discovers sorted project files while excluding generated directories", asy
 			files.map((file) => file.path),
 			["sections/a.liquid", "sections/z.liquid"],
 		);
+		const filtered = await discoverProjectFiles({
+			root,
+			workspace: "test",
+			package: "theme",
+			includeFile: (path) => path.endsWith("/a.liquid"),
+		});
+		assert.deepEqual(
+			filtered.map((file) => file.path),
+			["sections/a.liquid"],
+		);
 	});
 });
 

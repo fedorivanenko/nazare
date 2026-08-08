@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import type { Diagnostic } from "@nazare/core";
+import { fingerprintProductKey } from "../computation/canonical-key.js";
 import {
 	defineComputation,
 	productKeyCodec,
@@ -11,6 +12,7 @@ import {
 	defineComputationRegistrar,
 } from "../computation/registrar.js";
 import {
+	compareProjectFileIds,
 	normalizeProjectPath,
 	type ProjectFileId,
 	projectFileId,
@@ -18,7 +20,10 @@ import {
 } from "../project/file-id.js";
 import type { ProjectFile } from "../project/file-system-provider.js";
 import type { ProjectHost } from "../project/host.js";
-import { projectFileRevisionInput } from "../project/session.js";
+import {
+	projectFileCatalogInput,
+	projectFileRevisionInput,
+} from "../project/session.js";
 import type {
 	ClassifiedSourceFile,
 	ParsedSourceFile,
@@ -45,7 +50,14 @@ export type ReachableSourceClosure = {
 	diagnostics: readonly Diagnostic[];
 };
 
+export const PROJECT_SOURCE_CATALOG_KEY = "project";
+
 export const sourceProducts = {
+	catalog: defineProduct<string, readonly ProjectFileId[]>({
+		namespace: "nazare.input",
+		id: "project-file-catalog",
+		version: 1,
+	}),
 	file: defineProduct<ProjectFileId, ProjectFile>({
 		namespace: "nazare.input",
 		id: "project-file",
@@ -102,6 +114,25 @@ function registerSourceProducts(
 	const frontendUpdate = graph.beginUpdate();
 	frontendUpdate.setInput(frontendInput, input.frontends.identity);
 	frontendUpdate.commit();
+
+	graph.register(
+		defineComputation(
+			sourceProducts.catalog,
+			async (context) => {
+				const expectedFingerprint = await context.input<string>(
+					projectFileCatalogInput(),
+				);
+				const files = (await input.host.discover())
+					.map(projectFileId)
+					.sort(compareProjectFileIds);
+				if (fingerprintProductKey(files) !== expectedFingerprint) {
+					throw new Error("Project file catalog changed during computation");
+				}
+				return files;
+			},
+			{ cache: productKeyCodec() },
+		),
+	);
 
 	graph.register(
 		defineComputation(

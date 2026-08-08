@@ -10,6 +10,8 @@ import {
 	externalProjectInput,
 	fingerprintProductKey,
 	mergeAsyncIterables,
+	projectFileCatalogFingerprint,
+	projectFileCatalogInput,
 	projectFileId,
 	projectFileRevisionInput,
 } from "../dist/testing.js";
@@ -67,6 +69,39 @@ test("opens a deterministic revisioned project snapshot", async () => {
 	assert.deepEqual(
 		session.snapshot().fileIds.map((file) => file.path),
 		["a.liquid", "b.liquid"],
+	);
+});
+
+test("catalog identity changes only when project membership changes", async () => {
+	const a = id("a.liquid");
+	const b = id("b.liquid");
+	const project = createMemoryProject([{ id: a, contents: "a" }]);
+	const session = await createProjectSession({ host: project.host });
+	const catalogFingerprint = defineProduct({
+		namespace: "test.project",
+		id: "catalog-fingerprint",
+		version: 1,
+	});
+	session.graph.register(
+		defineComputation(catalogFingerprint, (context) =>
+			context.input(projectFileCatalogInput()),
+		),
+	);
+	const product = catalogFingerprint.product("project");
+
+	assert.equal(await session.get(product), projectFileCatalogFingerprint([a]));
+	await session.apply({
+		kind: "files",
+		changes: [{ kind: "changed", key: a, fingerprint: "changed" }],
+	});
+	assert.equal(await session.get(product), projectFileCatalogFingerprint([a]));
+	await session.apply({
+		kind: "files",
+		changes: [{ kind: "added", key: b, fingerprint: "b" }],
+	});
+	assert.equal(
+		await session.get(product),
+		projectFileCatalogFingerprint([a, b]),
 	);
 });
 

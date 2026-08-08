@@ -50,5 +50,7 @@ export {
 	ProjectSessionValidationError,
 	type ProjectSessionValidator,
 	type ProjectSnapshot,
+	projectFileCatalogFingerprint,
+	projectFileCatalogInput,
 	projectFileRevisionInput,
 } from "./session.js";

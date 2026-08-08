@@ -45,6 +45,25 @@ Warm wall: 0.6494 s
 Warm CPU:  0.74 s
 ```
 
+### Revision-scoped workspace index scaling
+
+Recorded on the same local environment after replacing workspace-sized leaf-product keys with a shared revision-scoped path/symbol index.
+
+Command:
+
+```sh
+node benchmarks/inspect-theme.mjs --scales 16,64,96 --runs 1 --json
+```
+
+```text
+Scale        Parsed files  Cold CPU  Warm CPU
+fixture-x16           301     3.08 s     3.25 s
+fixture-x64         1,165    12.31 s    12.71 s
+fixture-x96         1,741    21.06 s    21.61 s
+```
+
+From x16 to x96, parsed files grow 5.78× and cold CPU grows 6.84×. This replaces the prior superlinear behavior observed on the pull-request runner, where fixture-x64 and fixture-x96 consumed 48.94 s and 129.62 s CPU respectively.
+
 ## Theme scaffold
 
 Command:

@@ -26,6 +26,7 @@ export function createFileSystemProjectHost(options: {
 	workspace: string;
 	package: string;
 	ignoredDirectories?: readonly string[];
+	includeFile?: (path: string) => boolean;
 	watchDebounceMs?: number;
 }): ProjectHost<ProjectFileId, ProjectFile> {
 	const root = resolve(options.root);
@@ -44,6 +45,7 @@ export function createFileSystemProjectHost(options: {
 			workspace: options.workspace,
 			package: options.package,
 			ignoredDirectories: ignored,
+			includeFile: options.includeFile,
 		});
 
 	return defineProjectHost({
@@ -65,6 +67,7 @@ export async function discoverProjectFiles(options: {
 	workspace: string;
 	package: string;
 	ignoredDirectories?: ReadonlySet<string>;
+	includeFile?: (path: string) => boolean;
 }): Promise<readonly ProjectFileId[]> {
 	const discovered: ProjectFileId[] = [];
 	const ignored = options.ignoredDirectories ?? DEFAULT_IGNORED_DIRECTORIES;
@@ -86,7 +89,8 @@ export async function discoverProjectFiles(options: {
 			}
 			// Symlinks are intentionally excluded from discovery. Explicit reads still
 			// permit contained file symlinks while rejecting escapes.
-			if (!entry.isFile()) continue;
+			if (!entry.isFile() || options.includeFile?.(projectPath) === false)
+				continue;
 			discovered.push(
 				projectFileId({
 					workspace: options.workspace,

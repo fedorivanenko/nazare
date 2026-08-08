@@ -241,6 +241,7 @@ export class ShopifyQuerySession {
 			root,
 			workspace: "graph-server",
 			package: "theme",
+			includeFile: options.includeFile,
 		});
 		const host = defineProjectHost({
 			...fileHost,
