@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough, Readable, Writable } from "node:stream";
 import test from "node:test";
-import { serveThemeGraph } from "../dist/graph-server.js";
+import { serveInspection } from "../dist/inspection-server.js";
 
 async function runServer(root, requests, projectRoot = root) {
 	const responses = [];
@@ -16,7 +16,7 @@ async function runServer(root, requests, projectRoot = root) {
 			callback();
 		},
 	});
-	await serveThemeGraph(
+	await serveInspection(
 		root,
 		Readable.from(
 			`${requests
@@ -55,7 +55,7 @@ function startLiveServer(root, { watchDebounceMs } = {}) {
 			callback();
 		},
 	});
-	const done = serveThemeGraph(root, input, output, {
+	const done = serveInspection(root, input, output, {
 		projectRoot: root,
 		...(watchDebounceMs === undefined ? {} : { watchDebounceMs }),
 	});
@@ -69,6 +69,29 @@ function startLiveServer(root, { watchDebounceMs } = {}) {
 			input.end();
 		},
 	};
+}
+
+async function initializeLiveMcpServer(server) {
+	server.send({
+		jsonrpc: "2.0",
+		id: "initialize",
+		method: "initialize",
+		params: {
+			protocolVersion: "2025-03-26",
+			capabilities: {},
+			clientInfo: { name: "live-test", version: "1" },
+		},
+	});
+	await waitFor(
+		() => server.messages.some((message) => message.id === "initialize"),
+		"initialize response",
+	);
+	server.send({ jsonrpc: "2.0", method: "notifications/initialized" });
+	server.send({ jsonrpc: "2.0", id: "ready", method: "ping" });
+	await waitFor(
+		() => server.messages.some((message) => message.id === "ready"),
+		"initialized server readiness",
+	);
 }
 
 async function waitFor(predicate, description, timeout = 5_000) {
@@ -91,14 +114,11 @@ function delay(milliseconds) {
 }
 
 function watcherUpdates(messages) {
-	return messages.filter(
-		(message) =>
-			message.method === "graph/update" || message.method === "build/update",
-	);
+	return messages.filter((message) => message.method === "inspection/update");
 }
 
-test("graph server supports MCP tools and build updates", async () => {
-	const root = await mkdtemp(join(tmpdir(), "nazare-graph-server-"));
+test("inspection server supports MCP tools and build updates", async () => {
+	const root = await mkdtemp(join(tmpdir(), "nazare-inspection-server-"));
 	try {
 		await writeFile(join(root, "card.nz.liquid"), "<span>Card</span>");
 		const responses = await runServer(root, [
@@ -136,6 +156,7 @@ test("graph server supports MCP tools and build updates", async () => {
 			},
 		]);
 		assert.equal(responses[0].result.protocolVersion, "2025-03-26");
+		assert.equal(responses[0].result.serverInfo.name, "nazare-inspect");
 		assert.equal(responses[0].result.capabilities.tools !== undefined, true);
 		assert.ok(
 			responses[1].result.tools.some((tool) => tool.name === "affectedPages"),
@@ -161,7 +182,10 @@ test("graph server supports MCP tools and build updates", async () => {
 		);
 		assert.ok(
 			responses[1].result.tools.every(
-				(tool) => tool.inputSchema.additionalProperties === false,
+				(tool) =>
+					tool.inputSchema.additionalProperties === false &&
+					tool.outputSchema.type === "object" &&
+					tool.outputSchema.properties.contractVersion.const === 1,
 			),
 		);
 		assert.ok(responses[2].result.structuredContent.fileCount >= 1);
@@ -175,7 +199,102 @@ test("graph server supports MCP tools and build updates", async () => {
 	}
 });
 
-test("graph server serves demand-driven ProjectSession query products", async () => {
+test("inspection server flushes large MCP responses before stdin closes", async () => {
+	const root = await mkdtemp(join(tmpdir(), "nazare-inspection-flush-"));
+	try {
+		await writeFile(
+			join(root, "theme.css"),
+			Array.from(
+				{ length: 100 },
+				(_, index) => `.class-${index}{color:red}`,
+			).join("\n"),
+		);
+		const chunks = [];
+		const output = new Writable({
+			write(chunk, _encoding, callback) {
+				chunks.push(chunk.toString());
+				setTimeout(callback, 1);
+			},
+		});
+		await serveInspection(
+			root,
+			Readable.from(
+				`${[
+					{
+						jsonrpc: "2.0",
+						id: 1,
+						method: "initialize",
+						params: {
+							protocolVersion: "2025-03-26",
+							capabilities: {},
+							clientInfo: { name: "flush-test", version: "1" },
+						},
+					},
+					{ jsonrpc: "2.0", method: "notifications/initialized" },
+					{
+						jsonrpc: "2.0",
+						id: 2,
+						method: "tools/call",
+						params: { name: "projectModel", arguments: {} },
+					},
+				]
+					.map((request) => JSON.stringify(request))
+					.join("\n")}\n`,
+			),
+			output,
+			{ projectRoot: root },
+		);
+		const serialized = chunks.join("");
+		const responses = serialized.trim().split("\n").map(JSON.parse);
+		assert.ok(Buffer.byteLength(serialized) > 65_536);
+		assert.equal(responses[1].result.isError, false);
+		assert.ok(responses[1].result.structuredContent.evidence.length >= 100);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("inspection server rejects oversized tool results with a targeted-query hint", async () => {
+	const root = await mkdtemp(join(tmpdir(), "nazare-inspection-limit-"));
+	try {
+		await writeFile(
+			join(root, "theme.css"),
+			Array.from(
+				{ length: 1_600 },
+				(_, index) => `.class-${index}{color:red}`,
+			).join("\n"),
+		);
+		const responses = await runServer(root, [
+			{
+				jsonrpc: "2.0",
+				id: 1,
+				method: "initialize",
+				params: {
+					protocolVersion: "2025-03-26",
+					capabilities: {},
+					clientInfo: { name: "limit-test", version: "1" },
+				},
+			},
+			{ jsonrpc: "2.0", method: "notifications/initialized" },
+			{
+				jsonrpc: "2.0",
+				id: 2,
+				method: "tools/call",
+				params: { name: "projectModel", arguments: {} },
+			},
+		]);
+		assert.equal(responses[1].result.isError, true);
+		assert.match(
+			responses[1].result.content[0].text,
+			/maximum is 524288.*targeted or paginated/,
+		);
+		assert.equal("structuredContent" in responses[1].result, false);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("inspection server serves demand-driven ProjectSession query products", async () => {
 	const root = await mkdtemp(join(tmpdir(), "nazare-product-query-server-"));
 	try {
 		await mkdir(join(root, "sections"));
@@ -213,7 +332,7 @@ test("graph server serves demand-driven ProjectSession query products", async ()
 	}
 });
 
-test("graph server queries cross-language behavior and JavaScript owners", async () => {
+test("inspection server queries cross-language behavior and JavaScript owners", async () => {
 	const root = await mkdtemp(join(tmpdir(), "nazare-behavior-server-"));
 	try {
 		await mkdir(join(root, "snippets"));
@@ -224,9 +343,9 @@ test("graph server queries cross-language behavior and JavaScript owners", async
 		);
 		await writeFile(
 			join(root, "assets/card.js"),
-			"export function initializeProductCard() { return document.querySelector('[data-product-card]'); }",
+			"export function initializeProductCard() { return document.querySelector('[data-product-card]'); }\nexport function findProductCards() { return document.querySelectorAll('[data-product-card]'); }",
 		);
-		const [usages, connections] = await runServer(root, [
+		const [usages, connections, nextUsages] = await runServer(root, [
 			{
 				id: 1,
 				method: "behaviorUsages",
@@ -235,12 +354,26 @@ test("graph server queries cross-language behavior and JavaScript owners", async
 					hookKind: "attribute",
 					name: "data-product-card",
 					role: "consumers",
+					limit: 1,
 				},
 			},
 			{
 				id: 2,
 				method: "behaviorConnections",
 				params: { path: "snippets/card.liquid" },
+			},
+			{
+				id: 3,
+				method: "behaviorUsages",
+				params: {
+					subjectKind: "domHook",
+					hookKind: "attribute",
+					name: "data-product-card",
+					role: "consumers",
+					limit: 1,
+					cursor: "1",
+					includeEvidence: false,
+				},
 			},
 		]);
 		assert.equal(
@@ -249,6 +382,11 @@ test("graph server queries cross-language behavior and JavaScript owners", async
 		);
 		assert.equal(usages.result.role, "consumers");
 		assert.equal(usages.result.certainty, "complete");
+		assert.equal(usages.result.total, 2);
+		assert.equal(usages.result.nextCursor, "1");
+		assert.equal(usages.result.evidence.length, 1);
+		assert.equal(nextUsages.result.usages.length, 1);
+		assert.deepEqual(nextUsages.result.evidence, []);
 		assert.equal(
 			connections.result.connections[0].consumers[0].fromPath,
 			"assets/card.js",
@@ -293,7 +431,7 @@ test("graph server queries cross-language behavior and JavaScript owners", async
 	}
 });
 
-test("graph server uses inspect file selection and exclusion policy", async () => {
+test("inspection server uses inspect file selection and exclusion policy", async () => {
 	const root = await mkdtemp(join(tmpdir(), "nazare-graph-inputs-"));
 	try {
 		const sourceRoot = join(root, "theme");
@@ -330,7 +468,7 @@ test("graph server uses inspect file selection and exclusion policy", async () =
 	}
 });
 
-test("graph server implements MCP lifecycle and JSON-RPC errors", async () => {
+test("inspection server implements MCP lifecycle and JSON-RPC errors", async () => {
 	const root = await mkdtemp(join(tmpdir(), "nazare-mcp-server-"));
 	try {
 		await writeFile(join(root, "card.nz.liquid"), "<span>Card</span>");
@@ -406,7 +544,10 @@ test("graph server implements MCP lifecycle and JSON-RPC errors", async () => {
 		assert.equal(responses[9].error.code, -32602);
 		assert.equal(responses[10].error.code, -32600);
 		assert.equal(responses[11].result.isError, false);
-		assert.equal("structuredContent" in responses[11].result, false);
+		assert.deepEqual(responses[11].result.structuredContent, {
+			contractVersion: 1,
+			items: [],
+		});
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
@@ -418,11 +559,7 @@ test("watcher revisions external metadata through shared input providers", async
 	try {
 		await writeFile(join(root, "card.nz.liquid"), "<span>Card</span>");
 		server = startLiveServer(root, { watchDebounceMs: 100 });
-		server.send({ id: 1, method: "watch" });
-		await waitFor(
-			() => server.messages.some((message) => message.id === 1),
-			"watch response",
-		);
+		await initializeLiveMcpServer(server);
 		await writeFile(
 			join(root, ".theme-check.yml"),
 			"extends: theme-check:recommended",
@@ -431,13 +568,13 @@ test("watcher revisions external metadata through shared input providers", async
 			() =>
 				server.messages.some(
 					(message) =>
-						message.method === "graph/update" &&
+						message.method === "inspection/update" &&
 						typeof message.params.revision === "number",
 				),
 			"external input revision",
 		);
 		const update = server.messages.find(
-			(message) => message.method === "graph/update",
+			(message) => message.method === "inspection/update",
 		);
 		assert.equal(update.params.changedPaths.includes(".theme-check.yml"), true);
 		assert.equal(update.params.revision > 0, true);
@@ -450,7 +587,7 @@ test("watcher revisions external metadata through shared input providers", async
 			() =>
 				server.messages.some(
 					(message) =>
-						message.method === "graph/update" &&
+						message.method === "inspection/update" &&
 						message.params.changedPaths.includes("nazare.theme.json"),
 				),
 			"config input revision",
@@ -477,11 +614,7 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 		const badgePath = join(root, "badge.nz.liquid");
 		await writeFile(cardPath, "<span>Card</span>");
 		server = startLiveServer(root, { watchDebounceMs: TEST_DEBOUNCE_MS });
-		server.send({ id: 1, method: "watch" });
-		await waitFor(
-			() => server.messages.some((message) => message.id === 1),
-			"watch response",
-		);
+		await initializeLiveMcpServer(server);
 
 		await writeFile(cardPath, "<span>First</span>");
 		await writeFile(cardPath, "<span>Second</span>");
@@ -492,7 +625,7 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 		);
 		assert.deepEqual(
 			watcherUpdates(server.messages).map((message) => message.method),
-			["graph/update", "build/update"],
+			["inspection/update"],
 		);
 		assert.ok(
 			watcherUpdates(server.messages).every(
@@ -503,13 +636,9 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 			watcherUpdates(server.messages).map(
 				(message) => message.params.changedPaths,
 			),
-			[["card.nz.liquid"], ["card.nz.liquid"]],
+			[["card.nz.liquid"]],
 		);
 		const firstRevision = watcherUpdates(server.messages)[0].params.revision;
-		assert.deepEqual(
-			watcherUpdates(server.messages).map((message) => message.params.revision),
-			[firstRevision, firstRevision],
-		);
 		// Writing the same bytes changes nothing, so it should notify nothing.
 		//
 		// "Nothing happened" cannot be proved by sleeping — a slow machine just
@@ -531,13 +660,8 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 			watcherUpdates(server.messages).map(
 				(message) => message.params.changedPaths,
 			),
-			[
-				["card.nz.liquid"],
-				["card.nz.liquid"],
-				["badge.nz.liquid"],
-				["badge.nz.liquid"],
-			],
-			"the burst collapsed into one pair and the no-op sent none",
+			[["card.nz.liquid"], ["badge.nz.liquid"]],
+			"the burst collapsed into one update and the no-op sent none",
 		);
 		await unlink(badgePath);
 		// The delete is the third revision, which is what tells it apart from the
@@ -551,36 +675,17 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 		);
 		assert.deepEqual(
 			watcherUpdates(server.messages).map((message) => message.method),
-			[
-				"graph/update",
-				"build/update",
-				"graph/update",
-				"build/update",
-				"graph/update",
-				"build/update",
-			],
+			["inspection/update", "inspection/update", "inspection/update"],
 		);
 		assert.deepEqual(
 			watcherUpdates(server.messages)
-				.slice(2)
+				.slice(1)
 				.map((message) => message.params.changedPaths),
-			[
-				["badge.nz.liquid"],
-				["badge.nz.liquid"],
-				["badge.nz.liquid"],
-				["badge.nz.liquid"],
-			],
+			[["badge.nz.liquid"], ["badge.nz.liquid"]],
 		);
 		assert.deepEqual(
 			watcherUpdates(server.messages).map((message) => message.params.revision),
-			[
-				firstRevision,
-				firstRevision,
-				firstRevision + 1,
-				firstRevision + 1,
-				firstRevision + 2,
-				firstRevision + 2,
-			],
+			[firstRevision, firstRevision + 1, firstRevision + 2],
 		);
 	} finally {
 		server?.close();
