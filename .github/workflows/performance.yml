@@ -10,6 +10,7 @@ on:
       - "packages/target-shopify/**"
       - "packages/cli-client/**"
       - "benchmarks/**"
+      - "fixtures/**"
       - ".github/workflows/performance.yml"
   workflow_dispatch:
 
@@ -65,11 +66,26 @@ jobs:
           RUNS: "3"
           # Shared runners are noisy, so the budget is wide.
           MAX_COLD_REGRESSION: "15"
+          # Absolute user-facing budget. Unlike relative A/B CPU gating, this
+          # includes process startup, filesystem discovery, reads, and output.
+          MAX_COLD_MS: "10000"
+          MAX_COLD_SCALE: "64"
           REPORT_PATH: inspect-ab.txt
         run: benchmarks/ab.sh
+      - name: enforce persistent inspect latency
+        run: |
+          set -o pipefail
+          node benchmarks/inspect-incremental.mjs \
+            --scale 64 \
+            --runs 20 \
+            --max-initial-ms 10000 \
+            --max-incremental-ms 500 \
+            | tee inspect-incremental.txt
       - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: inspect-ab
-          path: inspect-ab.txt
+          name: inspect-performance
+          path: |
+            inspect-ab.txt
+            inspect-incremental.txt
           if-no-files-found: warn

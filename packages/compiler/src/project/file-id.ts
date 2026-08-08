@@ -1,6 +1,9 @@
 import { posix } from "node:path";
 import { canonicalProductKey } from "../computation/canonical-key.js";
 
+const canonicalFileIds = new WeakSet<object>();
+const serializedFileIds = new WeakMap<object, string>();
+
 export type ProjectFileId = {
 	workspace: string;
 	package: string;
@@ -8,11 +11,13 @@ export type ProjectFileId = {
 };
 
 export function projectFileId(input: ProjectFileId): ProjectFileId {
-	return Object.freeze({
+	const id = Object.freeze({
 		workspace: validateIdentityPart("workspace", input.workspace),
 		package: validateIdentityPart("package", input.package),
 		path: normalizeProjectPath(input.path),
 	});
+	canonicalFileIds.add(id);
+	return id;
 }
 
 export function normalizeProjectPath(path: string): string {
@@ -35,7 +40,17 @@ export function normalizeProjectPath(path: string): string {
 }
 
 export function serializeProjectFileId(id: ProjectFileId): string {
-	return canonicalProductKey(projectFileId(id));
+	if (typeof id === "object" && id !== null) {
+		const cached = serializedFileIds.get(id);
+		if (cached !== undefined) return cached;
+	}
+	const normalized = projectFileId(id);
+	const serialized = canonicalProductKey(normalized);
+	if (typeof id === "object" && id !== null && canonicalFileIds.has(id)) {
+		serializedFileIds.set(id, serialized);
+	}
+	serializedFileIds.set(normalized, serialized);
+	return serialized;
 }
 
 export function compareProjectFileIds(
