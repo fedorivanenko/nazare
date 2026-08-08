@@ -1,5 +1,8 @@
 import type { Diagnostic } from "@nazare/core";
-import type { ProductKey } from "../computation/canonical-key.js";
+import {
+	fingerprintProductKey,
+	type ProductKey,
+} from "../computation/canonical-key.js";
 import {
 	type ComputationGraph,
 	type ComputationRequestOptions,
@@ -101,6 +104,10 @@ export async function createProjectSession(input: {
 		filesByIdentity.set(identity, id);
 		initial.setInput(projectFileRevisionInput(id), file.fingerprint);
 	}
+	initial.setInput(
+		projectFileCatalogInput(),
+		projectFileCatalogFingerprint(filesByIdentity.values()),
+	);
 
 	for (const external of input.host.externalInputs ?? []) {
 		const fingerprints = new Map<string, string>();
@@ -204,6 +211,13 @@ export async function createProjectSession(input: {
 				}
 			}
 
+			if (batch.kind === "files") {
+				update.setInput(
+					projectFileCatalogInput(),
+					projectFileCatalogFingerprint(candidateFiles.values()),
+				);
+			}
+
 			const candidateSnapshot = snapshotFromState(
 				graph.revision + 1,
 				candidateFiles,
@@ -302,6 +316,16 @@ export class ProjectSessionValidationError extends Error {
 
 export function projectFileRevisionInput(id: ProjectFileId): string {
 	return `project-file:${serializeProjectFileId(id)}`;
+}
+
+export function projectFileCatalogInput(): string {
+	return "project-files";
+}
+
+export function projectFileCatalogFingerprint(
+	files: Iterable<ProjectFileId>,
+): string {
+	return fingerprintProductKey([...files].sort(compareProjectFileIds));
 }
 
 export function externalProjectInput(
