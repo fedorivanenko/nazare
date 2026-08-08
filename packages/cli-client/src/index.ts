@@ -1,18 +1,8 @@
 #!/usr/bin/env node
-import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, realpathSync } from "node:fs";
-import {
-	access,
-	mkdir,
-	readFile,
-	realpath,
-	rename,
-	rm,
-	writeFile,
-} from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import {
 	basename,
-	dirname,
 	extname,
 	isAbsolute,
 	join,
@@ -25,20 +15,11 @@ import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 // Types only: erased at build, so naming the compiler here costs nothing at
 // runtime. Its values are loaded by the commands that need them — see below.
-import type {
-	compileNazareArtifact,
-	computeNazareTheme,
-	inspectNazareTheme,
-	PersistedThemeInspection,
-	ThemeAnalysisCache,
-	ThemeFileImpact,
-	ThemeInputFile,
-	ThemeMetafieldIdentity,
-	ThemeMetafieldImpact,
-} from "@nazare/compiler";
+import type { compileNazareArtifact } from "@nazare/compiler/compile";
 import {
 	collectThemeInputFiles,
 	isMissingFileError,
+	matchesInspectGlob,
 	readOptionalInspectArtifact,
 	validateInspectConfiguration,
 } from "./inspect-input.js";
@@ -52,11 +33,18 @@ import {
 	printHelp,
 } from "./options.js";
 import { type Output, processOutput } from "./output.js";
+import { executeRevisionUpdates } from "./revision-execution.js";
+import type {
+	ShopifyFileImpact,
+	ShopifyInspection,
+	ShopifyMetafieldImpact,
+	ShopifyQuerySession,
+} from "./shopify-query-session.js";
 
 /** Heavy modules, loaded only by commands that use them. */
-const compiler = () => import("@nazare/compiler");
-const inspectCache = () => import("@nazare/compiler/inspect-cache");
+const compiler = () => import("@nazare/compiler/compile");
 const registry = () => import("@nazare/registry");
+const shopifyQueries = () => import("./shopify-query-session.js");
 
 const THEME_MANIFEST = "nazare.theme.json";
 
@@ -78,6 +66,7 @@ type MainOptions = {
 	env?: NodeJS.ProcessEnv;
 	output?: Output;
 	input?: Readable;
+	signal?: AbortSignal;
 };
 
 export async function main(
@@ -166,13 +155,19 @@ export async function main(
 			return 0;
 		}
 
-		if (command === "build") {
-			const { runThemeBuild } = await import("./build-command.js");
-			return await runThemeBuild(
+		if (command === "build" || command === "check") {
+			const { runThemeBuild, runThemeBuildWatch } = await import(
+				"./build-command.js"
+			);
+			const executeBuild = cliOptions.watch
+				? runThemeBuildWatch
+				: runThemeBuild;
+			return await executeBuild(
 				projectRoot,
 				cliOptions.positionals[0],
 				cliOptions,
 				output,
+				{ checkOnly: command === "check" },
 			);
 		}
 
@@ -190,7 +185,9 @@ export async function main(
 		// `inspect theme` reads a whole theme from a directory rather than one
 		// entry file, so it dispatches ahead of the per-file views below.
 		if (command === "inspect" && cliOptions.positionals[0] === "theme") {
-			return await runInspect(projectRoot, cliOptions, output);
+			return cliOptions.watch
+				? await runInspectWatch(projectRoot, cliOptions, output, options.signal)
+				: await runInspect(projectRoot, cliOptions, output);
 		}
 		if (
 			command === "inspect" &&
@@ -217,18 +214,15 @@ export async function main(
 		}
 
 		// Every other command targets exactly one entry file.
-		if (command !== "check" && command !== "inspect") {
+		if (command !== "inspect") {
 			output.error(`Unknown command ${command}`);
 			printHelp(output);
 			return 1;
 		}
 		// `inspect` names the view first: `nazare inspect ir <file>`.
-		const view = command === "inspect" ? cliOptions.positionals[0] : "check";
-		const target =
-			command === "inspect"
-				? cliOptions.positionals[1]
-				: cliOptions.positionals[0];
-		if (command === "inspect" && (!view || !INSPECT_VIEW_SET.has(view))) {
+		const view = cliOptions.positionals[0];
+		const target = cliOptions.positionals[1];
+		if (!view || !INSPECT_VIEW_SET.has(view)) {
 			output.error(
 				`Usage: nazare inspect <${[...INSPECT_VIEWS].join("|")}> <file>, or nazare inspect theme [dir]`,
 			);
@@ -294,14 +288,6 @@ export async function main(
 				),
 			);
 			return hasErrors(result.issues) ? 1 : 0;
-		}
-
-		// `check` is the top-level command's internal projection, not an inspect view.
-		if (view === "check") {
-			const result = compile();
-			const issues = result.issues;
-			output.log(JSON.stringify({ issues, notes: result.notes }, null, 2));
-			return hasErrors(issues) ? 1 : 0;
 		}
 
 		if (view === "artifact") {
@@ -560,10 +546,174 @@ async function runPreview(
 	return await runPreviewBuild(dir, resolve(projectRoot, outDir), output, root);
 }
 
+async function runInspectWatch(
+	projectRoot: string,
+	cliOptions: CliOptions,
+	output: Output,
+	signal?: AbortSignal,
+): Promise<number> {
+	const [, dirArg] = cliOptions.positionals;
+	const prepared = await prepareThemeInspection(
+		projectRoot,
+		dirArg,
+		cliOptions,
+		output,
+	);
+	const queryModule = await shopifyQueries();
+	const session = await queryModule.ShopifyQuerySession.open(
+		prepared.absoluteRoot,
+		{
+			[queryModule.PROJECT_METADATA_KEYS.config]: {
+				exclude: prepared.exclude,
+			},
+			...(prepared.metafields
+				? {
+						[queryModule.PROJECT_METADATA_KEYS.metafields]:
+							prepared.metafields.contents,
+					}
+				: {}),
+			...(prepared.themeCheck
+				? {
+						[queryModule.PROJECT_METADATA_KEYS.themeCheck]:
+							prepared.themeCheck.contents,
+					}
+				: {}),
+		},
+		{
+			includeFile: (path) =>
+				!prepared.exclude.some((pattern) => matchesInspectGlob(path, pattern)),
+		},
+	);
+	const controller = new AbortController();
+	const abortFromCaller = () => controller.abort(signal?.reason);
+	signal?.addEventListener("abort", abortFromCaller, { once: true });
+	if (signal?.aborted) abortFromCaller();
+	let latestCode = 0;
+	const execute = async (): Promise<CapturedInspectExecution> => {
+		const captured = captureInspectOutput();
+		const code = await runInspect(
+			projectRoot,
+			{ ...cliOptions, watch: false },
+			captured.output,
+			{ session },
+		);
+		return { code, errors: captured.errors, logs: captured.logs };
+	};
+	const publish = (event: {
+		type: "result" | "update-failed";
+		revision: number;
+		durationMs: number;
+		result?: CapturedInspectExecution;
+		error?: unknown;
+	}): void => {
+		if (event.type === "update-failed" || !event.result) {
+			latestCode = 1;
+			const message =
+				event.error instanceof Error
+					? event.error.message
+					: String(event.error);
+			if (cliOptions.json || cliOptions.format === "json") {
+				output.log(
+					JSON.stringify({
+						type: "update-failed",
+						revision: event.revision,
+						durationMs: event.durationMs,
+						error: message,
+					}),
+				);
+			} else
+				output.error(`update-failed revision ${event.revision}: ${message}`);
+			return;
+		}
+		latestCode = event.result.code;
+		if (cliOptions.json || cliOptions.format === "json") {
+			output.log(JSON.stringify({ ...event, result: event.result }));
+			return;
+		}
+		for (const message of event.result.logs) output.log(message);
+		for (const message of event.result.errors) output.error(message);
+		output.log(
+			`result revision ${event.revision} in ${Math.round(event.durationMs)}ms`,
+		);
+	};
+
+	const started = performance.now();
+	try {
+		const result = await execute();
+		publish({
+			type: "result",
+			revision: session.session.snapshot().revision,
+			durationMs: performance.now() - started,
+			result,
+		});
+	} catch (error) {
+		publish({
+			type: "update-failed",
+			revision: session.session.snapshot().revision,
+			durationMs: performance.now() - started,
+			error,
+		});
+	}
+
+	const shutdown = () => controller.abort("Inspect watch stopped");
+	process.once("SIGINT", shutdown);
+	process.once("SIGTERM", shutdown);
+	try {
+		await executeRevisionUpdates({
+			updates: session.session.watch(),
+			revision(update) {
+				if (!update.committed) {
+					for (const diagnostic of update.diagnostics) {
+						output.error(`${diagnostic.code}: ${diagnostic.message}`);
+					}
+					return undefined;
+				}
+				return update.changedFileIds.some((file) =>
+					session.acceptsFile(file.path),
+				)
+					? update.revision
+					: undefined;
+			},
+			run: execute,
+			onEvent: publish,
+			signal: controller.signal,
+		});
+	} finally {
+		process.removeListener("SIGINT", shutdown);
+		process.removeListener("SIGTERM", shutdown);
+		signal?.removeEventListener("abort", abortFromCaller);
+	}
+	return latestCode;
+}
+
+type CapturedInspectExecution = {
+	code: number;
+	logs: string[];
+	errors: string[];
+};
+
+function captureInspectOutput(): {
+	output: Output;
+	logs: string[];
+	errors: string[];
+} {
+	const logs: string[] = [];
+	const errors: string[] = [];
+	return {
+		logs,
+		errors,
+		output: {
+			log: (...values) => logs.push(values.map(String).join(" ")),
+			error: (...values) => errors.push(values.map(String).join(" ")),
+		},
+	};
+}
+
 async function runInspect(
 	projectRoot: string,
 	cliOptions: CliOptions,
 	output: Output,
+	mode: { session?: ShopifyQuerySession } = {},
 ): Promise<number> {
 	const [target, dirArg] = cliOptions.positionals;
 	if (target !== "theme") {
@@ -582,12 +732,13 @@ async function runInspect(
 		dirArg,
 		cliOptions,
 		output,
+		mode.session,
 	);
 	output.log(
 		format === "text"
-			? await renderInspectReport(inspected)
+			? renderInspectReport(inspected)
 			: format === "dot"
-				? (await compiler()).themeGraphToDot(inspected)
+				? renderInspectionDot(inspected)
 				: JSON.stringify(inspected, null, 2),
 	);
 	return themeInspectionStatus(inspected);
@@ -634,36 +785,21 @@ async function runInspectFileImpact(
 		cliOptions,
 		output,
 	);
-	if (prepared.persisted?.inputFingerprint === prepared.inputFingerprint) {
-		const impact = prepared.persisted.impacts[path];
-		if (!impact) {
-			output.error(
-				`Theme file ${path} was not found under inspected root ${prepared.root}`,
-			);
-			return 1;
-		}
-		output.log(
-			format === "json"
-				? JSON.stringify({ root: prepared.root, ...impact }, null, 2)
-				: renderThemeFileImpact(impact),
-		);
-		return hasErrors(prepared.persisted.issues) ? 1 : 0;
-	}
-
-	const computation = await computePreparedThemeInspection(prepared);
-	const impact = computation.getFileImpact(path);
+	const impact = await (await querySessionForInspection(prepared)).fileImpact(
+		path,
+	);
 	if (!impact) {
 		output.error(
-			`Theme file ${path} was not found under inspected root ${computation.model.root}`,
+			`Theme file ${path} was not found under inspected root ${prepared.root}`,
 		);
 		return 1;
 	}
 	output.log(
 		format === "json"
-			? JSON.stringify({ root: computation.model.root, ...impact }, null, 2)
+			? JSON.stringify({ root: prepared.root, ...impact }, null, 2)
 			: renderThemeFileImpact(impact),
 	);
-	return hasErrors(computation.model.issues) ? 1 : 0;
+	return hasErrors(impact.issues) ? 1 : 0;
 }
 
 async function runInspectMetafieldImpact(
@@ -687,14 +823,15 @@ async function runInspectMetafieldImpact(
 		cliOptions,
 		output,
 	);
-	const computation = await computePreparedThemeInspection(prepared);
-	const impact = computation.getMetafieldImpact(identity);
+	const impact = await (
+		await querySessionForInspection(prepared)
+	).metafieldImpact(identity);
 	output.log(
 		format === "json"
-			? JSON.stringify({ root: computation.model.root, ...impact }, null, 2)
+			? JSON.stringify({ root: prepared.root, ...impact }, null, 2)
 			: renderMetafieldImpact(impact),
 	);
-	return hasErrors(computation.model.issues) ? 1 : 0;
+	return hasErrors(impact.issues) ? 1 : 0;
 }
 
 function inspectQueryFormat(
@@ -710,7 +847,13 @@ function inspectQueryFormat(
 	return format;
 }
 
-function parseMetafieldIdentity(identifier: string): ThemeMetafieldIdentity {
+type MetafieldIdentity = {
+	owner: string;
+	namespace: string;
+	key: string;
+};
+
+function parseMetafieldIdentity(identifier: string): MetafieldIdentity {
 	const parts = identifier.split(".");
 	if (
 		parts.length !== 3 ||
@@ -723,17 +866,15 @@ function parseMetafieldIdentity(identifier: string): ThemeMetafieldIdentity {
 	return { owner: parts[0], namespace: parts[1], key: parts[2] };
 }
 
+type ThemeInputFile = { path: string; contents: string };
+
 type PreparedThemeInspection = {
 	root: string;
+	absoluteRoot: string;
 	files: ThemeInputFile[];
 	exclude: string[];
 	metafields?: { path: string; contents: string };
 	themeCheck?: { path: string; contents: string };
-	strictness: CliOptions["strictness"];
-	inputFingerprint: string;
-	cachePath: string;
-	factCache: ThemeAnalysisCache;
-	persisted?: PersistedThemeInspection;
 };
 
 async function loadThemeInspection(
@@ -741,17 +882,49 @@ async function loadThemeInspection(
 	dirArg: string | undefined,
 	cliOptions: CliOptions,
 	output: Output,
-): Promise<ReturnType<typeof inspectNazareTheme>> {
-	return analyzePreparedThemeInspection(
-		await prepareThemeInspection(projectRoot, dirArg, cliOptions, output),
+	existingSession?: ShopifyQuerySession,
+): Promise<ShopifyInspection> {
+	const prepared = await prepareThemeInspection(
+		projectRoot,
+		dirArg,
+		cliOptions,
+		output,
 	);
+	const session =
+		existingSession ?? (await querySessionForInspection(prepared));
+	const inspection = await session.inspection();
+	const position = { line: 1, column: 1 };
+	const excludedIssues = prepared.files.flatMap((file) => {
+		const pattern = prepared.exclude.find((candidate) =>
+			matchesInspectGlob(file.path, candidate),
+		);
+		return pattern
+			? [
+					{
+						severity: "info" as const,
+						phase: "validate" as const,
+						code: "THEME_FILE_EXCLUDED",
+						message: `Excluded from inspection by pattern "${pattern}"`,
+						span: {
+							file: file.path,
+							start: position,
+							end: position,
+						},
+					},
+				]
+			: [];
+	});
+	return {
+		...inspection,
+		issues: [...inspection.issues, ...excludedIssues],
+	};
 }
 
 async function prepareThemeInspection(
 	projectRoot: string,
 	dirArg: string | undefined,
-	cliOptions: CliOptions,
-	output: Output,
+	_cliOptions: CliOptions,
+	_output: Output,
 ): Promise<PreparedThemeInspection> {
 	const manifest = await readProjectManifest(projectRoot);
 	const exclude = validateInspectConfiguration(manifest.inspect);
@@ -775,89 +948,52 @@ async function prepareThemeInspection(
 	const themeCheck = await readThemeCheckPolicy(projectRoot);
 	const relativeRoot =
 		relative(canonicalProjectRoot, canonicalRoot).split(sep).join("/") || ".";
-	const inputFingerprint = themeInspectionInputFingerprint({
-		root: relativeRoot,
-		files,
-		exclude,
-		metafields,
-		themeCheck,
-		strictness: cliOptions.strictness ?? "strict",
-	});
-	const cachePath = join(projectRoot, ".nazare-out", "inspect-cache-v4.json");
-	const { persisted, factCache, discardedReason, missing } =
-		await readPersistedThemeInspection(cachePath);
-	if (discardedReason) {
-		output.error(
-			`Discarded theme inspection cache ${cachePath} (${discardedReason}); analyzing from source.`,
-		);
-	} else if (missing) {
-		const legacyCachePath = join(
-			projectRoot,
-			".nazare-out",
-			"inspect-cache-v3.json",
-		);
-		if (await fileExists(legacyCachePath)) {
-			output.error(
-				`Ignored legacy theme analysis cache ${legacyCachePath}; writing version 4 cache after source analysis.`,
-			);
-		}
-	}
 	return {
 		root: relativeRoot,
+		absoluteRoot: canonicalRoot,
 		files,
 		exclude,
 		metafields,
 		themeCheck,
-		strictness: cliOptions.strictness,
-		inputFingerprint,
-		cachePath,
-		factCache,
-		persisted,
 	};
 }
 
-async function computePreparedThemeInspection(
+async function querySessionForInspection(
 	prepared: PreparedThemeInspection,
-): Promise<ReturnType<typeof computeNazareTheme>> {
-	const compilerModule = await compiler();
-	const computation = compilerModule.computeNazareTheme(prepared.files, {
-		root: prepared.root,
-		strictness: prepared.strictness,
-		cache: prepared.factCache,
-		exclude: prepared.exclude,
-		metafields: prepared.metafields,
-		themeCheck: prepared.themeCheck,
-	});
-	if (prepared.persisted?.inputFingerprint !== prepared.inputFingerprint) {
-		const impacts: Record<string, ThemeFileImpact> = Object.create(null);
-		for (const [path, impact] of computation.getFileImpacts()) {
-			impacts[path] = impact;
-		}
-		await mkdir(dirname(prepared.cachePath), { recursive: true });
-		await writePersistedThemeInspection(prepared.cachePath, {
-			inputFingerprint: prepared.inputFingerprint,
-			root: prepared.root,
-			issues: computation.model.issues,
-			impacts,
-			factCache: prepared.factCache,
-		});
-	}
-	return computation;
+): Promise<ShopifyQuerySession> {
+	const queryModule = await shopifyQueries();
+	return queryModule.ShopifyQuerySession.create(
+		prepared.files.filter(
+			(file) =>
+				!prepared.exclude.some((pattern) =>
+					matchesInspectGlob(file.path, pattern),
+				),
+		),
+		{
+			[queryModule.PROJECT_METADATA_KEYS.config]: {
+				exclude: prepared.exclude,
+			},
+			...(prepared.metafields
+				? {
+						[queryModule.PROJECT_METADATA_KEYS.metafields]:
+							prepared.metafields.contents,
+					}
+				: {}),
+			...(prepared.themeCheck
+				? {
+						[queryModule.PROJECT_METADATA_KEYS.themeCheck]:
+							prepared.themeCheck.contents,
+					}
+				: {}),
+		},
+	);
 }
 
-async function analyzePreparedThemeInspection(
-	prepared: PreparedThemeInspection,
-): Promise<ReturnType<typeof inspectNazareTheme>> {
-	return (await computePreparedThemeInspection(prepared)).toInspectGraph();
-}
-
-function themeInspectionStatus(
-	inspected: ReturnType<typeof inspectNazareTheme>,
-): number {
+function themeInspectionStatus(inspected: ShopifyInspection): number {
 	return inspected.issues.some((issue) => issue.severity === "error") ? 1 : 0;
 }
 
-function renderThemeFileImpact(impact: ThemeFileImpact): string {
+function renderThemeFileImpact(impact: ShopifyFileImpact): string {
 	const lines = [
 		`Impact: ${impact.path}`,
 		`Kind ${impact.fileKind} · usage ${impact.usage} · certainty ${impact.certainty}`,
@@ -877,7 +1013,7 @@ function renderThemeFileImpact(impact: ThemeFileImpact): string {
 	return lines.join("\n");
 }
 
-function renderMetafieldImpact(impact: ThemeMetafieldImpact): string {
+function renderMetafieldImpact(impact: ShopifyMetafieldImpact): string {
 	const identifier = `${impact.identity.owner}.${impact.identity.namespace}.${impact.identity.key}`;
 	const definition = impact.definition
 		? impact.definition.type
@@ -889,13 +1025,21 @@ function renderMetafieldImpact(impact: ThemeMetafieldImpact): string {
 		: "";
 	const lines = [
 		`Metafield: ${identifier}`,
-		"Scope: Liquid and Shopify JSON dynamic sources; JavaScript and GraphQL excluded",
+		"Scope: checked-out Liquid, Shopify JSON, and local JavaScript network calls; static GraphQL metafield requests included",
+		"Opaque: remote app runtime, app-proxy/runtime responses, and server-side app data excluded",
 		`Definition: ${definition}`,
 		`Snapshot: ${impact.snapshot.state} · ${impact.snapshot.path}${pulledAt}`,
 		`Certainty: ${impact.certainty}`,
+		`Recognizable local JavaScript network calls indexed: ${impact.localNetworkAccessCount}`,
 	];
 	const readCountByPath = new Map<string, number>();
 	for (const read of impact.reads) {
+		readCountByPath.set(
+			read.fromPath,
+			(readCountByPath.get(read.fromPath) ?? 0) + 1,
+		);
+	}
+	for (const read of impact.apiReads) {
 		readCountByPath.set(
 			read.fromPath,
 			(readCountByPath.get(read.fromPath) ?? 0) + 1,
@@ -906,6 +1050,14 @@ function renderMetafieldImpact(impact: ThemeMetafieldImpact): string {
 		return `${path} (${count} ${count === 1 ? "read" : "reads"})`;
 	});
 	appendInspectList(lines, "Readers", readers);
+	appendInspectList(
+		lines,
+		"Local API readers",
+		impact.apiReads.map(
+			(read) =>
+				`${read.fromPath} (${read.transport}${read.endpoint ? ` · ${read.endpoint}` : ""})`,
+		),
+	);
 	appendInspectList(lines, "Affected pages", impact.affectedPages);
 	appendInspectList(lines, "Uncertainty", impact.uncertainty);
 	if (impact.uncertainSources.length === 0) {
@@ -922,7 +1074,7 @@ function renderMetafieldImpact(impact: ThemeMetafieldImpact): string {
 function appendInspectList(
 	lines: string[],
 	label: string,
-	values: string[],
+	values: readonly string[],
 ): void {
 	if (values.length === 0) {
 		lines.push(`${label}: none`);
@@ -932,16 +1084,22 @@ function appendInspectList(
 	for (const value of values) lines.push(`- ${value}`);
 }
 
-async function renderInspectReport(
-	graph: ReturnType<typeof inspectNazareTheme>,
-): Promise<string> {
-	const summary = (await compiler()).summarizeThemeGraph(graph);
+function renderInspectReport(graph: ShopifyInspection): string {
+	const countKind = (kind: string): number =>
+		graph.nodes.filter((node) => node.kind === kind).length;
+	const pageCount = countKind("templateJson") + countKind("templateLiquid");
+	const errorCount = graph.issues.filter(
+		(issue) => issue.severity === "error",
+	).length;
+	const warningCount = graph.issues.filter(
+		(issue) => issue.severity === "warning",
+	).length;
 	const lines = [
-		`Theme graph: ${summary.fileCount} files`,
-		`Pages ${summary.pageCount} · sections ${summary.sectionCount} · snippets ${summary.snippetCount} · components ${summary.componentCount}`,
-		`Unresolved ${summary.unresolvedCount} · metafield reads without definitions ${summary.brokenMetafieldReadCount}`,
-		`Affected pages ${summary.affectedPageCount}`,
-		`Issues ${summary.issueCount} (${summary.errorCount} errors, ${summary.warningCount} warnings)`,
+		`Theme graph: ${graph.nodes.length} files`,
+		`Pages ${pageCount} · sections ${countKind("section")} · snippets ${countKind("snippet")} · components ${countKind("nazareComponent")}`,
+		`Unresolved ${graph.summary.unresolvedCount} · metafield reads without definitions ${graph.summary.brokenMetafieldReadCount}`,
+		`Affected pages ${graph.summary.affectedPageCount}`,
+		`Issues ${graph.issues.length} (${errorCount} errors, ${warningCount} warnings)`,
 	];
 	if (graph.issues.length > 0) {
 		lines.push("", "Issues:");
@@ -953,6 +1111,21 @@ async function renderInspectReport(
 		}
 	}
 	return lines.join("\n");
+}
+
+function renderInspectionDot(graph: ShopifyInspection): string {
+	const quote = (value: string): string => JSON.stringify(value);
+	return [
+		"digraph theme {",
+		...graph.nodes.map(
+			(node) => `  ${quote(node.id)} [label=${quote(node.path)}];`,
+		),
+		...graph.edges.map(
+			(edge) =>
+				`  ${quote(edge.from)} -> ${quote(edge.to)} [label=${quote(edge.kind)}];`,
+		),
+		"}",
+	].join("\n");
 }
 
 async function readThemeCheckPolicy(
@@ -974,123 +1147,6 @@ function isOutsideRoot(root: string, path: string): boolean {
 		relativePath.startsWith(`..${sep}`) ||
 		isAbsolute(relativePath)
 	);
-}
-
-function themeInspectionInputFingerprint(input: {
-	root: string;
-	files: ThemeInputFile[];
-	exclude: string[];
-	metafields?: { path: string; contents: string };
-	themeCheck?: { path: string; contents: string };
-	strictness: "strict" | "loose";
-}): string {
-	const hash = createHash("sha256");
-	const add = (value: string): void => {
-		hash.update(`${Buffer.byteLength(value, "utf8")}:`);
-		hash.update(value);
-	};
-	add("nazare-theme-inspection-input-v1");
-	add(input.root);
-	add(input.strictness);
-	add("liquid-only");
-	add(`exclude:${input.exclude.length}`);
-	for (const pattern of input.exclude) add(pattern);
-	add(`files:${input.files.length}`);
-	for (const file of [...input.files].sort((left, right) =>
-		left.path.localeCompare(right.path),
-	)) {
-		add(file.path);
-		add(file.contents);
-	}
-	for (const [name, artifact] of [
-		["metafields", input.metafields],
-		["themeCheck", input.themeCheck],
-	] as const) {
-		add(name);
-		add(artifact ? "present" : "absent");
-		if (artifact) {
-			add(artifact.path);
-			add(artifact.contents);
-		}
-	}
-	return hash.digest("hex");
-}
-
-/**
- * Reads the persisted inspection cache without importing compiler frontends.
- * The cache is an optimization, never an input: anything unusable is discarded
- * and reported before source analysis rebuilds it.
- */
-async function readPersistedThemeInspection(path: string): Promise<{
-	persisted?: PersistedThemeInspection;
-	factCache: ThemeAnalysisCache;
-	discardedReason?: string;
-	missing?: boolean;
-}> {
-	const empty: ThemeAnalysisCache = { version: 1, entries: {} };
-	let raw: string;
-	try {
-		raw = await readFile(path, "utf8");
-	} catch (error) {
-		if (isMissingFileError(error)) return { factCache: empty, missing: true };
-		return {
-			factCache: empty,
-			discardedReason: `unreadable: ${errorMessage(error)}`,
-		};
-	}
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch (error) {
-		return {
-			factCache: empty,
-			discardedReason: `invalid JSON: ${errorMessage(error)}`,
-		};
-	}
-	try {
-		const persisted = (await inspectCache()).parsePersistedThemeInspection(
-			parsed,
-		);
-		return { persisted, factCache: persisted.factCache };
-	} catch (error) {
-		return { factCache: empty, discardedReason: errorMessage(error) };
-	}
-}
-
-async function writePersistedThemeInspection(
-	path: string,
-	inspection: PersistedThemeInspection,
-): Promise<void> {
-	const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
-	try {
-		await writeFile(
-			temporaryPath,
-			(await inspectCache()).serializePersistedThemeInspection(inspection),
-		);
-		await rename(temporaryPath, path);
-	} catch (error) {
-		try {
-			await rm(temporaryPath, { force: true });
-		} catch (cleanupError) {
-			throw new AggregateError(
-				[error, cleanupError],
-				`Unable to write theme inspection cache ${path} and remove temporary file ${temporaryPath}`,
-			);
-		}
-		throw new Error(
-			`Unable to write theme inspection cache ${path}: ${errorMessage(error)}`,
-		);
-	}
-}
-
-async function fileExists(path: string): Promise<boolean> {
-	try {
-		await access(path);
-		return true;
-	} catch (error) {
-		if (isMissingFileError(error)) return false;
-		throw new Error(`Unable to inspect ${path}: ${errorMessage(error)}`);
-	}
 }
 
 function errorMessage(error: unknown): string {
@@ -1452,7 +1508,7 @@ function readCliVersion(): string {
 }
 
 function hasErrors(
-	issues: { severity: "error" | "warning" | "info" }[],
+	issues: readonly { severity: "error" | "warning" | "info" }[],
 ): boolean {
 	return issues.some((issue) => issue.severity === "error");
 }

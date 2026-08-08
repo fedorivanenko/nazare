@@ -2,12 +2,16 @@
 // template, never the authored source: what the storefront gets is what the
 // gallery shows, so a lowering bug is visible here instead of only on a store.
 import {
-	buildNazareThemeWorkspace,
 	buildPlainLiquid,
-	collectPlainLiquidThemeFacts,
-	projectTreeSitterNazareAst,
-} from "@nazare/compiler";
+	compileArtifact,
+	emitTheme,
+} from "@nazare/compiler/compile";
 import type { ArtifactContract, ComponentKind, Diagnostic } from "@nazare/core";
+import {
+	createDefaultSourceParserRegistry,
+	liquidSyntaxFacts,
+	parseSourceDocument,
+} from "@nazare/source";
 import { controlsFromContract, type PreviewControl } from "./controls.js";
 import { plainLiquidControls } from "./plain-controls.js";
 
@@ -122,7 +126,14 @@ export function previewComponentFromSource(
 		// snippet. Both are the author's own statement, and both are already
 		// parsed — reading them is what makes a plain component previewable with
 		// props rather than blank.
-		const { facts } = collectPlainLiquidThemeFacts(file, source);
+		const liquid = liquidSyntaxFacts(
+			parseSourceDocument(
+				createDefaultSourceParserRegistry(),
+				file,
+				"liquid",
+				source,
+			),
+		);
 		return {
 			name,
 			file,
@@ -131,26 +142,23 @@ export function previewComponentFromSource(
 			componentKind: options.kind ?? kindFromPath(file),
 			template: template || source,
 			assets,
-			controls: plainLiquidControls(facts, built.ast.schema?.source),
+			controls: plainLiquidControls(
+				liquid.authoritative ? liquid.docParams : [],
+				built.ast.schema?.source,
+			),
 			issues: built.issues,
 		};
 	}
 
-	// emitOnError: the gallery is worth more with a broken component shown and
-	// its diagnostics listed than with the whole page failing to build.
-	const built = buildNazareThemeWorkspace(
-		importClosure(source, file, readFile),
-		{
-			scope: { kind: "closure", path: file },
-			name,
-			strictness: options.strictness ?? "strict",
-			emitOnError: true,
-		},
-	);
-	const artifact = built.artifacts.find((candidate) => candidate.path === file);
-	if (!artifact) {
-		// The entry never produced an artifact, so there is nothing to render.
-		// The build's diagnostics say why.
+	// Preview is a direct one-artifact utility. Imports resolve through readFile,
+	// but project analysis and publication remain outside this path.
+	const compiled = compileArtifact({
+		source,
+		file,
+		readFile,
+		strictness: options.strictness ?? "strict",
+	});
+	if (!compiled.ok || !compiled.ast) {
 		return {
 			name,
 			file,
@@ -159,50 +167,25 @@ export function previewComponentFromSource(
 			template: "",
 			assets: [],
 			controls: [],
-			issues: built.issues,
+			issues: compiled.issues,
 		};
 	}
-	// This component's own output, not the whole closure's: imported components
-	// render in their own gallery entries.
-	const { template, assets } = splitEmitted(artifact.emitted?.files ?? []);
+	const emitted = emitTheme(
+		source,
+		{ ...compiled, ast: compiled.ast },
+		{ name, readFile },
+	);
+	const { template, assets } = splitEmitted(emitted.files);
 	return {
 		name,
 		file,
 		packageId: options.packageId,
 		frontend: "nazare",
-		componentKind: artifact.contract.kind,
+		componentKind: compiled.contract.kind,
 		template,
 		assets,
-		contract: artifact.contract,
-		controls: controlsFromContract(artifact.contract),
-		issues: built.issues,
+		contract: compiled.contract,
+		controls: controlsFromContract(compiled.contract),
+		issues: [...compiled.issues, ...emitted.issues],
 	};
-}
-
-/**
- * The entry and the components it imports, transitively. The workspace build
- * takes the files it should consider as input rather than reading them itself,
- * and an import path is already project-relative. An import that cannot be read
- * is left out: the build reports it as an unresolved dependency.
- */
-function importClosure(
-	source: string,
-	file: string,
-	readFile: (path: string) => string | undefined,
-): { path: string; contents: string }[] {
-	const files = new Map([[file, source]]);
-	const pending = [file];
-	while (pending.length > 0) {
-		const path = pending.pop();
-		const contents = path === undefined ? undefined : files.get(path);
-		if (path === undefined || contents === undefined) continue;
-		for (const node of projectTreeSitterNazareAst(contents, path).ast.nodes) {
-			if (node.type !== "NazareImport" || files.has(node.path)) continue;
-			const imported = readFile(node.path);
-			if (imported === undefined) continue;
-			files.set(node.path, imported);
-			pending.push(node.path);
-		}
-	}
-	return [...files].map(([path, contents]) => ({ path, contents }));
 }

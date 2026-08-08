@@ -12,13 +12,13 @@
 // dependency map is a second source of truth to keep correct, and at the size a
 // theme actually reaches the whole rebuild costs tens of milliseconds. Precision
 // here should arrive with a measurement behind it, not before one.
-import { watch } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { basename, extname, join } from "node:path";
 import {
 	componentId,
 	galleryPage,
+	PreviewProjectSession,
 	parseStoryFile,
 	type RenderedComponent,
 	renderComponentStories,
@@ -38,11 +38,9 @@ import {
 	previewSource,
 	renderCollection,
 } from "./preview-command.js";
+import { executeRevisionUpdates } from "./revision-execution.js";
 
 const DEFAULT_PORT = 4173;
-
-/** Long enough to coalesce an editor's save, short enough to feel immediate. */
-const DEBOUNCE_MS = 60;
 
 const EVENTS_PATH = "/__events";
 const SAVE_PATH = "/__save";
@@ -92,10 +90,13 @@ async function buildState(
 	dir: string,
 	label: string,
 	previous?: ServerState,
+	signal?: AbortSignal,
 ): Promise<ServerState | undefined> {
+	signal?.throwIfAborted();
 	const collection = await collectPreview(dir);
+	signal?.throwIfAborted();
 	if (!collection || collection === "missing") return undefined;
-	const fresh = await renderCollection(collection);
+	const fresh = await renderCollection(collection, { signal });
 
 	// A story file is written by hand, so it spends time being invalid — every
 	// keystroke between `{` and a closing brace. Dropping the component while
@@ -428,6 +429,7 @@ export async function runPreviewServe(
 		return 1;
 	}
 
+	const previewSession = await PreviewProjectSession.open(dir);
 	const clients = new Set<ServerResponse>();
 	const port = previewPort(cliOptions.port);
 
@@ -576,64 +578,67 @@ export async function runPreviewServe(
 	}
 	output.log("watching for changes");
 
-	// One rebuild at a time, and the next one waits rather than interleaving:
-	// two rebuilds racing would publish whichever finished last, not whichever
-	// read the newer files.
-	let rebuilding: Promise<void> = Promise.resolve();
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	const rebuild = (): void => {
-		rebuilding = rebuilding.then(async () => {
-			const started = Date.now();
-			try {
-				const next = await buildState(dir, label, state);
-				// A directory that stopped being previewable keeps the last good
-				// pages: an editor mid-rename is not a reason to serve nothing.
-				if (!next || next.rendered.length === 0) {
-					output.error(
-						"nothing to preview after that change; keeping the last build",
-					);
-					return;
+	let stopped = false;
+	const executionController = new AbortController();
+	const watchLoop = executeRevisionUpdates({
+		updates: previewSession.watch(),
+		revision(update) {
+			if (!update.committed) {
+				for (const diagnostic of update.diagnostics) {
+					output.error(`${diagnostic.code}: ${diagnostic.message}`);
 				}
-				state = next;
-				report(state, output);
-				output.log(`rebuilt in ${Date.now() - started}ms`);
-			} catch (error) {
-				// A compile that throws leaves the previous pages in place, so the
-				// page you are looking at survives a half-typed tag.
+				return undefined;
+			}
+			return update.changedFileIds.some((file) =>
+				/\.(liquid|json|css|js|ts|svg|png|jpe?g|webp|woff2?)$/.test(file.path),
+			)
+				? update.revision
+				: undefined;
+		},
+		async run(_revision, signal) {
+			const next = await buildState(dir, label, state, signal);
+			if (!next || next.rendered.length === 0) {
+				throw new Error(
+					"nothing to preview after that change; keeping the last build",
+				);
+			}
+			return next;
+		},
+		onEvent(event) {
+			if (event.type === "update-failed") {
 				output.error(
-					`rebuild failed: ${error instanceof Error ? error.message : String(error)}`,
+					`update-failed revision ${event.revision}: ${event.error instanceof Error ? event.error.message : String(event.error)}`,
 				);
 				return;
 			}
+			state = event.result;
+			report(state, output);
+			output.log(
+				`result revision ${event.revision} in ${Math.round(event.durationMs)}ms`,
+			);
 			for (const client of clients) client.write("data: reload\n\n");
-		});
-	};
-
-	const watcher = watch(dir, { recursive: true }, (_event, filename) => {
-		const name = filename?.toString().split("\\").join("/");
-		if (!name) return;
-		// Our own output is not an input. Without this the server rebuilds
-		// because it rebuilt.
-		if (name.startsWith(".nazare-out/") || name.includes("/.nazare-out/")) {
-			return;
+		},
+		signal: executionController.signal,
+	}).catch((error) => {
+		if (!stopped) {
+			output.error(
+				`preview watcher failed: ${error instanceof Error ? error.message : String(error)}`,
+			);
 		}
-		if (!/\.(liquid|json|css|js|ts|svg|png|jpe?g|webp|woff2?)$/.test(name)) {
-			return;
-		}
-		if (timer) clearTimeout(timer);
-		timer = setTimeout(rebuild, DEBOUNCE_MS);
 	});
 
 	// Runs until interrupted: the command is the server.
 	await new Promise<void>((stop) => {
 		const shutdown = () => {
-			watcher.close();
+			stopped = true;
+			executionController.abort("Preview server stopped");
 			for (const client of clients) client.end();
 			server.close(() => stop());
 		};
 		process.once("SIGINT", shutdown);
 		process.once("SIGTERM", shutdown);
 	});
+	await watchLoop;
 	return 0;
 }
 

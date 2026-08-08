@@ -11,9 +11,33 @@
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
 		},
-		"./inspect-cache": {
-			"types": "./dist/theme-analysis-cache.d.ts",
-			"import": "./dist/theme-analysis-cache.js"
+		"./compile": {
+			"types": "./dist/compile/index.d.ts",
+			"import": "./dist/compile/index.js"
+		},
+		"./computation": {
+			"types": "./dist/computation/index.d.ts",
+			"import": "./dist/computation/index.js"
+		},
+		"./project": {
+			"types": "./dist/project/index.d.ts",
+			"import": "./dist/project/index.js"
+		},
+		"./extensions": {
+			"types": "./dist/extensions/index.d.ts",
+			"import": "./dist/extensions/index.js"
+		},
+		"./output": {
+			"types": "./dist/output/index.d.ts",
+			"import": "./dist/output/index.js"
+		},
+		"./portable": {
+			"types": "./dist/portable/index.d.ts",
+			"import": "./dist/portable/index.js"
+		},
+		"./source-products": {
+			"types": "./dist/source-products/index.d.ts",
+			"import": "./dist/source-products/index.js"
 		}
 	},
 	"scripts": {
@@ -24,6 +48,7 @@
 		"@nazare/source": "workspace:^",
 		"acorn": "^8.15.0",
 		"acorn-walk": "^8.3.4",
+		"graphql": "^16.11.0",
 		"jsonc-parser": "^3.3.1",
 		"postcss": "^8.5.17",
 		"postcss-selector-parser": "^7.1.4"

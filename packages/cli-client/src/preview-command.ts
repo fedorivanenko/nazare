@@ -122,7 +122,7 @@ function compileComponent(
 		readFile: (path: string) => string | undefined;
 	},
 ): PreviewComponent {
-	const key = `${dir}\0${file}\0${options.packageId ?? ""}\0${options.kind ?? ""}`;
+	const key = compiledComponentKey(dir, file, options);
 	const cached = compiledComponents.get(key);
 	if (
 		cached &&
@@ -143,6 +143,31 @@ function compileComponent(
 	});
 	compiledComponents.set(key, { reads, source, component });
 	return component;
+}
+
+type CompiledComponentIdentity = {
+	packageId?: string;
+	kind?: NazareManifest["kind"];
+};
+
+function compiledComponentKey(
+	dir: string,
+	file: string,
+	options: CompiledComponentIdentity,
+): string {
+	return `${dir}\0${file}\0${options.packageId ?? ""}\0${options.kind ?? ""}`;
+}
+
+function componentReads(
+	dir: string,
+	file: string,
+	options: CompiledComponentIdentity,
+): readonly string[] {
+	return [
+		...(compiledComponents
+			.get(compiledComponentKey(dir, file, options))
+			?.reads.keys() ?? []),
+	];
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -331,9 +356,17 @@ async function collectTheme(
 		malformed: [],
 		malformedComponents: [],
 	};
-	// The compiler's filesystem is theme-relative and synchronous.
-	const readThemeFile = (path: string) => readSync(join(dir, path));
+	const candidates: Array<{
+		file: string;
+		name: string;
+		source: string;
+		stories: PreviewStory[];
+		storyFile: string;
+	}> = [];
 
+	// Discover authored stories before compiling templates. A theme with no
+	// stories should not parse every section and snippet just to report that
+	// there is nothing to preview.
 	for (const name of THEME_DIRS) {
 		if (!existsSync(join(dir, name))) continue;
 		for (const entry of (await readdir(join(dir, name))).sort()) {
@@ -341,37 +374,60 @@ async function collectTheme(
 			const file = `${name}/${entry}`;
 			const source = await readIfPresent(join(dir, file));
 			if (source === undefined) continue;
-			const component = compileComponent(dir, source, file, {
-				readFile: readThemeFile,
-			});
-
-			// card.liquid → card.stories.json, beside the template.
-			const storyPath = `${name}/${basename(entry, ".liquid")}.stories.json`;
-			const raw = await readIfPresent(join(dir, storyPath));
+			const componentName = basename(entry, ".liquid");
+			const storyFile = `${name}/${componentName}.stories.json`;
+			const raw = await readIfPresent(join(dir, storyFile));
 			let stories: PreviewStory[] = [];
-			if (raw !== undefined) {
+			if (raw === undefined) {
+				collection.undeclared.push(file);
+			} else {
 				try {
-					// parseStoryFile names the path itself; JSON.parse does not.
 					let parsed: unknown;
 					try {
 						parsed = JSON.parse(raw);
 					} catch (error) {
-						throw new Error(`${storyPath}: invalid JSON: ${errorText(error)}`);
+						throw new Error(`${storyFile}: invalid JSON: ${errorText(error)}`);
 					}
 					stories = storiesFor({
-						sidecar: parseStoryFile(parsed, storyPath),
+						sidecar: parseStoryFile(parsed, storyFile),
 						readFixture,
 					});
 				} catch (error) {
 					collection.malformed.push(errorText(error));
-					collection.malformedComponents.push(component.name);
+					collection.malformedComponents.push(componentName);
 				}
 			}
-			const entryRecord = { component, stories, file, storyFile: storyPath };
-			collection.compiled.push(entryRecord);
-			if (stories.length > 0) collection.previewed.push(entryRecord);
-			else if (raw === undefined) collection.undeclared.push(file);
+			candidates.push({
+				file,
+				name,
+				source,
+				stories,
+				storyFile,
+			});
 		}
+	}
+
+	const hasStories = candidates.some(
+		(candidate) => candidate.stories.length > 0,
+	);
+	if (!hasStories) return collection;
+	// Story components are demanded directly. Snippets remain available to the
+	// Liquid renderer as a library; unrelated sections and blocks stay unparsed.
+	const readThemeFile = (path: string) => readSync(join(dir, path));
+	for (const candidate of candidates) {
+		if (candidate.stories.length === 0 && candidate.name !== "snippets")
+			continue;
+		const component = compileComponent(dir, candidate.source, candidate.file, {
+			readFile: readThemeFile,
+		});
+		const entryRecord = {
+			component,
+			stories: candidate.stories,
+			file: candidate.file,
+			storyFile: candidate.storyFile,
+		};
+		collection.compiled.push(entryRecord);
+		if (candidate.stories.length > 0) collection.previewed.push(entryRecord);
 	}
 	return collection;
 }
@@ -393,6 +449,16 @@ async function collectPackages(
 	// sibling (`../notice/notice.nz.liquid`) addresses it across the folder
 	// boundary, so the entry path has to be collection-relative too.
 	const readCollectionFile = (path: string) => readSync(join(dir, path));
+	const candidates = new Map<
+		string,
+		{
+			file: string;
+			source: string;
+			manifest: NazareManifest;
+			stories: PreviewStory[];
+			storyFile: string;
+		}
+	>();
 
 	for (const folder of (await readdir(dir)).sort()) {
 		const manifestPath = join(dir, folder, "nazare.json");
@@ -428,30 +494,58 @@ async function collectPackages(
 		const file = `${folder}/${manifest.entry}`;
 		const source = await readIfPresent(join(dir, file));
 		if (source === undefined) continue;
-		const component = compileComponent(dir, source, file, {
-			readFile: readCollectionFile,
-			packageId: manifest.id,
-			// A function package was already skipped, so the kind is a template one.
-			kind: manifest.kind as Exclude<NazareManifest["kind"], "function">,
-		});
 		let stories: PreviewStory[];
 		try {
 			stories = storiesFor({ manifest, readFixture });
 		} catch (error) {
 			collection.malformed.push(errorText(error));
-			collection.malformedComponents.push(component.name);
+			collection.malformedComponents.push(manifest.id);
 			stories = [];
 		}
+		const storyFile = `${folder}/nazare.json`;
+		candidates.set(file, { file, source, manifest, stories, storyFile });
+		if (stories.length === 0) collection.undeclared.push(file);
+	}
+
+	const pending = [...candidates.values()]
+		.filter((candidate) => candidate.stories.length > 0)
+		.map((candidate) => candidate.file);
+	const compiled = new Set<string>();
+	while (pending.length > 0) {
+		const file = pending.shift();
+		if (!file || compiled.has(file)) continue;
+		const candidate = candidates.get(file);
+		if (!candidate) continue;
+		const options = {
+			readFile: readCollectionFile,
+			packageId: candidate.manifest.id,
+			kind: candidate.manifest.kind as Exclude<
+				NazareManifest["kind"],
+				"function"
+			>,
+		};
+		const component = compileComponent(dir, candidate.source, file, options);
+		compiled.add(file);
 		const entryRecord = {
 			component,
-			stories,
+			stories: candidate.stories,
 			file,
-			storyFile: `${folder}/nazare.json`,
+			storyFile: candidate.storyFile,
 		};
 		collection.compiled.push(entryRecord);
-		if (stories.length > 0) collection.previewed.push(entryRecord);
-		else collection.undeclared.push(entryRecord.file);
+		if (candidate.stories.length > 0) collection.previewed.push(entryRecord);
+		for (const dependency of componentReads(dir, file, options)) {
+			if (candidates.has(dependency) && !compiled.has(dependency)) {
+				pending.push(dependency);
+			}
+		}
 	}
+	collection.compiled.sort((left, right) =>
+		left.file.localeCompare(right.file),
+	);
+	collection.previewed.sort((left, right) =>
+		left.file.localeCompare(right.file),
+	);
 	return collection;
 }
 
@@ -483,17 +577,22 @@ export async function collectPreview(
  */
 export async function renderCollection(
 	collection: PreviewCollection,
+	options: { signal?: AbortSignal } = {},
 ): Promise<RenderedComponent[]> {
+	options.signal?.throwIfAborted();
 	const snippets = snippetLibrary(
 		collection.compiled.map((entry) => entry.component),
 	);
-	const rendered: RenderedComponent[] = [];
-	for (const { component, stories } of collection.previewed) {
-		rendered.push(
-			await renderComponentStories(component, stories, { snippets }),
-		);
-	}
-	return rendered;
+	return Promise.all(
+		collection.previewed.map(async ({ component, stories }) => {
+			options.signal?.throwIfAborted();
+			const rendered = await renderComponentStories(component, stories, {
+				snippets,
+			});
+			options.signal?.throwIfAborted();
+			return rendered;
+		}),
+	);
 }
 
 function reportSkipped(collection: PreviewCollection, output: Output): void {

@@ -4,7 +4,7 @@
 // is a span projection of those located nodes.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compileNazareArtifact, emitTheme } from "../dist/index.js";
+import { compileNazareArtifact, emitTheme } from "../dist/testing.js";
 
 function build(source) {
 	const compiled = compileNazareArtifact(source, "component.nz.liquid");

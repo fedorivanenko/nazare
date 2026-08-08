@@ -39,7 +39,7 @@ pnpm -s typecheck
 cp package.json pnpm-lock.yaml pnpm-workspace.yaml LICENSE "$out/"
 cp -R patches "$out/patches"
 printf '%s\n' "$version" > "$out/VERSION"
-for pkg in cli-client compiler core registry source source-cli theme; do
+for pkg in cli-client compiler core preview registry source source-cli target-shopify; do
 	mkdir -p "$out/packages/$pkg"
 	cp "packages/$pkg/package.json" "$out/packages/$pkg/package.json"
 	cp -R "packages/$pkg/dist" "$out/packages/$pkg/dist"

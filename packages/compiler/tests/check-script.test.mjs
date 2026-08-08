@@ -3,7 +3,7 @@ import { test } from "node:test";
 import {
 	checkScriptConstraints,
 	compileNazareArtifact,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 test("check-script: valid JavaScript passes", () => {
 	const result = compileNazareArtifact(

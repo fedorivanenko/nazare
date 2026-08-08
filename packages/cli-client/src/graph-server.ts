@@ -3,19 +3,17 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
-import {
-	getThemeNode,
-	summarizeThemeGraph,
-	type ThemeBehaviorQuery,
-	ThemeBuildSession,
-	type ThemeInputFile,
-	ThemeProgram,
-} from "@nazare/compiler";
+import type { ShopifyBehavior } from "@nazare/target-shopify";
 import {
 	collectThemeInputFiles,
 	isInspectThemeFile,
+	matchesInspectGlob,
 	readInspectExcludePatterns,
 } from "./inspect-input.js";
+import {
+	PROJECT_METADATA_KEYS,
+	ShopifyQuerySession,
+} from "./shopify-query-session.js";
 
 export type ThemeGraphServerOptions = {
 	projectRoot: string;
@@ -36,9 +34,7 @@ export async function serveThemeGraph(
 	output: Writable,
 	options: ThemeGraphServerOptions,
 ): Promise<void> {
-	const initial = await loadProgramState(root, options.projectRoot);
-	let session = initial.program;
-	let buildSession = initial.buildSession;
+	let querySession = await loadQuerySession(root, options.projectRoot);
 	let stopWatching: (() => void) | undefined;
 	let mcpInitialized = false;
 	const readline = createInterface({ input, crlfDelay: Infinity });
@@ -84,13 +80,9 @@ export async function serveThemeGraph(
 				request,
 				root,
 				options.projectRoot,
-				() => session,
+				() => querySession,
 				(next) => {
-					session = next;
-				},
-				() => buildSession,
-				(next) => {
-					buildSession = next;
+					querySession = next;
 				},
 				(next) => {
 					stopWatching?.();
@@ -150,10 +142,8 @@ async function handleRequest(
 	request: GraphRequest,
 	root: string,
 	projectRoot: string,
-	getSession: () => ThemeProgram,
-	setSession: (session: ThemeProgram) => void,
-	getBuildSession: () => ThemeBuildSession,
-	setBuildSession: (session: ThemeBuildSession) => void,
+	getQuerySession: () => ShopifyQuerySession,
+	setQuerySession: (session: ShopifyQuerySession) => void,
 	setWatcher: (stop: () => void) => void,
 	notify: (update: unknown) => void,
 	debounceMs: number,
@@ -182,10 +172,8 @@ async function handleRequest(
 				},
 				root,
 				projectRoot,
-				getSession,
-				setSession,
-				getBuildSession,
-				setBuildSession,
+				getQuerySession,
+				setQuerySession,
 				setWatcher,
 				notify,
 				debounceMs,
@@ -217,35 +205,52 @@ async function handleRequest(
 		};
 	}
 	if (request.method === "reload" || request.method === "inspect") {
-		const state = await loadProgramState(root, projectRoot);
-		setSession(state.program);
-		setBuildSession(state.buildSession);
-		return state.program.getGraph();
+		const session = await loadQuerySession(root, projectRoot);
+		setQuerySession(session);
+		return request.method === "inspect"
+			? session.projectModel()
+			: session.projectGraph();
 	}
-	const session = getSession();
-	if (request.method === "build") return getBuildSession().getBuild();
-	if (request.method === "updateFile") {
-		const file = requiredFile(request.params);
-		return getBuildSession().updateFile(file).graphUpdate;
+	const querySession = getQuerySession();
+	if (request.method === "projectModel") return querySession.projectModel();
+	if (request.method === "projectGraph") return querySession.projectGraph();
+	if (request.method === "impact") {
+		return querySession.impact([requiredString(request.params, "path")]);
 	}
-	if (request.method === "buildUpdate") {
+	if (request.method === "behaviorIndex") {
+		return querySession.behaviorIndex({
+			behaviorKind: optionalString(request.params, "behaviorKind"),
+		});
+	}
+	if (request.method === "metafieldIndex") {
+		return querySession.metafieldIndex({
+			ownerType: optionalString(request.params, "ownerType"),
+			namespace: optionalString(request.params, "namespace"),
+		});
+	}
+	if (request.method === "unusedFiles") {
+		return querySession.unusedFiles(requiredStrings(request.params, "roots"));
+	}
+	if (request.method === "build") {
+		return querySession.buildProducts({ scope: { kind: "workspace" } });
+	}
+	if (request.method === "updateFile" || request.method === "buildUpdate") {
 		const file = requiredFile(request.params);
-		return getBuildSession().updateFile(file);
+		const previousRevision = querySession.session.snapshot().revision;
+		const revision = await querySession.updateFile(file);
+		return request.method === "buildUpdate"
+			? buildUpdate(querySession, file.path, previousRevision, revision)
+			: graphUpdate(file.path, previousRevision, revision);
 	}
 	if (request.method === "removeFile") {
 		const path = requiredString(request.params, "path");
-		return getBuildSession().removeFile(path).graphUpdate;
+		const previousRevision = querySession.session.snapshot().revision;
+		const revision = await querySession.removeFile(path);
+		return graphUpdate(path, previousRevision, revision);
 	}
 	if (request.method === "watch") {
 		setWatcher(
-			startWatcher(
-				root,
-				projectRoot,
-				getSession,
-				getBuildSession,
-				notify,
-				debounceMs,
-			),
+			startWatcher(root, projectRoot, getQuerySession, notify, debounceMs),
 		);
 		return { watching: true };
 	}
@@ -253,43 +258,170 @@ async function handleRequest(
 		setWatcher(() => undefined);
 		return { watching: false };
 	}
+	if (request.method === "summary") {
+		const model = await querySession.projectModel();
+		return {
+			version: model.version,
+			fileCount: querySession.session.snapshot().fileIds.length,
+			declarationCount: model.declarations.length,
+			referenceCount: model.references.length,
+			evidenceCount: model.evidence.length,
+			uncertaintyCount: model.uncertainty.length,
+		};
+	}
 	if (request.method === "fileImpact") {
-		return (
-			session.getFileImpact(requiredString(request.params, "path")) ?? null
+		const path = requiredString(request.params, "path");
+		const [impact, dependencies] = await Promise.all([
+			querySession.impact([path]),
+			querySession.dependencyIndex(),
+		]);
+		const directDependencies = dependencies.records.filter(
+			(record) => record.from.path === path,
 		);
+		const directDependents = dependencies.records.filter(
+			(record) => record.to.path === path,
+		);
+		return {
+			version: impact.version,
+			path,
+			dependencies: directDependencies.map((record) => record.to.path),
+			dependents: directDependents.map((record) => record.from.path),
+			affectedPages: (await querySession.affectedPages(path)).pages.map(
+				(file) => file.path,
+			),
+			uncertainty: impact.uncertainty,
+		};
 	}
 	if (request.method === "renderOccurrences") {
-		return session.getRenderOccurrences(requiredString(request.params, "path"));
+		const path = requiredString(request.params, "path");
+		const dependencies = await querySession.dependencyIndex();
+		return dependencies.records.filter(
+			(record) => record.from.path === path || record.to.path === path,
+		);
 	}
 	if (request.method === "behaviorUsages") {
 		const query = behaviorQueryParams(request.params);
 		const role = requiredEnum(request.params, "role", BEHAVIOR_QUERY_ROLES);
-		return session.queryBehavior(query, role);
+		const index = await querySession.behaviorIndex({
+			behaviorKind: query.subjectKind,
+		});
+		const usages = index.records
+			.filter((record) => behaviorMatches(record.data, query, role))
+			.map((record) => behaviorUsage(record));
+		return {
+			version: index.version,
+			query,
+			role,
+			usages,
+			certainty: "complete",
+			uncertainty: [],
+			evidence: index.evidence,
+		};
 	}
 	if (request.method === "behaviorConnections") {
 		const path = requiredString(request.params, "path");
-		const connections = session.getBehaviorConnections(path);
-		if (!connections) throw new RpcError(-32602, `Unknown theme path: ${path}`);
-		return connections;
+		if (
+			!querySession.session
+				.snapshot()
+				.fileIds.some((file) => file.path === path)
+		)
+			throw new RpcError(-32602, `Unknown theme path: ${path}`);
+		const index = await querySession.behaviorIndex({ behaviorKind: null });
+		const owned = index.records.filter((record) => record.owner.path === path);
+		const connections = owned.map((record) => {
+			const data = isObject(record.data) ? record.data : {};
+			const matching = index.records.filter(
+				(candidate) =>
+					isObject(candidate.data) &&
+					candidate.data.subjectKind === data.subjectKind &&
+					candidate.data.name === data.name,
+			);
+			return {
+				id: record.id,
+				subjectKind: data.subjectKind,
+				name: data.name,
+				producers: matching
+					.filter((candidate) => behaviorRole(candidate.data) === "producers")
+					.map(behaviorUsage),
+				consumers: matching
+					.filter((candidate) => behaviorRole(candidate.data) === "consumers")
+					.map(behaviorUsage),
+			};
+		});
+		return {
+			version: index.version,
+			path,
+			connections,
+			certainty: "complete",
+			uncertainty: [],
+			evidence: index.evidence,
+		};
 	}
 	if (request.method === "evidence") {
-		return session.getEvidence(requiredString(request.params, "recordId"));
+		const recordId = requiredString(request.params, "recordId");
+		const model = await querySession.projectModel();
+		return model.evidence.filter((record) => record.id === recordId);
 	}
-	const graph = session.getGraph();
-	if (request.method === "summary") return summarizeThemeGraph(graph);
 	if (
 		["node", "dependencies", "dependents", "affectedPages"].includes(
 			request.method,
 		)
 	) {
 		const nodeId = requiredString(request.params, "nodeId");
-		if (request.method === "node") return getThemeNode(graph, nodeId) ?? null;
-		if (request.method === "dependencies")
-			return session.getDependencies(nodeId);
-		if (request.method === "dependents") return session.getDependents(nodeId);
-		return session.getAffectedPages(nodeId);
+		if (request.method === "node") {
+			const model = await querySession.projectModel();
+			return (
+				model.declarations.find(
+					(record) => record.id === nodeId || record.owner.path === nodeId,
+				) ??
+				model.references.find(
+					(record) => record.id === nodeId || record.owner.path === nodeId,
+				) ??
+				null
+			);
+		}
+		if (request.method === "dependencies") {
+			const index = await querySession.dependencyIndex();
+			return index.records.filter((record) => record.from.path === nodeId);
+		}
+		if (request.method === "dependents") {
+			return (await querySession.dependencyIndex(nodeId)).records;
+		}
+		return (await querySession.affectedPages(nodeId)).pages;
 	}
 	throw new RpcError(-32601, `Method not found: ${request.method}`);
+}
+
+function graphUpdate(
+	path: string,
+	previousRevision: number,
+	revision: number,
+): { changedPaths: string[]; revision: number } {
+	return {
+		changedPaths: revision === previousRevision ? [] : [path],
+		revision,
+	};
+}
+
+async function buildUpdate(
+	session: ShopifyQuerySession,
+	path: string,
+	previousRevision: number,
+	revision: number,
+): Promise<{
+	changedPaths: string[];
+	changedOutputPaths: string[];
+	revision: number;
+}> {
+	if (revision === previousRevision) {
+		return { changedPaths: [], changedOutputPaths: [], revision };
+	}
+	const build = await session.buildProducts({ scope: { kind: "workspace" } });
+	return {
+		changedPaths: [path],
+		changedOutputPaths: build.emission.files.map((file) => file.path),
+		revision,
+	};
 }
 
 /** Long enough to coalesce an editor's save, short enough to feel immediate. */
@@ -298,8 +430,7 @@ const DEFAULT_WATCH_DEBOUNCE_MS = 40;
 function startWatcher(
 	root: string,
 	projectRoot: string,
-	getSession: () => ThemeProgram,
-	getBuildSession: () => ThemeBuildSession,
+	getQuerySession: () => ShopifyQuerySession,
 	notify: (update: unknown) => void,
 	debounceMs: number,
 ): () => void {
@@ -346,41 +477,68 @@ function startWatcher(
 
 	async function processWatchedPath(relativePath: string): Promise<void> {
 		if (closed) return;
-		const session = getSession();
 		if (isInspectThemeFile(relativePath)) {
+			const session = getQuerySession();
+			const previousRevision = session.session.snapshot().revision;
+			let revision: number;
 			try {
 				const contents = await readFile(join(root, relativePath), "utf8");
-				const file = { path: relativePath, contents };
-				const buildUpdate = getBuildSession().updateFile(file);
-				const graphUpdate = buildUpdate.graphUpdate;
-				if (closed) return;
-				if (graphUpdate.changedPaths.length > 0) {
-					notify({ method: "graph/update", params: graphUpdate });
-				}
-				if (buildUpdate.changedPaths.length > 0) {
-					notify({ method: "build/update", params: buildUpdate });
-				}
+				revision = await session.updateFile({ path: relativePath, contents });
 			} catch (error) {
 				if (!isNotFound(error)) throw error;
-				const buildUpdate = getBuildSession().removeFile(relativePath);
-				const graphUpdate = buildUpdate.graphUpdate;
-				if (closed) return;
-				if (graphUpdate.changedPaths.length > 0) {
-					notify({ method: "graph/update", params: graphUpdate });
-				}
-				if (buildUpdate.changedPaths.length > 0) {
-					notify({ method: "build/update", params: buildUpdate });
-				}
+				revision = await session.removeFile(relativePath);
 			}
+			if (closed || revision === previousRevision) return;
+			const graph = graphUpdate(relativePath, previousRevision, revision);
+			const build = await buildUpdate(
+				session,
+				relativePath,
+				previousRevision,
+				revision,
+			);
+			if (closed) return;
+			notify({ method: "graph/update", params: graph });
+			notify({ method: "build/update", params: build });
 			return;
 		}
-		const update = await session.updateExternalArtifacts({
-			exclude: await readInspectExcludePatterns(projectRoot),
-			metafields: await optionalFile(projectRoot, ".shopify/metafields.json"),
-			themeCheck: await optionalFile(projectRoot, ".theme-check.yml"),
-		});
-		if (!closed && update.changedPaths.length > 0) {
-			notify({ method: "graph/update", params: update });
+		const exclude = await readInspectExcludePatterns(projectRoot);
+		const metafields = await optionalFile(
+			projectRoot,
+			".shopify/metafields.json",
+		);
+		const themeCheck = await optionalFile(projectRoot, ".theme-check.yml");
+		const querySession = getQuerySession();
+		const previousQueryRevision = querySession.session.snapshot().revision;
+		let queryRevision = previousQueryRevision;
+		if (relativePath === "nazare.theme.json") {
+			queryRevision = await querySession.replaceFiles(
+				(await collectThemeInputFiles(root, projectRoot)).filter(
+					(file) =>
+						!exclude.some((pattern) => matchesInspectGlob(file.path, pattern)),
+				),
+			);
+			queryRevision = await querySession.updateExternalInput(
+				PROJECT_METADATA_KEYS.config,
+				{ exclude },
+			);
+		}
+		if (relativePath === ".shopify/metafields.json") {
+			queryRevision = await querySession.updateExternalInput(
+				PROJECT_METADATA_KEYS.metafields,
+				metafields?.contents ?? null,
+			);
+		}
+		if (relativePath === ".theme-check.yml") {
+			queryRevision = await querySession.updateExternalInput(
+				PROJECT_METADATA_KEYS.themeCheck,
+				themeCheck?.contents ?? null,
+			);
+		}
+		if (!closed && queryRevision !== previousQueryRevision) {
+			notify({
+				method: "graph/update",
+				params: { changedPaths: [relativePath], revision: queryRevision },
+			});
 		}
 	}
 
@@ -412,13 +570,10 @@ function isNotFound(error: unknown): boolean {
 	);
 }
 
-async function loadProgramState(
+async function loadQuerySession(
 	root: string,
 	projectRoot: string,
-): Promise<{
-	program: ThemeProgram;
-	buildSession: ThemeBuildSession;
-}> {
+): Promise<ShopifyQuerySession> {
 	const files = await collectThemeInputFiles(root, projectRoot);
 	const exclude = await readInspectExcludePatterns(projectRoot);
 	const metafields = await optionalFile(
@@ -426,16 +581,21 @@ async function loadProgramState(
 		".shopify/metafields.json",
 	);
 	const themeCheck = await optionalFile(projectRoot, ".theme-check.yml");
-	const program = new ThemeProgram(files, {
-		exclude,
-		metafields,
-		themeCheck,
-		graphProjection: "eager",
-	});
-	return {
-		program,
-		buildSession: new ThemeBuildSession(files, {}, program),
-	};
+	return ShopifyQuerySession.create(
+		files.filter(
+			(file) =>
+				!exclude.some((pattern) => matchesInspectGlob(file.path, pattern)),
+		),
+		{
+			[PROJECT_METADATA_KEYS.config]: { exclude },
+			...(metafields
+				? { [PROJECT_METADATA_KEYS.metafields]: metafields.contents }
+				: {}),
+			...(themeCheck
+				? { [PROJECT_METADATA_KEYS.themeCheck]: themeCheck.contents }
+				: {}),
+		},
+	);
 }
 
 async function optionalFile(
@@ -536,7 +696,17 @@ function validateToolArguments(
 function toolArgumentKeys(name: string): string[] {
 	switch (name) {
 		case "summary":
+		case "projectModel":
+		case "projectGraph":
 			return [];
+		case "impact":
+			return ["path"];
+		case "behaviorIndex":
+			return ["behaviorKind"];
+		case "metafieldIndex":
+			return ["ownerType", "namespace"];
+		case "unusedFiles":
+			return ["roots"];
 		case "node":
 		case "dependencies":
 		case "dependents":
@@ -555,9 +725,15 @@ function toolArgumentKeys(name: string): string[] {
 	}
 }
 
+type BehaviorQuery = {
+	subjectKind: (typeof BEHAVIOR_SUBJECT_KINDS)[number];
+	name: string;
+	hookKind?: (typeof DOM_HOOK_KINDS)[number];
+};
+
 function behaviorQueryParams(
 	params: Record<string, unknown> | undefined,
-): ThemeBehaviorQuery {
+): BehaviorQuery {
 	const subjectKind = requiredEnum(
 		params,
 		"subjectKind",
@@ -580,6 +756,35 @@ function behaviorQueryParams(
 	};
 }
 
+function behaviorMatches(
+	data: ShopifyBehavior["data"],
+	query: BehaviorQuery,
+	role: (typeof BEHAVIOR_QUERY_ROLES)[number],
+): boolean {
+	if (!isObject(data)) return false;
+	if (data.subjectKind !== query.subjectKind || data.name !== query.name)
+		return false;
+	if (query.hookKind && data.hookKind !== query.hookKind) return false;
+	return role === "all" || behaviorRole(data) === role;
+}
+
+function behaviorRole(
+	data: ShopifyBehavior["data"],
+): "producers" | "consumers" {
+	if (!isObject(data)) return "consumers";
+	return ["emits", "defines", "dispatches"].includes(String(data.operation))
+		? "producers"
+		: "consumers";
+}
+
+function behaviorUsage(record: ShopifyBehavior): Record<string, unknown> {
+	return {
+		...(isObject(record.data) ? record.data : {}),
+		id: record.id,
+		fromPath: record.owner.path,
+	};
+}
+
 function requiredEnum<const Values extends readonly string[]>(
 	params: Record<string, unknown> | undefined,
 	key: string,
@@ -592,15 +797,37 @@ function requiredEnum<const Values extends readonly string[]>(
 	return value;
 }
 
-function requiredFile(
-	params: Record<string, unknown> | undefined,
-): ThemeInputFile {
+function requiredFile(params: Record<string, unknown> | undefined): {
+	path: string;
+	contents: string;
+} {
 	const path = requiredString(params, "path");
 	const contents = params?.contents;
 	if (typeof contents !== "string") {
 		throw new RpcError(-32602, "Missing string parameter contents");
 	}
 	return { path, contents };
+}
+
+function optionalString(
+	params: Record<string, unknown> | undefined,
+	key: string,
+): string | null {
+	const value = params?.[key];
+	if (value === undefined || value === null) return null;
+	if (typeof value !== "string" || value.length === 0)
+		throw new RpcError(-32602, `Invalid string parameter ${key}`);
+	return value;
+}
+
+function requiredStrings(
+	params: Record<string, unknown> | undefined,
+	key: string,
+): string[] {
+	const value = params?.[key];
+	if (!Array.isArray(value) || value.some((item) => typeof item !== "string"))
+		throw new RpcError(-32602, `Missing string-array parameter ${key}`);
+	return value;
 }
 
 function requiredString(
@@ -665,6 +892,54 @@ function graphTools(): {
 		additionalProperties: false,
 	};
 	return [
+		{
+			name: "projectModel",
+			description: "Get versioned Shopify project semantic model.",
+			inputSchema: { type: "object", additionalProperties: false },
+		},
+		{
+			name: "projectGraph",
+			description: "Get lazily materialized Shopify project graph.",
+			inputSchema: { type: "object", additionalProperties: false },
+		},
+		{
+			name: "impact",
+			description: "Get transitive impact for one changed project path.",
+			inputSchema: path,
+		},
+		{
+			name: "behaviorIndex",
+			description: "Get versioned behavior records and evidence.",
+			inputSchema: {
+				type: "object",
+				properties: { behaviorKind: { type: "string" } },
+				additionalProperties: false,
+			},
+		},
+		{
+			name: "metafieldIndex",
+			description: "Get versioned metafield records and evidence.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					ownerType: { type: "string" },
+					namespace: { type: "string" },
+				},
+				additionalProperties: false,
+			},
+		},
+		{
+			name: "unusedFiles",
+			description: "Get files unreachable from supplied root paths.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					roots: { type: "array", items: { type: "string" } },
+				},
+				required: ["roots"],
+				additionalProperties: false,
+			},
+		},
 		{
 			name: "summary",
 			description: "Summarize the current theme graph.",

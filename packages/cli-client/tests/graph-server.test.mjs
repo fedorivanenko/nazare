@@ -168,8 +168,46 @@ test("graph server supports MCP tools and build updates", async () => {
 		assert.equal(responses[2].result.isError, false);
 		assert.equal(responses[3].result.structuredContent.path, "card.nz.liquid");
 		assert.equal(responses[3].result.isError, false);
-		assert.equal(responses[4].result.revision, 1);
+		assert.equal(responses[4].result.revision > 0, true);
 		assert.ok(responses[4].result.changedOutputPaths.length > 0);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("graph server serves demand-driven ProjectSession query products", async () => {
+	const root = await mkdtemp(join(tmpdir(), "nazare-product-query-server-"));
+	try {
+		await mkdir(join(root, "sections"));
+		await mkdir(join(root, "snippets"));
+		await writeFile(join(root, "sections/main.liquid"), "{% render 'card' %}");
+		await writeFile(join(root, "snippets/card.liquid"), "<span>Card</span>");
+		const responses = await runServer(root, [
+			{ id: 1, method: "projectModel" },
+			{ id: 2, method: "projectGraph" },
+			{ id: 3, method: "impact", params: { path: "snippets/card.liquid" } },
+			{
+				id: 4,
+				method: "unusedFiles",
+				params: { roots: ["sections/main.liquid"] },
+			},
+			{
+				id: 5,
+				method: "updateFile",
+				params: { path: "sections/main.liquid", contents: "<main />" },
+			},
+			{ id: 6, method: "projectGraph" },
+		]);
+
+		assert.equal(responses[0].result.version, 1);
+		assert.equal(responses[1].result.version, 1);
+		assert.equal(responses[1].result.graph.edges.length, 1);
+		assert.deepEqual(
+			responses[2].result.affected.map((file) => file.path),
+			["sections/main.liquid", "snippets/card.liquid"],
+		);
+		assert.deepEqual(responses[3].result.files, []);
+		assert.equal(responses[5].result.graph.edges.length, 0);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
@@ -280,19 +318,12 @@ test("graph server uses inspect file selection and exclusion policy", async () =
 			[{ id: 1, method: "inspect" }],
 			root,
 		);
+		assert.equal(response.result.version, 1);
 		assert.deepEqual(
-			response.result.nodes
-				.filter((node) => node.kind === "file")
-				.map((node) => node.path),
-			["templates/index.json"],
-		);
-		assert.equal(
-			response.result.issues.some(
-				(issue) =>
-					issue.code === "THEME_FILE_EXCLUDED" &&
-					issue.span.file === "snippets/generated.liquid",
+			response.result.classifications.map(
+				(classification) => classification.file.path,
 			),
-			true,
+			["templates/index.json"],
 		);
 	} finally {
 		await rm(root, { recursive: true, force: true });
@@ -381,6 +412,63 @@ test("graph server implements MCP lifecycle and JSON-RPC errors", async () => {
 	}
 });
 
+test("watcher revisions external metadata through shared input providers", async () => {
+	const root = await mkdtemp(join(tmpdir(), "nazare-external-watcher-"));
+	let server;
+	try {
+		await writeFile(join(root, "card.nz.liquid"), "<span>Card</span>");
+		server = startLiveServer(root, { watchDebounceMs: 100 });
+		server.send({ id: 1, method: "watch" });
+		await waitFor(
+			() => server.messages.some((message) => message.id === 1),
+			"watch response",
+		);
+		await writeFile(
+			join(root, ".theme-check.yml"),
+			"extends: theme-check:recommended",
+		);
+		await waitFor(
+			() =>
+				server.messages.some(
+					(message) =>
+						message.method === "graph/update" &&
+						typeof message.params.revision === "number",
+				),
+			"external input revision",
+		);
+		const update = server.messages.find(
+			(message) => message.method === "graph/update",
+		);
+		assert.equal(update.params.changedPaths.includes(".theme-check.yml"), true);
+		assert.equal(update.params.revision > 0, true);
+
+		await writeFile(
+			join(root, "nazare.theme.json"),
+			JSON.stringify({ inspect: { exclude: ["*.nz.liquid"] } }),
+		);
+		await waitFor(
+			() =>
+				server.messages.some(
+					(message) =>
+						message.method === "graph/update" &&
+						message.params.changedPaths.includes("nazare.theme.json"),
+				),
+			"config input revision",
+		);
+		server.send({ id: 2, method: "projectModel" });
+		await waitFor(
+			() => server.messages.some((message) => message.id === 2),
+			"project model response",
+		);
+		const model = server.messages.find((message) => message.id === 2);
+		assert.deepEqual(model.result.classifications, []);
+	} finally {
+		server?.close();
+		await server?.done;
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
 test("watcher debounces events, suppresses no-ops, and orders notifications", async () => {
 	const root = await mkdtemp(join(tmpdir(), "nazare-graph-watcher-"));
 	let server;
@@ -417,9 +505,10 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 			),
 			[["card.nz.liquid"], ["card.nz.liquid"]],
 		);
+		const firstRevision = watcherUpdates(server.messages)[0].params.revision;
 		assert.deepEqual(
 			watcherUpdates(server.messages).map((message) => message.params.revision),
-			[1, 1],
+			[firstRevision, firstRevision],
 		);
 		// Writing the same bytes changes nothing, so it should notify nothing.
 		//
@@ -456,7 +545,7 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 		await waitFor(
 			() =>
 				watcherUpdates(server.messages).some(
-					(message) => message.params.revision === 3,
+					(message) => message.params.revision === firstRevision + 2,
 				),
 			"delete notification",
 		);
@@ -484,7 +573,14 @@ test("watcher debounces events, suppresses no-ops, and orders notifications", as
 		);
 		assert.deepEqual(
 			watcherUpdates(server.messages).map((message) => message.params.revision),
-			[1, 1, 2, 2, 3, 3],
+			[
+				firstRevision,
+				firstRevision,
+				firstRevision + 1,
+				firstRevision + 1,
+				firstRevision + 2,
+				firstRevision + 2,
+			],
 		);
 	} finally {
 		server?.close();

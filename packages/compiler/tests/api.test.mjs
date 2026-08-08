@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-	buildNazareThemeWorkspace,
 	checkComponentAuthoringConstraints,
 	checkContractConstraints,
 	checkScriptConstraints,
@@ -16,20 +15,39 @@ import {
 	projectTreeSitterNazareAst,
 	resolveAssetImports,
 	treeSitterNazareLiquidFrontend,
-} from "../dist/index.js";
+} from "../dist/testing.js";
 
 function buildWorkspaceFile(source, file, options = {}) {
-	const built = buildNazareThemeWorkspace([{ path: file, contents: source }], {
-		...options,
-		scope: { kind: "file", path: file },
+	const compiled = compileArtifact({
+		source,
+		file,
+		...(options.strictness ? { strictness: options.strictness } : {}),
+		...(options.readFile ? { readFile: options.readFile } : {}),
 	});
-	const artifact = built.artifacts[0];
+	if (!compiled.ok || !compiled.ast) {
+		return {
+			emitted: { files: [], issues: [] },
+			issues: compiled.issues,
+			emittedOnError: false,
+			canEmit: false,
+		};
+	}
+	const emittedOnError = !compiled.canEmit && options.emitOnError === true;
+	const emitted =
+		compiled.canEmit || emittedOnError
+			? emitTheme(
+					source,
+					{ ...compiled, ast: compiled.ast },
+					{
+						name: options.name ?? "component",
+					},
+				)
+			: { files: [], issues: [] };
 	return {
-		...(artifact ?? {}),
-		emitted: built.emitted,
-		issues: built.issues,
-		emittedOnError: built.emittedOnError,
-		canEmit: artifact?.canEmit ?? false,
+		...compiled,
+		emitted,
+		issues: [...compiled.issues, ...emitted.issues],
+		emittedOnError,
 	};
 }
 
@@ -150,7 +168,7 @@ test("emitLiquidFile reports overlapping emit edits as a diagnostic", () => {
 	);
 });
 
-test("buildNazareThemeWorkspace aggregates emit diagnostics", () => {
+test("artifact emission aggregates emit diagnostics", () => {
 	const source = `{% script %}\nconsole.log("no default export");\n{% endscript %}`;
 	const built = buildWorkspaceFile(source, "component.nz.liquid", {
 		name: "component",
@@ -172,7 +190,7 @@ test("buildNazareThemeWorkspace aggregates emit diagnostics", () => {
 	);
 });
 
-test("buildNazareThemeWorkspace skips emit on compile errors by default", () => {
+test("artifact emission skips emit on compile errors by default", () => {
 	const source = `{% import Missing from "./missing.nz.liquid" %}\n{% render Missing {} %}`;
 	const built = buildWorkspaceFile(source, "component.nz.liquid", {
 		name: "component",
@@ -184,7 +202,7 @@ test("buildNazareThemeWorkspace skips emit on compile errors by default", () => 
 	assert.ok(built.issues.some((issue) => issue.phase === "resolve"));
 });
 
-test("buildNazareThemeWorkspace emits on compile errors only when explicitly requested", () => {
+test("artifact emission emits on compile errors only when explicitly requested", () => {
 	const source = `{% import Missing from "./missing.nz.liquid" %}\n{% render Missing {} %}`;
 	const built = buildWorkspaceFile(source, "component.nz.liquid", {
 		name: "component",
@@ -278,7 +296,7 @@ test("check category APIs expose the strict check groups", () => {
 
 test("checking dependencies is an explicit call, not a compile-time policy", async () => {
 	const { checkDependencies, projectTreeSitterNazareAst: project } =
-		await import("../dist/index.js");
+		await import("../dist/testing.js");
 	const parse = (source, file) => project(source, file).ast;
 	const source = `{% import Child from "./child.nz.liquid" %}\n{% render Child {} %}`;
 	const files = {
@@ -301,24 +319,11 @@ test("checking dependencies is an explicit call, not a compile-time policy", asy
 		),
 		true,
 	);
-
-	// build validates its dependencies, so the child error appears there.
-	const built = buildNazareThemeWorkspace(
-		[
-			{ path: "component.nz.liquid", contents: source },
-			{ path: "child.nz.liquid", contents: files["child.nz.liquid"] },
-		],
-		{
-			name: "component",
-			scope: { kind: "file", path: "component.nz.liquid" },
-		},
-	);
-	assert.equal(hasChildError(built.issues), true);
 });
 
 test("dependency checking surfaces nested import graph failures", async () => {
 	const { checkDependencies, projectTreeSitterNazareAst: project } =
-		await import("../dist/index.js");
+		await import("../dist/testing.js");
 	const parse = (source, file) => project(source, file).ast;
 	const source = `{% import Child from "./child.nz.liquid" %}\n{% render Child {} %}`;
 	const files = {
@@ -338,7 +343,7 @@ test("dependency checking surfaces nested import graph failures", async () => {
 
 test("dependency checking reports import cycles per requester", async () => {
 	const { checkDependencies, projectTreeSitterNazareAst: project } =
-		await import("../dist/index.js");
+		await import("../dist/testing.js");
 	const parse = (source, file) => project(source, file).ast;
 	const source = `{% import A from "./a.nz.liquid" %}\n{% import B from "./b.nz.liquid" %}`;
 	const files = {
@@ -360,7 +365,7 @@ test("dependency checking reports import cycles per requester", async () => {
 
 test("dependency checking reuses parsed transitive imports", async () => {
 	const { checkDependencies, projectTreeSitterNazareAst: project } =
-		await import("../dist/index.js");
+		await import("../dist/testing.js");
 	const parse = (source, file) => project(source, file).ast;
 	const source = `{% import A from "./a.nz.liquid" %}\n{% import B from "./b.nz.liquid" %}`;
 	const files = {

@@ -348,10 +348,13 @@ test("a directory that is neither a theme nor packages says so", async () => {
 	});
 });
 
-test("a theme with no story files at all points at scaffold", async () => {
+test("a theme with no story files at all points at scaffold without compiling", async () => {
 	await withProject({ "snippets/icon.liquid": ICON }, async (cwd) => {
+		const { collectPreview } = await previewCommand();
+		const collection = await collectPreview(cwd);
 		const { status, stderr } = await runCli(cwd, "preview", "check", ".");
 
+		assert.deepEqual(collection.compiled, []);
 		assert.equal(status, 1);
 		assert.match(stderr, /No story files/);
 		assert.match(stderr, /nazare preview scaffold/);
@@ -505,6 +508,46 @@ test("JavaScript scripts do not require a type checker", async () => {
 		);
 		assert.match(preview.compiled[0].component.template, /<button/);
 	});
+});
+
+test("package preview compiles only story roots and imported package closure", async () => {
+	const manifest = (id, entry, stories = []) =>
+		JSON.stringify({
+			id,
+			version: "0.1.0",
+			kind: "snippet",
+			entry,
+			license: "MIT",
+			files: [entry],
+			preview: { stories },
+		});
+	await withProject(
+		{
+			"ui/card/nazare.json": manifest("@acme/card", "card.nz.liquid", [
+				{ name: "default" },
+			]),
+			"ui/card/card.nz.liquid":
+				"{% import Badge from '../badge/badge.nz.liquid' %}<Badge />",
+			"ui/badge/nazare.json": manifest("@acme/badge", "badge.nz.liquid"),
+			"ui/badge/badge.nz.liquid": "<span>Badge</span>",
+			"ui/unused/nazare.json": manifest("@acme/unused", "unused.nz.liquid"),
+			"ui/unused/unused.nz.liquid": "{% broken",
+		},
+		async (cwd) => {
+			const { collectPreview } = await previewCommand();
+			const preview = await collectPreview(join(cwd, "ui"));
+
+			assert.deepEqual(
+				preview.compiled.map((entry) => entry.file),
+				["badge/badge.nz.liquid", "card/card.nz.liquid"],
+			);
+			assert.deepEqual(preview.undeclared, [
+				"badge/badge.nz.liquid",
+				"unused/unused.nz.liquid",
+			]);
+			assert.equal(preview.previewed.length, 1);
+		},
+	);
 });
 
 test("packages are detected by their manifests, not by a flag", async () => {

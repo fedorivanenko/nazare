@@ -10,7 +10,7 @@
 // So this is the same pass as controls.ts against a different declaration
 // source. Nothing here infers an interface from a template's body — an
 // undeclared prop stays undeclared, and the story that needs it says so.
-import type { ThemeFact } from "@nazare/compiler";
+import type { LiquidSyntaxDocParam } from "@nazare/source";
 import type { PreviewControl } from "./controls.js";
 
 /** `{string}`, `{number}`, `{boolean}` — Shopify's doc types, loosely written. */
@@ -30,24 +30,26 @@ function kindFromDocType(type: string | undefined): PreviewControl["kind"] {
 }
 
 /** `{% doc %}` `@param` lines — the author's statement of a snippet's props. */
-export function controlsFromDocParams(facts: ThemeFact[]): PreviewControl[] {
+export function controlsFromDocParams(
+	params: readonly LiquidSyntaxDocParam[],
+): PreviewControl[] {
 	const controls: PreviewControl[] = [];
 	const seen = new Set<string>();
-	for (const fact of facts) {
-		if (fact.kind !== "declaresDocParam" || seen.has(fact.name)) continue;
-		seen.add(fact.name);
+	for (const param of params) {
+		if (seen.has(param.name)) continue;
+		seen.add(param.name);
 		controls.push({
-			name: fact.name,
-			label: fact.name,
-			kind: kindFromDocType(fact.paramType),
-			required: fact.required,
+			name: param.name,
+			label: param.name,
+			kind: kindFromDocType(param.paramType),
+			required: param.required,
 			// `{% doc %}` has no syntax for a default. `[name]` says optional and
 			// nothing more, so there is no default to state — and a prop the
 			// declaration says nothing about renders nil, as it would on a
 			// storefront. The preview used to answer a `{product}` param with its
 			// own built-in product here, which was the package quietly owning
 			// storefront data again.
-			typeExpression: fact.paramType ?? "unknown",
+			typeExpression: param.paramType ?? "unknown",
 		});
 	}
 	return controls;
@@ -161,10 +163,10 @@ export function controlsFromSchemaSource(source: string): PreviewControl[] {
  * two would produce a story that cannot render in either scope.
  */
 export function plainLiquidControls(
-	facts: ThemeFact[],
+	params: readonly LiquidSyntaxDocParam[],
 	schemaSource?: string,
 ): PreviewControl[] {
 	return schemaSource !== undefined
 		? controlsFromSchemaSource(schemaSource)
-		: controlsFromDocParams(facts);
+		: controlsFromDocParams(params);
 }

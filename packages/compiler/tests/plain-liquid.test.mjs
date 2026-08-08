@@ -6,8 +6,7 @@ import {
 	compileNazareArtifact,
 	compilePlainLiquid,
 	treeSitterPlainLiquidFrontend,
-} from "../dist/index.js";
-import { collectPlainLiquidThemeFacts } from "../dist/theme-liquid-facts.js";
+} from "../dist/testing.js";
 
 test("plain Liquid frontend parses schema, settings reads, and static dependencies", () => {
 	const source = `<section>
@@ -124,27 +123,6 @@ test("plain Liquid frontend records failed parses without derived facts", () => 
 	assert.equal(result.ast.factsCollected, false);
 	assert.deepEqual(result.ast.dependencies, []);
 	assert.deepEqual(result.ast.settingsReads, []);
-	assert.ok(
-		result.issues.some((issue) => issue.code === "PLAIN_LIQUID_FACTS_SKIPPED"),
-	);
-});
-
-test("plain Liquid fact scanning rejects malformed expressions", () => {
-	const result = collectPlainLiquidThemeFacts(
-		"snippets/broken-expression.liquid",
-		"{{ title | default: 'missing }}",
-	);
-
-	assert.deepEqual(result.facts, [
-		{
-			kind: "declaresSnippet",
-			path: "snippets/broken-expression.liquid",
-			name: "broken-expression",
-		},
-	]);
-	assert.ok(
-		result.issues.some((issue) => issue.code === "NAZARE_PARSE_LIQUID"),
-	);
 	assert.ok(
 		result.issues.some((issue) => issue.code === "PLAIN_LIQUID_FACTS_SKIPPED"),
 	);

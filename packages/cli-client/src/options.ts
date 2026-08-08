@@ -29,12 +29,15 @@ export type CliOptions = {
 	outDir?: string;
 	/** build: reconcile against a live theme's merchant-owned data first. */
 	pullData?: boolean;
+	/** build: explicitly allow unstable filesystem publication. */
+	experimentalPublish?: boolean;
 	force?: boolean;
 	/** registry publish: write the payload locally instead of uploading it. */
 	pack?: boolean;
 	store?: string;
 	theme?: string;
 	json?: boolean;
+	watch?: boolean;
 	format?: string;
 	/** preview serve: the port to listen on. */
 	port?: string;
@@ -137,6 +140,10 @@ export function parseCliOptions(args: string[]): CliOptions {
 			options.pullData = true;
 			continue;
 		}
+		if (arg === "--experimental-publish") {
+			options.experimentalPublish = true;
+			continue;
+		}
 		if (arg === "--pack") {
 			options.pack = true;
 			continue;
@@ -147,6 +154,10 @@ export function parseCliOptions(args: string[]): CliOptions {
 		}
 		if (arg === "--json") {
 			options.json = true;
+			continue;
+		}
+		if (arg === "--watch") {
+			options.watch = true;
 			continue;
 		}
 		if (arg.startsWith("--")) {
@@ -187,7 +198,7 @@ export function printHelp(output: Output = console): void {
                                      dir defaults to nazare.theme.json build.sourceRoot
   nazare inspect impact <file> [dir] change impact for one theme-relative file
   nazare inspect metafield <owner.namespace.key> [dir]
-                                     metafield readers and affected pages
+                                     local Liquid/JSON/static GraphQL readers and affected pages
   nazare graph-server [dir]          serve graph queries over newline-delimited JSON stdio
 
 Preview:
@@ -235,9 +246,11 @@ Options:
   --out-dir <dir>                    build output directory (else nazare.theme.json build.outDir);
                                      preview build writes here too (preview.outDir)
   --pull-data                        build: reconcile against a live theme's merchant-owned data first
+  --experimental-publish             build: allow unstable filesystem publication
   --store <domain>                   build --pull-data: Shopify store to pull from
   --theme <id|name>                  build --pull-data: theme to pull from
   --json                             build: print the raw result as JSON
+  --watch                            build/check/inspect: stream revision results on changes
   --port <number>                    preview serve: port to listen on (default 4173)
   --as <name>                        preview fixtures pull: fixture name (default product)
   --format json|text|dot             source analyze requires JSON; inspect theme also supports text/dot
@@ -289,8 +302,8 @@ Views:
 Theme queries:
   impact                  show direct dependencies, dependents, affected pages,
                           usage, diagnostics, and analysis uncertainty for one file
-  metafield               show definition, static readers, affected pages, snapshot
-                          state, and analysis uncertainty for one metafield
+  metafield               show local Liquid, JSON, and static GraphQL readers,
+                          affected pages, snapshot state, and opaque-runtime boundary
 
 Options:
   --strictness loose|strict

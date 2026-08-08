@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import vm from "node:vm";
-import { compileNazareArtifact, emitTheme } from "../dist/index.js";
+import { compileNazareArtifact, emitTheme } from "../dist/testing.js";
 
 function build(source, file, readFile) {
 	const compiled = compileNazareArtifact(source, file, { readFile });

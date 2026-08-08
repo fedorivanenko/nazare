@@ -4,7 +4,7 @@ Ship Shopify faster and easier
 
 Nazare is a toolset that lets Shopify developers maintaining long-lived themes cut the time and breakage cost of each change
 
-> **Project status:** Nazare is in heavy active development. APIs, file formats, compiler behavior, registry behavior, and generated output may change. Do not treat it as blindly production-ready yet; test generated themes with Theme Check and Shopify CLI before using them on a live storefront.
+> **Project status:** Nazare is pre-release and unstable. APIs, cache formats, file formats, compiler behavior, registry behavior, and generated output may change without migration support. Theme publication requires explicit `--experimental-publish`; keep source control and backups enabled, and test generated themes with Theme Check and Shopify CLI before using them on a live storefront.
 
 ## Installation
 
@@ -54,7 +54,7 @@ nazare graph-server [dir]
 
   ```sh
   nazare init
-  nazare build
+  nazare build --experimental-publish
   shopify theme dev --path theme
   ```
 
@@ -73,3 +73,61 @@ nazare graph-server [dir]
 - **Component previews:** Scaffolds, builds, and checks story-based component workbenches for Nazare and plain Liquid components.
 - **Build extensions:** Runs trusted local extensions after successful compilation to emit additional Shopify theme files.
 - **Framework-agnostic JavaScript islands:** Loads component behavior only where rendered and can host vanilla JavaScript or any framework.
+
+## Architecture
+
+Nazare computes typed products on demand:
+
+```text
+revisioned project inputs
+→ ProjectSession
+→ ComputationGraph
+→ target-neutral source products
+→ Shopify semantic/query/build products
+→ owned output plan
+→ revision-guarded atomic publication
+```
+
+Build, inspect, and preview share revisioned source products but request different projections. `build --watch`, `check --watch`, `inspect theme --watch`, and Preview serve publish only current revision `result` or `update-failed` events; superseded work is aborted. Dependency reads automatically create invalidation edges. Pure computations may be cached; filesystem publication and other side effects are never cached.
+
+Stable semantic identity uses project-relative `ProjectFileId` values. Dynamic references and opaque runtime behavior remain explicit uncertainty rather than guessed dependencies.
+
+### Package direction
+
+```text
+@nazare/core
+├─ @nazare/source
+└─ @nazare/compiler
+   ├─ @nazare/target-shopify
+   └─ @nazare/preview
+```
+
+`@nazare/compiler` exposes intentional modules:
+
+```text
+@nazare/compiler/compile
+@nazare/compiler/computation
+@nazare/compiler/extensions
+@nazare/compiler/output
+@nazare/compiler/portable
+@nazare/compiler/project
+@nazare/compiler/source-products
+```
+
+The compiler cannot import targets, Preview, or CLI packages. Architecture tests enforce this direction. Compiler root exposes direct compile APIs only; architecture consumers use intentional submodules.
+
+## Development
+
+```sh
+pnpm install
+pnpm build
+biome check .
+node --test packages/compiler/tests/*.test.mjs
+node --test packages/target-shopify/tests/*.test.mjs
+node --test packages/preview/tests/*.test.mjs
+```
+
+Detailed refactor architecture and remaining work live in:
+
+- [`notes/optimized-refactor.ts`](notes/optimized-refactor.ts)
+- [`notes/optimized-refactor-plan.md`](notes/optimized-refactor-plan.md)

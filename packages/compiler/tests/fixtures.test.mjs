@@ -8,7 +8,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { compileNazareArtifact } from "../dist/index.js";
+import { compileNazareArtifact } from "../dist/testing.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixturesRoot = join(here, "fixtures");

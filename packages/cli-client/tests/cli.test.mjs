@@ -5,7 +5,6 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readFileSync,
-	statSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -296,7 +295,7 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 	);
 });
 
-test("cli: build validates dependencies, check looks at the entry only", async () => {
+test("cli: check is build check-only mode and validates the closure", async () => {
 	await withProject(
 		{
 			"component.nz.liquid": `{% import Child from "./child.nz.liquid" %}\n{% render Child {} %}`,
@@ -319,14 +318,20 @@ test("cli: build validates dependencies, check looks at the entry only", async (
 				),
 			);
 
-			// check compiles the entry only — the child is not checked here.
-			const validated = await runCli(cwd, "check", "component.nz.liquid");
-			assert.equal(validated.status, 0, validated.stderr);
+			// check requests the same closure but never publishes output.
+			const validated = await runCli(
+				cwd,
+				"check",
+				"component.nz.liquid",
+				"--json",
+			);
+			assert.notEqual(validated.status, 0);
 			assert.ok(
-				!JSON.parse(validated.stdout).issues.some(
+				JSON.parse(validated.stdout).issues.some(
 					(issue) => issue.code === "NAZARE_PARSE_TYPE_EXPRESSION",
 				),
 			);
+			assert.equal(existsSync(join(cwd, ".nazare-check")), false);
 		},
 	);
 });
@@ -346,7 +351,12 @@ test("cli: build with no path reads the source root from nazare.theme.json", {
 			"stray/stray.nz.liquid": componentWithScript("c"),
 		},
 		async (cwd) => {
-			const built = await runCli(cwd, "build", "--json");
+			const built = await runCli(
+				cwd,
+				"build",
+				"--json",
+				"--experimental-publish",
+			);
 			assert.equal(built.status, 0, built.stderr);
 			const output = JSON.parse(built.stdout);
 
@@ -379,7 +389,14 @@ test("cli: build supports custom output directory", async () => {
 		},
 		async (cwd) => {
 			// --out-dir overrides the outDir in nazare.theme.json.
-			const built = await runCli(cwd, "build", "--out-dir", "theme", "--json");
+			const built = await runCli(
+				cwd,
+				"build",
+				"--out-dir",
+				"theme",
+				"--json",
+				"--experimental-publish",
+			);
 			assert.equal(built.status, 0, built.stderr);
 			const output = JSON.parse(built.stdout);
 			assert.ok(output.written.includes("theme/snippets/button.liquid"));
@@ -419,7 +436,12 @@ test("cli: build loads extension modules from nazare.extensions", async () => {
 `,
 		},
 		async (cwd) => {
-			const built = await runCli(cwd, "build", "--json");
+			const built = await runCli(
+				cwd,
+				"build",
+				"--json",
+				"--experimental-publish",
+			);
 			assert.equal(built.status, 0, built.stderr);
 			const output = JSON.parse(built.stdout);
 			assert.ok(
@@ -558,7 +580,7 @@ test("cli: build errors when no source root is configured", async () => {
 	});
 });
 
-test("cli: build prints a human-readable summary by default", async () => {
+test("cli: build gates unstable filesystem publication", async () => {
 	await withProject(
 		{
 			"nazare.theme.json": BUILD_MANIFEST,
@@ -566,6 +588,28 @@ test("cli: build prints a human-readable summary by default", async () => {
 		},
 		async (cwd) => {
 			const built = await runCli(cwd, "build");
+			assert.notEqual(built.status, 0);
+			assert.match(built.stderr, /--experimental-publish/);
+			assert.equal(
+				existsSync(join(cwd, ".nazare-out/theme/snippets/button.liquid")),
+				false,
+			);
+			const pulled = await runCli(cwd, "build", "--pull-data");
+			assert.notEqual(pulled.status, 0);
+			assert.match(pulled.stderr, /--experimental-publish/);
+			assert.equal(existsSync(join(cwd, ".nazare-out/theme")), false);
+		},
+	);
+});
+
+test("cli: build prints a human-readable summary by default", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": BUILD_MANIFEST,
+			"nazare/button.nz.liquid": "<button>Button</button>\n",
+		},
+		async (cwd) => {
+			const built = await runCli(cwd, "build", "--experimental-publish");
 			assert.equal(built.status, 0, built.stderr);
 			// Not JSON, and it leads with a plain summary line.
 			assert.throws(() => JSON.parse(built.stdout));
@@ -756,7 +800,7 @@ test("cli: a successful build prints the Shopify CLI handoff", async () => {
 			}),
 		},
 		async (cwd) => {
-			const built = await runCli(cwd, "build");
+			const built = await runCli(cwd, "build", "--experimental-publish");
 			assert.equal(built.status, 0, built.stderr);
 			// Nazare stops at the theme directory; the Shopify CLI uploads it.
 			assert.match(built.stdout, /shopify theme push --path theme/);
@@ -795,10 +839,6 @@ test("cli: inspect impact answers what a file can affect", async () => {
 				"Uncertainty: none",
 				"Issues: none",
 			]);
-			const cachePath = join(cwd, ".nazare-out", "inspect-cache-v4.json");
-			const coldCache = readFileSync(cachePath, "utf8");
-			const coldCacheInode = statSync(cachePath).ino;
-
 			const json = await runCli(
 				cwd,
 				"inspect",
@@ -812,13 +852,6 @@ test("cli: inspect impact answers what a file can affect", async () => {
 			const impact = JSON.parse(json.stdout);
 			assert.equal(impact.version, 1);
 			assert.deepEqual(impact.affectedPages, ["templates/product.json"]);
-			assert.equal(readFileSync(cachePath, "utf8"), coldCache);
-			assert.equal(
-				statSync(cachePath).ino,
-				coldCacheInode,
-				"a warm impact query must not rewrite its cache",
-			);
-
 			writeFileSync(join(cwd, "sections/main.liquid"), "<section></section>");
 			const changed = await runCli(
 				cwd,
@@ -833,7 +866,6 @@ test("cli: inspect impact answers what a file can affect", async () => {
 			const changedImpact = JSON.parse(changed.stdout);
 			assert.equal(changedImpact.usage, "unused");
 			assert.deepEqual(changedImpact.dependents, []);
-			assert.notEqual(statSync(cachePath).ino, coldCacheInode);
 		},
 	);
 });
@@ -850,6 +882,10 @@ test("cli: inspect metafield reports definition, readers, and affected pages", a
 					},
 				],
 			}),
+			"layout/theme.liquid":
+				"{{ 'theme.js' | asset_url | script_tag }}{{ content_for_layout }}",
+			"assets/theme.js": `const query = \`query { product(handle: "example") { metafield(namespace: "custom", key: "subtitle") { value } } }\`;
+fetch("/api/graphql.json", { method: "POST", body: JSON.stringify({ query }) });`,
 			"templates/product.json": JSON.stringify({
 				sections: {
 					main: {
@@ -871,12 +907,16 @@ test("cli: inspect metafield reports definition, readers, and affected pages", a
 			);
 			assert.equal(text.status, 0, text.stderr);
 			assert.match(text.stdout, /Metafield: product\.custom\.subtitle/);
+			assert.match(text.stdout, /local JavaScript network calls/);
+			assert.match(text.stdout, /remote app runtime/);
+			assert.match(text.stdout, /Definition: single_line_text_field/);
+			assert.match(text.stdout, /- assets\/theme\.js \(1 read\)/);
+			assert.match(text.stdout, /- templates\/product\.json \(1 read\)/);
 			assert.match(
 				text.stdout,
-				/Scope: Liquid and Shopify JSON dynamic sources; JavaScript and GraphQL excluded/,
+				/Recognizable local JavaScript network calls indexed: 1/,
 			);
-			assert.match(text.stdout, /Definition: single_line_text_field/);
-			assert.match(text.stdout, /- templates\/product\.json \(1 read\)/);
+			assert.match(text.stdout, /Local API readers \(1\):/);
 			assert.match(text.stdout, /- templates\/product\.json/);
 			assert.match(text.stdout, /Certainty: complete/);
 
@@ -891,10 +931,20 @@ test("cli: inspect metafield reports definition, readers, and affected pages", a
 			);
 			assert.equal(json.status, 0, json.stderr);
 			const impact = JSON.parse(json.stdout);
-			assert.equal(impact.version, 1);
-			assert.deepEqual(impact.scope.excluded, ["javascript", "graphql"]);
+			assert.equal(impact.version, 2);
+			assert.deepEqual(impact.scope.excluded, [
+				"remoteAppRuntime",
+				"runtimeNetworkResponses",
+				"appProxyResponses",
+				"serverSideAppData",
+			]);
 			assert.equal(impact.definition.type, "single_line_text_field");
-			assert.deepEqual(impact.affectedSources, ["templates/product.json"]);
+			assert.equal(impact.apiReads.length, 1);
+			assert.equal(impact.localNetworkAccessCount, 1);
+			assert.deepEqual(impact.affectedSources, [
+				"assets/theme.js",
+				"templates/product.json",
+			]);
 			assert.deepEqual(impact.affectedPages, ["templates/product.json"]);
 			assert.equal(impact.snapshot.state, "present");
 			assert.equal(impact.certainty, "complete");
@@ -914,7 +964,7 @@ test("cli: inspect metafield reports definition, readers, and affected pages", a
 	);
 });
 
-test("cli: warm impact cache preserves analysis error status", async () => {
+test("cli: repeated impact inspection preserves analysis error status", async () => {
 	await withProject(
 		{
 			"sections/broken.liquid": `{% schema %}{"name":"Broken","settings":[]}{% endschema %}
@@ -967,106 +1017,6 @@ test("cli: inspect can render a concise human report", async () => {
 			]);
 		},
 	);
-});
-
-test("cli: inspect reports migration from the legacy cache", async () => {
-	await withProject(
-		{
-			"snippets/card.liquid": "{{ product.title }}",
-			".nazare-out/inspect-cache-v3.json": "{}",
-		},
-		async (cwd) => {
-			const result = await runCli(
-				cwd,
-				"inspect",
-				"impact",
-				"snippets/card.liquid",
-				".",
-				"--format",
-				"json",
-			);
-			assert.equal(result.status, 0, result.stderr);
-			assert.match(result.stderr, /Ignored legacy theme analysis cache/);
-			assert.equal(
-				existsSync(join(cwd, ".nazare-out", "inspect-cache-v4.json")),
-				true,
-			);
-		},
-	);
-});
-
-test("cli: inspect discards a malformed cache and analyzes from source", async () => {
-	await withProject(
-		{
-			"snippets/card.liquid": "{{ product.title }}",
-			".nazare-out/inspect-cache-v4.json": "{invalid",
-		},
-		async (cwd) => {
-			const result = await runCli(
-				cwd,
-				"inspect",
-				"theme",
-				".",
-				"--format",
-				"json",
-			);
-			// A cache is an optimization. An unusable one is reported and replaced,
-			// never a reason to fail the command.
-			assert.equal(result.status, 0, result.stderr);
-			assert.match(result.stderr, /Discarded theme inspection cache/);
-			assert.match(result.stderr, /invalid JSON/);
-			const graph = JSON.parse(result.stdout);
-			assert.ok(
-				graph.nodes.some((node) => node.id === "file:snippets/card.liquid"),
-			);
-		},
-	);
-});
-
-test("cli: inspect discards cache facts owned by another source", async () => {
-	await withProject({ "snippets/card.liquid": "{{ title }}" }, async (cwd) => {
-		const first = await runCli(
-			cwd,
-			"inspect",
-			"theme",
-			".",
-			"--format",
-			"json",
-		);
-		assert.equal(first.status, 0, first.stderr);
-		const cachePath = join(cwd, ".nazare-out", "inspect-cache-v4.json");
-		const cache = JSON.parse(readFileSync(cachePath, "utf8"));
-		cache.entries["snippets/card.liquid"].facts = [
-			{ kind: "file", path: "snippets/other.liquid", fileKind: "snippet" },
-		];
-		writeFileSync(cachePath, JSON.stringify(cache));
-
-		const second = await runCli(
-			cwd,
-			"inspect",
-			"theme",
-			".",
-			"--format",
-			"json",
-		);
-		// Ownership validation still rejects the entry; it just costs a cold
-		// rebuild rather than the whole command.
-		assert.equal(second.status, 0, second.stderr);
-		assert.match(second.stderr, /Discarded theme inspection cache/);
-		assert.match(second.stderr, /snippets\/card\.liquid/);
-		const graph = JSON.parse(second.stdout);
-		assert.ok(
-			graph.nodes.some((node) => node.id === "file:snippets/card.liquid"),
-		);
-		// The discarded cache is replaced by a valid one, so the next run is warm
-		// and every cached fact belongs to the file that owns the entry.
-		const rewritten = JSON.parse(readFileSync(cachePath, "utf8"));
-		const entry = rewritten.entries["snippets/card.liquid"];
-		assert.ok(entry.facts.length > 0);
-		for (const fact of entry.facts) {
-			assert.equal(fact.path ?? fact.fromPath, "snippets/card.liquid");
-		}
-	});
 });
 
 test("cli: inspect honors inspect.exclude and reports every excluded file", async () => {

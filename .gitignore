@@ -12,6 +12,7 @@ dist/
 
 # AI
 .claude/
+tmp/
 
 # personal
 notes/
@@ -19,6 +20,8 @@ notes/
 notes/*
 !notes/adr-tree-sitter-source-runtime.md
 !notes/tree-sitter-performance.md
+!notes/optimized-refactor.ts
+!notes/optimized-refactor-plan.md
 
 # The example theme's built theme/ output IS committed (part of the showcase;
 # it carries its own .nazare/build-manifest.json so an in-place rebuild

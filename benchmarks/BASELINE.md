@@ -1,0 +1,83 @@
+# Refactor benchmark baseline
+
+Recorded at `2026-08-05T14:13:40Z` from `feat/big-ass-refactor` at `3dfed65`.
+
+Environment:
+
+```text
+Node:         v24.13.0
+Platform:     darwin x64
+Logical CPUs: 4
+```
+
+Numbers are local development baselines, not cross-machine budgets. Compare future candidates on the same machine with the benchmark scripts’ interleaved baseline mode where available.
+
+## Incremental single-file edit
+
+Product replay fixture: `packages/target-shopify/tests/equivalence-replay.test.mjs`.
+
+Edit: append one static Liquid metafield read to `snippets/card.liquid` after warming Shopify semantic and graph products.
+
+```text
+Parsed files:             1
+Duplicate computed keys:  0
+Metafield record delta:  +1
+Render-graph edge delta:  0
+Observed test wall time: 14.05 ms
+```
+
+The wall time includes assertions and test harness work; parsed-file and semantic delta counts are the regression gates.
+
+## Full theme inspection
+
+Command:
+
+```sh
+node benchmarks/inspect-theme.mjs --scales 1 --runs 1 --json
+```
+
+Corpus: `fixtures/canonical-theme`, 32 theme files, 31 parsed content files, 11,688 output bytes.
+
+```text
+Cold wall: 0.9543 s
+Cold CPU:  0.87 s
+Warm wall: 0.6494 s
+Warm CPU:  0.74 s
+```
+
+## Theme scaffold
+
+Command:
+
+```sh
+node benchmarks/scaffold-theme.mjs --files 400 --out <temporary-directory>
+```
+
+```text
+Seed files:      32
+Generated files: 368
+Total files:     400
+Wall:            0.25 s
+User CPU:        0.10 s
+System CPU:      0.13 s
+```
+
+## Parser throughput
+
+Command:
+
+```sh
+node --expose-gc packages/source/scripts/benchmark-shopify-parser.mjs \
+  --rounds 3 --warmups 1 fixtures/canonical-theme/layout/theme.liquid
+```
+
+Corpus: 1 file, 379 bytes, content SHA-256 `167ae627cf4ce73097ca8bbe72c573354a14c5b284840b0b11819b1afe28c20c`.
+
+```text
+Tree-sitter median:     0.3259 ms
+Tree-sitter throughput: 1.1630 MB/s
+Shopify median:         19.8931 ms
+Shopify throughput:     0.0191 MB/s
+Measured speedup:       61.04×
+Rejected files:         0
+```
