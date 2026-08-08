@@ -228,7 +228,7 @@ export function printHelp(output: Output = console): void {
   nazare inspect impact <file> [dir] change impact for one theme-relative file
   nazare inspect metafield <owner.namespace.key> [dir]
                                      local Liquid/JSON/static GraphQL readers and affected pages
-  nazare graph-server [dir]          serve graph queries over newline-delimited JSON stdio
+  nazare inspect serve [dir]         serve inspection tools over MCP stdio
   nazare features                    list public feature stability and effects
 
 Preview:
@@ -331,6 +331,7 @@ Options:
   nazare inspect theme [dir] [--format json|text|dot]
   nazare inspect impact <theme-file> [dir] [--format text|json]
   nazare inspect metafield <owner.namespace.key> [dir] [--format text|json]
+  nazare inspect serve [dir] [--enable-experimental graph-server]
 
 Views (experimental; require --enable-experimental compiler-inspection):
   ast, ir, graph, schema   inspect one compiler projection
@@ -339,6 +340,7 @@ Views (experimental; require --enable-experimental compiler-inspection):
   theme                   inspect whole-theme semantic graph
 
 Theme queries:
+  serve                   serve inspection tools over newline-delimited MCP stdio
   impact                  show direct dependencies, dependents, affected pages,
                           usage, diagnostics, and analysis uncertainty for one file
   metafield               show local Liquid, JSON, and static GraphQL readers,

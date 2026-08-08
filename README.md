@@ -37,11 +37,11 @@ nazare inspect impact <theme-relative-file> [dir] --format text|json
 # Find a metafield's definition, readers, and affected pages
 nazare inspect metafield <owner.namespace.key> [dir] --format text|json
 
-# Serve graph queries to editor and agent integrations over JSONL stdio
-nazare graph-server [dir] --enable-experimental graph-server
+# Serve inspection tools to editor and agent integrations over MCP stdio
+nazare inspect serve [dir] --enable-experimental graph-server
 ```
 
-`dir` defaults to `build.sourceRoot` in `nazare.theme.json`. Theme intelligence analyzes Nazare Liquid, plain Liquid, Shopify JSON, CSS, and JavaScript.
+`dir` defaults to `build.sourceRoot` in `nazare.theme.json`. Theme intelligence analyzes Nazare Liquid, plain Liquid, Shopify JSON, CSS, and JavaScript. `nazare graph-server` remains a deprecated compatibility alias for `nazare inspect serve`.
 
 Theme, impact, and metafield JSON outputs are stable, independently versioned machine contracts. Their committed schemas, golden examples, and compatibility policy live in [`packages/cli-client/contracts`](packages/cli-client/contracts). Text and DOT rendering remain human-facing and may change presentation without a contract-version bump.
 
@@ -55,7 +55,7 @@ nazare features
 nazare features --json
 
 # Enable a read-only experimental feature for one invocation
-nazare graph-server . --enable-experimental graph-server
+nazare inspect serve . --enable-experimental graph-server
 
 # Low-level AST/IR/compiler projections are debugging interfaces
 nazare inspect ir component.nz.liquid --enable-experimental compiler-inspection

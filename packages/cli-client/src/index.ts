@@ -144,26 +144,41 @@ export async function main(
 		// component into one theme output. It runs before the single-file setup
 		// below because it targets a directory (from the arg or nazare.theme.json
 		// build.sourceRoot) rather than one entry file.
-		if (command === "graph-server") {
-			const manifest = await readProjectManifest(projectRoot);
-			const graphRoot = cliOptions.positionals[0] ?? manifest.build?.sourceRoot;
-			if (!graphRoot) {
-				throw new Error(
-					'Graph server requires a directory argument or "build.sourceRoot" in nazare.theme.json',
+		const servesInspection =
+			command === "graph-server" ||
+			(command === "inspect" && cliOptions.positionals[0] === "serve");
+		if (servesInspection) {
+			if (command === "graph-server") {
+				output.error(
+					"Deprecated: nazare graph-server; use nazare inspect serve instead",
 				);
 			}
-			const resolvedGraphRoot = resolve(projectRoot, graphRoot);
-			const canonicalProjectRoot = await realpath(projectRoot);
-			const canonicalGraphRoot = await realpath(resolvedGraphRoot);
-			if (isOutsideRoot(canonicalProjectRoot, canonicalGraphRoot)) {
+			const rootArgument =
+				command === "graph-server"
+					? cliOptions.positionals[0]
+					: cliOptions.positionals[1];
+			const manifest = await readProjectManifest(projectRoot);
+			const inspectionRoot = rootArgument ?? manifest.build?.sourceRoot;
+			if (!inspectionRoot) {
 				throw new Error(
-					`${resolvedGraphRoot} resolves outside the project root ${projectRoot}`,
+					'Inspection server requires a directory argument or "build.sourceRoot" in nazare.theme.json',
+				);
+			}
+			const resolvedInspectionRoot = resolve(projectRoot, inspectionRoot);
+			const canonicalProjectRoot = await realpath(projectRoot);
+			const canonicalInspectionRoot = await realpath(resolvedInspectionRoot);
+			if (isOutsideRoot(canonicalProjectRoot, canonicalInspectionRoot)) {
+				throw new Error(
+					`${resolvedInspectionRoot} resolves outside the project root ${projectRoot}`,
 				);
 			}
 			const { serveThemeGraph } = await import("./graph-server.js");
-			await serveThemeGraph(canonicalGraphRoot, process.stdin, process.stdout, {
-				projectRoot: canonicalProjectRoot,
-			});
+			await serveThemeGraph(
+				canonicalInspectionRoot,
+				process.stdin,
+				process.stdout,
+				{ projectRoot: canonicalProjectRoot },
+			);
 			return 0;
 		}
 

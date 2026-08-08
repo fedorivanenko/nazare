@@ -273,6 +273,11 @@ export const INVOCATION_FEATURE_RULES = [
 	{ commands: ["features"], feature: "feature-discovery" },
 	{ commands: ["source"], feature: "source-analysis" },
 	{ commands: ["graph-server"], feature: "graph-server" },
+	{
+		commands: ["inspect"],
+		firstPositionals: ["serve"],
+		feature: "graph-server",
+	},
 	{ commands: ["build", "check"], feature: "theme-build" },
 	{ commands: ["preview"], feature: "preview" },
 	{ commands: ["init"], feature: "project-initialization" },

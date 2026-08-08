@@ -110,5 +110,9 @@ test("command feature routing is centralized and declarative", () => {
 		featureForInvocation("graph-server", { positionals: [] }),
 		"graph-server",
 	);
+	assert.equal(
+		featureForInvocation("inspect", { positionals: ["serve"] }),
+		"graph-server",
+	);
 	assert.ok(INVOCATION_FEATURE_RULES.length > 0);
 });

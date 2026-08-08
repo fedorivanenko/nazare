@@ -104,9 +104,29 @@ test("cli: lists stable and experimental feature contracts", {
 test("cli: blocks experimental commands at the centralized gateway", {
 	smoke: true,
 }, async () => {
-	const out = await runCli(process.cwd(), "graph-server", ".");
+	for (const args of [
+		["inspect", "serve", "."],
+		["graph-server", "."],
+	]) {
+		const out = await runCli(process.cwd(), ...args);
+		assert.equal(out.status, 1);
+		assert.match(out.stderr, /--enable-experimental graph-server/);
+	}
+});
+
+test("cli: graph-server is a deprecated inspect serve alias", {
+	smoke: true,
+}, async () => {
+	const out = await runCli(
+		process.cwd(),
+		"graph-server",
+		"missing-inspection-root",
+		"--enable-experimental",
+		"graph-server",
+	);
 	assert.equal(out.status, 1);
-	assert.match(out.stderr, /--enable-experimental graph-server/);
+	assert.match(out.stderr, /Deprecated: nazare graph-server/);
+	assert.match(out.stderr, /use nazare inspect serve instead/);
 });
 
 test("cli: preview and inspect expose focused help", {
@@ -117,6 +137,7 @@ test("cli: preview and inspect expose focused help", {
 		{ args: ["preview", "serve", "-h"], usage: "Usage: nazare preview" },
 		{ args: ["inspect", "--help"], usage: "nazare inspect <ast|ir|graph" },
 		{ args: ["help", "inspect"], usage: "nazare inspect <ast|ir|graph" },
+		{ args: ["inspect", "serve", "-h"], usage: "nazare inspect serve" },
 	]) {
 		const out = await runCli(process.cwd(), ...args);
 		assert.equal(out.status, 0, `${args.join(" ")}\n${out.stderr}`);
