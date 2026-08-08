@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
-import type { ShopifyBehavior } from "@nazare/target-shopify";
+import type { ShopifyBehavior, ShopifyEvidence } from "@nazare/target-shopify";
 import {
 	collectThemeInputFiles,
 	isInspectThemeFile,
@@ -15,7 +15,7 @@ import {
 	ShopifyQuerySession,
 } from "./shopify-query-session.js";
 
-export type ThemeGraphServerOptions = {
+export type InspectionServerOptions = {
 	projectRoot: string;
 	/**
 	 * How long to wait for a path to stop changing before rebuilding it.
@@ -28,79 +28,92 @@ export type ThemeGraphServerOptions = {
 	watchDebounceMs?: number;
 };
 
-export async function serveThemeGraph(
+export async function serveInspection(
 	root: string,
 	input: Readable,
 	output: Writable,
-	options: ThemeGraphServerOptions,
+	options: InspectionServerOptions,
 ): Promise<void> {
 	let querySession = await loadQuerySession(root, options.projectRoot);
-	let stopWatching: (() => void) | undefined;
+	const writer = new JsonLineWriter(output);
+	let notificationsEnabled = false;
+	const stopWatching = startWatcher(
+		root,
+		options.projectRoot,
+		() => querySession,
+		(update) => {
+			if (!notificationsEnabled) return;
+			void writer.write(notificationPayload(update)).catch(() => undefined);
+		},
+		options.watchDebounceMs ?? DEFAULT_WATCH_DEBOUNCE_MS,
+	);
 	let mcpInitialized = false;
 	const readline = createInterface({ input, crlfDelay: Infinity });
-	for await (const line of readline) {
-		if (!line.trim()) continue;
-		let request: GraphRequest;
-		try {
-			request = parseRequest(line);
-		} catch (error) {
-			writeErrorResponse(output, undefined, rpcError(error));
-			continue;
-		}
-		const isMcpRequest = request.jsonrpc === "2.0";
-		try {
-			if (
-				isMcpRequest &&
-				!mcpInitialized &&
-				request.method !== "initialize" &&
-				request.method !== "ping"
-			) {
-				throw new RpcError(-32600, "Server not initialized");
+	try {
+		for await (const line of readline) {
+			if (!line.trim()) continue;
+			let request: InspectionRequest;
+			try {
+				request = parseRequest(line);
+			} catch (error) {
+				await writer.write(errorResponsePayload(undefined, rpcError(error)));
+				continue;
 			}
-			if (request.method === "initialize") {
-				if (request.id === undefined) {
-					throw new RpcError(-32600, "initialize must be a request");
+			const isMcpRequest = request.jsonrpc === "2.0";
+			if (!isMcpRequest) notificationsEnabled = true;
+			try {
+				if (
+					isMcpRequest &&
+					!mcpInitialized &&
+					request.method !== "initialize" &&
+					request.method !== "ping"
+				) {
+					throw new RpcError(-32600, "Server not initialized");
 				}
-				if (mcpInitialized) {
-					throw new RpcError(-32600, "Server already initialized");
+				if (request.method === "initialize") {
+					if (request.id === undefined) {
+						throw new RpcError(-32600, "initialize must be a request");
+					}
+					if (mcpInitialized) {
+						throw new RpcError(-32600, "Server already initialized");
+					}
+					validateInitializeParams(request.params);
+					mcpInitialized = true;
 				}
-				validateInitializeParams(request.params);
-				mcpInitialized = true;
-			}
-			if (
-				request.method === "notifications/initialized" &&
-				request.id !== undefined
-			) {
-				throw new RpcError(
-					-32600,
-					"notifications/initialized must be a notification",
+				if (
+					request.method === "notifications/initialized" &&
+					request.id !== undefined
+				) {
+					throw new RpcError(
+						-32600,
+						"notifications/initialized must be a notification",
+					);
+				}
+				if (request.method === "notifications/initialized") {
+					notificationsEnabled = true;
+				}
+				const result = await handleRequest(
+					request,
+					root,
+					options.projectRoot,
+					() => querySession,
+					(next) => {
+						querySession = next;
+					},
 				);
-			}
-			const result = await handleRequest(
-				request,
-				root,
-				options.projectRoot,
-				() => querySession,
-				(next) => {
-					querySession = next;
-				},
-				(next) => {
-					stopWatching?.();
-					stopWatching = next;
-				},
-				(update) => writeNotification(output, update),
-				options.watchDebounceMs ?? DEFAULT_WATCH_DEBOUNCE_MS,
-			);
-			if (request.id !== undefined) {
-				writeResponse(output, request, { id: request.id, result });
-			}
-		} catch (error) {
-			if (request.id !== undefined) {
-				writeErrorResponse(output, request, rpcError(error));
+				if (request.id !== undefined) {
+					await writer.write(responsePayload(request, request.id, result));
+				}
+			} catch (error) {
+				if (request.id !== undefined) {
+					await writer.write(errorResponsePayload(request, rpcError(error)));
+				}
 			}
 		}
+	} finally {
+		stopWatching();
+		await writer.flush();
 	}
-	stopWatching?.();
 }
 
 const NON_DOM_BEHAVIOR_SUBJECT_KINDS = [
@@ -114,6 +127,9 @@ const BEHAVIOR_SUBJECT_KINDS = [
 ] as const;
 const DOM_HOOK_KINDS = ["class", "id", "attribute"] as const;
 const BEHAVIOR_QUERY_ROLES = ["all", "producers", "consumers"] as const;
+const DEFAULT_PAGE_LIMIT = 50;
+const MAX_PAGE_LIMIT = 200;
+const MAX_TOOL_RESULT_BYTES = 512 * 1024;
 
 const SUPPORTED_MCP_PROTOCOL_VERSIONS = [
 	"2025-11-25",
@@ -131,7 +147,7 @@ class RpcError extends Error {
 	}
 }
 
-type GraphRequest = {
+type InspectionRequest = {
 	jsonrpc?: "2.0";
 	id?: string | number;
 	method: string;
@@ -139,21 +155,18 @@ type GraphRequest = {
 };
 
 async function handleRequest(
-	request: GraphRequest,
+	request: InspectionRequest,
 	root: string,
 	projectRoot: string,
 	getQuerySession: () => ShopifyQuerySession,
 	setQuerySession: (session: ShopifyQuerySession) => void,
-	setWatcher: (stop: () => void) => void,
-	notify: (update: unknown) => void,
-	debounceMs: number,
 ): Promise<unknown> {
 	if (request.method === "ping") return {};
 	if (request.method === "notifications/initialized") return {};
-	if (request.method === "tools/list") return { tools: GRAPH_TOOLS };
+	if (request.method === "tools/list") return { tools: INSPECTION_TOOLS };
 	if (request.method === "tools/call") {
 		const name = requiredString(request.params, "name");
-		if (!GRAPH_TOOL_NAMES.has(name)) {
+		if (!INSPECTION_TOOL_NAMES.has(name)) {
 			throw new RpcError(-32602, `Unknown tool: ${name}`);
 		}
 		const args = request.params?.arguments;
@@ -174,13 +187,24 @@ async function handleRequest(
 				projectRoot,
 				getQuerySession,
 				setQuerySession,
-				setWatcher,
-				notify,
-				debounceMs,
 			);
+			const structuredContent = structuredToolResult(name, result);
+			const serialized = JSON.stringify(structuredContent);
+			const resultBytes = Buffer.byteLength(serialized);
+			if (resultBytes > MAX_TOOL_RESULT_BYTES) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Tool result is ${resultBytes} bytes; maximum is ${MAX_TOOL_RESULT_BYTES}. Use a targeted or paginated inspection tool.`,
+						},
+					],
+					isError: true,
+				};
+			}
 			return {
-				content: [{ type: "text", text: JSON.stringify(result) }],
-				...(isObject(result) ? { structuredContent: result } : {}),
+				content: [{ type: "text", text: serialized }],
+				structuredContent,
 				isError: false,
 			};
 		} catch (error) {
@@ -201,7 +225,7 @@ async function handleRequest(
 				? requestedVersion
 				: SUPPORTED_MCP_PROTOCOL_VERSIONS[0],
 			capabilities: { tools: {} },
-			serverInfo: { name: "nazare-theme-graph", version: "1" },
+			serverInfo: { name: "nazare-inspect", version: "1" },
 		};
 	}
 	if (request.method === "reload" || request.method === "inspect") {
@@ -218,15 +242,41 @@ async function handleRequest(
 		return querySession.impact([requiredString(request.params, "path")]);
 	}
 	if (request.method === "behaviorIndex") {
-		return querySession.behaviorIndex({
+		const index = await querySession.behaviorIndex({
 			behaviorKind: optionalString(request.params, "behaviorKind"),
 		});
+		const page = paginate(index.records, request.params);
+		return {
+			version: index.version,
+			records: page.items,
+			total: page.total,
+			...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+			evidence: includeEvidence(request.params)
+				? evidenceForFacts(
+						index.evidence,
+						page.items.map((record) => record.id),
+					)
+				: [],
+		};
 	}
 	if (request.method === "metafieldIndex") {
-		return querySession.metafieldIndex({
+		const index = await querySession.metafieldIndex({
 			ownerType: optionalString(request.params, "ownerType"),
 			namespace: optionalString(request.params, "namespace"),
 		});
+		const page = paginate(index.records, request.params);
+		return {
+			version: index.version,
+			records: page.items,
+			total: page.total,
+			...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+			evidence: includeEvidence(request.params)
+				? evidenceForFacts(
+						index.evidence,
+						page.items.map((record) => record.id),
+					)
+				: [],
+		};
 	}
 	if (request.method === "unusedFiles") {
 		return querySession.unusedFiles(requiredStrings(request.params, "roots"));
@@ -247,16 +297,6 @@ async function handleRequest(
 		const previousRevision = querySession.session.snapshot().revision;
 		const revision = await querySession.removeFile(path);
 		return graphUpdate(path, previousRevision, revision);
-	}
-	if (request.method === "watch") {
-		setWatcher(
-			startWatcher(root, projectRoot, getQuerySession, notify, debounceMs),
-		);
-		return { watching: true };
-	}
-	if (request.method === "unwatch") {
-		setWatcher(() => undefined);
-		return { watching: false };
 	}
 	if (request.method === "summary") {
 		const model = await querySession.projectModel();
@@ -305,17 +345,25 @@ async function handleRequest(
 		const index = await querySession.behaviorIndex({
 			behaviorKind: query.subjectKind,
 		});
-		const usages = index.records
-			.filter((record) => behaviorMatches(record.data, query, role))
-			.map((record) => behaviorUsage(record));
+		const matching = index.records.filter((record) =>
+			behaviorMatches(record.data, query, role),
+		);
+		const page = paginate(matching, request.params);
 		return {
 			version: index.version,
 			query,
 			role,
-			usages,
+			usages: page.items.map((record) => behaviorUsage(record)),
+			total: page.total,
+			...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
 			certainty: "complete",
 			uncertainty: [],
-			evidence: index.evidence,
+			evidence: includeEvidence(request.params)
+				? evidenceForFacts(
+						index.evidence,
+						page.items.map((record) => record.id),
+					)
+				: [],
 		};
 	}
 	if (request.method === "behaviorConnections") {
@@ -328,7 +376,10 @@ async function handleRequest(
 			throw new RpcError(-32602, `Unknown theme path: ${path}`);
 		const index = await querySession.behaviorIndex({ behaviorKind: null });
 		const owned = index.records.filter((record) => record.owner.path === path);
-		const connections = owned.map((record) => {
+		const page = paginate(owned, request.params);
+		const evidenceIds = new Set<string>();
+		const connections = page.items.map((record) => {
+			evidenceIds.add(record.id);
 			const data = isObject(record.data) ? record.data : {};
 			const matching = index.records.filter(
 				(candidate) =>
@@ -336,25 +387,39 @@ async function handleRequest(
 					candidate.data.subjectKind === data.subjectKind &&
 					candidate.data.name === data.name,
 			);
+			const producers = matching.filter(
+				(candidate) => behaviorRole(candidate.data) === "producers",
+			);
+			const consumers = matching.filter(
+				(candidate) => behaviorRole(candidate.data) === "consumers",
+			);
+			for (const candidate of [
+				...producers.slice(0, MAX_PAGE_LIMIT),
+				...consumers.slice(0, MAX_PAGE_LIMIT),
+			]) {
+				evidenceIds.add(candidate.id);
+			}
 			return {
 				id: record.id,
 				subjectKind: data.subjectKind,
 				name: data.name,
-				producers: matching
-					.filter((candidate) => behaviorRole(candidate.data) === "producers")
-					.map(behaviorUsage),
-				consumers: matching
-					.filter((candidate) => behaviorRole(candidate.data) === "consumers")
-					.map(behaviorUsage),
+				producers: producers.slice(0, MAX_PAGE_LIMIT).map(behaviorUsage),
+				producerCount: producers.length,
+				consumers: consumers.slice(0, MAX_PAGE_LIMIT).map(behaviorUsage),
+				consumerCount: consumers.length,
 			};
 		});
 		return {
 			version: index.version,
 			path,
 			connections,
+			total: page.total,
+			...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
 			certainty: "complete",
 			uncertainty: [],
-			evidence: index.evidence,
+			evidence: includeEvidence(request.params)
+				? evidenceForFacts(index.evidence, evidenceIds)
+				: [],
 		};
 	}
 	if (request.method === "evidence") {
@@ -449,7 +514,7 @@ function startWatcher(
 					.catch((error) => {
 						if (closed) return;
 						notify({
-							method: "graph/error",
+							method: "inspection/error",
 							params: {
 								message: error instanceof Error ? error.message : String(error),
 							},
@@ -489,16 +554,9 @@ function startWatcher(
 				revision = await session.removeFile(relativePath);
 			}
 			if (closed || revision === previousRevision) return;
-			const graph = graphUpdate(relativePath, previousRevision, revision);
-			const build = await buildUpdate(
-				session,
-				relativePath,
-				previousRevision,
-				revision,
-			);
+			const update = graphUpdate(relativePath, previousRevision, revision);
 			if (closed) return;
-			notify({ method: "graph/update", params: graph });
-			notify({ method: "build/update", params: build });
+			notify({ method: "inspection/update", params: update });
 			return;
 		}
 		const exclude = await readInspectExcludePatterns(projectRoot);
@@ -536,7 +594,7 @@ function startWatcher(
 		}
 		if (!closed && queryRevision !== previousQueryRevision) {
 			notify({
-				method: "graph/update",
+				method: "inspection/update",
 				params: { changedPaths: [relativePath], revision: queryRevision },
 			});
 		}
@@ -615,7 +673,7 @@ async function optionalFile(
 	}
 }
 
-function parseRequest(line: string): GraphRequest {
+function parseRequest(line: string): InspectionRequest {
 	let value: unknown;
 	try {
 		value = JSON.parse(line);
@@ -702,9 +760,9 @@ function toolArgumentKeys(name: string): string[] {
 		case "impact":
 			return ["path"];
 		case "behaviorIndex":
-			return ["behaviorKind"];
+			return ["behaviorKind", "limit", "cursor", "includeEvidence"];
 		case "metafieldIndex":
-			return ["ownerType", "namespace"];
+			return ["ownerType", "namespace", "limit", "cursor", "includeEvidence"];
 		case "unusedFiles":
 			return ["roots"];
 		case "node":
@@ -714,15 +772,116 @@ function toolArgumentKeys(name: string): string[] {
 			return ["nodeId"];
 		case "fileImpact":
 		case "renderOccurrences":
-		case "behaviorConnections":
 			return ["path"];
+		case "behaviorConnections":
+			return ["path", "limit", "cursor", "includeEvidence"];
 		case "behaviorUsages":
-			return ["subjectKind", "hookKind", "name", "role"];
+			return [
+				"subjectKind",
+				"hookKind",
+				"name",
+				"role",
+				"limit",
+				"cursor",
+				"includeEvidence",
+			];
 		case "evidence":
 			return ["recordId"];
 		default:
 			throw new RpcError(-32602, `Unknown tool: ${name}`);
 	}
+}
+
+function structuredToolResult(
+	name: string,
+	result: unknown,
+): Record<string, unknown> {
+	if (Array.isArray(result)) return { contractVersion: 1, items: result };
+	if (isObject(result)) return { contractVersion: 1, ...result };
+	return name === "node"
+		? { contractVersion: 1, node: result ?? null }
+		: { contractVersion: 1, value: result ?? null };
+}
+
+function paginate<Item>(
+	items: readonly Item[],
+	params: Record<string, unknown> | undefined,
+): {
+	items: readonly Item[];
+	total: number;
+	nextCursor?: string;
+} {
+	const limitValue = params?.limit;
+	const limit =
+		limitValue === undefined
+			? DEFAULT_PAGE_LIMIT
+			: requiredInteger(params, "limit", 1, MAX_PAGE_LIMIT);
+	const cursorValue = params?.cursor;
+	let offset = 0;
+	if (cursorValue !== undefined) {
+		if (
+			typeof cursorValue !== "string" ||
+			!/^(0|[1-9]\d*)$/.test(cursorValue)
+		) {
+			throw new RpcError(-32602, "Invalid cursor");
+		}
+		offset = Number(cursorValue);
+		if (!Number.isSafeInteger(offset) || offset > items.length) {
+			throw new RpcError(-32602, "Invalid cursor");
+		}
+	}
+	const page = items.slice(offset, offset + limit);
+	const nextOffset = offset + page.length;
+	return {
+		items: page,
+		total: items.length,
+		...(nextOffset < items.length ? { nextCursor: String(nextOffset) } : {}),
+	};
+}
+
+function includeEvidence(params: Record<string, unknown> | undefined): boolean {
+	const value = params?.includeEvidence;
+	if (value === undefined) return true;
+	if (typeof value !== "boolean") {
+		throw new RpcError(-32602, "includeEvidence must be a boolean");
+	}
+	return value;
+}
+
+function evidenceForFacts(
+	evidence: readonly ShopifyEvidence[],
+	factIds: Iterable<string>,
+): ShopifyEvidence[] {
+	const ids = new Set(factIds);
+	return evidence.filter((record) => {
+		const data = record.data;
+		if (!isObject(data)) return false;
+		return ["factId", "readId", "referenceId"].some((key) => {
+			const value = data[key];
+			return typeof value === "string" && ids.has(value);
+		});
+	});
+}
+
+function requiredInteger(
+	params: Record<string, unknown> | undefined,
+	key: string,
+	minimum: number,
+	maximum: number,
+): number {
+	const value = params?.[key];
+	if (
+		typeof value !== "number" ||
+		!Number.isSafeInteger(value) ||
+		value < minimum ||
+		value > maximum
+	) {
+		throw new RpcError(
+			-32602,
+			`${key} must be an integer from ${minimum} to ${maximum}`,
+		);
+	}
+	return value;
 }
 
 type BehaviorQuery = {
@@ -840,10 +999,11 @@ function requiredString(
 	return value;
 }
 
-function graphTools(): {
+function inspectionTools(): {
 	name: string;
 	description: string;
 	inputSchema: object;
+	outputSchema: object;
 }[] {
 	const nodeId = {
 		type: "object",
@@ -857,9 +1017,15 @@ function graphTools(): {
 		required: ["path"],
 		additionalProperties: false,
 	};
+	const paginationProperties = {
+		limit: { type: "integer", minimum: 1, maximum: MAX_PAGE_LIMIT },
+		cursor: { type: "string", pattern: "^(0|[1-9]\\d*)$" },
+		includeEvidence: { type: "boolean" },
+	};
 	const behavior = {
 		type: "object",
 		properties: {
+			...paginationProperties,
 			subjectKind: {
 				type: "string",
 				enum: BEHAVIOR_SUBJECT_KINDS,
@@ -891,7 +1057,7 @@ function graphTools(): {
 		required: ["recordId"],
 		additionalProperties: false,
 	};
-	return [
+	const tools = [
 		{
 			name: "projectModel",
 			description: "Get versioned Shopify project semantic model.",
@@ -912,7 +1078,10 @@ function graphTools(): {
 			description: "Get versioned behavior records and evidence.",
 			inputSchema: {
 				type: "object",
-				properties: { behaviorKind: { type: "string" } },
+				properties: {
+					behaviorKind: { type: "string" },
+					...paginationProperties,
+				},
 				additionalProperties: false,
 			},
 		},
@@ -924,6 +1093,7 @@ function graphTools(): {
 				properties: {
 					ownerType: { type: "string" },
 					namespace: { type: "string" },
+					...paginationProperties,
 				},
 				additionalProperties: false,
 			},
@@ -983,7 +1153,15 @@ function graphTools(): {
 			name: "behaviorConnections",
 			description:
 				"Find typed cross-language behavior connections and explicit analysis uncertainty for one source file.",
-			inputSchema: path,
+			inputSchema: {
+				type: "object",
+				properties: {
+					path: { type: "string" },
+					...paginationProperties,
+				},
+				required: ["path"],
+				additionalProperties: false,
+			},
 		},
 		{
 			name: "evidence",
@@ -991,37 +1169,69 @@ function graphTools(): {
 			inputSchema: recordId,
 		},
 	];
+	return tools.map((tool) => ({
+		...tool,
+		outputSchema: {
+			type: "object",
+			properties: { contractVersion: { const: 1 } },
+			required: ["contractVersion"],
+			additionalProperties: true,
+		},
+	}));
 }
 
-const GRAPH_TOOLS = Object.freeze(graphTools());
-const GRAPH_TOOL_NAMES = new Set(GRAPH_TOOLS.map(({ name }) => name));
+const INSPECTION_TOOLS = Object.freeze(inspectionTools());
+const INSPECTION_TOOL_NAMES = new Set(INSPECTION_TOOLS.map(({ name }) => name));
 
-function writeNotification(output: Writable, notification: unknown): void {
-	output.write(
-		`${JSON.stringify(
-			isObject(notification)
-				? { jsonrpc: "2.0", ...notification }
-				: notification,
-		)}\n`,
-	);
+class JsonLineWriter {
+	private pending: Promise<void> = Promise.resolve();
+	private failure: unknown;
+
+	constructor(private readonly output: Writable) {}
+
+	write(payload: unknown): Promise<void> {
+		const line = `${JSON.stringify(payload)}\n`;
+		const write = this.pending.then(
+			() =>
+				new Promise<void>((resolve, reject) => {
+					this.output.write(line, (error) => {
+						if (error) reject(error);
+						else resolve();
+					});
+				}),
+		);
+		this.pending = write.catch((error: unknown) => {
+			this.failure ??= error;
+		});
+		return write;
+	}
+
+	async flush(): Promise<void> {
+		await this.pending;
+		if (this.failure) throw this.failure;
+	}
 }
 
-function writeResponse(
-	output: Writable,
-	request: GraphRequest,
-	response: { id: string | number; result: unknown },
-): void {
-	const payload =
-		request.jsonrpc === "2.0" ? { jsonrpc: "2.0", ...response } : response;
-	output.write(`${JSON.stringify(payload)}\n`);
+function notificationPayload(notification: unknown): unknown {
+	return isObject(notification)
+		? { jsonrpc: "2.0", ...notification }
+		: notification;
 }
 
-function writeErrorResponse(
-	output: Writable,
-	request: GraphRequest | undefined,
+function responsePayload(
+	request: InspectionRequest,
+	id: string | number,
+	result: unknown,
+): unknown {
+	const response = { id, result };
+	return request.jsonrpc === "2.0" ? { jsonrpc: "2.0", ...response } : response;
+}
+
+function errorResponsePayload(
+	request: InspectionRequest | undefined,
 	error: RpcError,
-): void {
-	const payload = {
+): unknown {
+	return {
 		jsonrpc: "2.0",
 		id: request?.id ?? null,
 		error: {
@@ -1030,7 +1240,6 @@ function writeErrorResponse(
 			...(error.data === undefined ? {} : { data: error.data }),
 		},
 	};
-	output.write(`${JSON.stringify(payload)}\n`);
 }
 
 function rpcError(error: unknown): RpcError {

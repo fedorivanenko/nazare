@@ -41,7 +41,7 @@ nazare inspect metafield <owner.namespace.key> [dir] --format text|json
 nazare inspect serve [dir] --enable-experimental
 ```
 
-`dir` defaults to `build.sourceRoot` in `nazare.theme.json`. Theme intelligence analyzes Nazare Liquid, plain Liquid, Shopify JSON, CSS, and JavaScript.
+`dir` defaults to `build.sourceRoot` in `nazare.theme.json`. Theme intelligence analyzes Nazare Liquid, plain Liquid, Shopify JSON, CSS, and JavaScript. `inspect serve` watches accepted project and metadata files automatically. MCP structured outputs carry `contractVersion: 1`; targeted index and behavior tools default to 50 records, accept `limit` (maximum 200) and `cursor`, and return only relevant evidence. Oversized results are rejected with a targeted-query hint instead of flooding the transport.
 
 Theme, impact, and metafield JSON outputs are stable, independently versioned machine contracts. Their committed schemas, golden examples, and compatibility policy live in [`packages/cli-client/contracts`](packages/cli-client/contracts). Text and DOT rendering remain human-facing and may change presentation without a contract-version bump.
 
