@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
 	assertFeaturePermit,
+	createCliFeatureGateway,
 	createFeatureGateway,
 	experimentalFeatureAliases,
 	featureForEnableAlias,
@@ -18,12 +19,24 @@ test("stable features are automatic and experimental features require enablement
 	);
 	assert.throws(
 		() => defaults.require("inspection-server"),
-		/--enable-experimental inspection-server/,
+		/--enable-experimental=inspection-server/,
 	);
 
 	const enabled = createFeatureGateway({ cliEnabled: ["inspection-server"] });
 	assert.equal(
 		enabled.require("inspection-server").feature,
+		"inspection-server",
+	);
+});
+
+test("bare experimental consent enables the routed invocation feature", () => {
+	const gateway = createCliFeatureGateway(
+		{ positionals: ["serve"], enableInvocationExperimental: true },
+		{},
+		"inspection-server",
+	);
+	assert.equal(
+		gateway.require("inspection-server").feature,
 		"inspection-server",
 	);
 });

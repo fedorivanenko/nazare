@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import type { compileNazareArtifact } from "@nazare/compiler/compile";
 import {
 	createCliFeatureGateway,
+	FEATURES,
 	featureForInvocation,
 	publicFeatures,
 } from "./features.js";
@@ -106,8 +107,21 @@ export async function main(
 			if (!printCommandHelp(command, output)) printHelp(output);
 			return 0;
 		}
-		const featureGateway = createCliFeatureGateway(cliOptions, env);
 		const invocationFeature = featureForInvocation(command, cliOptions);
+		if (
+			cliOptions.enableInvocationExperimental &&
+			(!invocationFeature ||
+				FEATURES[invocationFeature].stability !== "experimental")
+		) {
+			throw new Error(
+				"--enable-experimental requires a command whose primary feature is experimental; use --enable-experimental=<feature> for a secondary feature",
+			);
+		}
+		const featureGateway = createCliFeatureGateway(
+			cliOptions,
+			env,
+			invocationFeature,
+		);
 		if (invocationFeature) featureGateway.require(invocationFeature);
 		if (command === "features") {
 			printFeatures(cliOptions, output);
@@ -364,7 +378,7 @@ function printFeatures(options: CliOptions, output: Output): void {
 	for (const feature of features) {
 		const optIn =
 			feature.stability === "experimental"
-				? ` · enable: --enable-experimental ${feature.id}`
+				? ` · enable: --enable-experimental=${feature.id}`
 				: "";
 		const tracking = feature.trackingIssue
 			? ` · tracking: #${feature.trackingIssue}`

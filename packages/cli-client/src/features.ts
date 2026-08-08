@@ -148,6 +148,7 @@ export function createFeatureGateway(
 	options: {
 		cliEnabled?: Iterable<string>;
 		environmentEnabled?: Iterable<string>;
+		invocationFeature?: FeatureId;
 	} = {},
 ): FeatureGateway {
 	const enablement = new Map<FeatureId, Set<FeatureEnablementSource>>();
@@ -174,11 +175,15 @@ export function createFeatureGateway(
 						"enableAliases" in definition && definition.enableAliases.length > 0
 							? ` (alias: ${definition.enableAliases.join(", ")})`
 							: "";
+					const invocationEnablement =
+						options.invocationFeature === feature
+							? "--enable-experimental"
+							: `--enable-experimental=${feature}`;
 					throw new FeatureAccessError(
 						feature,
 						definition.consent === "invocation"
-							? `Experimental feature ${feature} requires per-invocation consent. Re-run with --enable-experimental ${feature}${aliases}.`
-							: `Experimental feature ${feature} is disabled. Re-run with --enable-experimental ${feature} or set NAZARE_EXPERIMENTAL_FEATURES=${feature}.`,
+							? `Experimental feature ${feature} requires per-invocation consent. Re-run with ${invocationEnablement}${aliases}.`
+							: `Experimental feature ${feature} is disabled. Re-run with ${invocationEnablement} or set NAZARE_EXPERIMENTAL_FEATURES=${feature}.`,
 					);
 				}
 			}
@@ -192,12 +197,19 @@ export function createFeatureGateway(
 export function createCliFeatureGateway(
 	options: CliOptions,
 	environment: NodeJS.ProcessEnv = process.env,
+	invocationFeature?: FeatureId,
 ): FeatureGateway {
 	return createFeatureGateway({
-		cliEnabled: options.enabledExperimentalFeatures,
+		cliEnabled: [
+			...(options.enabledExperimentalFeatures ?? []),
+			...(options.enableInvocationExperimental && invocationFeature
+				? [invocationFeature]
+				: []),
+		],
 		environmentEnabled: parseExperimentalFeatureEnvironment(
 			environment.NAZARE_EXPERIMENTAL_FEATURES,
 		),
+		invocationFeature,
 	});
 }
 

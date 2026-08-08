@@ -106,7 +106,7 @@ test("cli: blocks experimental commands at the centralized gateway", {
 }, async () => {
 	const out = await runCli(process.cwd(), "inspect", "serve", ".");
 	assert.equal(out.status, 1);
-	assert.match(out.stderr, /--enable-experimental inspection-server/);
+	assert.match(out.stderr, /Re-run with --enable-experimental\b/);
 });
 
 test("cli: removed inspection streams and top-level server command stay absent", {
@@ -320,7 +320,6 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 				"artifact",
 				"component.nz.liquid",
 				"--enable-experimental",
-				"compiler-inspection",
 			);
 			const loose = await runCli(
 				cwd,
@@ -330,7 +329,6 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 				"--strictness",
 				"loose",
 				"--enable-experimental",
-				"compiler-inspection",
 			);
 
 			assert.notEqual(strict.status, 0);
@@ -796,7 +794,7 @@ test("cli: inspect names the view first and rejects an unknown one", async () =>
 		async (cwd) => {
 			const blocked = await runCli(cwd, "inspect", "ir", "component.nz.liquid");
 			assert.equal(blocked.status, 1);
-			assert.match(blocked.stderr, /--enable-experimental compiler-inspection/);
+			assert.match(blocked.stderr, /Re-run with --enable-experimental\b/);
 
 			const ir = await runCli(
 				cwd,
@@ -804,7 +802,6 @@ test("cli: inspect names the view first and rejects an unknown one", async () =>
 				"ir",
 				"component.nz.liquid",
 				"--enable-experimental",
-				"compiler-inspection",
 			);
 			assert.equal(ir.status, 0, ir.stderr);
 			assert.ok(JSON.parse(ir.stdout).ir);

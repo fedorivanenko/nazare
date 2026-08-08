@@ -4,7 +4,7 @@ Ship Shopify faster and easier
 
 Nazare is a toolset that lets Shopify developers maintaining long-lived themes cut the time and breakage cost of each change
 
-> **Project status:** Nazare is pre-release, with stability declared per feature by `nazare features`. Stable machine contracts follow their documented compatibility policies; experimental and internal surfaces may change without migration support. Cache formats and generated theme output are not public compatibility contracts. Theme publication requires `--enable-experimental theme-publication`; keep source control and backups enabled, and test generated themes with Theme Check and Shopify CLI before using them on a live storefront.
+> **Project status:** Nazare is pre-release, with stability declared per feature by `nazare features`. Stable machine contracts follow their documented compatibility policies; experimental and internal surfaces may change without migration support. Cache formats and generated theme output are not public compatibility contracts. Theme publication requires `--enable-experimental=theme-publication`; keep source control and backups enabled, and test generated themes with Theme Check and Shopify CLI before using them on a live storefront.
 
 ## Installation
 
@@ -38,7 +38,7 @@ nazare inspect impact <theme-relative-file> [dir] --format text|json
 nazare inspect metafield <owner.namespace.key> [dir] --format text|json
 
 # Serve inspection tools to editor and agent integrations over MCP stdio
-nazare inspect serve [dir] --enable-experimental inspection-server
+nazare inspect serve [dir] --enable-experimental
 ```
 
 `dir` defaults to `build.sourceRoot` in `nazare.theme.json`. Theme intelligence analyzes Nazare Liquid, plain Liquid, Shopify JSON, CSS, and JavaScript.
@@ -55,17 +55,17 @@ nazare features
 nazare features --json
 
 # Enable a read-only experimental feature for one invocation
-nazare inspect serve . --enable-experimental inspection-server
+nazare inspect serve . --enable-experimental
 
 # Low-level AST/IR/compiler projections are debugging interfaces
-nazare inspect ir component.nz.liquid --enable-experimental compiler-inspection
+nazare inspect ir component.nz.liquid --enable-experimental
 
 
 # Publication always requires per-invocation CLI consent
-nazare build --enable-experimental theme-publication
+nazare build --enable-experimental=theme-publication
 ```
 
-`NAZARE_EXPERIMENTAL_FEATURES` can enable read-only experimental features for development and CI. It cannot grant per-invocation publication consent. `--experimental-publish` remains an alias for `--enable-experimental theme-publication`.
+`NAZARE_EXPERIMENTAL_FEATURES` can enable read-only experimental features for development and CI. It cannot grant per-invocation publication consent. `--experimental-publish` remains an alias for `--enable-experimental=theme-publication`.
 
 Feature definitions are static and versioned with Nazare; remote flags cannot change compiler behavior. Adding or removing a feature updates the central registry, while command declarations and side-effect permits are checked by TypeScript and tests.
 
@@ -79,7 +79,7 @@ Feature definitions are static and versioned with Nazare; remote flags cannot ch
 
   ```sh
   nazare init
-  nazare build --enable-experimental theme-publication
+  nazare build --enable-experimental=theme-publication
   shopify theme dev --path theme
   ```
 
