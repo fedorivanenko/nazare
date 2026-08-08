@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "file:sections/main.liquid",
+      "path": "sections/main.liquid",
+      "kind": "section"
+    },
+    {
+      "id": "file:snippets/card.liquid",
+      "path": "snippets/card.liquid",
+      "kind": "snippet"
+    },
+    {
+      "id": "file:templates/product.json",
+      "path": "templates/product.json",
+      "kind": "templateJson"
+    }
+  ],
+  "edges": [
+    {
+      "id": "shopify-render-edge:shopify-fact:0d19252c779fc936419f423890b061c03f6afcd959d247d270627546660fcf50:object:{\"package\":string:\"theme\",\"path\":string:\"snippets/card.liquid\",\"workspace\":string:\"graph-server\"}",
+      "from": "file:sections/main.liquid",
+      "to": "file:snippets/card.liquid",
+      "kind": "snippet"
+    },
+    {
+      "id": "shopify-render-edge:shopify-fact:a6d1d8d5f8304ef8c6957e78022361dca77666f67cce83b87fd737c098a1da62:object:{\"package\":string:\"theme\",\"path\":string:\"sections/main.liquid\",\"workspace\":string:\"graph-server\"}",
+      "from": "file:templates/product.json",
+      "to": "file:sections/main.liquid",
+      "kind": "section"
+    }
+  ],
+  "issues": [],
+  "uncertainty": [],
+  "metafields": {
+    "state": "unknown",
+    "consumedDefinitionIds": []
+  },
+  "summary": {
+    "unresolvedCount": 0,
+    "brokenMetafieldReadCount": 1,
+    "affectedPageCount": 0
+  }
+}

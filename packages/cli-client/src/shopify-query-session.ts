@@ -56,6 +56,11 @@ import {
 	shopifySemanticTarget,
 } from "@nazare/target-shopify";
 import { assertFeaturePermit, type FeaturePermit } from "./features.js";
+import {
+	THEME_IMPACT_CONTRACT_VERSION,
+	THEME_INSPECTION_CONTRACT_VERSION,
+	THEME_METAFIELD_CONTRACT_VERSION,
+} from "./inspection-contracts.js";
 
 export type ShopifyQueryInputFile = { path: string; contents: string };
 export type ShopifyQueryExternalInputs = Partial<
@@ -82,7 +87,7 @@ export type ShopifyBuildRequest = {
 };
 
 export type ShopifyInspection = {
-	version: 1;
+	version: typeof THEME_INSPECTION_CONTRACT_VERSION;
 	nodes: readonly { id: string; path: string; kind: string }[];
 	edges: readonly { id: string; from: string; to: string; kind: string }[];
 	issues: readonly Diagnostic[];
@@ -99,7 +104,7 @@ export type ShopifyInspection = {
 };
 
 export type ShopifyMetafieldImpact = {
-	version: 2;
+	version: typeof THEME_METAFIELD_CONTRACT_VERSION;
 	identity: { owner: string; namespace: string; key: string };
 	scope: { excluded: readonly string[] };
 	definition?: { id: string; type?: string };
@@ -120,7 +125,7 @@ export type ShopifyMetafieldImpact = {
 };
 
 export type ShopifyFileImpact = {
-	version: 1;
+	version: typeof THEME_IMPACT_CONTRACT_VERSION;
 	path: string;
 	fileKind: string;
 	usage: "used" | "unused";
@@ -509,7 +514,7 @@ export class ShopifyQuerySession {
 				reference.static && !resolvedReferenceIds.has(reference.id),
 		).length;
 		return {
-			version: 1,
+			version: THEME_INSPECTION_CONTRACT_VERSION,
 			nodes: graph.graph.nodes.map((file) => ({
 				id: `file:${file.path}`,
 				path: file.path,
@@ -597,7 +602,7 @@ export class ShopifyQuerySession {
 			.sort();
 		const pages = affectedPages.pages.map((page) => page.path).sort();
 		return {
-			version: 1,
+			version: THEME_IMPACT_CONTRACT_VERSION,
 			path,
 			fileKind: shopifyFileKind(path),
 			usage: dependentPaths.length > 0 || pages.length > 0 ? "used" : "unused",
@@ -687,7 +692,7 @@ export class ShopifyQuerySession {
 		const snapshot = this.externalInputs.get(PROJECT_METADATA_KEYS.metafields);
 		const definition = findMetafieldDefinition(snapshot, identity);
 		return {
-			version: 2,
+			version: THEME_METAFIELD_CONTRACT_VERSION,
 			identity,
 			scope: {
 				excluded: [

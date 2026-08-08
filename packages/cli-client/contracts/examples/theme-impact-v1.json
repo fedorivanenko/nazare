@@ -1,0 +1,17 @@
+{
+  "root": ".",
+  "version": 1,
+  "path": "snippets/card.liquid",
+  "fileKind": "snippet",
+  "usage": "used",
+  "certainty": "complete",
+  "dependencies": [],
+  "dependents": [
+    "sections/main.liquid"
+  ],
+  "affectedPages": [
+    "templates/product.json"
+  ],
+  "uncertainty": [],
+  "issues": []
+}
