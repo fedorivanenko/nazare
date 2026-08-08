@@ -34,6 +34,13 @@ test("invocation consent cannot come from environment flags", () => {
 		() => gateway.require("theme-publication"),
 		/per-invocation consent/,
 	);
+	assert.throws(
+		() =>
+			createFeatureGateway({
+				environmentEnabled: ["compiler-inspection"],
+			}).require("compiler-inspection"),
+		/per-invocation consent/,
+	);
 });
 
 test("gateway rejects unknown, internal, and forged feature access", () => {
@@ -87,6 +94,13 @@ test("command feature routing is centralized and declarative", () => {
 	assert.equal(
 		featureForInvocation("inspect", { positionals: ["theme"] }),
 		"theme-inspection",
+	);
+	assert.equal(
+		featureForInvocation("inspect", {
+			positionals: ["theme"],
+			watch: true,
+		}),
+		"inspection-watch",
 	);
 	assert.equal(
 		featureForInvocation("inspect", { positionals: ["ast"] }),

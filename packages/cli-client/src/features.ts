@@ -38,19 +38,31 @@ export const FEATURES = {
 	},
 	"compiler-inspection": {
 		id: "compiler-inspection",
-		description: "Inspect compiler projections for one file",
-		stability: "stable",
+		description:
+			"Inspect unstable compiler implementation projections for one file",
+		stability: "experimental",
 		effects: ["read", "filesystem-write"],
-		consent: "automatic",
+		consent: "invocation",
 		since: "0.1.0",
+		trackingIssue: 152,
 	},
 	"theme-inspection": {
 		id: "theme-inspection",
-		description: "Inspect and query the revisioned whole-theme graph",
+		description: "Inspect and query stable one-shot whole-theme JSON contracts",
 		stability: "stable",
 		effects: ["read"],
 		consent: "automatic",
 		since: "0.1.0",
+	},
+	"inspection-watch": {
+		id: "inspection-watch",
+		description:
+			"Stream revisioned inspection events over the experimental JSONL protocol",
+		stability: "experimental",
+		effects: ["read"],
+		consent: "explicit",
+		since: "0.1.0",
+		trackingIssue: 153,
 	},
 	"theme-build": {
 		id: "theme-build",
@@ -250,6 +262,7 @@ export type InvocationFeatureRule = {
 	commands: readonly string[];
 	feature: FeatureId;
 	firstPositionals?: readonly string[];
+	watch?: boolean;
 };
 
 /**
@@ -269,10 +282,20 @@ export const INVOCATION_FEATURE_RULES = [
 	},
 	{
 		commands: ["inspect"],
+		firstPositionals: ["theme"],
+		watch: true,
+		feature: "inspection-watch",
+	},
+	{
+		commands: ["inspect"],
 		firstPositionals: ["theme", "impact", "metafield"],
 		feature: "theme-inspection",
 	},
-	{ commands: ["inspect"], feature: "compiler-inspection" },
+	{
+		commands: ["inspect"],
+		firstPositionals: ["ast", "ir", "graph", "schema", "artifact", "dump"],
+		feature: "compiler-inspection",
+	},
 ] as const satisfies readonly InvocationFeatureRule[];
 
 export function featureForInvocation(
@@ -283,7 +306,8 @@ export function featureForInvocation(
 		(rule) =>
 			rule.commands.includes(command) &&
 			(rule.firstPositionals === undefined ||
-				rule.firstPositionals.includes(options.positionals[0] ?? "")),
+				rule.firstPositionals.includes(options.positionals[0] ?? "")) &&
+			(rule.watch === undefined || rule.watch === options.watch),
 	)?.feature;
 }
 

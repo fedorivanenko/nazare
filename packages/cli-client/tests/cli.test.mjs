@@ -300,6 +300,8 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 				"inspect",
 				"artifact",
 				"component.nz.liquid",
+				"--enable-experimental",
+				"compiler-inspection",
 			);
 			const loose = await runCli(
 				cwd,
@@ -308,6 +310,8 @@ test("cli: --strictness loose suppresses component-author diagnostics", async ()
 				"component.nz.liquid",
 				"--strictness",
 				"loose",
+				"--enable-experimental",
+				"compiler-inspection",
 			);
 
 			assert.notEqual(strict.status, 0);
@@ -771,7 +775,18 @@ test("cli: inspect names the view first and rejects an unknown one", async () =>
 	await withProject(
 		{ "component.nz.liquid": "<div>hi</div>\n" },
 		async (cwd) => {
-			const ir = await runCli(cwd, "inspect", "ir", "component.nz.liquid");
+			const blocked = await runCli(cwd, "inspect", "ir", "component.nz.liquid");
+			assert.equal(blocked.status, 1);
+			assert.match(blocked.stderr, /--enable-experimental compiler-inspection/);
+
+			const ir = await runCli(
+				cwd,
+				"inspect",
+				"ir",
+				"component.nz.liquid",
+				"--enable-experimental",
+				"compiler-inspection",
+			);
 			assert.equal(ir.status, 0, ir.stderr);
 			assert.ok(JSON.parse(ir.stdout).ir);
 

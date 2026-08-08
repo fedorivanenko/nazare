@@ -222,7 +222,7 @@ export function printHelp(output: Output = console): void {
   nazare preview <command>           the component workbench
   nazare source analyze [file]       stable parser facts as JSON; accepts --stdin
   nazare registry <command>          install, author, and choose registries
-  nazare inspect <view> <file>       compiler facts as JSON
+  nazare inspect <view> <file>       experimental compiler facts as JSON
   nazare inspect theme [dir]         semantic graph for a whole theme
                                      dir defaults to nazare.theme.json build.sourceRoot
   nazare inspect impact <file> [dir] change impact for one theme-relative file
@@ -287,7 +287,8 @@ ${experimentalFeatureAliases()
   --store <domain>                   build --pull-data: Shopify store to pull from
   --theme <id|name>                  build --pull-data: theme to pull from
   --json                             build: print the raw result as JSON
-  --watch                            build/check/inspect: stream revision results on changes
+  --watch                            build/check: stream revision results on changes
+                                     inspect theme also requires --enable-experimental inspection-watch
   --port <number>                    preview serve: port to listen on (default 4173)
   --as <name>                        preview fixtures pull: fixture name (default product)
   --format json|text|dot             source analyze requires JSON; inspect theme also supports text/dot
@@ -331,7 +332,7 @@ Options:
   nazare inspect impact <theme-file> [dir] [--format text|json]
   nazare inspect metafield <owner.namespace.key> [dir] [--format text|json]
 
-Views:
+Views (experimental; require --enable-experimental compiler-inspection):
   ast, ir, graph, schema   inspect one compiler projection
   artifact                print complete compiled artifact
   dump                    write compiler projections to dump files
@@ -346,6 +347,8 @@ Theme queries:
 Options:
   --strictness loose|strict
   --format json|text|dot   theme output format (default json)
+  --watch                  experimental revision stream; requires
+                           --enable-experimental inspection-watch
   --help, -h               show this help`);
 		return true;
 	}

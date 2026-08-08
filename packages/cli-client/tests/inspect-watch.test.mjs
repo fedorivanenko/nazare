@@ -5,6 +5,15 @@ import { join } from "node:path";
 import test from "node:test";
 import { main } from "../dist/index.js";
 
+test("inspect watch requires its experimental protocol flag", async () => {
+	const errors = [];
+	const status = await main(["inspect", "theme", ".", "--watch"], {
+		output: { log() {}, error: (value) => errors.push(String(value)) },
+	});
+	assert.equal(status, 1);
+	assert.match(errors.join("\n"), /--enable-experimental inspection-watch/);
+});
+
 test("inspect watch streams project revisions through one Shopify session", async () => {
 	const root = await mkdtemp(join(tmpdir(), "nazare-inspect-watch-"));
 	const theme = join(root, "theme");
@@ -45,7 +54,16 @@ test("inspect watch streams project revisions through one Shopify session", asyn
 			},
 		};
 		execution = main(
-			["inspect", "theme", "theme", "--watch", "--format", "text"],
+			[
+				"inspect",
+				"theme",
+				"theme",
+				"--watch",
+				"--format",
+				"text",
+				"--enable-experimental",
+				"inspection-watch",
+			],
 			{ cwd: root, output, signal: controller.signal },
 		);
 		void execution.catch(reject);
