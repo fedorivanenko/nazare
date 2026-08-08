@@ -40,7 +40,7 @@ export async function readExistingOutputState(
 				: entry.name;
 			const absolutePath = join(directory, entry.name);
 			if (entry.isDirectory()) await walk(absolutePath, path);
-			else if (entry.isFile() && path !== OUTPUT_OWNERSHIP_MANIFEST_PATH) {
+			else if (entry.isFile()) {
 				const value = await readFile(absolutePath, "utf8");
 				contents[path] = value;
 				hashes[path] = hashOutput(value);
@@ -96,6 +96,9 @@ export class FileSystemAtomicOutputStore implements AtomicOutputStore {
 				...commit.plan.writes.map((file) => file.path),
 			]),
 		].sort();
+		const preconditions = new Map(
+			commit.plan.preconditions.map((item) => [item.path, item.expectedHash]),
+		);
 		const backedUp: string[] = [];
 		const published: string[] = [];
 		try {
@@ -113,20 +116,54 @@ export class FileSystemAtomicOutputStore implements AtomicOutputStore {
 			for (const path of affectedPaths) {
 				const destination = join(this.outputRoot, path);
 				const status = await optionalStatus(destination);
-				if (!status) continue;
+				const expectedHash = preconditions.get(path);
+				if (!status) {
+					if (expectedHash !== undefined && expectedHash !== null) {
+						throw new OutputPreconditionError(path);
+					}
+					continue;
+				}
 				if (!status.isFile()) {
 					throw new Error(`Output path is not a regular file: ${path}`);
 				}
+				if (expectedHash === null) throw new OutputPreconditionError(path);
 				const backup = join(backupRoot, path);
 				await mkdir(dirname(backup), { recursive: true });
 				await rename(destination, backup);
 				backedUp.push(path);
+				if (
+					expectedHash !== undefined &&
+					hashOutput(await readFile(backup, "utf8")) !== expectedHash
+				) {
+					throw new OutputPreconditionError(path);
+				}
+			}
+			if (!commit.isCurrentRevision()) {
+				await rollback({
+					outputRoot: this.outputRoot,
+					backupRoot,
+					published,
+					backedUp,
+				});
+				backedUp.length = 0;
+				return false;
 			}
 			for (const file of commit.plan.writes) {
 				const destination = join(this.outputRoot, file.path);
 				await mkdir(dirname(destination), { recursive: true });
 				await rename(join(stagedRoot, file.path), destination);
 				published.push(file.path);
+			}
+			if (!commit.isCurrentRevision()) {
+				await rollback({
+					outputRoot: this.outputRoot,
+					backupRoot,
+					published,
+					backedUp,
+				});
+				published.length = 0;
+				backedUp.length = 0;
+				return false;
 			}
 			return true;
 		} catch (error) {
@@ -140,6 +177,16 @@ export class FileSystemAtomicOutputStore implements AtomicOutputStore {
 		} finally {
 			await rm(transactionRoot, { recursive: true, force: true });
 		}
+	}
+}
+
+export class OutputPreconditionError extends Error {
+	readonly path: string;
+
+	constructor(path: string) {
+		super(`Output changed after build preparation: ${path}`);
+		this.name = "OutputPreconditionError";
+		this.path = path;
 	}
 }
 

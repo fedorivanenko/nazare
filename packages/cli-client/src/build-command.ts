@@ -100,9 +100,12 @@ export async function runThemeBuild(
 		checkOnly?: boolean;
 		session?: ShopifyQuerySession;
 		throwOnFailure?: boolean;
+		revision?: number;
+		signal?: AbortSignal;
 	} = {},
 ): Promise<number> {
 	try {
+		mode.signal?.throwIfAborted();
 		// Both paths are explicit: an explicit CLI flag/positional wins, else the
 		// nazare.theme.json `build` config. There is no hardcoded default — an
 		// unset path is an error, not a silent `.nazare-out/theme`.
@@ -126,7 +129,17 @@ export async function runThemeBuild(
 		// Reconcile against a live theme: pull its merchant-owned data into the
 		// output dir first, so build products snapshot and preserve it instead of
 		// resetting it to the source seeds.
+		if (
+			cliOptions.pullData &&
+			!mode.checkOnly &&
+			!cliOptions.experimentalPublish
+		) {
+			throw new Error(
+				"Theme publication is unstable. Re-run with --experimental-publish to allow filesystem writes.",
+			);
+		}
 		if (cliOptions.pullData && !mode.checkOnly) {
+			mode.signal?.throwIfAborted();
 			const outDirAbs = join(projectRoot, outDir);
 			await mkdir(outDirAbs, { recursive: true });
 			pullThemeData(
@@ -156,7 +169,9 @@ export async function runThemeBuild(
 			? dirname(sourceRootAbsolute)
 			: sourceRootAbsolute;
 		const inputs = await collectThemeInputFiles(analysisRoot, projectRoot);
+		mode.signal?.throwIfAborted();
 		const session = mode.session ?? (await ShopifyQuerySession.create(inputs));
+		const execution = { revision: mode.revision, signal: mode.signal };
 		const request = {
 			scope: sourceRootStat.isFile()
 				? {
@@ -168,7 +183,7 @@ export async function runThemeBuild(
 				: { kind: "workspace" as const },
 			...(cliOptions.strictness ? { strictness: cliOptions.strictness } : {}),
 		};
-		const preview = await session.buildProducts(request);
+		const preview = await session.buildProducts(request, execution);
 		const extensionOutput = await runBuildExtensions(
 			await loadExtensions(projectRoot, config.extensions ?? []),
 			{
@@ -187,23 +202,39 @@ export async function runThemeBuild(
 				],
 			},
 		);
+		mode.signal?.throwIfAborted();
 		const buildRequest = {
 			...request,
 			checkOnly: mode.checkOnly ?? false,
 			additionalOutputFiles: extensionOutput.files,
 			additionalDiagnostics: extensionOutput.diagnostics,
 		};
-		const preflight = await session.buildProducts(buildRequest);
-		const products =
-			mode.checkOnly || hasErrors(preflight.ownedOutput.diagnostics)
-				? preflight
-				: await session.publishPersistentBuild(buildRequest, {
-						projectRoot,
-						outputRoot: resolve(projectRoot, outDir),
-						targetId:
-							[cliOptions.store, cliOptions.theme].filter(Boolean).join("#") ||
-							outDir,
-					});
+		let products: ShopifyBuildProductsResult;
+		if (mode.checkOnly) {
+			products = await session.buildProducts(buildRequest, execution);
+		} else {
+			const prepared = await session.preparePersistentBuild(
+				buildRequest,
+				{
+					projectRoot,
+					outputRoot: resolve(projectRoot, outDir),
+					targetId:
+						[cliOptions.store, cliOptions.theme].filter(Boolean).join("#") ||
+						outDir,
+				},
+				execution,
+			);
+			products = prepared.products;
+			if (!hasErrors(prepared.transactionPlan.diagnostics)) {
+				if (!cliOptions.experimentalPublish) {
+					throw new Error(
+						"Theme publication is unstable. Re-run with --experimental-publish to allow filesystem writes.",
+					);
+				}
+				mode.signal?.throwIfAborted();
+				products = await session.commitPersistentBuild(prepared);
+			}
+		}
 		const result = commandBuildResult(products, inputs, sourceRoot, outDir);
 		if (cliOptions.json) {
 			output.log(
@@ -250,6 +281,8 @@ export async function runThemeBuildWatch(
 	let latestCode = 0;
 	const execute = async (
 		pullData: boolean,
+		revision = session.session.snapshot().revision,
+		signal: AbortSignal = controller.signal,
 	): Promise<CapturedBuildExecution> => {
 		const captured = captureOutput();
 		const code = await runThemeBuild(
@@ -261,6 +294,8 @@ export async function runThemeBuildWatch(
 				checkOnly: mode.checkOnly,
 				session,
 				throwOnFailure: true,
+				revision,
+				signal,
 			},
 		);
 		return { code, errors: captured.errors, logs: captured.logs };
@@ -301,6 +336,10 @@ export async function runThemeBuildWatch(
 		);
 	};
 
+	const updateIterator = session.session.watch()[Symbol.asyncIterator]();
+	const updates: ReturnType<typeof session.session.watch> = {
+		[Symbol.asyncIterator]: () => updateIterator,
+	};
 	const initialStarted = performance.now();
 	try {
 		const result = await execute(cliOptions.pullData ?? false);
@@ -324,7 +363,7 @@ export async function runThemeBuildWatch(
 	process.once("SIGTERM", shutdown);
 	try {
 		await executeRevisionUpdates({
-			updates: session.session.watch(),
+			updates,
 			revision(update) {
 				if (!update.committed) {
 					for (const diagnostic of update.diagnostics) {
@@ -334,7 +373,7 @@ export async function runThemeBuildWatch(
 				}
 				return update.revision;
 			},
-			run: () => execute(false),
+			run: (revision, signal) => execute(false, revision, signal),
 			onEvent: publish,
 			signal: controller.signal,
 		});

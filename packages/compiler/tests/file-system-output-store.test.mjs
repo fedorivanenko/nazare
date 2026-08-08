@@ -12,9 +12,12 @@ import { join } from "node:path";
 import test from "node:test";
 import {
 	createOwnedOutputPlan,
+	createProtectedOwnedOutputPlan,
 	executeOutputTransaction,
 	FileSystemAtomicOutputStore,
+	hashOutput,
 	ObsoleteOutputRevisionError,
+	OutputPreconditionError,
 } from "../dist/testing.js";
 
 test("filesystem output store publishes owned writes and deletions only", async () => {
@@ -51,6 +54,41 @@ test("filesystem output store publishes owned writes and deletions only", async 
 	);
 });
 
+test("filesystem output store rolls back when prepared output changed", async () => {
+	const temporary = await mkdtemp(join(tmpdir(), "nazare-output-race-"));
+	const outputRoot = join(temporary, "theme");
+	await mkdir(join(outputRoot, "config"), { recursive: true });
+	const path = join(outputRoot, "config/settings_data.json");
+	await writeFile(path, "before");
+	const plan = createProtectedOwnedOutputPlan({
+		writes: [
+			{
+				path: "config/settings_data.json",
+				contents: "generated",
+				ownerId: "merchant:data",
+				ownership: "merchant",
+			},
+		],
+		existing: {
+			hashes: { "config/settings_data.json": hashOutput("before") },
+			contents: { "config/settings_data.json": "before" },
+			ownership: { version: 1, files: {} },
+		},
+	});
+	await writeFile(path, "changed-after-prepare");
+
+	await assert.rejects(
+		executeOutputTransaction({
+			plan,
+			expectedRevision: 1,
+			currentRevision: () => 1,
+			store: new FileSystemAtomicOutputStore(outputRoot),
+		}),
+		OutputPreconditionError,
+	);
+	assert.equal(await readFile(path, "utf8"), "changed-after-prepare");
+});
+
 test("filesystem output store discards staging when revision becomes obsolete", async () => {
 	const temporary = await mkdtemp(join(tmpdir(), "nazare-output-stale-"));
 	const outputRoot = join(temporary, "theme");
@@ -73,6 +111,35 @@ test("filesystem output store discards staging when revision becomes obsolete", 
 	await assert.rejects(readFile(join(outputRoot, "assets/new.js"), "utf8"), {
 		code: "ENOENT",
 	});
+});
+
+test("filesystem output store restores backups when revision changes after backup", async () => {
+	const temporary = await mkdtemp(
+		join(tmpdir(), "nazare-output-backup-stale-"),
+	);
+	const outputRoot = join(temporary, "theme");
+	await mkdir(outputRoot, { recursive: true });
+	await writeFile(join(outputRoot, "existing.txt"), "before");
+	const plan = createOwnedOutputPlan({
+		writes: [
+			{ path: "existing.txt", contents: "after", ownerId: "component:test" },
+		],
+	});
+	let revisionChecks = 0;
+
+	await assert.rejects(
+		executeOutputTransaction({
+			plan,
+			expectedRevision: 3,
+			currentRevision: () => (++revisionChecks < 3 ? 3 : 4),
+			store: new FileSystemAtomicOutputStore(outputRoot),
+		}),
+		ObsoleteOutputRevisionError,
+	);
+	assert.equal(
+		await readFile(join(outputRoot, "existing.txt"), "utf8"),
+		"before",
+	);
 });
 
 test("filesystem output store rolls back publication failures", async () => {

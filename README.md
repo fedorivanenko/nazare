@@ -2,10 +2,14 @@
 
 Nazare compiles typed Liquid components into Shopify themes and provides demand-driven build, inspect, and preview tooling.
 
+> [!WARNING]
+> Nazare is pre-release and unstable. APIs, cache formats, and generated output may change without migration support. Theme publication requires explicit `--experimental-publish`; keep source control and backups enabled.
+
 ## Commands
 
 ```sh
-nazare build [source-root]       # validate and atomically publish owned output
+nazare build [source-root] --experimental-publish
+                                   # validate and atomically publish owned output
 nazare check [source-root|file]  # run the same build products without emission
 nazare inspect theme [dir]       # semantic project report
 nazare inspect impact <file>     # dependencies, dependents, and affected pages

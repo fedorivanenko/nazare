@@ -146,6 +146,7 @@ export type {
 } from "./extensions.js";
 export {
 	FileSystemAtomicOutputStore,
+	OutputPreconditionError,
 	readExistingOutputState,
 } from "./file-system-output-store.js";
 export type {
@@ -186,6 +187,7 @@ export {
 	type OutputTransactionResult,
 	type OwnedOutputFile,
 	type OwnedOutputPlan,
+	type OutputPathPrecondition,
 } from "./output-transaction.js";
 export { baseNameOf, resolveImportPath } from "./paths.js";
 export type {

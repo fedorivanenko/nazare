@@ -122,7 +122,7 @@ export const shopifyBuildProducts = {
 	ownedOutput: defineProduct<ShopifyBuildPlan, OwnedOutputPlan>({
 		namespace: "nazare.target.shopify.build",
 		id: "owned-output-plan",
-		version: 1,
+		version: 2,
 	}),
 };
 
@@ -251,7 +251,10 @@ export function registerShopifyBuildComputations(
 					files.push(
 						...emitted.files.map((file) => ({
 							...file,
-							ownerId: `source:${serializeProjectFileId(source.id)}`,
+							ownerId:
+								file.path === "assets/nazare-runtime.js"
+									? "nazare:runtime"
+									: `source:${serializeProjectFileId(source.id)}`,
 						})),
 					);
 				}

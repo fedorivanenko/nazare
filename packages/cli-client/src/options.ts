@@ -29,6 +29,8 @@ export type CliOptions = {
 	outDir?: string;
 	/** build: reconcile against a live theme's merchant-owned data first. */
 	pullData?: boolean;
+	/** build: explicitly allow unstable filesystem publication. */
+	experimentalPublish?: boolean;
 	force?: boolean;
 	/** registry publish: write the payload locally instead of uploading it. */
 	pack?: boolean;
@@ -138,6 +140,10 @@ export function parseCliOptions(args: string[]): CliOptions {
 			options.pullData = true;
 			continue;
 		}
+		if (arg === "--experimental-publish") {
+			options.experimentalPublish = true;
+			continue;
+		}
 		if (arg === "--pack") {
 			options.pack = true;
 			continue;
@@ -240,6 +246,7 @@ Options:
   --out-dir <dir>                    build output directory (else nazare.theme.json build.outDir);
                                      preview build writes here too (preview.outDir)
   --pull-data                        build: reconcile against a live theme's merchant-owned data first
+  --experimental-publish             build: allow unstable filesystem publication
   --store <domain>                   build --pull-data: Shopify store to pull from
   --theme <id|name>                  build --pull-data: theme to pull from
   --json                             build: print the raw result as JSON

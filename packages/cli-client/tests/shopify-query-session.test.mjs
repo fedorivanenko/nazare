@@ -56,6 +56,26 @@ test("publication refuses unowned and modified output conflicts", async () => {
 	const unownedRoot = join(temporary, "unowned");
 	await mkdir(join(unownedRoot, "snippets"), { recursive: true });
 	await writeFile(join(unownedRoot, "snippets/card.liquid"), "merchant");
+	const prepared = await session.preparePersistentBuild(request, {
+		projectRoot: temporary,
+		outputRoot: unownedRoot,
+		targetId: "unowned",
+	});
+	assert.equal(
+		prepared.transactionPlan.diagnostics.some(
+			(diagnostic) => diagnostic.code === "OUTPUT_PATH_NOT_OWNED",
+		),
+		true,
+	);
+	await assert.rejects(session.commitPersistentBuild(prepared), (error) => {
+		assert.equal(error.diagnostics[0].code, "OUTPUT_PATH_NOT_OWNED");
+		return true;
+	});
+	assert.equal(
+		await readFile(join(unownedRoot, "snippets/card.liquid"), "utf8"),
+		"merchant",
+	);
+
 	await assert.rejects(session.publishBuild(request, unownedRoot), (error) => {
 		assert.equal(error.diagnostics[0].code, "OUTPUT_PATH_NOT_OWNED");
 		return true;

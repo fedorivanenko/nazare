@@ -149,6 +149,17 @@ export type ShopifyBuildProductsResult = {
 	ownedOutput: OwnedOutputPlan;
 };
 
+export type ShopifyBuildExecution = {
+	revision?: number;
+	signal?: AbortSignal;
+};
+
+export type PreparedShopifyPersistentBuild = {
+	products: ShopifyBuildProductsResult;
+	transactionPlan: OwnedOutputPlan;
+	projectRoot: string;
+};
+
 export { PROJECT_METADATA_KEYS };
 
 export class ShopifyQuerySession {
@@ -272,20 +283,22 @@ export class ShopifyQuerySession {
 
 	async buildProducts(
 		request: ShopifyBuildRequest,
+		execution: ShopifyBuildExecution = {},
 	): Promise<ShopifyBuildProductsResult> {
-		const revision = this.session.snapshot().revision;
+		const revision = execution.revision ?? this.session.snapshot().revision;
+		const graphOptions = { revision, signal: execution.signal };
 		const plan = this.buildPlan(request);
 		const model = await this.session.graph.get(
 			shopifyBuildProducts.model.product(plan),
-			{ revision },
+			graphOptions,
 		);
 		const emission = await this.session.graph.get(
 			shopifyBuildProducts.emission.product(plan),
-			{ revision },
+			graphOptions,
 		);
 		const ownedOutput = await this.session.graph.get(
 			shopifyBuildProducts.ownedOutput.product(plan),
-			{ revision },
+			graphOptions,
 		);
 		return { revision, plan, model, emission, ownedOutput };
 	}
@@ -293,14 +306,18 @@ export class ShopifyQuerySession {
 	async publishBuild(
 		request: ShopifyBuildRequest,
 		outputRoot: string,
+		execution: ShopifyBuildExecution = {},
 	): Promise<ShopifyBuildProductsResult> {
 		if (request.checkOnly) {
 			throw new Error("Check-only builds cannot publish output");
 		}
-		const products = await this.buildProducts({
-			...request,
-			existingOutput: await readExistingOutputState(outputRoot),
-		});
+		const products = await this.buildProducts(
+			{
+				...request,
+				existingOutput: await readExistingOutputState(outputRoot),
+			},
+			execution,
+		);
 		await executeOutputTransaction({
 			plan: products.ownedOutput,
 			expectedRevision: products.revision,
@@ -310,13 +327,15 @@ export class ShopifyQuerySession {
 		return products;
 	}
 
-	async publishPersistentBuild(
+	async preparePersistentBuild(
 		request: ShopifyBuildRequest,
 		options: ShopifyBuildPersistenceOptions,
-	): Promise<ShopifyBuildProductsResult> {
+		execution: ShopifyBuildExecution = {},
+	): Promise<PreparedShopifyPersistentBuild> {
 		if (request.checkOnly) {
 			throw new Error("Check-only builds cannot publish output");
 		}
+		execution.signal?.throwIfAborted();
 		const paths = {
 			schemaLock: options.schemaLockPath ?? "nazare.schema-lock.json",
 			migrations: options.migrationsPath ?? "nazare.migrations.json",
@@ -342,14 +361,17 @@ export class ShopifyQuerySession {
 		if (parsedMigrations.diagnostics.length > 0) {
 			throw new OutputPlanValidationError(parsedMigrations.diagnostics);
 		}
-		const products = await this.buildProducts({
-			...request,
-			existingOutput: await readExistingOutputState(options.outputRoot),
-			priorSchemaLock,
-			migrations: parsedMigrations.migrations,
-			appliedMigrationIds: ledger?.applied[options.targetId] ?? [],
-			localeBase: localeBase ?? {},
-		});
+		const products = await this.buildProducts(
+			{
+				...request,
+				existingOutput: await readExistingOutputState(options.outputRoot),
+				priorSchemaLock,
+				migrations: parsedMigrations.migrations,
+				appliedMigrationIds: ledger?.applied[options.targetId] ?? [],
+				localeBase: localeBase ?? {},
+			},
+			execution,
+		);
 		const outputPrefix = projectRelativeOutputPath(
 			options.projectRoot,
 			options.outputRoot,
@@ -382,22 +404,55 @@ export class ShopifyQuerySession {
 				...projectWrites,
 			],
 		});
-		await executeOutputTransaction({
-			plan: {
-				...combined,
-				deletes: products.ownedOutput.deletes.map(
-					(path) => `${outputPrefix}/${path}`,
-				),
-				diagnostics: [
-					...products.ownedOutput.diagnostics,
-					...combined.diagnostics,
-				],
-			},
-			expectedRevision: products.revision,
-			currentRevision: () => this.session.snapshot().revision,
-			store: new FileSystemAtomicOutputStore(options.projectRoot),
+		const transactionPlan: OwnedOutputPlan = Object.freeze({
+			...combined,
+			deletes: Object.freeze(
+				products.ownedOutput.deletes.map((path) => `${outputPrefix}/${path}`),
+			),
+			preconditions: Object.freeze(
+				products.ownedOutput.preconditions.map((precondition) => ({
+					...precondition,
+					path: `${outputPrefix}/${precondition.path}`,
+				})),
+			),
+			diagnostics: Object.freeze([
+				...products.ownedOutput.diagnostics,
+				...combined.diagnostics,
+			]),
 		});
-		return products;
+		return {
+			products: {
+				...products,
+				ownedOutput: {
+					...products.ownedOutput,
+					diagnostics: transactionPlan.diagnostics,
+				},
+			},
+			transactionPlan,
+			projectRoot: options.projectRoot,
+		};
+	}
+
+	async commitPersistentBuild(
+		prepared: PreparedShopifyPersistentBuild,
+	): Promise<ShopifyBuildProductsResult> {
+		await executeOutputTransaction({
+			plan: prepared.transactionPlan,
+			expectedRevision: prepared.products.revision,
+			currentRevision: () => this.session.snapshot().revision,
+			store: new FileSystemAtomicOutputStore(prepared.projectRoot),
+		});
+		return prepared.products;
+	}
+
+	async publishPersistentBuild(
+		request: ShopifyBuildRequest,
+		options: ShopifyBuildPersistenceOptions,
+		execution: ShopifyBuildExecution = {},
+	): Promise<ShopifyBuildProductsResult> {
+		return this.commitPersistentBuild(
+			await this.preparePersistentBuild(request, options, execution),
+		);
 	}
 
 	async projectModel(): Promise<ShopifyProjectModelResult> {

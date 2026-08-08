@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
 	createOwnedOutputPlan,
+	createProtectedOwnedOutputPlan,
 	executeOutputTransaction,
+	hashOutput,
 	ObsoleteOutputRevisionError,
+	OUTPUT_OWNERSHIP_MANIFEST_PATH,
 	OutputPlanValidationError,
 } from "../dist/testing.js";
 
@@ -49,6 +52,63 @@ test("owned output plans validate collisions before side effects", async () => {
 	);
 	assert.equal(store.commits, 0);
 	assert.deepEqual(store.files, new Map());
+});
+
+test("owned output plans reject owner ambiguity and reserved manifest writes", () => {
+	const collision = createOwnedOutputPlan({
+		writes: [
+			{ path: "assets/shared.js", contents: "same", ownerId: "one" },
+			{ path: "assets/shared.js", contents: "same", ownerId: "two" },
+		],
+	});
+	assert.equal(collision.diagnostics[0].code, "OUTPUT_PATH_COLLISION");
+
+	const reserved = createOwnedOutputPlan({
+		writes: [
+			{
+				path: OUTPUT_OWNERSHIP_MANIFEST_PATH,
+				contents: "user data",
+				ownerId: "extension:user",
+			},
+		],
+	});
+	assert.equal(reserved.diagnostics[0].code, "OUTPUT_MANIFEST_PATH_RESERVED");
+});
+
+test("protected plans guard merchant and manifest paths against later changes", () => {
+	const merchant = "merchant-before";
+	const manifest = '{"version":1,"files":{}}\n';
+	const plan = createProtectedOwnedOutputPlan({
+		writes: [
+			{
+				path: "config/settings_data.json",
+				contents: "merchant-after",
+				ownerId: "merchant:data",
+				ownership: "merchant",
+			},
+		],
+		existing: {
+			hashes: {
+				"config/settings_data.json": hashOutput(merchant),
+				[OUTPUT_OWNERSHIP_MANIFEST_PATH]: hashOutput(manifest),
+			},
+			contents: {
+				"config/settings_data.json": merchant,
+				[OUTPUT_OWNERSHIP_MANIFEST_PATH]: manifest,
+			},
+			ownership: { version: 1, files: {} },
+		},
+	});
+	assert.deepEqual(plan.preconditions, [
+		{
+			path: OUTPUT_OWNERSHIP_MANIFEST_PATH,
+			expectedHash: hashOutput(manifest),
+		},
+		{
+			path: "config/settings_data.json",
+			expectedHash: hashOutput(merchant),
+		},
+	]);
 });
 
 test("output transaction commits writes and stale owned deletions together", async () => {

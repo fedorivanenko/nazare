@@ -351,7 +351,12 @@ test("cli: build with no path reads the source root from nazare.theme.json", {
 			"stray/stray.nz.liquid": componentWithScript("c"),
 		},
 		async (cwd) => {
-			const built = await runCli(cwd, "build", "--json");
+			const built = await runCli(
+				cwd,
+				"build",
+				"--json",
+				"--experimental-publish",
+			);
 			assert.equal(built.status, 0, built.stderr);
 			const output = JSON.parse(built.stdout);
 
@@ -384,7 +389,14 @@ test("cli: build supports custom output directory", async () => {
 		},
 		async (cwd) => {
 			// --out-dir overrides the outDir in nazare.theme.json.
-			const built = await runCli(cwd, "build", "--out-dir", "theme", "--json");
+			const built = await runCli(
+				cwd,
+				"build",
+				"--out-dir",
+				"theme",
+				"--json",
+				"--experimental-publish",
+			);
 			assert.equal(built.status, 0, built.stderr);
 			const output = JSON.parse(built.stdout);
 			assert.ok(output.written.includes("theme/snippets/button.liquid"));
@@ -424,7 +436,12 @@ test("cli: build loads extension modules from nazare.extensions", async () => {
 `,
 		},
 		async (cwd) => {
-			const built = await runCli(cwd, "build", "--json");
+			const built = await runCli(
+				cwd,
+				"build",
+				"--json",
+				"--experimental-publish",
+			);
 			assert.equal(built.status, 0, built.stderr);
 			const output = JSON.parse(built.stdout);
 			assert.ok(
@@ -563,7 +580,7 @@ test("cli: build errors when no source root is configured", async () => {
 	});
 });
 
-test("cli: build prints a human-readable summary by default", async () => {
+test("cli: build gates unstable filesystem publication", async () => {
 	await withProject(
 		{
 			"nazare.theme.json": BUILD_MANIFEST,
@@ -571,6 +588,28 @@ test("cli: build prints a human-readable summary by default", async () => {
 		},
 		async (cwd) => {
 			const built = await runCli(cwd, "build");
+			assert.notEqual(built.status, 0);
+			assert.match(built.stderr, /--experimental-publish/);
+			assert.equal(
+				existsSync(join(cwd, ".nazare-out/theme/snippets/button.liquid")),
+				false,
+			);
+			const pulled = await runCli(cwd, "build", "--pull-data");
+			assert.notEqual(pulled.status, 0);
+			assert.match(pulled.stderr, /--experimental-publish/);
+			assert.equal(existsSync(join(cwd, ".nazare-out/theme")), false);
+		},
+	);
+});
+
+test("cli: build prints a human-readable summary by default", async () => {
+	await withProject(
+		{
+			"nazare.theme.json": BUILD_MANIFEST,
+			"nazare/button.nz.liquid": "<button>Button</button>\n",
+		},
+		async (cwd) => {
+			const built = await runCli(cwd, "build", "--experimental-publish");
 			assert.equal(built.status, 0, built.stderr);
 			// Not JSON, and it leads with a plain summary line.
 			assert.throws(() => JSON.parse(built.stdout));
@@ -761,7 +800,7 @@ test("cli: a successful build prints the Shopify CLI handoff", async () => {
 			}),
 		},
 		async (cwd) => {
-			const built = await runCli(cwd, "build");
+			const built = await runCli(cwd, "build", "--experimental-publish");
 			assert.equal(built.status, 0, built.stderr);
 			// Nazare stops at the theme directory; the Shopify CLI uploads it.
 			assert.match(built.stdout, /shopify theme push --path theme/);

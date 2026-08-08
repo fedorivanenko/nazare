@@ -47,7 +47,11 @@ test("build watch reuses one filesystem session and streams revisions", async ()
 		execution = runThemeBuildWatch(
 			root,
 			"theme",
-			{ outDir: "output", positionals: [] },
+			{
+				outDir: "output",
+				experimentalPublish: true,
+				positionals: [],
+			},
 			output,
 			{ signal: controller.signal },
 		);

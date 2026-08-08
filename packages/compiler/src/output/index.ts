@@ -1,5 +1,6 @@
 export {
 	FileSystemAtomicOutputStore,
+	OutputPreconditionError,
 	readExistingOutputState,
 } from "../file-system-output-store.js";
 export {
@@ -13,6 +14,7 @@ export {
 	ObsoleteOutputRevisionError,
 	OUTPUT_OWNERSHIP_MANIFEST_PATH,
 	type OutputOwnershipManifest,
+	type OutputPathPrecondition,
 	OutputPlanValidationError,
 	type OutputTransactionResult,
 	type OwnedOutputFile,

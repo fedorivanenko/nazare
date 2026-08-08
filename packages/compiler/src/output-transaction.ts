@@ -22,10 +22,16 @@ export type ExistingOutputState = {
 	ownership: OutputOwnershipManifest;
 };
 
+export type OutputPathPrecondition = {
+	path: string;
+	expectedHash: string | null;
+};
+
 export type OwnedOutputPlan = {
 	version: 1;
 	writes: readonly OwnedOutputFile[];
 	deletes: readonly string[];
+	preconditions: readonly OutputPathPrecondition[];
 	diagnostics: readonly Diagnostic[];
 };
 
@@ -37,9 +43,9 @@ export type AtomicOutputCommit = {
 
 export type AtomicOutputStore = {
 	/**
-	 * Commit all writes/deletes or none. Store must call isCurrentRevision after
-	 * staging and immediately before publication, then return false without
-	 * publication when stale.
+	 * Commit all writes/deletes or none. Store must verify path preconditions,
+	 * call isCurrentRevision after staging and immediately before publication,
+	 * then return false without publication when stale.
 	 */
 	atomicCommit(commit: AtomicOutputCommit): Promise<boolean>;
 };
@@ -55,10 +61,16 @@ export function createOwnedOutputPlan(input: {
 	writes: readonly OwnedOutputFile[];
 	previouslyOwnedPaths?: readonly string[];
 }): OwnedOutputPlan {
-	const writes = input.writes.map((file) => ({
-		...file,
-		path: normalizeProjectPath(file.path),
-	}));
+	const writes = input.writes
+		.map((file) => ({
+			...file,
+			path: normalizeProjectPath(file.path),
+		}))
+		.sort((left, right) =>
+			`${left.path}\0${left.ownerId}\0${left.ownership ?? "generated"}\0${left.contents}`.localeCompare(
+				`${right.path}\0${right.ownerId}\0${right.ownership ?? "generated"}\0${right.contents}`,
+			),
+		);
 	const byPath = new Map<string, OwnedOutputFile[]>();
 	for (const file of writes) {
 		const owners = byPath.get(file.path) ?? [];
@@ -67,15 +79,28 @@ export function createOwnedOutputPlan(input: {
 	}
 	const diagnostics: Diagnostic[] = [];
 	for (const [path, candidates] of byPath) {
-		if (new Set(candidates.map((candidate) => candidate.contents)).size < 2)
+		if (path === OUTPUT_OWNERSHIP_MANIFEST_PATH) {
+			diagnostics.push({
+				severity: "error",
+				code: "OUTPUT_MANIFEST_PATH_RESERVED",
+				message: `${OUTPUT_OWNERSHIP_MANIFEST_PATH} is reserved for Nazare output ownership metadata`,
+				phase: "emit",
+			});
+		}
+		if (
+			new Set(candidates.map((candidate) => candidate.ownerId)).size < 2 &&
+			new Set(candidates.map((candidate) => candidate.contents)).size < 2 &&
+			new Set(candidates.map((candidate) => candidate.ownership ?? "generated"))
+				.size < 2
+		) {
 			continue;
+		}
 		diagnostics.push({
 			severity: "error",
 			code: "OUTPUT_PATH_COLLISION",
-			message: `Multiple owners emit ${path}: ${candidates
-				.map((candidate) => candidate.ownerId)
-				.sort()
-				.join(", ")}`,
+			message: `Multiple owners emit ${path}: ${[
+				...new Set(candidates.map((candidate) => candidate.ownerId)),
+			].join(", ")}`,
 			phase: "emit",
 		});
 	}
@@ -96,6 +121,7 @@ export function createOwnedOutputPlan(input: {
 				.sort((left, right) => left.path.localeCompare(right.path)),
 		),
 		deletes: Object.freeze(deletes),
+		preconditions: Object.freeze([]),
 		diagnostics: Object.freeze(diagnostics),
 	});
 }
@@ -163,6 +189,11 @@ export function createProtectedOwnedOutputPlan(input: {
 		contents: `${JSON.stringify(manifest, null, 2)}\n`,
 		ownerId: "nazare:output-ownership",
 	};
+	const protectedPaths = new Set([
+		...base.writes.map((file) => file.path),
+		...deletes,
+		OUTPUT_OWNERSHIP_MANIFEST_PATH,
+	]);
 	return Object.freeze({
 		version: 1,
 		writes: Object.freeze(
@@ -171,6 +202,12 @@ export function createProtectedOwnedOutputPlan(input: {
 			),
 		),
 		deletes: Object.freeze(deletes.sort()),
+		preconditions: Object.freeze(
+			[...protectedPaths].sort().map((path) => ({
+				path,
+				expectedHash: input.existing.hashes[path] ?? null,
+			})),
+		),
 		diagnostics: Object.freeze(diagnostics),
 	});
 }
