@@ -3,6 +3,9 @@
 Performance harness for `nazare inspect theme`, the slowest thing the CLI does
 on a real theme.
 
+For a manual answer-quality and token comparison between inspect-backed and
+grep-backed agents, use [INSPECT_VS_GREP.md](./INSPECT_VS_GREP.md).
+
 ```bash
 pnpm benchmark:inspect                      # synthetic theme, scales 1/4/16
 pnpm benchmark:inspect --scales 1,4,16,32   # push the scaling curve out

@@ -98,6 +98,9 @@ importers:
       postcss:
         specifier: ^8.5.17
         version: 8.5.17
+      postcss-scss:
+        specifier: ^4.0.9
+        version: 4.0.9(postcss@8.5.17)
       postcss-selector-parser:
         specifier: ^7.1.4
         version: 7.1.4
@@ -1682,6 +1685,12 @@ packages:
   picomatch@4.0.5:
     resolution: {integrity: sha512-RvwwcruNjI1ncT5xRakeyS9Lf8lcItv34KD+aif+VH9kduAyfYBipGh12274xtenIPZ119/R9BdTBa8gAwSh0A==}
     engines: {node: '>=12'}
+
+  postcss-scss@4.0.9:
+    resolution: {integrity: sha512-AjKOeiwAitL/MXxQW2DliT28EKukvvbEWx3LBmJIRN8KfBGZbRTxNYW0kSqi1COiTZ57nZ9NW06S6ux//N1c9A==}
+    engines: {node: '>=12.0'}
+    peerDependencies:
+      postcss: ^8.4.29
 
   postcss-selector-parser@7.1.4:
     resolution: {integrity: sha512-HeP7D2wyhkR+XaK6v4W8oRF62Dsz4flyuczALJp61GckGm42u1saSSJ/0auvcBqxs3jMRFEcPK34At/0JBKdOg==}
@@ -3585,6 +3594,10 @@ snapshots:
   picomatch@2.3.2: {}
 
   picomatch@4.0.5: {}
+
+  postcss-scss@4.0.9(postcss@8.5.17):
+    dependencies:
+      postcss: 8.5.17
 
   postcss-selector-parser@7.1.4:
     dependencies:

@@ -10,17 +10,10 @@ import {
 	readInspectExcludePatterns,
 } from "./inspect-input.js";
 import {
-	ENTITY_KINDS,
-	type FindResult,
-	INSPECTION_PUBLIC_CONTRACT_VERSION,
-	type InspectionPublicGraph,
-	type PublicEntity,
-	type PublicRelation,
-	RELATION_CATEGORIES,
-	RELATION_KINDS,
-	type TraverseResult,
-} from "./inspection-public-contract.js";
-import { inspectionPublicGraph } from "./inspection-public-graph.js";
+	INSPECT_TOOL,
+	InspectInputError,
+	inspectForAgent,
+} from "./inspection-agent.js";
 import {
 	PROJECT_METADATA_KEYS,
 	ShopifyQuerySession,
@@ -116,9 +109,7 @@ export async function serveInspection(
 	}
 }
 
-const DEFAULT_PAGE_LIMIT = 50;
-const MAX_PAGE_LIMIT = 200;
-const MAX_TOOL_RESULT_BYTES = 512 * 1024;
+const MAX_TOOL_RESULT_BYTES = 64 * 1024;
 
 const SUPPORTED_MCP_PROTOCOL_VERSIONS = [
 	"2025-11-25",
@@ -162,7 +153,6 @@ async function handleRequest(
 		) {
 			throw new RpcError(-32602, "tools/call arguments must be an object");
 		}
-		validateToolArguments(name, args as Record<string, unknown> | undefined);
 		try {
 			const result = await handleRequest(
 				{
@@ -172,25 +162,27 @@ async function handleRequest(
 				},
 				getQuerySession,
 			);
-			const structuredContent = structuredToolResult(result);
-			const serialized = JSON.stringify(structuredContent);
+			if (!isObject(result)) {
+				throw new RpcError(
+					-32603,
+					"Inspection tool returned a non-object result",
+				);
+			}
+			const serialized = JSON.stringify(result);
 			const resultBytes = Buffer.byteLength(serialized);
 			if (resultBytes > MAX_TOOL_RESULT_BYTES) {
 				return {
 					content: [
 						{
 							type: "text",
-							text: `Tool result is ${resultBytes} bytes; maximum is ${MAX_TOOL_RESULT_BYTES}. Use a targeted or paginated inspection tool.`,
+							text: `Tool result is ${resultBytes} bytes; maximum is ${MAX_TOOL_RESULT_BYTES}. Lower limit or continue with cursor.`,
 						},
 					],
 					isError: true,
 				};
 			}
 			return {
-				content: [
-					{ type: "text", text: toolSynopsis(name, structuredContent) },
-				],
-				structuredContent,
+				content: [{ type: "text", text: serialized }],
 				isError: false,
 			};
 		} catch (error) {
@@ -215,33 +207,15 @@ async function handleRequest(
 		};
 	}
 	const querySession = getQuerySession();
-	if (request.method === "find") {
-		return findPublicEntities(
-			await inspectionPublicGraph(querySession),
-			request.params,
-		);
-	}
-	if (request.method === "traverse") {
-		return traversePublicGraph(
-			await inspectionPublicGraph(querySession),
-			request.params,
-		);
-	}
-	if (request.method === "evidence") {
-		const graph = await inspectionPublicGraph(querySession);
-		const evidenceIds = requiredStrings(request.params, "ids");
-		if (evidenceIds.length === 0 || evidenceIds.length > 50) {
-			throw new RpcError(-32602, "ids must contain from 1 to 50 evidence IDs");
+	if (request.method === "inspect") {
+		try {
+			return await inspectForAgent(querySession, request.params);
+		} catch (error) {
+			if (error instanceof InspectInputError) {
+				throw new RpcError(-32602, error.message);
+			}
+			throw error;
 		}
-		const ids = new Set(evidenceIds);
-		return {
-			contractVersion: INSPECTION_PUBLIC_CONTRACT_VERSION,
-			revision: graph.revision,
-			result: {
-				evidence: graph.evidence.filter((record) => ids.has(record.id)),
-			},
-			completeness: graph.completeness,
-		};
 	}
 	throw new RpcError(-32601, `Method not found: ${request.method}`);
 }
@@ -503,395 +477,6 @@ function isObject(value: unknown): value is Record<string, unknown> {
 	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function validateToolArguments(
-	name: string,
-	args: Record<string, unknown> | undefined,
-): void {
-	const allowedKeys = toolArgumentKeys(name);
-	const unknownKeys = Object.keys(args ?? {}).filter(
-		(key) => !allowedKeys.includes(key),
-	);
-	if (unknownKeys.length > 0) {
-		throw new RpcError(
-			-32602,
-			`Unknown tool argument: ${unknownKeys.sort()[0]}`,
-		);
-	}
-}
-
-function toolArgumentKeys(name: string): string[] {
-	switch (name) {
-		case "find":
-			return [
-				"ids",
-				"query",
-				"kinds",
-				"path",
-				"subtype",
-				"identity",
-				"limit",
-				"cursor",
-			];
-		case "traverse":
-			return [
-				"startIds",
-				"direction",
-				"relationKinds",
-				"relationCategories",
-				"targetKinds",
-				"depth",
-				"evidence",
-				"limit",
-				"cursor",
-			];
-		case "evidence":
-			return ["ids"];
-		default:
-			throw new RpcError(-32602, `Unknown tool: ${name}`);
-	}
-}
-
-function findPublicEntities(
-	graph: InspectionPublicGraph,
-	params: Record<string, unknown> | undefined,
-): FindResult {
-	const ids = optionalStringArray(params, "ids");
-	const query = optionalString(params, "query")?.toLocaleLowerCase() ?? null;
-	const kinds = optionalEnumArray(params, "kinds", ENTITY_KINDS);
-	const path = optionalString(params, "path");
-	const subtype = optionalString(params, "subtype");
-	const identity = optionalStringRecord(params, "identity");
-	if (!ids && !query && !path && !identity) {
-		throw new RpcError(-32602, "find requires ids, query, path, or identity");
-	}
-	const idSet = ids ? new Set(ids) : null;
-	const matches = graph.entities.filter((entity) => {
-		if (idSet && !idSet.has(entity.id)) return false;
-		if (kinds && !kinds.includes(entity.kind)) return false;
-		if (path && entity.path !== path) return false;
-		if (subtype && entity.subtype !== subtype) return false;
-		if (
-			identity &&
-			Object.entries(identity).some(
-				([key, value]) => entity.identity[key] !== value,
-			)
-		)
-			return false;
-		if (query) {
-			const searchable = [
-				entity.id,
-				entity.name,
-				entity.path ?? "",
-				entity.subtype ?? "",
-				...Object.values(entity.identity),
-			]
-				.join("\n")
-				.toLocaleLowerCase();
-			if (!searchable.includes(query)) return false;
-		}
-		return true;
-	});
-	const page = paginate(matches, params);
-	return {
-		contractVersion: INSPECTION_PUBLIC_CONTRACT_VERSION,
-		revision: graph.revision,
-		result: { entities: page.items },
-		completeness: graph.completeness,
-		page: {
-			total: page.total,
-			returned: page.items.length,
-			...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
-		},
-	};
-}
-
-function traversePublicGraph(
-	graph: InspectionPublicGraph,
-	params: Record<string, unknown> | undefined,
-): TraverseResult {
-	const startIds = requiredStrings(params, "startIds");
-	if (startIds.length === 0) {
-		throw new RpcError(-32602, "startIds must not be empty");
-	}
-	const entitiesById = new Map(
-		graph.entities.map((entity) => [entity.id, entity]),
-	);
-	const unknown = startIds.find((id) => !entitiesById.has(id));
-	if (unknown) throw new RpcError(-32602, `Unknown entity ID: ${unknown}`);
-	const direction = requiredEnum(params, "direction", [
-		"incoming",
-		"outgoing",
-		"both",
-	] as const);
-	const relationKinds = optionalEnumArray(
-		params,
-		"relationKinds",
-		RELATION_KINDS,
-	);
-	const relationCategories = optionalEnumArray(
-		params,
-		"relationCategories",
-		RELATION_CATEGORIES,
-	);
-	const targetKinds = optionalEnumArray(params, "targetKinds", ENTITY_KINDS);
-	const depth =
-		params?.depth === undefined ? 1 : requiredInteger(params, "depth", 0, 8);
-	const evidenceMode =
-		params?.evidence === undefined
-			? "references"
-			: requiredEnum(params, "evidence", [
-					"none",
-					"references",
-					"inline",
-				] as const);
-	const candidates = graph.relations.filter(
-		(relation) =>
-			(!relationKinds || relationKinds.includes(relation.kind)) &&
-			(!relationCategories || relationCategories.includes(relation.category)),
-	);
-	const visited = new Set(startIds);
-	let frontier = new Set(startIds);
-	const selected = new Map<string, PublicRelation>();
-	for (let level = 0; level < depth && frontier.size > 0; level += 1) {
-		const next = new Set<string>();
-		for (const relation of candidates) {
-			const outgoing =
-				(direction === "outgoing" || direction === "both") &&
-				frontier.has(relation.from);
-			const incoming =
-				(direction === "incoming" || direction === "both") &&
-				frontier.has(relation.to);
-			if (!outgoing && !incoming) continue;
-			selected.set(relation.id, relation);
-			const reached = outgoing ? relation.to : relation.from;
-			if (!visited.has(reached)) next.add(reached);
-		}
-		for (const id of next) visited.add(id);
-		frontier = next;
-	}
-	const page = paginate(
-		[...selected.values()].sort(compareRecordsById),
-		params,
-	);
-	const returnedRelations = page.items.map((relation) =>
-		evidenceMode === "none" && relation.evidenceIds
-			? omitEvidenceIds(relation)
-			: relation,
-	);
-	const returnedEntityIds = new Set(startIds);
-	for (const relation of returnedRelations) {
-		returnedEntityIds.add(relation.from);
-		returnedEntityIds.add(relation.to);
-	}
-	const returnedEntities = [...returnedEntityIds]
-		.map((id) => entitiesById.get(id))
-		.filter((entity): entity is PublicEntity => entity !== undefined)
-		.sort(compareRecordsById);
-	const matches = [...visited]
-		.filter((id) => {
-			const entity = entitiesById.get(id);
-			return entity && (!targetKinds || targetKinds.includes(entity.kind));
-		})
-		.sort();
-	const evidenceIds = new Set(
-		returnedRelations.flatMap((relation) => relation.evidenceIds ?? []),
-	);
-	return {
-		contractVersion: INSPECTION_PUBLIC_CONTRACT_VERSION,
-		revision: graph.revision,
-		result: {
-			entities: returnedEntities,
-			relations: returnedRelations,
-			matches,
-			...(evidenceMode === "inline"
-				? {
-						evidence: graph.evidence.filter((record) =>
-							evidenceIds.has(record.id),
-						),
-					}
-				: {}),
-		},
-		completeness: graph.completeness,
-		page: {
-			total: page.total,
-			returned: page.items.length,
-			...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
-		},
-	};
-}
-
-function optionalStringArray(
-	params: Record<string, unknown> | undefined,
-	key: string,
-): string[] | null {
-	if (params?.[key] === undefined) return null;
-	return requiredStrings(params, key);
-}
-
-function optionalEnumArray<const Values extends readonly string[]>(
-	params: Record<string, unknown> | undefined,
-	key: string,
-	values: Values,
-): Values[number][] | null {
-	const items = optionalStringArray(params, key);
-	if (!items) return null;
-	const invalid = items.find((item) => !values.includes(item));
-	if (invalid) throw new RpcError(-32602, `Invalid ${key}: ${invalid}`);
-	return items as Values[number][];
-}
-
-function optionalStringRecord(
-	params: Record<string, unknown> | undefined,
-	key: string,
-): Record<string, string> | null {
-	const value = params?.[key];
-	if (value === undefined) return null;
-	if (
-		!isObject(value) ||
-		Object.values(value).some((item) => typeof item !== "string")
-	) {
-		throw new RpcError(-32602, `${key} must be an object of string values`);
-	}
-	return value as Record<string, string>;
-}
-
-function omitEvidenceIds(relation: PublicRelation): PublicRelation {
-	const { evidenceIds: _evidenceIds, ...rest } = relation;
-	return rest;
-}
-
-function compareRecordsById(
-	left: { id: string },
-	right: { id: string },
-): number {
-	return left.id.localeCompare(right.id);
-}
-
-function toolSynopsis(
-	name: string,
-	structuredContent: Record<string, unknown>,
-): string {
-	const result = isObject(structuredContent.result)
-		? structuredContent.result
-		: {};
-	const completeness = isObject(structuredContent.completeness)
-		? optionalString(structuredContent.completeness, "status")
-		: null;
-	const suffix = completeness ? `; completeness=${completeness}` : "";
-	if (name === "find") {
-		const count = Array.isArray(result.entities) ? result.entities.length : 0;
-		return `${count} ${count === 1 ? "entity" : "entities"}${suffix}`;
-	}
-	if (name === "traverse") {
-		const relationCount = Array.isArray(result.relations)
-			? result.relations.length
-			: 0;
-		const matchCount = Array.isArray(result.matches)
-			? result.matches.length
-			: 0;
-		return `${relationCount} ${relationCount === 1 ? "relation" : "relations"}; ${matchCount} ${matchCount === 1 ? "match" : "matches"}${suffix}`;
-	}
-	const count = Array.isArray(result.evidence) ? result.evidence.length : 0;
-	return `${count} evidence ${count === 1 ? "record" : "records"}${suffix}`;
-}
-
-function structuredToolResult(result: unknown): Record<string, unknown> {
-	if (!isObject(result)) {
-		throw new RpcError(-32603, "Inspection tool returned a non-object result");
-	}
-	return result;
-}
-
-function paginate<Item>(
-	items: readonly Item[],
-	params: Record<string, unknown> | undefined,
-): {
-	items: readonly Item[];
-	total: number;
-	nextCursor?: string;
-} {
-	const limitValue = params?.limit;
-	const limit =
-		limitValue === undefined
-			? DEFAULT_PAGE_LIMIT
-			: requiredInteger(params, "limit", 1, MAX_PAGE_LIMIT);
-	const cursorValue = params?.cursor;
-	let offset = 0;
-	if (cursorValue !== undefined) {
-		if (
-			typeof cursorValue !== "string" ||
-			!/^(0|[1-9]\d*)$/.test(cursorValue)
-		) {
-			throw new RpcError(-32602, "Invalid cursor");
-		}
-		offset = Number(cursorValue);
-		if (!Number.isSafeInteger(offset) || offset > items.length) {
-			throw new RpcError(-32602, "Invalid cursor");
-		}
-	}
-	const page = items.slice(offset, offset + limit);
-	const nextOffset = offset + page.length;
-	return {
-		items: page,
-		total: items.length,
-		...(nextOffset < items.length ? { nextCursor: String(nextOffset) } : {}),
-	};
-}
-
-function requiredInteger(
-	params: Record<string, unknown> | undefined,
-	key: string,
-	minimum: number,
-	maximum: number,
-): number {
-	const value = params?.[key];
-	if (
-		typeof value !== "number" ||
-		!Number.isSafeInteger(value) ||
-		value < minimum ||
-		value > maximum
-	) {
-		throw new RpcError(
-			-32602,
-			`${key} must be an integer from ${minimum} to ${maximum}`,
-		);
-	}
-	return value;
-}
-
-function requiredEnum<const Values extends readonly string[]>(
-	params: Record<string, unknown> | undefined,
-	key: string,
-	values: Values,
-): Values[number] {
-	const value = requiredString(params, key);
-	if (!values.includes(value)) {
-		throw new RpcError(-32602, `Invalid ${key}: ${value}`);
-	}
-	return value;
-}
-
-function optionalString(
-	params: Record<string, unknown> | undefined,
-	key: string,
-): string | null {
-	const value = params?.[key];
-	if (value === undefined || value === null) return null;
-	if (typeof value !== "string" || value.length === 0)
-		throw new RpcError(-32602, `Invalid string parameter ${key}`);
-	return value;
-}
-
-function requiredStrings(
-	params: Record<string, unknown> | undefined,
-	key: string,
-): string[] {
-	const value = params?.[key];
-	if (!Array.isArray(value) || value.some((item) => typeof item !== "string"))
-		throw new RpcError(-32602, `Missing string-array parameter ${key}`);
-	return value;
-}
-
 function requiredString(
 	params: Record<string, unknown> | undefined,
 	key: string,
@@ -902,119 +487,8 @@ function requiredString(
 	return value;
 }
 
-function inspectionTools(): {
-	name: string;
-	description: string;
-	inputSchema: object;
-	outputSchema: object;
-}[] {
-	const paginationProperties = {
-		limit: { type: "integer", minimum: 1, maximum: MAX_PAGE_LIMIT },
-		cursor: { type: "string", pattern: "^(0|[1-9]\\d*)$" },
-	};
-	const tools = [
-		{
-			name: "find",
-			description:
-				"Find stable public inspection entities by ID, text, path, kind, subtype, or exact identity fields.",
-			inputSchema: {
-				type: "object",
-				properties: {
-					ids: { type: "array", items: { type: "string" } },
-					query: { type: "string", minLength: 1 },
-					kinds: {
-						type: "array",
-						items: { type: "string", enum: ENTITY_KINDS },
-					},
-					path: { type: "string", minLength: 1 },
-					subtype: { type: "string", minLength: 1 },
-					identity: {
-						type: "object",
-						additionalProperties: { type: "string" },
-					},
-					...paginationProperties,
-				},
-				additionalProperties: false,
-				anyOf: [
-					{ required: ["ids"] },
-					{ required: ["query"] },
-					{ required: ["path"] },
-					{ required: ["identity"] },
-				],
-			},
-		},
-		{
-			name: "traverse",
-			description:
-				"Traverse typed incoming or outgoing relations from public entity IDs.",
-			inputSchema: {
-				type: "object",
-				properties: {
-					startIds: {
-						type: "array",
-						minItems: 1,
-						items: { type: "string" },
-					},
-					direction: {
-						type: "string",
-						enum: ["incoming", "outgoing", "both"],
-					},
-					relationKinds: {
-						type: "array",
-						items: { type: "string", enum: RELATION_KINDS },
-					},
-					relationCategories: {
-						type: "array",
-						items: { type: "string", enum: RELATION_CATEGORIES },
-					},
-					targetKinds: {
-						type: "array",
-						items: { type: "string", enum: ENTITY_KINDS },
-					},
-					depth: { type: "integer", minimum: 0, maximum: 8 },
-					evidence: {
-						type: "string",
-						enum: ["none", "references", "inline"],
-					},
-					...paginationProperties,
-				},
-				required: ["startIds", "direction"],
-				additionalProperties: false,
-			},
-		},
-		{
-			name: "evidence",
-			description: "Fetch exact semantic evidence by public evidence IDs.",
-			inputSchema: {
-				type: "object",
-				properties: {
-					ids: {
-						type: "array",
-						minItems: 1,
-						maxItems: 50,
-						items: { type: "string" },
-					},
-				},
-				required: ["ids"],
-				additionalProperties: false,
-			},
-		},
-	];
-	return tools.map((tool) => ({
-		...tool,
-		outputSchema: {
-			type: "object",
-			properties: {
-				contractVersion: { const: INSPECTION_PUBLIC_CONTRACT_VERSION },
-			},
-			required: ["contractVersion"],
-			additionalProperties: true,
-		},
-	}));
-}
-
-const INSPECTION_TOOLS = Object.freeze(inspectionTools());
-const INSPECTION_TOOL_NAMES = new Set(INSPECTION_TOOLS.map(({ name }) => name));
+const INSPECTION_TOOLS = Object.freeze([INSPECT_TOOL]);
+const INSPECTION_TOOL_NAMES = new Set<string>([INSPECT_TOOL.name]);
 
 class JsonLineWriter {
 	private pending: Promise<void> = Promise.resolve();

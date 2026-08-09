@@ -47,6 +47,12 @@ export type ShopifyReference = {
 	targetPath?: string;
 	targetRelative?: boolean;
 	static: boolean;
+	range?: { start: number; end: number };
+	span?: {
+		file: string;
+		start: { line: number; column: number };
+		end: { line: number; column: number };
+	};
 };
 
 export type ShopifyDataRead = {
@@ -228,6 +234,7 @@ function enrichSourceFact(
 				targetRole: liquidTargetRole(referenceKind),
 				targetName,
 				static: targetName !== undefined,
+				...sourceLocation(fact.data),
 			}),
 		];
 	}
@@ -239,6 +246,7 @@ function enrichSourceFact(
 				targetPath,
 				targetRelative: fact.data.relative === true,
 				static: targetPath !== undefined,
+				...sourceLocation(fact.data),
 			}),
 		];
 	}
@@ -251,6 +259,7 @@ function enrichSourceFact(
 				targetPath,
 				targetRelative: true,
 				static: targetPath !== undefined,
+				...sourceLocation(fact.data),
 			}),
 		];
 	}
@@ -289,6 +298,36 @@ function enrichSourceFact(
 		];
 	}
 	return [];
+}
+
+function sourceLocation(
+	data: Record<string, unknown>,
+): Pick<ShopifyReference, "range" | "span"> {
+	const range = data.range;
+	const span = data.span;
+	return {
+		...(isRecord(range) &&
+		typeof range.start === "number" &&
+		typeof range.end === "number"
+			? { range: { start: range.start, end: range.end } }
+			: {}),
+		...(isSourceSpan(span) ? { span } : {}),
+	};
+}
+
+function isSourceSpan(
+	value: unknown,
+): value is NonNullable<ShopifyReference["span"]> {
+	return (
+		isRecord(value) &&
+		typeof value.file === "string" &&
+		isRecord(value.start) &&
+		typeof value.start.line === "number" &&
+		typeof value.start.column === "number" &&
+		isRecord(value.end) &&
+		typeof value.end.line === "number" &&
+		typeof value.end.column === "number"
+	);
 }
 
 function nazareImportPaths(
@@ -368,7 +407,16 @@ function targetFactId(
 	kind: string,
 	data: unknown,
 ): string {
-	return `shopify-fact:${fingerprintProductKey({ file, kind, data: jsonValue(data) })}`;
+	const encoded = jsonValue(data);
+	const identityData =
+		encoded && typeof encoded === "object" && !Array.isArray(encoded)
+			? { ...encoded }
+			: encoded;
+	if (identityData && typeof identityData === "object") {
+		delete identityData.range;
+		delete identityData.span;
+	}
+	return `shopify-fact:${fingerprintProductKey({ file, kind, data: identityData })}`;
 }
 
 function liquidTargetRole(kind: string): ShopifyFileRole | undefined {

@@ -42,6 +42,12 @@ export type ShopifyMetafieldRead = {
 	dynamic: boolean;
 	transport?: string;
 	endpoint?: string;
+	range?: { start: number; end: number };
+	span?: {
+		file: string;
+		start: { line: number; column: number };
+		end: { line: number; column: number };
+	};
 };
 
 export type ShopifyCapability = {
@@ -352,6 +358,14 @@ function embeddedJsonMetafieldReads(
 			namespace,
 			key,
 			dynamic: false,
+			...(typeof match.index === "number"
+				? {
+						range: {
+							start: match.index,
+							end: match.index + match[0].length,
+						},
+					}
+				: {}),
 		});
 	}
 	return reads;
@@ -369,6 +383,7 @@ function metafieldRead(
 				id: `shopify-metafield:${fingerprintProductKey({ file, sourceFact: fact.id, index })}`,
 				owner: file,
 				ownerType: reference.owner ?? "unknown",
+				...semanticSourceLocation(data),
 				...(reference.namespace ? { namespace: reference.namespace } : {}),
 				...(reference.key ? { key: reference.key } : {}),
 				dynamic: reference.certainty !== "exact",
@@ -402,8 +417,39 @@ function metafieldRead(
 			...(namespace ? { namespace } : {}),
 			...(key ? { key } : {}),
 			dynamic,
+			...semanticSourceLocation(fact.data),
 		},
 	];
+}
+
+function semanticSourceLocation(
+	data: Record<string, unknown>,
+): Pick<ShopifyMetafieldRead, "range" | "span"> {
+	const range = data.range;
+	const span = data.span;
+	return {
+		...(isRecord(range) &&
+		typeof range.start === "number" &&
+		typeof range.end === "number"
+			? { range: { start: range.start, end: range.end } }
+			: {}),
+		...(isSemanticSourceSpan(span) ? { span } : {}),
+	};
+}
+
+function isSemanticSourceSpan(
+	value: unknown,
+): value is NonNullable<ShopifyMetafieldRead["span"]> {
+	return (
+		isRecord(value) &&
+		typeof value.file === "string" &&
+		isRecord(value.start) &&
+		typeof value.start.line === "number" &&
+		typeof value.start.column === "number" &&
+		isRecord(value.end) &&
+		typeof value.end.line === "number" &&
+		typeof value.end.column === "number"
+	);
 }
 
 function collectEvidence(

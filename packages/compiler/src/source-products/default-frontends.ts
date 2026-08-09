@@ -78,12 +78,16 @@ export const liquidSourceFrontend = sourceDocumentFrontend({
 
 export const jsonSourceFrontend = defineSourceFrontend({
 	id: "nazare.source.json",
-	version: 1,
+	version: 2,
 	language: "json",
 	accepts: (file) => file.id.path.endsWith(".json"),
 	async parse(file) {
 		try {
-			return parsed(file, JSON.parse(file.contents), []);
+			return parsed(
+				file,
+				JSON.parse(stripShopifyJsonHeader(file.contents)),
+				[],
+			);
 		} catch (error) {
 			return parsed(file, undefined, [
 				{
@@ -102,8 +106,9 @@ export const jsonSourceFrontend = defineSourceFrontend({
 
 export const cssSourceFrontend = analyzedSourceFrontend({
 	id: "nazare.source.css",
+	version: 2,
 	language: "css",
-	accepts: (path) => path.endsWith(".css"),
+	accepts: (path) => /\.(?:css|scss)$/.test(path),
 	analyze: analyzeCssSource,
 });
 
@@ -243,6 +248,7 @@ function analyzedSourceFrontend(input: {
 								path: fact.targetName,
 								relative: false,
 								kind: "javascript-import",
+								...(fact.span ? { span: fact.span } : {}),
 							})
 						: sourceFact(parsedFile.file, `source.${fact.kind}`, fact),
 				),
@@ -351,6 +357,10 @@ function offsetPosition(source: string, offset: number) {
 	const before = source.slice(0, offset);
 	const lines = before.split("\n");
 	return { line: lines.length, column: (lines.at(-1)?.length ?? 0) + 1 };
+}
+
+function stripShopifyJsonHeader(source: string): string {
+	return source.replace(/^\uFEFF?\s*\/\*[\s\S]*?\*\/\s*/, "");
 }
 
 function errorMessage(error: unknown): string {
