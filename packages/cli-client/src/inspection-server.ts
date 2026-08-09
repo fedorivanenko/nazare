@@ -3,13 +3,24 @@ import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
-import type { ShopifyBehavior, ShopifyEvidence } from "@nazare/target-shopify";
 import {
 	collectThemeInputFiles,
 	isInspectThemeFile,
 	matchesInspectGlob,
 	readInspectExcludePatterns,
 } from "./inspect-input.js";
+import {
+	ENTITY_KINDS,
+	type FindResult,
+	INSPECTION_PUBLIC_CONTRACT_VERSION,
+	type InspectionPublicGraph,
+	type PublicEntity,
+	type PublicRelation,
+	RELATION_CATEGORIES,
+	RELATION_KINDS,
+	type TraverseResult,
+} from "./inspection-public-contract.js";
+import { inspectionPublicGraph } from "./inspection-public-graph.js";
 import {
 	PROJECT_METADATA_KEYS,
 	ShopifyQuerySession,
@@ -34,7 +45,7 @@ export async function serveInspection(
 	output: Writable,
 	options: InspectionServerOptions,
 ): Promise<void> {
-	let querySession = await loadQuerySession(root, options.projectRoot);
+	const querySession = await loadQuerySession(root, options.projectRoot);
 	const writer = new JsonLineWriter(output);
 	let notificationsEnabled = false;
 	const stopWatching = startWatcher(
@@ -59,11 +70,8 @@ export async function serveInspection(
 				await writer.write(errorResponsePayload(undefined, rpcError(error)));
 				continue;
 			}
-			const isMcpRequest = request.jsonrpc === "2.0";
-			if (!isMcpRequest) notificationsEnabled = true;
 			try {
 				if (
-					isMcpRequest &&
 					!mcpInitialized &&
 					request.method !== "initialize" &&
 					request.method !== "ping"
@@ -92,17 +100,9 @@ export async function serveInspection(
 				if (request.method === "notifications/initialized") {
 					notificationsEnabled = true;
 				}
-				const result = await handleRequest(
-					request,
-					root,
-					options.projectRoot,
-					() => querySession,
-					(next) => {
-						querySession = next;
-					},
-				);
+				const result = await handleRequest(request, () => querySession);
 				if (request.id !== undefined) {
-					await writer.write(responsePayload(request, request.id, result));
+					await writer.write(responsePayload(request.id, result));
 				}
 			} catch (error) {
 				if (request.id !== undefined) {
@@ -116,17 +116,6 @@ export async function serveInspection(
 	}
 }
 
-const NON_DOM_BEHAVIOR_SUBJECT_KINDS = [
-	"customProperty",
-	"customEvent",
-	"customElement",
-] as const;
-const BEHAVIOR_SUBJECT_KINDS = [
-	"domHook",
-	...NON_DOM_BEHAVIOR_SUBJECT_KINDS,
-] as const;
-const DOM_HOOK_KINDS = ["class", "id", "attribute"] as const;
-const BEHAVIOR_QUERY_ROLES = ["all", "producers", "consumers"] as const;
 const DEFAULT_PAGE_LIMIT = 50;
 const MAX_PAGE_LIMIT = 200;
 const MAX_TOOL_RESULT_BYTES = 512 * 1024;
@@ -148,7 +137,7 @@ class RpcError extends Error {
 }
 
 type InspectionRequest = {
-	jsonrpc?: "2.0";
+	jsonrpc: "2.0";
 	id?: string | number;
 	method: string;
 	params?: Record<string, unknown>;
@@ -156,10 +145,7 @@ type InspectionRequest = {
 
 async function handleRequest(
 	request: InspectionRequest,
-	root: string,
-	projectRoot: string,
 	getQuerySession: () => ShopifyQuerySession,
-	setQuerySession: (session: ShopifyQuerySession) => void,
 ): Promise<unknown> {
 	if (request.method === "ping") return {};
 	if (request.method === "notifications/initialized") return {};
@@ -180,15 +166,13 @@ async function handleRequest(
 		try {
 			const result = await handleRequest(
 				{
+					jsonrpc: "2.0",
 					method: name,
 					params: args as Record<string, unknown> | undefined,
 				},
-				root,
-				projectRoot,
 				getQuerySession,
-				setQuerySession,
 			);
-			const structuredContent = structuredToolResult(name, result);
+			const structuredContent = structuredToolResult(result);
 			const serialized = JSON.stringify(structuredContent);
 			const resultBytes = Buffer.byteLength(serialized);
 			if (resultBytes > MAX_TOOL_RESULT_BYTES) {
@@ -203,7 +187,9 @@ async function handleRequest(
 				};
 			}
 			return {
-				content: [{ type: "text", text: serialized }],
+				content: [
+					{ type: "text", text: toolSynopsis(name, structuredContent) },
+				],
 				structuredContent,
 				isError: false,
 			};
@@ -228,231 +214,34 @@ async function handleRequest(
 			serverInfo: { name: "nazare-inspect", version: "1" },
 		};
 	}
-	if (request.method === "reload" || request.method === "inspect") {
-		const session = await loadQuerySession(root, projectRoot);
-		setQuerySession(session);
-		return request.method === "inspect"
-			? session.projectModel()
-			: session.projectGraph();
-	}
 	const querySession = getQuerySession();
-	if (request.method === "projectModel") return querySession.projectModel();
-	if (request.method === "projectGraph") return querySession.projectGraph();
-	if (request.method === "impact") {
-		return querySession.impact([requiredString(request.params, "path")]);
-	}
-	if (request.method === "behaviorIndex") {
-		const index = await querySession.behaviorIndex({
-			behaviorKind: optionalString(request.params, "behaviorKind"),
-		});
-		const page = paginate(index.records, request.params);
-		return {
-			version: index.version,
-			records: page.items,
-			total: page.total,
-			...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
-			evidence: includeEvidence(request.params)
-				? evidenceForFacts(
-						index.evidence,
-						page.items.map((record) => record.id),
-					)
-				: [],
-		};
-	}
-	if (request.method === "metafieldIndex") {
-		const index = await querySession.metafieldIndex({
-			ownerType: optionalString(request.params, "ownerType"),
-			namespace: optionalString(request.params, "namespace"),
-		});
-		const page = paginate(index.records, request.params);
-		return {
-			version: index.version,
-			records: page.items,
-			total: page.total,
-			...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
-			evidence: includeEvidence(request.params)
-				? evidenceForFacts(
-						index.evidence,
-						page.items.map((record) => record.id),
-					)
-				: [],
-		};
-	}
-	if (request.method === "unusedFiles") {
-		return querySession.unusedFiles(requiredStrings(request.params, "roots"));
-	}
-	if (request.method === "build") {
-		return querySession.buildProducts({ scope: { kind: "workspace" } });
-	}
-	if (request.method === "updateFile" || request.method === "buildUpdate") {
-		const file = requiredFile(request.params);
-		const previousRevision = querySession.session.snapshot().revision;
-		const revision = await querySession.updateFile(file);
-		return request.method === "buildUpdate"
-			? buildUpdate(querySession, file.path, previousRevision, revision)
-			: graphUpdate(file.path, previousRevision, revision);
-	}
-	if (request.method === "removeFile") {
-		const path = requiredString(request.params, "path");
-		const previousRevision = querySession.session.snapshot().revision;
-		const revision = await querySession.removeFile(path);
-		return graphUpdate(path, previousRevision, revision);
-	}
-	if (request.method === "summary") {
-		const model = await querySession.projectModel();
-		return {
-			version: model.version,
-			fileCount: querySession.session.snapshot().fileIds.length,
-			declarationCount: model.declarations.length,
-			referenceCount: model.references.length,
-			evidenceCount: model.evidence.length,
-			uncertaintyCount: model.uncertainty.length,
-		};
-	}
-	if (request.method === "fileImpact") {
-		const path = requiredString(request.params, "path");
-		const [impact, dependencies] = await Promise.all([
-			querySession.impact([path]),
-			querySession.dependencyIndex(),
-		]);
-		const directDependencies = dependencies.records.filter(
-			(record) => record.from.path === path,
-		);
-		const directDependents = dependencies.records.filter(
-			(record) => record.to.path === path,
-		);
-		return {
-			version: impact.version,
-			path,
-			dependencies: directDependencies.map((record) => record.to.path),
-			dependents: directDependents.map((record) => record.from.path),
-			affectedPages: (await querySession.affectedPages(path)).pages.map(
-				(file) => file.path,
-			),
-			uncertainty: impact.uncertainty,
-		};
-	}
-	if (request.method === "renderOccurrences") {
-		const path = requiredString(request.params, "path");
-		const dependencies = await querySession.dependencyIndex();
-		return dependencies.records.filter(
-			(record) => record.from.path === path || record.to.path === path,
+	if (request.method === "find") {
+		return findPublicEntities(
+			await inspectionPublicGraph(querySession),
+			request.params,
 		);
 	}
-	if (request.method === "behaviorUsages") {
-		const query = behaviorQueryParams(request.params);
-		const role = requiredEnum(request.params, "role", BEHAVIOR_QUERY_ROLES);
-		const index = await querySession.behaviorIndex({
-			behaviorKind: query.subjectKind,
-		});
-		const matching = index.records.filter((record) =>
-			behaviorMatches(record.data, query, role),
+	if (request.method === "traverse") {
+		return traversePublicGraph(
+			await inspectionPublicGraph(querySession),
+			request.params,
 		);
-		const page = paginate(matching, request.params);
-		return {
-			version: index.version,
-			query,
-			role,
-			usages: page.items.map((record) => behaviorUsage(record)),
-			total: page.total,
-			...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
-			certainty: "complete",
-			uncertainty: [],
-			evidence: includeEvidence(request.params)
-				? evidenceForFacts(
-						index.evidence,
-						page.items.map((record) => record.id),
-					)
-				: [],
-		};
-	}
-	if (request.method === "behaviorConnections") {
-		const path = requiredString(request.params, "path");
-		if (
-			!querySession.session
-				.snapshot()
-				.fileIds.some((file) => file.path === path)
-		)
-			throw new RpcError(-32602, `Unknown theme path: ${path}`);
-		const index = await querySession.behaviorIndex({ behaviorKind: null });
-		const owned = index.records.filter((record) => record.owner.path === path);
-		const page = paginate(owned, request.params);
-		const evidenceIds = new Set<string>();
-		const connections = page.items.map((record) => {
-			evidenceIds.add(record.id);
-			const data = isObject(record.data) ? record.data : {};
-			const matching = index.records.filter(
-				(candidate) =>
-					isObject(candidate.data) &&
-					candidate.data.subjectKind === data.subjectKind &&
-					candidate.data.name === data.name,
-			);
-			const producers = matching.filter(
-				(candidate) => behaviorRole(candidate.data) === "producers",
-			);
-			const consumers = matching.filter(
-				(candidate) => behaviorRole(candidate.data) === "consumers",
-			);
-			for (const candidate of [
-				...producers.slice(0, MAX_PAGE_LIMIT),
-				...consumers.slice(0, MAX_PAGE_LIMIT),
-			]) {
-				evidenceIds.add(candidate.id);
-			}
-			return {
-				id: record.id,
-				subjectKind: data.subjectKind,
-				name: data.name,
-				producers: producers.slice(0, MAX_PAGE_LIMIT).map(behaviorUsage),
-				producerCount: producers.length,
-				consumers: consumers.slice(0, MAX_PAGE_LIMIT).map(behaviorUsage),
-				consumerCount: consumers.length,
-			};
-		});
-		return {
-			version: index.version,
-			path,
-			connections,
-			total: page.total,
-			...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
-			certainty: "complete",
-			uncertainty: [],
-			evidence: includeEvidence(request.params)
-				? evidenceForFacts(index.evidence, evidenceIds)
-				: [],
-		};
 	}
 	if (request.method === "evidence") {
-		const recordId = requiredString(request.params, "recordId");
-		const model = await querySession.projectModel();
-		return model.evidence.filter((record) => record.id === recordId);
-	}
-	if (
-		["node", "dependencies", "dependents", "affectedPages"].includes(
-			request.method,
-		)
-	) {
-		const nodeId = requiredString(request.params, "nodeId");
-		if (request.method === "node") {
-			const model = await querySession.projectModel();
-			return (
-				model.declarations.find(
-					(record) => record.id === nodeId || record.owner.path === nodeId,
-				) ??
-				model.references.find(
-					(record) => record.id === nodeId || record.owner.path === nodeId,
-				) ??
-				null
-			);
+		const graph = await inspectionPublicGraph(querySession);
+		const evidenceIds = requiredStrings(request.params, "ids");
+		if (evidenceIds.length === 0 || evidenceIds.length > 50) {
+			throw new RpcError(-32602, "ids must contain from 1 to 50 evidence IDs");
 		}
-		if (request.method === "dependencies") {
-			const index = await querySession.dependencyIndex();
-			return index.records.filter((record) => record.from.path === nodeId);
-		}
-		if (request.method === "dependents") {
-			return (await querySession.dependencyIndex(nodeId)).records;
-		}
-		return (await querySession.affectedPages(nodeId)).pages;
+		const ids = new Set(evidenceIds);
+		return {
+			contractVersion: INSPECTION_PUBLIC_CONTRACT_VERSION,
+			revision: graph.revision,
+			result: {
+				evidence: graph.evidence.filter((record) => ids.has(record.id)),
+			},
+			completeness: graph.completeness,
+		};
 	}
 	throw new RpcError(-32601, `Method not found: ${request.method}`);
 }
@@ -464,27 +253,6 @@ function graphUpdate(
 ): { changedPaths: string[]; revision: number } {
 	return {
 		changedPaths: revision === previousRevision ? [] : [path],
-		revision,
-	};
-}
-
-async function buildUpdate(
-	session: ShopifyQuerySession,
-	path: string,
-	previousRevision: number,
-	revision: number,
-): Promise<{
-	changedPaths: string[];
-	changedOutputPaths: string[];
-	revision: number;
-}> {
-	if (revision === previousRevision) {
-		return { changedPaths: [], changedOutputPaths: [], revision };
-	}
-	const build = await session.buildProducts({ scope: { kind: "workspace" } });
-	return {
-		changedPaths: [path],
-		changedOutputPaths: build.emission.files.map((file) => file.path),
 		revision,
 	};
 }
@@ -684,7 +452,7 @@ function parseRequest(line: string): InspectionRequest {
 		throw new RpcError(-32600, "Invalid Request");
 	}
 	const request = value as Record<string, unknown>;
-	if (request.jsonrpc !== undefined && request.jsonrpc !== "2.0") {
+	if (request.jsonrpc !== "2.0") {
 		throw new RpcError(-32600, 'Invalid Request: jsonrpc must be "2.0"');
 	}
 	if (typeof request.method !== "string" || request.method.length === 0) {
@@ -709,7 +477,7 @@ function parseRequest(line: string): InspectionRequest {
 		throw new RpcError(-32602, "Invalid params: expected an object");
 	}
 	return {
-		jsonrpc: request.jsonrpc as "2.0" | undefined,
+		jsonrpc: "2.0",
 		id: request.id as string | number | undefined,
 		method: request.method,
 		params: request.params as Record<string, unknown> | undefined,
@@ -753,54 +521,285 @@ function validateToolArguments(
 
 function toolArgumentKeys(name: string): string[] {
 	switch (name) {
-		case "summary":
-		case "projectModel":
-		case "projectGraph":
-			return [];
-		case "impact":
-			return ["path"];
-		case "behaviorIndex":
-			return ["behaviorKind", "limit", "cursor", "includeEvidence"];
-		case "metafieldIndex":
-			return ["ownerType", "namespace", "limit", "cursor", "includeEvidence"];
-		case "unusedFiles":
-			return ["roots"];
-		case "node":
-		case "dependencies":
-		case "dependents":
-		case "affectedPages":
-			return ["nodeId"];
-		case "fileImpact":
-		case "renderOccurrences":
-			return ["path"];
-		case "behaviorConnections":
-			return ["path", "limit", "cursor", "includeEvidence"];
-		case "behaviorUsages":
+		case "find":
 			return [
-				"subjectKind",
-				"hookKind",
-				"name",
-				"role",
+				"ids",
+				"query",
+				"kinds",
+				"path",
+				"subtype",
+				"identity",
 				"limit",
 				"cursor",
-				"includeEvidence",
+			];
+		case "traverse":
+			return [
+				"startIds",
+				"direction",
+				"relationKinds",
+				"relationCategories",
+				"targetKinds",
+				"depth",
+				"evidence",
+				"limit",
+				"cursor",
 			];
 		case "evidence":
-			return ["recordId"];
+			return ["ids"];
 		default:
 			throw new RpcError(-32602, `Unknown tool: ${name}`);
 	}
 }
 
-function structuredToolResult(
+function findPublicEntities(
+	graph: InspectionPublicGraph,
+	params: Record<string, unknown> | undefined,
+): FindResult {
+	const ids = optionalStringArray(params, "ids");
+	const query = optionalString(params, "query")?.toLocaleLowerCase() ?? null;
+	const kinds = optionalEnumArray(params, "kinds", ENTITY_KINDS);
+	const path = optionalString(params, "path");
+	const subtype = optionalString(params, "subtype");
+	const identity = optionalStringRecord(params, "identity");
+	if (!ids && !query && !path && !identity) {
+		throw new RpcError(-32602, "find requires ids, query, path, or identity");
+	}
+	const idSet = ids ? new Set(ids) : null;
+	const matches = graph.entities.filter((entity) => {
+		if (idSet && !idSet.has(entity.id)) return false;
+		if (kinds && !kinds.includes(entity.kind)) return false;
+		if (path && entity.path !== path) return false;
+		if (subtype && entity.subtype !== subtype) return false;
+		if (
+			identity &&
+			Object.entries(identity).some(
+				([key, value]) => entity.identity[key] !== value,
+			)
+		)
+			return false;
+		if (query) {
+			const searchable = [
+				entity.id,
+				entity.name,
+				entity.path ?? "",
+				entity.subtype ?? "",
+				...Object.values(entity.identity),
+			]
+				.join("\n")
+				.toLocaleLowerCase();
+			if (!searchable.includes(query)) return false;
+		}
+		return true;
+	});
+	const page = paginate(matches, params);
+	return {
+		contractVersion: INSPECTION_PUBLIC_CONTRACT_VERSION,
+		revision: graph.revision,
+		result: { entities: page.items },
+		completeness: graph.completeness,
+		page: {
+			total: page.total,
+			returned: page.items.length,
+			...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+		},
+	};
+}
+
+function traversePublicGraph(
+	graph: InspectionPublicGraph,
+	params: Record<string, unknown> | undefined,
+): TraverseResult {
+	const startIds = requiredStrings(params, "startIds");
+	if (startIds.length === 0) {
+		throw new RpcError(-32602, "startIds must not be empty");
+	}
+	const entitiesById = new Map(
+		graph.entities.map((entity) => [entity.id, entity]),
+	);
+	const unknown = startIds.find((id) => !entitiesById.has(id));
+	if (unknown) throw new RpcError(-32602, `Unknown entity ID: ${unknown}`);
+	const direction = requiredEnum(params, "direction", [
+		"incoming",
+		"outgoing",
+		"both",
+	] as const);
+	const relationKinds = optionalEnumArray(
+		params,
+		"relationKinds",
+		RELATION_KINDS,
+	);
+	const relationCategories = optionalEnumArray(
+		params,
+		"relationCategories",
+		RELATION_CATEGORIES,
+	);
+	const targetKinds = optionalEnumArray(params, "targetKinds", ENTITY_KINDS);
+	const depth =
+		params?.depth === undefined ? 1 : requiredInteger(params, "depth", 0, 8);
+	const evidenceMode =
+		params?.evidence === undefined
+			? "references"
+			: requiredEnum(params, "evidence", [
+					"none",
+					"references",
+					"inline",
+				] as const);
+	const candidates = graph.relations.filter(
+		(relation) =>
+			(!relationKinds || relationKinds.includes(relation.kind)) &&
+			(!relationCategories || relationCategories.includes(relation.category)),
+	);
+	const visited = new Set(startIds);
+	let frontier = new Set(startIds);
+	const selected = new Map<string, PublicRelation>();
+	for (let level = 0; level < depth && frontier.size > 0; level += 1) {
+		const next = new Set<string>();
+		for (const relation of candidates) {
+			const outgoing =
+				(direction === "outgoing" || direction === "both") &&
+				frontier.has(relation.from);
+			const incoming =
+				(direction === "incoming" || direction === "both") &&
+				frontier.has(relation.to);
+			if (!outgoing && !incoming) continue;
+			selected.set(relation.id, relation);
+			const reached = outgoing ? relation.to : relation.from;
+			if (!visited.has(reached)) next.add(reached);
+		}
+		for (const id of next) visited.add(id);
+		frontier = next;
+	}
+	const page = paginate(
+		[...selected.values()].sort(compareRecordsById),
+		params,
+	);
+	const returnedRelations = page.items.map((relation) =>
+		evidenceMode === "none" && relation.evidenceIds
+			? omitEvidenceIds(relation)
+			: relation,
+	);
+	const returnedEntityIds = new Set(startIds);
+	for (const relation of returnedRelations) {
+		returnedEntityIds.add(relation.from);
+		returnedEntityIds.add(relation.to);
+	}
+	const returnedEntities = [...returnedEntityIds]
+		.map((id) => entitiesById.get(id))
+		.filter((entity): entity is PublicEntity => entity !== undefined)
+		.sort(compareRecordsById);
+	const matches = [...visited]
+		.filter((id) => {
+			const entity = entitiesById.get(id);
+			return entity && (!targetKinds || targetKinds.includes(entity.kind));
+		})
+		.sort();
+	const evidenceIds = new Set(
+		returnedRelations.flatMap((relation) => relation.evidenceIds ?? []),
+	);
+	return {
+		contractVersion: INSPECTION_PUBLIC_CONTRACT_VERSION,
+		revision: graph.revision,
+		result: {
+			entities: returnedEntities,
+			relations: returnedRelations,
+			matches,
+			...(evidenceMode === "inline"
+				? {
+						evidence: graph.evidence.filter((record) =>
+							evidenceIds.has(record.id),
+						),
+					}
+				: {}),
+		},
+		completeness: graph.completeness,
+		page: {
+			total: page.total,
+			returned: page.items.length,
+			...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+		},
+	};
+}
+
+function optionalStringArray(
+	params: Record<string, unknown> | undefined,
+	key: string,
+): string[] | null {
+	if (params?.[key] === undefined) return null;
+	return requiredStrings(params, key);
+}
+
+function optionalEnumArray<const Values extends readonly string[]>(
+	params: Record<string, unknown> | undefined,
+	key: string,
+	values: Values,
+): Values[number][] | null {
+	const items = optionalStringArray(params, key);
+	if (!items) return null;
+	const invalid = items.find((item) => !values.includes(item));
+	if (invalid) throw new RpcError(-32602, `Invalid ${key}: ${invalid}`);
+	return items as Values[number][];
+}
+
+function optionalStringRecord(
+	params: Record<string, unknown> | undefined,
+	key: string,
+): Record<string, string> | null {
+	const value = params?.[key];
+	if (value === undefined) return null;
+	if (
+		!isObject(value) ||
+		Object.values(value).some((item) => typeof item !== "string")
+	) {
+		throw new RpcError(-32602, `${key} must be an object of string values`);
+	}
+	return value as Record<string, string>;
+}
+
+function omitEvidenceIds(relation: PublicRelation): PublicRelation {
+	const { evidenceIds: _evidenceIds, ...rest } = relation;
+	return rest;
+}
+
+function compareRecordsById(
+	left: { id: string },
+	right: { id: string },
+): number {
+	return left.id.localeCompare(right.id);
+}
+
+function toolSynopsis(
 	name: string,
-	result: unknown,
-): Record<string, unknown> {
-	if (Array.isArray(result)) return { contractVersion: 1, items: result };
-	if (isObject(result)) return { contractVersion: 1, ...result };
-	return name === "node"
-		? { contractVersion: 1, node: result ?? null }
-		: { contractVersion: 1, value: result ?? null };
+	structuredContent: Record<string, unknown>,
+): string {
+	const result = isObject(structuredContent.result)
+		? structuredContent.result
+		: {};
+	const completeness = isObject(structuredContent.completeness)
+		? optionalString(structuredContent.completeness, "status")
+		: null;
+	const suffix = completeness ? `; completeness=${completeness}` : "";
+	if (name === "find") {
+		const count = Array.isArray(result.entities) ? result.entities.length : 0;
+		return `${count} ${count === 1 ? "entity" : "entities"}${suffix}`;
+	}
+	if (name === "traverse") {
+		const relationCount = Array.isArray(result.relations)
+			? result.relations.length
+			: 0;
+		const matchCount = Array.isArray(result.matches)
+			? result.matches.length
+			: 0;
+		return `${relationCount} ${relationCount === 1 ? "relation" : "relations"}; ${matchCount} ${matchCount === 1 ? "match" : "matches"}${suffix}`;
+	}
+	const count = Array.isArray(result.evidence) ? result.evidence.length : 0;
+	return `${count} evidence ${count === 1 ? "record" : "records"}${suffix}`;
+}
+
+function structuredToolResult(result: unknown): Record<string, unknown> {
+	if (!isObject(result)) {
+		throw new RpcError(-32603, "Inspection tool returned a non-object result");
+	}
+	return result;
 }
 
 function paginate<Item>(
@@ -839,30 +838,6 @@ function paginate<Item>(
 	};
 }
 
-function includeEvidence(params: Record<string, unknown> | undefined): boolean {
-	const value = params?.includeEvidence;
-	if (value === undefined) return true;
-	if (typeof value !== "boolean") {
-		throw new RpcError(-32602, "includeEvidence must be a boolean");
-	}
-	return value;
-}
-
-function evidenceForFacts(
-	evidence: readonly ShopifyEvidence[],
-	factIds: Iterable<string>,
-): ShopifyEvidence[] {
-	const ids = new Set(factIds);
-	return evidence.filter((record) => {
-		const data = record.data;
-		if (!isObject(data)) return false;
-		return ["factId", "readId", "referenceId"].some((key) => {
-			const value = data[key];
-			return typeof value === "string" && ids.has(value);
-		});
-	});
-}
-
 function requiredInteger(
 	params: Record<string, unknown> | undefined,
 	key: string,
@@ -884,66 +859,6 @@ function requiredInteger(
 	return value;
 }
 
-type BehaviorQuery = {
-	subjectKind: (typeof BEHAVIOR_SUBJECT_KINDS)[number];
-	name: string;
-	hookKind?: (typeof DOM_HOOK_KINDS)[number];
-};
-
-function behaviorQueryParams(
-	params: Record<string, unknown> | undefined,
-): BehaviorQuery {
-	const subjectKind = requiredEnum(
-		params,
-		"subjectKind",
-		BEHAVIOR_SUBJECT_KINDS,
-	);
-	const name = requiredString(params, "name");
-	if (subjectKind !== "domHook") {
-		if (params?.hookKind !== undefined) {
-			throw new RpcError(
-				-32602,
-				"hookKind is valid only when subjectKind is domHook",
-			);
-		}
-		return { subjectKind, name };
-	}
-	return {
-		subjectKind,
-		name,
-		hookKind: requiredEnum(params, "hookKind", DOM_HOOK_KINDS),
-	};
-}
-
-function behaviorMatches(
-	data: ShopifyBehavior["data"],
-	query: BehaviorQuery,
-	role: (typeof BEHAVIOR_QUERY_ROLES)[number],
-): boolean {
-	if (!isObject(data)) return false;
-	if (data.subjectKind !== query.subjectKind || data.name !== query.name)
-		return false;
-	if (query.hookKind && data.hookKind !== query.hookKind) return false;
-	return role === "all" || behaviorRole(data) === role;
-}
-
-function behaviorRole(
-	data: ShopifyBehavior["data"],
-): "producers" | "consumers" {
-	if (!isObject(data)) return "consumers";
-	return ["emits", "defines", "dispatches"].includes(String(data.operation))
-		? "producers"
-		: "consumers";
-}
-
-function behaviorUsage(record: ShopifyBehavior): Record<string, unknown> {
-	return {
-		...(isObject(record.data) ? record.data : {}),
-		id: record.id,
-		fromPath: record.owner.path,
-	};
-}
-
 function requiredEnum<const Values extends readonly string[]>(
 	params: Record<string, unknown> | undefined,
 	key: string,
@@ -954,18 +869,6 @@ function requiredEnum<const Values extends readonly string[]>(
 		throw new RpcError(-32602, `Invalid ${key}: ${value}`);
 	}
 	return value;
-}
-
-function requiredFile(params: Record<string, unknown> | undefined): {
-	path: string;
-	contents: string;
-} {
-	const path = requiredString(params, "path");
-	const contents = params?.contents;
-	if (typeof contents !== "string") {
-		throw new RpcError(-32602, "Missing string parameter contents");
-	}
-	return { path, contents };
 }
 
 function optionalString(
@@ -1005,175 +908,105 @@ function inspectionTools(): {
 	inputSchema: object;
 	outputSchema: object;
 }[] {
-	const nodeId = {
-		type: "object",
-		properties: { nodeId: { type: "string" } },
-		required: ["nodeId"],
-		additionalProperties: false,
-	};
-	const path = {
-		type: "object",
-		properties: { path: { type: "string" } },
-		required: ["path"],
-		additionalProperties: false,
-	};
 	const paginationProperties = {
 		limit: { type: "integer", minimum: 1, maximum: MAX_PAGE_LIMIT },
 		cursor: { type: "string", pattern: "^(0|[1-9]\\d*)$" },
-		includeEvidence: { type: "boolean" },
-	};
-	const behavior = {
-		type: "object",
-		properties: {
-			...paginationProperties,
-			subjectKind: {
-				type: "string",
-				enum: BEHAVIOR_SUBJECT_KINDS,
-			},
-			hookKind: { type: "string", enum: DOM_HOOK_KINDS },
-			name: { type: "string" },
-			role: { type: "string", enum: BEHAVIOR_QUERY_ROLES },
-		},
-		required: ["subjectKind", "name", "role"],
-		additionalProperties: false,
-		oneOf: [
-			{
-				properties: { subjectKind: { const: "domHook" } },
-				required: ["hookKind"],
-			},
-			{
-				properties: {
-					subjectKind: {
-						enum: NON_DOM_BEHAVIOR_SUBJECT_KINDS,
-					},
-				},
-				not: { required: ["hookKind"] },
-			},
-		],
-	};
-	const recordId = {
-		type: "object",
-		properties: { recordId: { type: "string" } },
-		required: ["recordId"],
-		additionalProperties: false,
 	};
 	const tools = [
 		{
-			name: "projectModel",
-			description: "Get versioned Shopify project semantic model.",
-			inputSchema: { type: "object", additionalProperties: false },
-		},
-		{
-			name: "projectGraph",
-			description: "Get lazily materialized Shopify project graph.",
-			inputSchema: { type: "object", additionalProperties: false },
-		},
-		{
-			name: "impact",
-			description: "Get transitive impact for one changed project path.",
-			inputSchema: path,
-		},
-		{
-			name: "behaviorIndex",
-			description: "Get versioned behavior records and evidence.",
+			name: "find",
+			description:
+				"Find stable public inspection entities by ID, text, path, kind, subtype, or exact identity fields.",
 			inputSchema: {
 				type: "object",
 				properties: {
-					behaviorKind: { type: "string" },
+					ids: { type: "array", items: { type: "string" } },
+					query: { type: "string", minLength: 1 },
+					kinds: {
+						type: "array",
+						items: { type: "string", enum: ENTITY_KINDS },
+					},
+					path: { type: "string", minLength: 1 },
+					subtype: { type: "string", minLength: 1 },
+					identity: {
+						type: "object",
+						additionalProperties: { type: "string" },
+					},
 					...paginationProperties,
 				},
 				additionalProperties: false,
+				anyOf: [
+					{ required: ["ids"] },
+					{ required: ["query"] },
+					{ required: ["path"] },
+					{ required: ["identity"] },
+				],
 			},
 		},
 		{
-			name: "metafieldIndex",
-			description: "Get versioned metafield records and evidence.",
+			name: "traverse",
+			description:
+				"Traverse typed incoming or outgoing relations from public entity IDs.",
 			inputSchema: {
 				type: "object",
 				properties: {
-					ownerType: { type: "string" },
-					namespace: { type: "string" },
+					startIds: {
+						type: "array",
+						minItems: 1,
+						items: { type: "string" },
+					},
+					direction: {
+						type: "string",
+						enum: ["incoming", "outgoing", "both"],
+					},
+					relationKinds: {
+						type: "array",
+						items: { type: "string", enum: RELATION_KINDS },
+					},
+					relationCategories: {
+						type: "array",
+						items: { type: "string", enum: RELATION_CATEGORIES },
+					},
+					targetKinds: {
+						type: "array",
+						items: { type: "string", enum: ENTITY_KINDS },
+					},
+					depth: { type: "integer", minimum: 0, maximum: 8 },
+					evidence: {
+						type: "string",
+						enum: ["none", "references", "inline"],
+					},
 					...paginationProperties,
 				},
-				additionalProperties: false,
-			},
-		},
-		{
-			name: "unusedFiles",
-			description: "Get files unreachable from supplied root paths.",
-			inputSchema: {
-				type: "object",
-				properties: {
-					roots: { type: "array", items: { type: "string" } },
-				},
-				required: ["roots"],
-				additionalProperties: false,
-			},
-		},
-		{
-			name: "summary",
-			description: "Summarize the current theme graph.",
-			inputSchema: { type: "object", additionalProperties: false },
-		},
-		{ name: "node", description: "Get one graph node.", inputSchema: nodeId },
-		{
-			name: "dependencies",
-			description: "Get direct dependencies.",
-			inputSchema: nodeId,
-		},
-		{
-			name: "dependents",
-			description: "Get direct dependents.",
-			inputSchema: nodeId,
-		},
-		{
-			name: "affectedPages",
-			description: "Get affected pages.",
-			inputSchema: nodeId,
-		},
-		{
-			name: "fileImpact",
-			description:
-				"Explain one theme file's usage, dependencies, dependents, affected pages, diagnostics, and uncertainty.",
-			inputSchema: path,
-		},
-		{
-			name: "renderOccurrences",
-			description:
-				"Get source render/include occurrences where a file is caller or target.",
-			inputSchema: path,
-		},
-		{
-			name: "behaviorUsages",
-			description:
-				"Find producers, consumers, JavaScript owners, and explicit analysis uncertainty for a behavior subject.",
-			inputSchema: behavior,
-		},
-		{
-			name: "behaviorConnections",
-			description:
-				"Find typed cross-language behavior connections and explicit analysis uncertainty for one source file.",
-			inputSchema: {
-				type: "object",
-				properties: {
-					path: { type: "string" },
-					...paginationProperties,
-				},
-				required: ["path"],
+				required: ["startIds", "direction"],
 				additionalProperties: false,
 			},
 		},
 		{
 			name: "evidence",
-			description: "Get semantic evidence on demand by record ID.",
-			inputSchema: recordId,
+			description: "Fetch exact semantic evidence by public evidence IDs.",
+			inputSchema: {
+				type: "object",
+				properties: {
+					ids: {
+						type: "array",
+						minItems: 1,
+						maxItems: 50,
+						items: { type: "string" },
+					},
+				},
+				required: ["ids"],
+				additionalProperties: false,
+			},
 		},
 	];
 	return tools.map((tool) => ({
 		...tool,
 		outputSchema: {
 			type: "object",
-			properties: { contractVersion: { const: 1 } },
+			properties: {
+				contractVersion: { const: INSPECTION_PUBLIC_CONTRACT_VERSION },
+			},
 			required: ["contractVersion"],
 			additionalProperties: true,
 		},
@@ -1218,13 +1051,8 @@ function notificationPayload(notification: unknown): unknown {
 		: notification;
 }
 
-function responsePayload(
-	request: InspectionRequest,
-	id: string | number,
-	result: unknown,
-): unknown {
-	const response = { id, result };
-	return request.jsonrpc === "2.0" ? { jsonrpc: "2.0", ...response } : response;
+function responsePayload(id: string | number, result: unknown): unknown {
+	return { jsonrpc: "2.0", id, result };
 }
 
 function errorResponsePayload(
