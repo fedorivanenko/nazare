@@ -93,6 +93,31 @@ test("graph contract rejects undeclared semantic kinds", () => {
 	assert.equal(result.issues[0]?.code, "UNKNOWN_ENTITY_KIND");
 });
 
+test("graph contract rejects merge policies incompatible with attribute types", () => {
+	assert.throws(
+		() =>
+			new SemanticGraphContract([
+				{
+					...ontology,
+					entityKinds: [
+						{
+							...ontology.entityKinds[0],
+							attributes: [
+								{
+									name: "role",
+									type: "string",
+									required: true,
+									merge: "boolean-or",
+								},
+							],
+						},
+					],
+				},
+			]),
+		InvalidOntologyError,
+	);
+});
+
 test("graph contract rejects duplicate ontology namespaces", () => {
 	assert.throws(
 		() => new SemanticGraphContract([ontology, ontology]),

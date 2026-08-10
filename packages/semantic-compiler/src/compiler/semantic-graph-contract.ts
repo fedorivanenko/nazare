@@ -267,6 +267,21 @@ export class SemanticGraphContract {
 				`${path}.predicateKinds`,
 				issues,
 			);
+			for (const [category, definitions] of [
+				["entityKinds", ontology.entityKinds],
+				["occurrenceKinds", ontology.occurrenceKinds],
+				["relationKinds", ontology.relationKinds],
+				["valueSlots", ontology.valueSlots],
+				["predicateKinds", ontology.predicateKinds],
+			] as const) {
+				for (const [index, definition] of definitions.entries()) {
+					validateAttributeDefinitions(
+						definition.attributes,
+						`${path}.${category}[${index}].attributes`,
+						issues,
+					);
+				}
+			}
 			for (const boundaryKind of ontology.boundaryKinds) {
 				if (this.#boundaryKinds.has(boundaryKind)) {
 					pushIssue(
@@ -797,6 +812,42 @@ function validateAttributes(
 				"INVALID_ATTRIBUTE_TYPE",
 				`${path}.attributes.${name}`,
 				`Attribute ${name} must be ${definition.type}`,
+			);
+		}
+	}
+}
+
+function validateAttributeDefinitions(
+	attributes: readonly OntologyAttribute[],
+	path: string,
+	issues: SemanticGraphContractIssue[],
+): void {
+	const names = new Set<string>();
+	for (const [index, attribute] of attributes.entries()) {
+		const attributePath = `${path}[${index}]`;
+		if (names.has(attribute.name)) {
+			pushIssue(
+				issues,
+				"DUPLICATE_ONTOLOGY_ATTRIBUTE",
+				`${attributePath}.name`,
+				`Attribute ${attribute.name} is declared more than once`,
+			);
+		}
+		names.add(attribute.name);
+		if (attribute.merge === "boolean-or" && attribute.type !== "boolean") {
+			pushIssue(
+				issues,
+				"INVALID_ATTRIBUTE_MERGE_POLICY",
+				`${attributePath}.merge`,
+				"boolean-or requires a boolean attribute",
+			);
+		}
+		if (attribute.merge === "array-union" && attribute.type !== "array") {
+			pushIssue(
+				issues,
+				"INVALID_ATTRIBUTE_MERGE_POLICY",
+				`${attributePath}.merge`,
+				"array-union requires an array attribute",
 			);
 		}
 	}

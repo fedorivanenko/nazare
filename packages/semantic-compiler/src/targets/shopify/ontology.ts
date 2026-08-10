@@ -41,7 +41,12 @@ export const shopifyOntology = {
 			],
 			attributes: [
 				{ name: "path", type: "string", required: true },
-				{ name: "declaration", type: "string", required: true },
+				{
+					name: "defined",
+					type: "boolean",
+					required: true,
+					merge: "boolean-or",
+				},
 			],
 		},
 	],
@@ -218,6 +223,7 @@ export const shopifyOntology = {
 		"unsupported",
 		"budget",
 		"ambiguous-join",
+		"unresolved-reference",
 	],
 	coverageFamilies: [
 		{

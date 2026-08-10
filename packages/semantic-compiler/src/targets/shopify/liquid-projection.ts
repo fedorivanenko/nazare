@@ -673,7 +673,7 @@ export function projectLiquidToShopify({
 			path: `snippets/${handle}.liquid`,
 			attributes: {
 				path: `snippets/${handle}.liquid`,
-				declaration,
+				defined: declaration === "defined",
 			},
 			assertion: assertion(
 				[evidence],

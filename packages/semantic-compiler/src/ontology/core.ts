@@ -47,7 +47,8 @@ export type BoundaryKind =
 	| "generated-source"
 	| "unsupported"
 	| "budget"
-	| "ambiguous-join";
+	| "ambiguous-join"
+	| "unresolved-reference";
 
 export type CoverageStatus =
 	| "complete"

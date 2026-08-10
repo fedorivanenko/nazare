@@ -68,13 +68,13 @@ test("Shopify Liquid projection validates the canonical product-card contributio
 	assert.equal(
 		snippets.find(
 			({ identity }) => identity.components.handle === "product-card",
-		).attributes.declaration,
-		"defined",
+		).attributes.defined,
+		true,
 	);
 	assert.equal(
 		snippets.find(({ identity }) => identity.components.handle === "price")
-			.attributes.declaration,
-		"referenced",
+			.attributes.defined,
+		false,
 	);
 
 	const render = recordsOf(contribution.occurrences, "shopify.render-site")[0];

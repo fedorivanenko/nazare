@@ -1,4 +1,5 @@
 export * from "./compiler/semantic-contribution.js";
+export * from "./compiler/semantic-graph-assembler.js";
 export * from "./compiler/semantic-graph-contract.js";
 export * from "./frontends/frontend.js";
 export * from "./frontends/liquid/facts.js";
@@ -13,3 +14,4 @@ export * from "./semantic/evidence.js";
 export * from "./semantic/record.js";
 export { projectLiquidToShopify } from "./targets/shopify/liquid-projection.js";
 export { shopifyOntology } from "./targets/shopify/ontology.js";
+export { shopifyRepositoryResolutionPass } from "./targets/shopify/repository-resolution.js";

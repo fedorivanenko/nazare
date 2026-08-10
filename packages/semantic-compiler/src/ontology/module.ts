@@ -66,6 +66,8 @@ export type OntologyAttribute = {
 	name: string;
 	type: OntologyAttributeType;
 	required: boolean;
+	/** Deterministic policy for duplicate semantic identities during assembly. */
+	merge?: "require-equal" | "boolean-or" | "array-union";
 };
 
 export type OntologyAttributeType =
