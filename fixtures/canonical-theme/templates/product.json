@@ -7,7 +7,10 @@
         "gallery": { "type": "image" }
       },
       "block_order": ["title", "gallery"],
-      "settings": { "show_recommendations": true }
+      "settings": {
+        "show_recommendations": true,
+        "subtitle": "{{ product.metafields.custom.subtitle.value }}"
+      }
     }
   },
   "order": ["main"]

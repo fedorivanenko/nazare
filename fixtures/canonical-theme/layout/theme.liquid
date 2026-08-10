@@ -3,7 +3,9 @@
   <head>
     <title>{{ page_title }}</title>
     {{ 'theme.css' | asset_url | stylesheet_tag }}
-    {{ 'theme.js' | asset_url | script_tag }}
+    {% if settings.enable_interactions %}
+      {{ 'theme.js' | asset_url | script_tag }}
+    {% endif %}
   </head>
   <body>
     {% sections 'header-group' %}

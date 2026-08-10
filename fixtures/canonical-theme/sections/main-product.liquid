@@ -1,6 +1,7 @@
 <section>
   {% render 'product-gallery', product: product %}
   <h1>{{ product.title }}</h1>
+  <p>{{ section.settings.subtitle }}</p>
   {% render 'price', product: product %}
   <form action="{{ routes.cart_add_url }}" method="post">
     <select name="id">
@@ -18,7 +19,10 @@
 {% schema %}
 {
   "name": "Main product",
-  "settings": [{ "id": "show_recommendations", "type": "checkbox", "label": "Recommendations" }],
+  "settings": [
+    { "id": "show_recommendations", "type": "checkbox", "label": "Recommendations" },
+    { "id": "subtitle", "type": "text", "label": "Subtitle" }
+  ],
   "blocks": [{ "type": "text", "name": "Text" }, { "type": "image", "name": "Image" }]
 }
 {% endschema %}
