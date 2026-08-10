@@ -10,6 +10,7 @@ import {
 	SemanticInspect,
 	SemanticInspectInputError,
 	SemanticQueryIndex,
+	shopifyLiquidValueFlowPass,
 	shopifyOntology,
 	shopifyRepositoryResolutionPass,
 } from "../dist/index.js";
@@ -46,7 +47,7 @@ function inspectFixture(status = "complete", custom = []) {
 	];
 	const snapshot = new SemanticGraphAssembler(
 		new SemanticGraphContract([shopifyOntology]),
-		[shopifyRepositoryResolutionPass],
+		[shopifyLiquidValueFlowPass, shopifyRepositoryResolutionPass],
 	).assemble({
 		revision: {
 			id: `revision:inspect:${status}`,
@@ -137,7 +138,18 @@ test("Inspect selects exact render and expression occurrences by source offset",
 	assert.equal(render.answer.summary.target, "price");
 	assert.equal(render.answer.summary.resolution, "repository-exact");
 	assert.deepEqual(render.answer.summary.arguments, [
-		{ kind: "named", name: "product", expression: "product" },
+		{
+			kind: "named",
+			name: "product",
+			expression: "product",
+			availability: "runtime-dependent",
+			value: {
+				representation: "expression",
+				authority: "authored-source",
+				availability: "runtime-dependent",
+				expression: "product",
+			},
+		},
 	]);
 	assert.equal(
 		render.answer.groups[0].items[0].evidence.some(({ excerpt }) =>

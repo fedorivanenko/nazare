@@ -197,7 +197,7 @@ export function projectLiquidToShopify({
 						"shopify.binding-value",
 						fact.value.evidence,
 						fact.value.text,
-						false,
+						true,
 					);
 				}
 				break;
@@ -208,12 +208,33 @@ export function projectLiquidToShopify({
 					input: fact.input.text,
 					arguments: fact.arguments.map(({ text }) => text),
 				});
-				addExpressionValue(
+				const inputValueId = addExpressionValue(
 					occurrence.id,
 					"shopify.filter-input",
 					fact.input.evidence,
 					fact.input.text,
-					false,
+					true,
+				);
+				const argumentValueIds = fact.arguments.map((argument, position) =>
+					addExpressionValue(
+						occurrence.id,
+						"shopify.filter-argument",
+						argument.evidence,
+						argument.text,
+						true,
+						String(position),
+						{ position },
+					),
+				);
+				addDerivedValue(
+					occurrence.id,
+					"shopify.filter-result",
+					fact.evidence,
+					fact.name,
+					fact.evidence.path === fact.input.evidence.path
+						? source(fact.evidence)
+						: fact.input.text,
+					[inputValueId, ...argumentValueIds],
 				);
 				break;
 			}
@@ -273,7 +294,11 @@ export function projectLiquidToShopify({
 				const argument = fact.argument;
 				const occurrence = addOccurrence(fact, "shopify.render-argument-site", {
 					argumentKind: argument.kind,
-					...(argument.kind === "named" ? { name: argument.name } : {}),
+					...(argument.kind === "named"
+						? { name: argument.name }
+						: argument.alias
+							? { name: argument.alias.name }
+							: {}),
 					expression: argument.value.text,
 				});
 				addExpressionValue(
@@ -281,7 +306,7 @@ export function projectLiquidToShopify({
 					"shopify.render-argument-value",
 					argument.value.evidence,
 					argument.value.text,
-					false,
+					true,
 				);
 				break;
 			}
@@ -608,6 +633,7 @@ export function projectLiquidToShopify({
 		expression: string,
 		runtime: boolean,
 		discriminator = "",
+		attributes: SemanticValue["attributes"] = {},
 	): string {
 		const valueId = id(
 			"value",
@@ -617,18 +643,72 @@ export function projectLiquidToShopify({
 			evidence.range.end,
 			discriminator,
 		);
+		const literal = liquidLiteral(expression);
+		const requiresRuntime = runtime && !literal.found;
 		values.set(valueId, {
 			id: valueId,
 			ownerId,
 			slot,
-			representation: "expression",
+			representation: literal.found ? "literal" : "expression",
 			authority: "authored-source",
-			expression,
+			...(literal.found ? { resolved: literal.value } : { expression }),
 			sourceValueIds: [],
-			attributes: {},
-			assertion: runtime
+			attributes,
+			assertion: requiresRuntime
 				? runtimeAssertion([evidence], [ownerId])
 				: assertion([evidence], [ownerId], "proven", "syntax", "static"),
+		});
+		if (requiresRuntime) addRuntimeSubject(valueId, evidence);
+		return valueId;
+	}
+
+	function addDerivedValue(
+		ownerId: string,
+		slot: SemanticValue["slot"],
+		evidence: SourceAnchor,
+		operation: string,
+		expression: string,
+		sourceValueIds: readonly string[],
+	): string {
+		const valueId = id(
+			"value",
+			slot,
+			ownerId,
+			evidence.range.start,
+			evidence.range.end,
+		);
+		const sourceValues = sourceValueIds.flatMap((sourceId) => {
+			const value = values.get(sourceId);
+			return value ? [value] : [];
+		});
+		const runtime = sourceValues.some(
+			({ assertion: sourceAssertion }) =>
+				sourceAssertion.availability !== "static",
+		);
+		const boundaryIds = [
+			...new Set(
+				sourceValues.flatMap(
+					({ assertion: sourceAssertion }) => sourceAssertion.boundaryIds,
+				),
+			),
+		].sort();
+		values.set(valueId, {
+			id: valueId,
+			ownerId,
+			slot,
+			representation: "derived",
+			authority: "authored-source",
+			expression,
+			sourceValueIds,
+			attributes: { filter: operation },
+			assertion: assertion(
+				[evidence],
+				[ownerId, ...sourceValueIds],
+				"inferred",
+				"bounded-analysis",
+				runtime ? "runtime-dependent" : "static",
+				boundaryIds,
+			),
 		});
 		if (runtime) addRuntimeSubject(valueId, evidence);
 		return valueId;
@@ -852,6 +932,33 @@ function snippetHandle(path: string): string | undefined {
 
 function normalizeSnippetHandle(handle: string): string {
 	return handle.replace(/^snippets\//u, "").replace(/\.liquid$/u, "");
+}
+
+function liquidLiteral(
+	expression: string,
+): { found: true; value: JsonValue } | { found: false } {
+	const text = expression.trim();
+	if (
+		(text.startsWith("'") && text.endsWith("'")) ||
+		(text.startsWith('"') && text.endsWith('"'))
+	) {
+		const quote = text.slice(0, 1);
+		return {
+			found: true,
+			value: text
+				.slice(1, -1)
+				.replaceAll(`\\${quote}`, quote)
+				.replaceAll("\\\\", "\\"),
+		};
+	}
+	if (/^-?(?:\d+\.?\d*|\.\d+)$/u.test(text)) {
+		return { found: true, value: Number(text) };
+	}
+	if (text === "true" || text === "false") {
+		return { found: true, value: text === "true" };
+	}
+	if (text === "nil" || text === "null") return { found: true, value: null };
+	return { found: false };
 }
 
 function sourceRole(path: string): string {

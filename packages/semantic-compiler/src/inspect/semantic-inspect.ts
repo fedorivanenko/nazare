@@ -6,6 +6,7 @@ import type {
 	SemanticOccurrence,
 	SemanticPredicate,
 	SemanticRelation,
+	SemanticValue,
 } from "../outputs/semantic-graph-snapshot.js";
 import type {
 	SemanticIndexedRecord,
@@ -22,6 +23,7 @@ import type {
 	InspectItem,
 	InspectItemAssertion,
 	InspectLocation,
+	InspectValue,
 	SemanticInspectRequest,
 	SemanticInspectResponse,
 	SemanticInspectSubject,
@@ -34,6 +36,8 @@ const MAX_LIMIT = 50;
 const MAX_EVIDENCE_PER_ITEM = 3;
 const MAX_EXCERPT_LENGTH = 200;
 const MAX_COMPLETENESS_REASONS = 5;
+const MAX_VALUE_FLOW_DEPTH = 4;
+const MAX_VALUE_FLOW_SOURCES = 8;
 
 type CoverageRequirement = {
 	family: string;
@@ -372,6 +376,7 @@ export class SemanticInspect {
 					facet === "dependencies" && sourceFile
 						? [
 								{ family: "shopify.renders", path: sourceFile.path },
+								{ family: "shopify.value-flow", path: sourceFile.path },
 								...requirements,
 							]
 						: [...requirements, ...this.#globalRenderRequirements()],
@@ -400,7 +405,10 @@ export class SemanticInspect {
 			.filter((record) => record.kind === kind);
 		const family =
 			kind === "shopify.render-site" ? "shopify.renders" : "shopify.reads";
-		const requirements = [{ family, path: subject.path }];
+		const requirements = [
+			{ family, path: subject.path },
+			{ family: "shopify.value-flow", path: subject.path },
+		];
 		if (matches.length === 0)
 			return this.#missing(subject, requirements, context);
 		if (matches.length > 1) {
@@ -589,6 +597,11 @@ export class SemanticInspect {
 				segments: Array.isArray(occurrence.attributes.segments)
 					? occurrence.attributes.segments
 					: [],
+				...(readValue && "slot" in readValue
+					? {
+							value: this.#projectValue(readValue as SemanticValue, context),
+						}
+					: {}),
 				...this.#itemAssertion(publicAssertion, context),
 			};
 		}
@@ -616,7 +629,16 @@ export class SemanticInspect {
 			const argument = this.query.record(argumentRelation.to);
 			if (!argument || this.query.category(argument.id) !== "occurrence")
 				return [];
-			const attributes = (argument as SemanticOccurrence).attributes;
+			const semanticArgument = argument as SemanticOccurrence;
+			const attributes = semanticArgument.attributes;
+			const argumentValue = this.query
+				.ownedBy(semanticArgument.id)
+				.find(
+					(record) =>
+						this.query.category(record.id) === "value" &&
+						"slot" in record &&
+						record.slot === "shopify.render-argument-value",
+				);
 			return [
 				{
 					kind: String(attributes.argumentKind),
@@ -624,6 +646,18 @@ export class SemanticInspect {
 						? { name: attributes.name }
 						: {}),
 					expression: String(attributes.expression),
+					availability:
+						argumentValue && "assertion" in argumentValue
+							? argumentValue.assertion.availability
+							: semanticArgument.assertion.availability,
+					...(argumentValue && "slot" in argumentValue
+						? {
+								value: this.#projectValue(
+									argumentValue as SemanticValue,
+									context,
+								),
+							}
+						: {}),
 				},
 			];
 		});
@@ -674,6 +708,63 @@ export class SemanticInspect {
 			...(args.length > 0 ? { arguments: args } : {}),
 			...(guards.length > 0 ? { guards } : {}),
 			...this.#itemAssertion(publicAssertion, context),
+		};
+	}
+
+	#projectValue(
+		value: SemanticValue,
+		context: ProjectionContext,
+	): InspectValue {
+		const derivedFrom: NonNullable<InspectValue["derivedFrom"]>[number][] = [];
+		const queue = value.sourceValueIds.map((id) => ({ id, depth: 1 }));
+		const seen = new Set<string>();
+		let lineageTruncated = false;
+		while (queue.length > 0 && derivedFrom.length < MAX_VALUE_FLOW_SOURCES) {
+			const current = queue.shift();
+			if (!current || seen.has(current.id)) continue;
+			seen.add(current.id);
+			const source = this.query.record(current.id);
+			if (
+				!source ||
+				this.query.category(source.id) !== "value" ||
+				!("slot" in source)
+			)
+				continue;
+			const semanticValue = source as SemanticValue;
+			const evidence = this.#evidence(
+				semanticValue.assertion.evidence,
+				context,
+			);
+			derivedFrom.push({
+				role: publicValueRole(semanticValue.slot),
+				...(semanticValue.expression !== undefined
+					? { expression: semanticValue.expression }
+					: {}),
+				...(semanticValue.resolved !== undefined
+					? { resolved: semanticValue.resolved }
+					: {}),
+				availability: semanticValue.assertion.availability,
+				...(evidence.length > 0 ? { evidence } : {}),
+			});
+			if (current.depth < MAX_VALUE_FLOW_DEPTH) {
+				for (const id of semanticValue.sourceValueIds) {
+					queue.push({ id, depth: current.depth + 1 });
+				}
+			} else if (semanticValue.sourceValueIds.length > 0) {
+				lineageTruncated = true;
+			}
+		}
+		if (queue.length > 0) lineageTruncated = true;
+		return {
+			representation: value.representation,
+			authority: value.authority,
+			availability: value.assertion.availability,
+			...(value.expression !== undefined
+				? { expression: value.expression }
+				: {}),
+			...(value.resolved !== undefined ? { resolved: value.resolved } : {}),
+			...(lineageTruncated ? { lineageTruncated: true as const } : {}),
+			...(derivedFrom.length > 0 ? { derivedFrom } : {}),
 		};
 	}
 
@@ -731,6 +822,7 @@ export class SemanticInspect {
 			{ family: "shopify.reads", path },
 			{ family: "shopify.bindings", path },
 			{ family: "shopify.filters", path },
+			{ family: "shopify.value-flow", path },
 			{ family: "shopify.conditions", path },
 			{ family: "shopify.renders", path },
 			{ family: "shopify.schema-regions", path },
@@ -748,12 +840,19 @@ export class SemanticInspect {
 	#globalRenderRequirements(): CoverageRequirement[] {
 		const paths = this.query
 			.findByKind("shopify.source-file")
-			.filter((record) => this.query.category(record.id) === "entity")
+			.filter(
+				(record) =>
+					this.query.category(record.id) === "entity" &&
+					(record as SemanticEntity).attributes.language === "liquid",
+			)
 			.map((record) => (record as SemanticEntity).path)
 			.filter((path): path is string => Boolean(path));
 		return [
 			{ family: "shopify.source-files", globalKind: "shopify.source-file" },
-			...paths.map((path) => ({ family: "shopify.renders", path })),
+			...paths.flatMap((path) => [
+				{ family: "shopify.renders", path },
+				{ family: "shopify.value-flow", path },
+			]),
 		];
 	}
 
@@ -771,16 +870,24 @@ export class SemanticInspect {
 		}
 		const paths = this.query
 			.findByKind("shopify.source-file")
-			.filter((record) => this.query.category(record.id) === "entity")
+			.filter(
+				(record) =>
+					this.query.category(record.id) === "entity" &&
+					(record as SemanticEntity).attributes.language === "liquid",
+			)
 			.map((record) => (record as SemanticEntity).path)
 			.filter((path): path is string => Boolean(path));
 		if (kinds.includes("render")) {
-			for (const path of paths)
+			for (const path of paths) {
 				requirements.push({ family: "shopify.renders", path });
+				requirements.push({ family: "shopify.value-flow", path });
+			}
 		}
 		if (kinds.includes("expression")) {
-			for (const path of paths)
+			for (const path of paths) {
 				requirements.push({ family: "shopify.reads", path });
+				requirements.push({ family: "shopify.value-flow", path });
+			}
 		}
 		return requirements;
 	}
@@ -1019,6 +1126,20 @@ function publicOccurrenceKind(kind: string): string {
 		"shopify.locale-reference-site": "localeReference",
 	};
 	return names[kind] ?? "other";
+}
+
+function publicValueRole(slot: string): string {
+	const names: Readonly<Record<string, string>> = {
+		"shopify.read-value": "read",
+		"shopify.binding-value": "binding",
+		"shopify.filter-input": "filterInput",
+		"shopify.filter-argument": "filterArgument",
+		"shopify.filter-result": "filterResult",
+		"shopify.render-target": "renderTarget",
+		"shopify.render-argument-value": "renderArgument",
+		"shopify.condition-operand": "conditionOperand",
+	};
+	return names[slot] ?? "source";
 }
 
 function publicCoverageFamily(family: string): string {

@@ -34,7 +34,7 @@ function snapshot(contribution) {
 			repositoryFingerprint: "repository:test",
 			externalInputs: {},
 		},
-		ontologies: [{ namespace: "shopify", version: 1 }],
+		ontologies: [{ namespace: "shopify", version: 2 }],
 		entities: contribution.entities,
 		occurrences: contribution.occurrences,
 		relations: contribution.relations,

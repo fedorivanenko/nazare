@@ -109,6 +109,8 @@ export type InspectRenderItem = InspectItemAssertion & {
 		kind: string;
 		name?: string;
 		expression: string;
+		availability: InspectItemAssertion["availability"];
+		value?: InspectValue;
 	}[];
 	guards?: readonly {
 		operator: string;
@@ -125,6 +127,33 @@ export type InspectExpressionItem = InspectItemAssertion & {
 	context: string;
 	root: string;
 	segments: readonly JsonValue[];
+	value?: InspectValue;
+};
+
+export type InspectValue = {
+	representation:
+		| "literal"
+		| "expression"
+		| "derived"
+		| "reference"
+		| "unavailable";
+	authority:
+		| "authored-source"
+		| "merchant-owned"
+		| "generated-output"
+		| "external-snapshot"
+		| "runtime";
+	availability: InspectItemAssertion["availability"];
+	expression?: string;
+	resolved?: JsonValue;
+	lineageTruncated?: true;
+	derivedFrom?: readonly {
+		role: string;
+		expression?: string;
+		resolved?: JsonValue;
+		availability: InspectItemAssertion["availability"];
+		evidence?: readonly InspectLocation[];
+	}[];
 };
 
 export type InspectOccurrenceItem = InspectItemAssertion & {

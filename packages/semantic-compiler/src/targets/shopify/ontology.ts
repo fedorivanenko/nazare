@@ -12,7 +12,7 @@ const expressionOwners = [
 
 export const shopifyOntology = {
 	namespace: "shopify",
-	version: 1,
+	version: 2,
 	entityKinds: [
 		{
 			kind: "shopify.source-file",
@@ -175,6 +175,16 @@ export const shopifyOntology = {
 			attributes: [],
 		},
 		{
+			kind: "shopify.filter-argument",
+			ownerKinds: ["shopify.filter-site"],
+			attributes: [{ name: "position", type: "number", required: true }],
+		},
+		{
+			kind: "shopify.filter-result",
+			ownerKinds: ["shopify.filter-site"],
+			attributes: [{ name: "filter", type: "string", required: true }],
+		},
+		{
 			kind: "shopify.render-target",
 			ownerKinds: ["shopify.render-site"],
 			attributes: [],
@@ -237,6 +247,10 @@ export const shopifyOntology = {
 		{ kind: "shopify.reads", description: "Projected Liquid reads" },
 		{ kind: "shopify.bindings", description: "Projected Liquid bindings" },
 		{ kind: "shopify.filters", description: "Projected Liquid filters" },
+		{
+			kind: "shopify.value-flow",
+			description: "Bounded Liquid value provenance",
+		},
 		{ kind: "shopify.conditions", description: "Projected Liquid conditions" },
 		{ kind: "shopify.renders", description: "Projected Liquid renders" },
 		{ kind: "shopify.schema-regions", description: "Projected schema regions" },

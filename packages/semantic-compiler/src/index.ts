@@ -21,6 +21,7 @@ export * from "./semantic/evidence.js";
 export * from "./semantic/record.js";
 export { createShopifySemanticCompiler } from "./targets/shopify/compiler.js";
 export { projectLiquidToShopify } from "./targets/shopify/liquid-projection.js";
+export * from "./targets/shopify/liquid-value-flow.js";
 export { shopifyOntology } from "./targets/shopify/ontology.js";
 export { shopifyRepositoryResolutionPass } from "./targets/shopify/repository-resolution.js";
 export { projectSourceToShopify } from "./targets/shopify/source-projection.js";

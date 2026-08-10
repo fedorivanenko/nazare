@@ -13,6 +13,7 @@ const SOURCE_SEMANTIC_FAMILIES = [
 	"shopify.reads",
 	"shopify.bindings",
 	"shopify.filters",
+	"shopify.value-flow",
 	"shopify.conditions",
 	"shopify.renders",
 	"shopify.schema-regions",

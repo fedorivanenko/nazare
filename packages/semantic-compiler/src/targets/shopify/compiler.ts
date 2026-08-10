@@ -8,13 +8,14 @@ import { liquidFrontend } from "../../frontends/liquid/frontend.js";
 import type { LiquidDocument } from "../../parsers/liquid/parser.js";
 import { createDefaultParserProviders } from "../../parsers/providers.js";
 import { projectLiquidToShopify } from "./liquid-projection.js";
+import { shopifyLiquidValueFlowPass } from "./liquid-value-flow.js";
 import { shopifyOntology } from "./ontology.js";
 import { shopifyRepositoryResolutionPass } from "./repository-resolution.js";
 import { projectSourceToShopify } from "./source-projection.js";
 
 const shopifyLiquidPipeline: SemanticSourcePipeline = {
 	id: "shopify-liquid",
-	version: 1,
+	version: 2,
 	accepts: (document) => document.language === "liquid",
 	project: (document, limits) => {
 		const liquidDocument = document as LiquidDocument;
@@ -33,7 +34,7 @@ export function createShopifySemanticCompiler(): SemanticCompiler {
 	return new SemanticCompiler({
 		assembler: new SemanticGraphAssembler(
 			new SemanticGraphContract([shopifyOntology]),
-			[shopifyRepositoryResolutionPass],
+			[shopifyLiquidValueFlowPass, shopifyRepositoryResolutionPass],
 		),
 		parserProviders: createDefaultParserProviders(),
 		pipelines: [shopifyLiquidPipeline],
