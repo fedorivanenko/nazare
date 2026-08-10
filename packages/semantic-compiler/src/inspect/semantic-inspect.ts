@@ -551,13 +551,21 @@ export class SemanticInspect {
 		assertion = entity.assertion,
 		resolution?: "repository-exact" | "literal-convention" | "not-found",
 	): InspectItem {
+		const path = String(entity.attributes.path);
+		const publicAssertion = {
+			...assertion,
+			evidence: [
+				...assertion.evidence.filter((anchor) => anchor.path === path),
+				...assertion.evidence.filter((anchor) => anchor.path !== path),
+			],
+		};
 		return {
 			type: "snippet",
 			handle: String(entity.identity.components.handle),
-			path: String(entity.attributes.path),
+			path,
 			defined: entity.attributes.defined === true,
 			...(resolution ? { resolution } : {}),
-			...this.#itemAssertion(assertion, context),
+			...this.#itemAssertion(publicAssertion, context),
 		};
 	}
 
