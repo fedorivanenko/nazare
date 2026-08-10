@@ -1,5 +1,8 @@
 export * from "./compiler/semantic-graph-contract.js";
 export * from "./frontends/frontend.js";
+export * from "./frontends/liquid/facts.js";
+export { liquidMechanicalOntology } from "./frontends/liquid/ontology.js";
+export * from "./frontends/mechanical-ontology.js";
 export * from "./ontology/core.js";
 export * from "./ontology/module.js";
 export * from "./outputs/semantic-graph-snapshot.js";

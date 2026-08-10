@@ -8,6 +8,7 @@ test("frontend contract preserves typed source-local extraction", () => {
 		version: 1,
 		languages: ["test"],
 		ontology: { namespace: "test", version: 1 },
+		factKinds: [],
 		extract({ document }) {
 			return {
 				path: document.path,

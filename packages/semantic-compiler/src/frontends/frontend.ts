@@ -69,6 +69,8 @@ export interface Frontend<
 	readonly version: number;
 	readonly languages: readonly string[];
 	readonly ontology: OntologyReference;
+	/** Subset of fact kinds registered by `ontology`. */
+	readonly factKinds: readonly Fact["kind"][];
 
 	extract(input: FrontendInput<Document>): FrontendResult<Fact>;
 }

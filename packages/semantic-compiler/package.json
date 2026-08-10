@@ -22,7 +22,7 @@
 		"build": "tsc -p tsconfig.json && mkdir -p dist/parsers/liquid && cp src/parsers/liquid/grammar.cjs dist/parsers/liquid/grammar.cjs",
 		"install": "node-gyp-build",
 		"test": "pnpm run build && node --test tests/*.test.mjs",
-		"typecheck": "tsc -p tsconfig.json --noEmit"
+		"typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.type-tests.json"
 	},
 	"dependencies": {
 		"acorn": "^8.15.0",
