@@ -22,7 +22,10 @@ export const shopifyRepositoryResolutionPass: SemanticAssemblyPass = {
 			id: "coverage:shopify.snippets:repository",
 			family: "shopify.snippets",
 			scope: {
-				...(repositoryPaths.length > 0 ? { paths: repositoryPaths } : {}),
+				...(context.repositoryScope.status === "partial" &&
+				repositoryPaths.length > 0
+					? { paths: repositoryPaths }
+					: {}),
 				kinds: ["shopify.snippet"],
 			},
 			status:
