@@ -18,21 +18,28 @@ export const shopifyRepositoryResolutionPass: SemanticAssemblyPass = {
 			context.repositoryScope.status === "partial"
 				? addPartialScopeBoundary(draft)
 				: undefined;
-		draft.coverage.push({
-			id: "coverage:shopify.snippets:repository",
-			family: "shopify.snippets",
-			scope: {
-				...(context.repositoryScope.status === "partial" &&
-				repositoryPaths.length > 0
-					? { paths: repositoryPaths }
-					: {}),
-				kinds: ["shopify.snippet"],
-			},
-			status:
-				context.repositoryScope.status === "complete" ? "complete" : "partial",
-			extractor: { id: "shopify-repository-resolution", version: 1 },
-			boundaryIds: partialScopeBoundaryId ? [partialScopeBoundaryId] : [],
-		});
+		for (const [family, kind] of [
+			["shopify.source-files", "shopify.source-file"],
+			["shopify.snippets", "shopify.snippet"],
+		] as const) {
+			draft.coverage.push({
+				id: `coverage:${family}:repository`,
+				family,
+				scope: {
+					...(context.repositoryScope.status === "partial" &&
+					repositoryPaths.length > 0
+						? { paths: repositoryPaths }
+						: {}),
+					kinds: [kind],
+				},
+				status:
+					context.repositoryScope.status === "complete"
+						? "complete"
+						: "partial",
+				extractor: { id: "shopify-repository-resolution", version: 1 },
+				boundaryIds: partialScopeBoundaryId ? [partialScopeBoundaryId] : [],
+			});
+		}
 		const snippets = new Map(
 			draft.entities
 				.filter((entity) => entity.kind === "shopify.snippet")
@@ -73,7 +80,7 @@ export const shopifyRepositoryResolutionPass: SemanticAssemblyPass = {
 };
 
 function addPartialScopeBoundary(draft: SemanticAssemblyDraft): string {
-	const boundaryId = "boundary:shopify.snippets:partial-repository-scope";
+	const boundaryId = "boundary:shopify:partial-repository-scope";
 	const subjects = draft.entities.filter(
 		({ kind }) => kind === "shopify.source-file" || kind === "shopify.snippet",
 	);
@@ -81,7 +88,7 @@ function addPartialScopeBoundary(draft: SemanticAssemblyDraft): string {
 		id: boundaryId,
 		kind: "external-data",
 		message:
-			"Snippet resolution is incomplete because only a partial repository scope was supplied",
+			"Repository discovery is incomplete because only a partial contribution scope was supplied",
 		subjectIds: subjects.map(({ id }) => id).sort(),
 		evidence: mergeEvidence(
 			[],
