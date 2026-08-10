@@ -97,8 +97,8 @@ test("session recompiles changed sources and reuses unchanged contributions", ()
 	});
 
 	const oldCursor = session.snapshot().inspect.inspect({
-		query: "product",
-		kinds: ["expression"],
+		query: "liquid",
+		kinds: ["file"],
 		evidence: "none",
 		limit: 1,
 	}).page.nextCursor;
@@ -116,8 +116,8 @@ test("session recompiles changed sources and reuses unchanged contributions", ()
 	assert.throws(
 		() =>
 			updated.inspect.inspect({
-				query: "product",
-				kinds: ["expression"],
+				query: "liquid",
+				kinds: ["file"],
 				evidence: "none",
 				limit: 1,
 				cursor: oldCursor,

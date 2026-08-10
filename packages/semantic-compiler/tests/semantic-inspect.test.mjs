@@ -92,6 +92,44 @@ function assertNoInternalIds(value) {
 	visit(value.candidates);
 }
 
+test("Inspect resolves exact symbols with optional kind", () => {
+	const { inspect } = inspectFixture();
+	const dependents = inspect.inspect({
+		subject: { symbol: "price" },
+		facet: "dependents",
+		evidence: "location",
+	});
+	assert.equal(dependents.status, "found");
+	assert.deepEqual(dependents.subject, { symbol: "price", kind: "snippet" });
+	assert.equal(dependents.page.total, 1);
+	assert.equal(dependents.answer.groups[0].items[0].type, "render");
+	assertNoInternalIds(dependents);
+
+	const alias = inspect.inspect({
+		subject: { symbol: "snippets/price.liquid" },
+		evidence: "none",
+	});
+	assert.equal(alias.status, "found");
+	assert.deepEqual(alias.subject, { symbol: "price", kind: "snippet" });
+
+	const file = inspect.inspect({
+		subject: { symbol: "snippets/price.liquid", kind: "file" },
+		evidence: "none",
+	});
+	assert.equal(file.status, "found");
+	assert.deepEqual(file.subject, {
+		symbol: "snippets/price.liquid",
+		kind: "file",
+	});
+	assert.equal(file.answer.summary.path, "snippets/price.liquid");
+
+	const missing = inspect.inspect({
+		subject: { symbol: "absent", kind: "snippet" },
+	});
+	assert.equal(missing.status, "not-found");
+	assert.equal(missing.facet, "summary");
+});
+
 test("Inspect returns compact snippet architecture without graph IDs", () => {
 	const { inspect } = inspectFixture();
 	const summary = inspect.inspect({
@@ -248,6 +286,25 @@ test("Inspect exposes dynamic render targets as runtime-dependent, never missing
 	);
 });
 
+test("Inspect discovery returns symbols, not matching occurrences", () => {
+	const { inspect } = inspectFixture();
+	const discovery = inspect.inspect({
+		query: "price",
+		evidence: "none",
+		limit: 10,
+	});
+	assert.equal(discovery.status, "found");
+	assert.equal(discovery.page.total, 1);
+	assert.deepEqual(
+		discovery.answer.groups.map(({ kind, total }) => ({ kind, total })),
+		[{ kind: "snippet", total: 1 }],
+	);
+	assert.equal(
+		discovery.answer.groups.some(({ kind }) => kind === "render"),
+		false,
+	);
+});
+
 test("Inspect discovery ranks semantic matches and uses revision-bound cursors", () => {
 	const { inspect } = inspectFixture();
 	const normalized = inspect.inspect({
@@ -260,7 +317,7 @@ test("Inspect discovery ranks semantic matches and uses revision-bound cursors",
 	assert.equal(normalizedItem.retrieval.match, "normalized");
 	assert.equal(normalizedItem.certainty, "inferred");
 	const first = inspect.inspect({
-		query: "product",
+		query: "liquid",
 		limit: 1,
 		evidence: "none",
 	});
@@ -269,7 +326,7 @@ test("Inspect discovery ranks semantic matches and uses revision-bound cursors",
 	assert.equal(typeof first.page.nextCursor, "string");
 	assertNoInternalIds(first);
 	const second = inspect.inspect({
-		query: "product",
+		query: "liquid",
 		limit: 1,
 		evidence: "none",
 		cursor: first.page.nextCursor,
@@ -299,6 +356,17 @@ test("Inspect rejects malformed or graph-oriented public inputs", () => {
 			inspect.inspect({
 				subject: { type: "render", path: "snippets/x.liquid", offset: -1 },
 			}),
+		InvalidSemanticInspectRequestError,
+	);
+	assert.throws(
+		() =>
+			inspect.inspect({
+				subject: { symbol: "price", type: "snippet" },
+			}),
+		InvalidSemanticInspectRequestError,
+	);
+	assert.throws(
+		() => inspect.inspect({ query: "price", kinds: ["render"] }),
 		InvalidSemanticInspectRequestError,
 	);
 });

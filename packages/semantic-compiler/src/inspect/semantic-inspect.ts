@@ -23,6 +23,7 @@ import type {
 	InspectItem,
 	InspectItemAssertion,
 	InspectLocation,
+	InspectSymbolKind,
 	InspectValue,
 	SemanticInspectRequest,
 	SemanticInspectResponse,
@@ -112,7 +113,7 @@ export class SemanticInspect {
 	): SemanticInspectResponse {
 		if (!request.query.trim())
 			throw new SemanticInspectInputError("query must be non-empty");
-		const kinds = request.kinds ?? ["file", "snippet", "render", "expression"];
+		const kinds = request.kinds ?? ["snippet"];
 		const semanticKinds = kinds.flatMap((kind) =>
 			publicKindToSemanticKinds(kind),
 		);
@@ -169,6 +170,16 @@ export class SemanticInspect {
 		limit: number,
 		cursorShape: unknown,
 	): SemanticInspectResponse {
+		if ("symbol" in subject) {
+			return this.#inspectSymbol(
+				subject,
+				facet,
+				context,
+				offset,
+				limit,
+				cursorShape,
+			);
+		}
 		switch (subject.type) {
 			case "file":
 				return this.#inspectFile(
@@ -203,6 +214,112 @@ export class SemanticInspect {
 					context,
 				);
 		}
+	}
+
+	#inspectSymbol(
+		subject: Extract<SemanticInspectSubject, { symbol: string }>,
+		facet: InspectFacet,
+		context: ProjectionContext,
+		offset: number,
+		limit: number,
+		cursorShape: unknown,
+	): SemanticInspectResponse {
+		const kinds: readonly InspectSymbolKind[] = subject.kind
+			? [subject.kind]
+			: ["snippet"];
+		const matches: Array<{
+			kind: InspectSymbolKind;
+			entity: SemanticEntity;
+		}> = [];
+		if (kinds.includes("file")) {
+			for (const entity of this.query
+				.findByPath(subject.symbol)
+				.filter((candidate) => candidate.kind === "shopify.source-file")) {
+				matches.push({ kind: "file", entity });
+			}
+		}
+		if (kinds.includes("snippet")) {
+			for (const entity of this.query.findByIdentity("shopify.snippet", {
+				handle: normalizeSnippetHandle(subject.symbol),
+			})) {
+				matches.push({ kind: "snippet", entity });
+			}
+		}
+		const requirements: CoverageRequirement[] = [
+			...(kinds.includes("file")
+				? [
+						{
+							family: "shopify.source-files",
+							globalKind: "shopify.source-file",
+						},
+					]
+				: []),
+			...(kinds.includes("snippet")
+				? [
+						{
+							family: "shopify.snippets",
+							globalKind: "shopify.snippet",
+						},
+					]
+				: []),
+		];
+		if (matches.length === 0) {
+			const completeness = this.#completeness(requirements, [], context);
+			return this.#response({
+				status: missingResponseStatus(completeness),
+				subject: subjectRecord(subject),
+				facet,
+				completeness,
+			});
+		}
+		if (matches.length > 1) {
+			return this.#response({
+				status: "ambiguous",
+				subject: subjectRecord(subject),
+				facet,
+				candidates: matches.map(({ entity }) =>
+					this.#projectEntity(entity, context),
+				),
+				completeness: this.#completeness(
+					requirements,
+					matches.map(({ entity }) => entity),
+					context,
+				),
+			});
+		}
+		const match = matches[0];
+		if (!match) throw new SemanticInspectInputError("Symbol resolution failed");
+		const response =
+			match.kind === "file"
+				? this.#inspectFile(
+						{ type: "file", path: match.entity.path ?? subject.symbol },
+						facet,
+						context,
+						offset,
+						limit,
+						cursorShape,
+					)
+				: this.#inspectSnippet(
+						{
+							type: "snippet",
+							handle: normalizeSnippetHandle(subject.symbol),
+						},
+						facet,
+						context,
+						offset,
+						limit,
+						cursorShape,
+					);
+		return {
+			...response,
+			subject: {
+				symbol:
+					match.kind === "snippet"
+						? normalizeSnippetHandle(subject.symbol)
+						: subject.symbol,
+				kind: match.kind,
+			},
+		};
 	}
 
 	#inspectFile(
@@ -896,7 +1013,7 @@ export class SemanticInspect {
 	}
 
 	#discoveryRequirements(
-		kinds: readonly ("file" | "snippet" | "render" | "expression")[],
+		kinds: readonly InspectSymbolKind[],
 	): CoverageRequirement[] {
 		const requirements: CoverageRequirement[] = [
 			{ family: "shopify.source-files", globalKind: "shopify.source-file" },
@@ -906,27 +1023,6 @@ export class SemanticInspect {
 				family: "shopify.snippets",
 				globalKind: "shopify.snippet",
 			});
-		}
-		const paths = this.query
-			.findByKind("shopify.source-file")
-			.filter(
-				(record) =>
-					this.query.category(record.id) === "entity" &&
-					(record as SemanticEntity).attributes.language === "liquid",
-			)
-			.map((record) => (record as SemanticEntity).path)
-			.filter((path): path is string => Boolean(path));
-		if (kinds.includes("render")) {
-			for (const path of paths) {
-				requirements.push({ family: "shopify.renders", path });
-				requirements.push({ family: "shopify.value-flow", path });
-			}
-		}
-		if (kinds.includes("expression")) {
-			for (const path of paths) {
-				requirements.push({ family: "shopify.reads", path });
-				requirements.push({ family: "shopify.value-flow", path });
-			}
 		}
 		return requirements;
 	}
@@ -1062,7 +1158,7 @@ export class SemanticInspect {
 				reasons: [
 					{
 						code: "UNSUPPORTED_FACET",
-						message: `Facet ${facet} is not supported for ${subject.type}`,
+						message: `Facet ${facet} is not supported for ${subjectKind(subject)}`,
 					},
 				],
 			},
@@ -1140,16 +1236,8 @@ export class SemanticInspect {
 	}
 }
 
-function publicKindToSemanticKinds(
-	kind: "file" | "snippet" | "render" | "expression",
-): string[] {
-	return kind === "file"
-		? ["shopify.source-file"]
-		: kind === "snippet"
-			? ["shopify.snippet"]
-			: kind === "render"
-				? ["shopify.render-site"]
-				: ["shopify.expression-site"];
+function publicKindToSemanticKinds(kind: InspectSymbolKind): string[] {
+	return kind === "file" ? ["shopify.source-file"] : ["shopify.snippet"];
 }
 
 function publicOccurrenceKind(kind: string): string {
@@ -1191,6 +1279,10 @@ function subjectRecord(
 	subject: SemanticInspectSubject,
 ): Readonly<Record<string, JsonValue>> {
 	return { ...subject };
+}
+
+function subjectKind(subject: SemanticInspectSubject): string {
+	return "symbol" in subject ? (subject.kind ?? "symbol") : subject.type;
 }
 
 function normalizeSnippetHandle(handle: string): string {

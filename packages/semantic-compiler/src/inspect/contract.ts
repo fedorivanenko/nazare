@@ -1,11 +1,11 @@
 import type { JsonValue } from "../semantic/record.js";
 
-export const SEMANTIC_INSPECT_CONTRACT_VERSION = 1 as const;
+export const SEMANTIC_INSPECT_CONTRACT_VERSION = 2 as const;
 
 export type SemanticInspectRequest =
 	| {
 			query: string;
-			kinds?: readonly ("file" | "snippet" | "render" | "expression")[];
+			kinds?: readonly InspectSymbolKind[];
 			evidence?: InspectEvidenceMode;
 			limit?: number;
 			cursor?: string;
@@ -18,7 +18,10 @@ export type SemanticInspectRequest =
 			cursor?: string;
 	  };
 
+export type InspectSymbolKind = "file" | "snippet";
+
 export type SemanticInspectSubject =
+	| { symbol: string; kind?: InspectSymbolKind }
 	| { type: "file"; path: string }
 	| { type: "snippet"; handle: string }
 	| { type: "render"; path: string; offset: number }

@@ -92,6 +92,35 @@ Remaining problems:
 - Render arguments and guards lacked their own public evidence locations.
 - Initial benchmark loader omitted nested Liquid files; recursive discovery corrected the corpus from 124 to 131 files.
 
+## Symbol-subject follow-up
+
+Inspect contract version 2 added exact symbol subjects with optional kind:
+
+```json
+{
+  "subject": {
+    "symbol": "snippets/c-item-price.liquid",
+    "kind": "snippet"
+  },
+  "facet": "dependents"
+}
+```
+
+Snippet paths canonicalize to their handle symbol. Symbol kind is optional when unambiguous. Default discovery now returns semantic symbols only, not render or expression occurrences; occurrence selection remains location-based.
+
+Re-running the direct-caller task with symbol-oriented tool guidance produced exactly two paginated dependent calls and the same 16-call answer:
+
+| Metric | Original Inspect | Symbol Inspect | Change |
+| --- | ---: | ---: | ---: |
+| Tool calls | 4 | 2 | -50% |
+| Raw tool bytes | 94,475 | 53,733 | -43% |
+| Total tokens | 54,868 | 25,536 | -53% |
+| Peak context | 24,731 | 14,187 | -43% |
+
+This isolates subject identity from relationship intent and removes discovery hydration. Remaining 53,733-byte payload comes from rich render details, repeated evidence, automatic value lineage, and completeness metadata; symbol subjects do not solve projection size.
+
+Symbol support is currently an Inspect/index projection over the existing graph. Snapshot records were not collapsed or renamed.
+
 ## Conclusion
 
 Current Liquid Inspect UX wins architecture-shaped questions and loses focused local value-flow tracing. Across this three-task pilot, total tokens were effectively equal, peak context was slightly worse for Inspect, and tool calls were halved. Next UX work should target binding/value-flow inspection and smaller dependent projections before claiming a general token-efficiency win for the standalone compiler.
