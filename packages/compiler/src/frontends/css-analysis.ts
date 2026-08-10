@@ -1,5 +1,6 @@
 import type { Diagnostic } from "@nazare/core";
 import postcss from "postcss";
+import scssParser from "postcss-scss";
 import selectorParser from "postcss-selector-parser";
 import { spanFromOffsets } from "../source.js";
 import type {
@@ -19,7 +20,9 @@ export function analyzeCssSource(
 ): CssSourceAnalysis {
 	let root: postcss.Root;
 	try {
-		root = postcss.parse(source, { from: path });
+		root = path.endsWith(".scss")
+			? scssParser.parse(source, { from: path })
+			: postcss.parse(source, { from: path });
 	} catch (error) {
 		return {
 			facts: [],
@@ -39,8 +42,10 @@ export function analyzeCssSource(
 					rule.source.start.column,
 				)
 			: source.indexOf(rule.selector);
+		const resolvedSelector = resolveNestedSelector(rule);
+		const nestedSelector = resolvedSelector !== rule.selector;
 		try {
-			const selectors = selectorParser().astSync(rule.selector);
+			const selectors = selectorParser().astSync(resolvedSelector);
 			selectors.walkClasses((node) => {
 				pushDomFact("class", node.value, node.sourceIndex ?? 0);
 			});
@@ -70,7 +75,10 @@ export function analyzeCssSource(
 			name: string,
 			selectorOffset: number,
 		): void {
-			const start = Math.max(0, ruleOffset + selectorOffset);
+			const start = Math.max(
+				0,
+				ruleOffset + (nestedSelector ? 0 : selectorOffset),
+			);
 			facts.push({
 				kind: "behavior",
 				fromPath: path,
@@ -80,7 +88,10 @@ export function analyzeCssSource(
 				name,
 				span: spanFromOffsets(source, path, {
 					start,
-					end: Math.min(source.length, start + name.length + 1),
+					end: Math.min(
+						source.length,
+						start + (nestedSelector ? rule.selector.length : name.length + 1),
+					),
 				}),
 				extractor: "postcss-selector-parser",
 			});
@@ -127,6 +138,24 @@ export function analyzeCssSource(
 	return { facts, issues, uncertainty };
 }
 
+function resolveNestedSelector(rule: postcss.Rule): string {
+	const parent = rule.parent;
+	if (!parent || parent.type !== "rule") return rule.selector;
+	const parentSelectors = resolveNestedSelector(parent).split(",");
+	const selectors = rule.selector.split(",");
+	return parentSelectors
+		.flatMap((parentSelector) =>
+			selectors.map((selector) => {
+				const child = selector.trim();
+				const ancestor = parentSelector.trim();
+				return child.includes("&")
+					? child.replaceAll("&", ancestor)
+					: `${ancestor} ${child}`;
+			}),
+		)
+		.join(",");
+}
+
 function cssVariableReads(value: string): string[] {
 	const names: string[] = [];
 	const pattern = /\bvar\(\s*(--[A-Za-z0-9_-]+)/g;
@@ -145,11 +174,16 @@ function cssParseIssue(
 ): Diagnostic {
 	const candidate = error as {
 		message?: unknown;
+		reason?: unknown;
 		line?: unknown;
 		column?: unknown;
 	};
 	const message =
-		typeof candidate.message === "string" ? candidate.message : String(error);
+		typeof candidate.reason === "string"
+			? candidate.reason
+			: typeof candidate.message === "string"
+				? candidate.message
+				: String(error);
 	const line = typeof candidate.line === "number" ? candidate.line : 1;
 	const column = typeof candidate.column === "number" ? candidate.column : 1;
 	const starts = lineStartOffsets(source);

@@ -101,6 +101,7 @@ test("default frontends classify supported languages and opaque inputs", async (
 		"theme.liquid": "{% render 'card' %}",
 		"data.json": "{}",
 		"theme.css": ".card { color: red }",
+		"theme.scss": ".card { color: red; }",
 		"theme.js": "export const value = 1;",
 		"logo.svg": "<svg />",
 		README: "unknown",
@@ -115,6 +116,7 @@ test("default frontends classify supported languages and opaque inputs", async (
 		"theme.liquid": "liquid",
 		"data.json": "json",
 		"theme.css": "css",
+		"theme.scss": "css",
 		"theme.js": "javascript",
 		"logo.svg": "asset",
 		README: "opaque",
@@ -127,12 +129,24 @@ test("default frontends classify supported languages and opaque inputs", async (
 	}
 });
 
+test("JSON frontend accepts a leading Shopify-generated block comment", async () => {
+	const session = await createDefaultSession({
+		"templates/index.json": `/*\n * Shopify-generated file.\n */\n{"sections":{},"order":[]}`,
+	});
+	const parsed = await session.get(
+		sourceProducts.parsed.product(id("templates/index.json")),
+	);
+	assert.deepEqual(parsed.syntax.value, { sections: {}, order: [] });
+	assert.deepEqual(parsed.diagnostics, []);
+});
+
 test("default frontends emit neutral language facts and direct dependencies", async () => {
 	const host = createMemoryHost({
 		"component.nz.liquid": "{% import Card from './card.nz.liquid' %}",
 		"card.nz.liquid": "",
 		"theme.liquid": "{% render 'card' %}",
 		"theme.css": ".card { --color: red }",
+		"theme.scss": ".g-header { &__actions { &__account { color: red; } } }",
 	});
 	const session = await createProjectSession({ host });
 	createSourceProductRegistrar({
@@ -148,6 +162,9 @@ test("default frontends emit neutral language facts and direct dependencies", as
 	const cssFacts = await session.get(
 		sourceProducts.facts.product(id("theme.css")),
 	);
+	const scssFacts = await session.get(
+		sourceProducts.facts.product(id("theme.scss")),
+	);
 
 	assert.equal(
 		nazareFacts.facts.some((fact) => fact.kind === "dependency"),
@@ -159,6 +176,14 @@ test("default frontends emit neutral language facts and direct dependencies", as
 	);
 	assert.equal(
 		cssFacts.facts.some((fact) => fact.kind === "source.behavior"),
+		true,
+	);
+	assert.equal(
+		scssFacts.facts.some(
+			(fact) =>
+				fact.kind === "source.behavior" &&
+				fact.data.name === "g-header__actions__account",
+		),
 		true,
 	);
 	assert.equal(

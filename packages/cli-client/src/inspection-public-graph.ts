@@ -108,7 +108,12 @@ export async function inspectionPublicGraph(
 
 	projectDeclarations(model, entities, relations);
 	projectReferences(model, evidenceByFact, entities, relations);
-	projectRenderGraph(graphResult.graph, evidenceByFact, relations);
+	projectRenderGraph(
+		graphResult.graph,
+		new Map(model.references.map((reference) => [reference.id, reference])),
+		evidenceByFact,
+		relations,
+	);
 	projectBehaviors(behaviorIndex.records, evidenceByFact, entities, relations);
 	projectMetafields(
 		metafieldIndex.records,
@@ -185,6 +190,8 @@ function projectReferences(
 			attributes: {
 				static: reference.static,
 				siteId: reference.siteId,
+				...(reference.range ? { range: reference.range } : {}),
+				...(reference.span ? { span: reference.span } : {}),
 				...(reference.targetRole ? { targetRole: reference.targetRole } : {}),
 				...(reference.targetName ? { targetName: reference.targetName } : {}),
 				...(reference.targetPath ? { targetPath: reference.targetPath } : {}),
@@ -210,11 +217,16 @@ function projectReferences(
 
 function projectRenderGraph(
 	graph: ShopifyRenderGraph,
+	referencesById: ReadonlyMap<
+		string,
+		ShopifyProjectModelResult["references"][number]
+	>,
 	evidenceByFact: ReadonlyMap<string, readonly string[]>,
 	relations: Map<string, PublicRelation>,
 ): void {
 	for (const edge of graph.edges) {
 		const targetRole = classifyShopifyFile(edge.to.path);
+		const reference = referencesById.get(edge.referenceId);
 		addRelation(relations, {
 			id: edge.id,
 			kind: RENDER_ROLES.has(targetRole) ? "renders" : "references",
@@ -229,6 +241,8 @@ function projectRenderGraph(
 			attributes: {
 				sourceKind: edge.kind,
 				occurrenceId: `occurrence:${edge.referenceId}`,
+				...(reference?.range ? { range: reference.range } : {}),
+				...(reference?.span ? { span: reference.span } : {}),
 			},
 		});
 	}
@@ -345,6 +359,12 @@ function projectMetafields(
 			to: id,
 			derivation: "direct",
 			certainty: record.dynamic ? "inferred" : "proven",
+			attributes: {
+				...(record.range ? { range: record.range } : {}),
+				...(record.span ? { span: record.span } : {}),
+				...(record.transport ? { transport: record.transport } : {}),
+				...(record.endpoint ? { endpoint: record.endpoint } : {}),
+			},
 			...(evidenceByFact.get(record.id)?.length
 				? { evidenceIds: evidenceByFact.get(record.id) }
 				: {}),

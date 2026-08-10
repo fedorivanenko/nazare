@@ -47,6 +47,10 @@ function toolCall(id, name, arguments_) {
 	};
 }
 
+function toolContent(response) {
+	return JSON.parse(response.result.content[0].text);
+}
+
 async function createGraphFixture(prefix) {
 	const root = await mkdtemp(join(tmpdir(), prefix));
 	await mkdir(join(root, "templates"));
@@ -69,86 +73,98 @@ async function createGraphFixture(prefix) {
 	return root;
 }
 
-test("inspection server exposes only find, traverse, and evidence", async () => {
-	const root = await createGraphFixture("nazare-public-inspection-");
+test("inspection server exposes one model-visible semantic inspect tool", async () => {
+	const root = await createGraphFixture("nazare-agent-inspection-");
 	try {
 		const responses = await runServer(root, [
 			initialize(),
 			{ jsonrpc: "2.0", method: "notifications/initialized" },
 			{ jsonrpc: "2.0", id: "tools", method: "tools/list" },
-			toolCall("file", "find", {
-				kinds: ["file"],
-				path: "snippets/card.liquid",
+			toolCall("dependencies", "inspect", {
+				subject: { type: "file", path: "sections/main.liquid" },
+				question: "dependencies",
+				evidence: "excerpt",
 			}),
-			toolCall("behavior", "find", {
-				kinds: ["behavior"],
-				identity: {
-					subjectKind: "domHook",
-					hookKind: "attribute",
+			toolCall("behavior", "inspect", {
+				subject: {
+					type: "behavior",
+					kind: "domAttribute",
 					name: "data-product-card",
 				},
+				question: "usages",
+				evidence: "excerpt",
 			}),
-			toolCall("impact", "traverse", {
-				startIds: ["file:snippets/card.liquid"],
-				direction: "incoming",
-				relationCategories: ["dependency"],
-				targetKinds: ["file"],
-				depth: 2,
-			}),
-			toolCall("graph", "traverse", {
-				startIds: ["project:theme"],
-				direction: "outgoing",
-				depth: 8,
-				limit: 200,
-				evidence: "inline",
+			toolCall("impact", "inspect", {
+				subject: { type: "file", path: "snippets/card.liquid" },
+				question: "impact",
+				limit: 10,
 			}),
 		]);
 
 		assert.equal(responses[0].result.serverInfo.name, "nazare-inspect");
 		assert.deepEqual(
 			responses[1].result.tools.map(({ name }) => name),
-			["find", "traverse", "evidence"],
+			["inspect"],
 		);
-		assert.ok(
-			responses[1].result.tools.every(
-				(tool) =>
-					tool.inputSchema.additionalProperties === false &&
-					tool.outputSchema.properties.contractVersion.const === 2,
-			),
-		);
-
-		const file = responses[2].result;
-		assert.equal(file.isError, false);
-		assert.equal(file.structuredContent.contractVersion, 2);
 		assert.equal(
-			file.structuredContent.result.entities[0].id,
-			"file:snippets/card.liquid",
+			responses[1].result.tools[0].inputSchema.additionalProperties,
+			false,
 		);
-		assert.equal(file.content[0].text, "1 entity; completeness=complete");
-		assert.equal(file.content[0].text.includes("structuredContent"), false);
+		assert.equal(
+			responses[1].result.tools[0].inputSchema.properties.limit.maximum,
+			50,
+		);
+		assert.equal(
+			responses[1].result.tools[0].inputSchema.properties.evidence.default,
+			"location",
+		);
+		assert.equal("outputSchema" in responses[1].result.tools[0], false);
 
-		const behavior = responses[3].result.structuredContent.result.entities[0];
-		assert.equal(behavior.kind, "behavior");
-		assert.equal(behavior.name, "data-product-card");
+		const dependencies = toolContent(responses[2]);
+		assert.equal(responses[2].result.isError, false);
+		assert.equal("structuredContent" in responses[2].result, false);
+		assert.equal(dependencies.contractVersion, 3);
+		assert.deepEqual(dependencies.subject, {
+			type: "file",
+			path: "sections/main.liquid",
+			kind: "section",
+		});
+		assert.equal(
+			dependencies.answer.dependencies[0].path,
+			"snippets/card.liquid",
+		);
+		assert.equal(dependencies.answer.dependencies[0].relationship, "renders");
+		assert.deepEqual(dependencies.answer.dependencies[0].locations[0], {
+			path: "sections/main.liquid",
+			start: { line: 1, character: 1 },
+			end: { line: 1, character: 20 },
+			excerpt: "{% render 'card' %}",
+		});
+		assert.equal(JSON.stringify(dependencies).includes("shopify-fact:"), false);
+		assert.equal(JSON.stringify(dependencies).includes("evidenceIds"), false);
 
-		const traversal = responses[4].result.structuredContent;
-		assert.equal(traversal.result.relations.length, 2);
-		assert.ok(traversal.result.matches.includes("file:templates/product.json"));
+		const behavior = toolContent(responses[3]);
+		assert.deepEqual(
+			new Set(behavior.answer.usages.map(({ role }) => role)),
+			new Set(["producer", "consumer"]),
+		);
 		assert.ok(
-			traversal.result.relations.every(
-				(relation) => relation.category === "dependency",
+			behavior.answer.usages.every(({ locations }) =>
+				locations.every(
+					(location) =>
+						location.path &&
+						location.start.line >= 1 &&
+						location.start.character >= 1,
+				),
 			),
 		);
 
-		const graph = responses[5].result.structuredContent.result;
-		const entityIds = new Set(graph.entities.map(({ id }) => id));
-		const evidenceIds = new Set(graph.evidence.map(({ id }) => id));
+		const impact = toolContent(responses[4]);
 		assert.ok(
-			graph.relations.every(
-				(relation) =>
-					entityIds.has(relation.from) &&
-					entityIds.has(relation.to) &&
-					(relation.evidenceIds ?? []).every((id) => evidenceIds.has(id)),
+			impact.answer.impact.some(
+				(item) =>
+					item.role === "affectedPage" &&
+					item.path === "templates/product.json",
 			),
 		);
 	} finally {
@@ -156,41 +172,39 @@ test("inspection server exposes only find, traverse, and evidence", async () => 
 	}
 });
 
-test("public graph projects JavaScript owners, behavior relations, and evidence", async () => {
-	const root = await createGraphFixture("nazare-public-behavior-");
+test("metafield inspection separates proven and possible Liquid owners", async () => {
+	const root = await mkdtemp(join(tmpdir(), "nazare-agent-metafield-"));
 	try {
+		await mkdir(join(root, "snippets"));
+		await writeFile(
+			join(root, "snippets/card.liquid"),
+			"{% assign exact = product.metafields.custom.subtitle.value %}\n{% assign possible = item.metafields.custom.subtitle.value %}",
+		);
 		const responses = await runServer(root, [
 			initialize(),
 			{ jsonrpc: "2.0", method: "notifications/initialized" },
-			toolCall("behavior", "traverse", {
-				startIds: ["behavior:domHook:attribute:data-product-card"],
-				direction: "incoming",
-				relationCategories: ["behavior"],
-				depth: 1,
-				evidence: "inline",
+			toolCall("metafield", "inspect", {
+				subject: {
+					type: "metafield",
+					owner: "product",
+					namespace: "custom",
+					key: "subtitle",
+				},
+				question: "usages",
+				evidence: "excerpt",
 			}),
 		]);
-		const result = responses[1].result.structuredContent.result;
-		assert.ok(result.relations.some(({ kind }) => kind === "produces"));
-		assert.ok(result.relations.some(({ kind }) => kind === "consumes"));
-		assert.ok(
-			result.entities.some(
-				(entity) =>
-					entity.kind === "declaration" && entity.name === "initializeCard",
-			),
+		const result = toolContent(responses[1]);
+		assert.deepEqual(
+			new Set(result.answer.usages.map(({ role }) => role)),
+			new Set(["reader", "possibleReader"]),
 		);
-		assert.ok(result.evidence.length >= 2);
-
-		const evidenceId = result.evidence[0].id;
-		const evidenceResponses = await runServer(root, [
-			initialize(),
-			{ jsonrpc: "2.0", method: "notifications/initialized" },
-			toolCall("evidence", "evidence", { ids: [evidenceId] }),
-		]);
 		assert.equal(
-			evidenceResponses[1].result.structuredContent.result.evidence[0].id,
-			evidenceId,
+			result.answer.usages.find(({ role }) => role === "possibleReader")
+				.locations[0].excerpt,
+			"item.metafields.custom.subtitle.value",
 		);
+		assert.equal(result.completeness.status, "partial");
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
@@ -205,18 +219,20 @@ test("inspection server validates MCP lifecycle and public tool arguments", asyn
 			initialize(2),
 			{ jsonrpc: "2.0", method: "notifications/initialized" },
 			toolCall(3, "projectModel", {}),
-			toolCall(4, "find", {}),
-			toolCall(5, "find", { path: "card.nz.liquid", extra: true }),
-			toolCall(6, "traverse", {
-				startIds: ["file:missing.liquid"],
-				direction: "both",
+			toolCall(4, "inspect", {}),
+			toolCall(5, "inspect", {
+				subject: { type: "file", path: "card.nz.liquid" },
+				extra: true,
+			}),
+			toolCall(6, "inspect", {
+				subject: { type: "file", path: "missing.liquid" },
 			}),
 		]);
 		assert.equal(responses[0].error.message, "Server not initialized");
 		assert.equal(responses[2].error.message, "Unknown tool: projectModel");
-		assert.match(responses[3].error.message, /find requires/);
+		assert.equal(responses[3].error.message, "subject must be an object");
 		assert.equal(responses[4].error.message, "Unknown tool argument: extra");
-		assert.match(responses[5].error.message, /Unknown entity ID/);
+		assert.equal(toolContent(responses[5]).status, "notFound");
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
@@ -242,17 +258,13 @@ test("inspection input exclusions apply to public entities", async () => {
 			[
 				initialize(),
 				{ jsonrpc: "2.0", method: "notifications/initialized" },
-				toolCall("excluded", "find", {
-					kinds: ["file"],
-					path: "snippets/generated.liquid",
+				toolCall("excluded", "inspect", {
+					subject: { type: "file", path: "snippets/generated.liquid" },
 				}),
 			],
 			projectRoot,
 		);
-		assert.equal(
-			responses[1].result.structuredContent.result.entities.length,
-			0,
-		);
+		assert.equal(toolContent(responses[1]).status, "notFound");
 	} finally {
 		await rm(projectRoot, { recursive: true, force: true });
 	}
@@ -335,22 +347,18 @@ test("watcher publishes revisions consumed by later public queries", async () =>
 			(message) => message.method === "inspection/update",
 		);
 		server.send(
-			toolCall("find-after-update", "find", {
-				kinds: ["file"],
-				path: "card.nz.liquid",
+			toolCall("inspect-after-update", "inspect", {
+				subject: { type: "file", path: "card.nz.liquid" },
 			}),
 		);
 		await waitFor(
-			() => server.messages.some(({ id }) => id === "find-after-update"),
-			"find response",
+			() => server.messages.some(({ id }) => id === "inspect-after-update"),
+			"inspect response",
 		);
 		const response = server.messages.find(
-			({ id }) => id === "find-after-update",
+			({ id }) => id === "inspect-after-update",
 		);
-		assert.equal(
-			response.result.structuredContent.revision,
-			update.params.revision,
-		);
+		assert.equal(toolContent(response).revision, update.params.revision);
 	} finally {
 		server.close();
 		await server.done;
@@ -387,9 +395,8 @@ test("watcher revisions metadata and applies changed exclusions", async () => {
 			"configuration update",
 		);
 		server.send(
-			toolCall("excluded-after-update", "find", {
-				kinds: ["file"],
-				path: "card.nz.liquid",
+			toolCall("excluded-after-update", "inspect", {
+				subject: { type: "file", path: "card.nz.liquid" },
 			}),
 		);
 		await waitFor(
@@ -399,7 +406,7 @@ test("watcher revisions metadata and applies changed exclusions", async () => {
 		const response = server.messages.find(
 			({ id }) => id === "excluded-after-update",
 		);
-		assert.deepEqual(response.result.structuredContent.result.entities, []);
+		assert.equal(toolContent(response).status, "notFound");
 	} finally {
 		server.close();
 		await server.done;

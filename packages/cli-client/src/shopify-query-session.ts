@@ -288,6 +288,10 @@ export class ShopifyQuerySession {
 		return this.includeFile(path);
 	}
 
+	fileContents(path: string): string | undefined {
+		return this.files.get(path)?.contents;
+	}
+
 	async buildProducts(
 		request: ShopifyBuildRequest,
 		execution: ShopifyBuildExecution = {},

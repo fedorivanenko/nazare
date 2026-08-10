@@ -7,3 +7,13 @@
   display: grid;
   gap: var(--card-gap);
 }
+
+@media (min-width: 48rem) {
+  .product-card.is-active {
+    border-color: currentColor;
+  }
+}
+
+.cart-drawer.is-active {
+  visibility: visible;
+}

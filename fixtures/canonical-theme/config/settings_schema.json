@@ -4,7 +4,8 @@
     "name": "Global",
     "settings": [
       { "id": "default_partial", "type": "text", "label": "Default partial" },
-      { "id": "accent", "type": "color", "label": "Accent" }
+      { "id": "accent", "type": "color", "label": "Accent" },
+      { "id": "enable_interactions", "type": "checkbox", "label": "Enable interactions", "default": true }
     ]
   }
 ]

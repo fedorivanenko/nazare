@@ -2,12 +2,15 @@
   @param {product} product - Product to render.
   @param {string} [heading_tag] - Optional heading element.
 {% enddoc %}
-<product-card class="product-card" data-product-card>
-  {% if heading_tag %}<{{ heading_tag }}>{{ product.title }}</{{ heading_tag }}>{% endif %}
-  {{ product.featured_image | image_url: width: 400 | image_tag }}
-  {% render 'price', product: product %}
-  {% if product.compare_at_price > product.price %}
-    <s>{{ product.compare_at_price | money }}</s>
-  {% endif %}
-  <p>{{ product.metafields.custom.subtitle }}</p>
+{% assign product_handle = product.title | handleize %}
+<product-card class="product-card" data-product-card data-product="{{ product_handle }}">
+  <div data-product-panel="{{ product_handle }}">
+    {% if heading_tag %}<{{ heading_tag }}>{{ product.title }}</{{ heading_tag }}>{% endif %}
+    {{ product.featured_image | image_url: width: 400 | image_tag }}
+    {% render 'price', product: product %}
+    {% if product.compare_at_price > product.price %}
+      <s>{{ product.compare_at_price | money }}</s>
+    {% endif %}
+    <p>{{ product.metafields.custom.subtitle }}</p>
+  </div>
 </product-card>

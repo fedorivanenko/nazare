@@ -82,7 +82,7 @@ export const shopifyResolutionProducts = {
 	>({
 		namespace: "nazare.target.shopify",
 		id: "reference-resolution",
-		version: 1,
+		version: 2,
 	}),
 	fileResolutions: defineProduct<
 		ShopifyResolutionPlan,
@@ -90,7 +90,7 @@ export const shopifyResolutionProducts = {
 	>({
 		namespace: "nazare.target.shopify",
 		id: "file-resolutions",
-		version: 1,
+		version: 2,
 	}),
 };
 
@@ -204,6 +204,9 @@ async function resolveReference(
 	context: ComputationContext,
 	reference: ShopifyReference,
 ): Promise<ShopifyReferenceResolution> {
+	if (reference.referenceKind === "layout" && reference.targetName === "none") {
+		return resolution(reference, "resolved", [], []);
+	}
 	if (!reference.static) {
 		return resolution(
 			reference,

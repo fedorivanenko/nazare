@@ -163,7 +163,7 @@ export function isInspectThemeFile(path: string): boolean {
 function shouldReadInspectContents(path: string): boolean {
 	return (
 		path.endsWith(".nz.liquid") ||
-		/\.(?:css|js|ts)$/.test(path) ||
+		/\.(?:css|scss|js|ts)$/.test(path) ||
 		/^sections\/[^/]+\.(json|liquid)$/.test(path) ||
 		/^snippets\/[^/]+\.liquid$/.test(path) ||
 		/^blocks\/[^/]+\.liquid$/.test(path) ||

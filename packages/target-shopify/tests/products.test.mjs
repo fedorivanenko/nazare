@@ -215,6 +215,21 @@ test("owns missing-reference diagnostics on resolution products", async () => {
 	assert.equal(metadata.diagnostics[0].code, "SHOPIFY_REFERENCE_NOT_FOUND");
 });
 
+test("treats Shopify layout none as resolved without a target file", async () => {
+	const session = await targetSession({
+		"templates/gift_card.liquid": "{% layout none %}",
+	});
+	const product = shopifyResolutionProducts.fileResolutions.product({
+		file: id("templates/gift_card.liquid"),
+	});
+	const resolutions = await session.get(product);
+	const metadata = await session.graph.metadata(product);
+
+	assert.equal(resolutions[0].status, "resolved");
+	assert.deepEqual(resolutions[0].targetFiles, []);
+	assert.deepEqual(metadata.diagnostics, []);
+});
+
 test("preserves dynamic references as explicit uncertainty", async () => {
 	const session = await targetSession({
 		"sections/main.liquid": "{% render snippet_name %}",

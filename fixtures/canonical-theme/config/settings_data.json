@@ -1,1 +1,1 @@
-{ "current": { "default_partial": "product-card", "accent": "#101010" } }
+{ "current": { "default_partial": "product-card", "accent": "#101010", "enable_interactions": true } }
