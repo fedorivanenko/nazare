@@ -455,6 +455,14 @@ export class SemanticInspect {
 			.filter((record) => record.kind === "shopify.render-site");
 		const items: InspectItem[] = [];
 		const records: SemanticIndexedRecord[] = [...renderSites];
+		const targets = new Map<
+			string,
+			{
+				entity: SemanticEntity;
+				assertion: SemanticRelation["assertion"];
+				resolution: "repository-exact" | "literal-convention" | "not-found";
+			}
+		>();
 		for (const render of renderSites) {
 			for (const relation of this.query.outgoing(
 				render.id,
@@ -462,19 +470,20 @@ export class SemanticInspect {
 			)) {
 				const target = this.query.record(relation.to);
 				if (!target || this.query.category(target.id) !== "entity") continue;
-				items.push(
-					this.#projectSnippet(
-						target as SemanticEntity,
-						context,
-						relation.assertion,
-						String(relation.attributes.resolution) as
-							| "repository-exact"
-							| "literal-convention"
-							| "not-found",
-					),
-				);
-				records.push(relation, target);
+				targets.set(target.id, {
+					entity: target as SemanticEntity,
+					assertion: relation.assertion,
+					resolution: String(relation.attributes.resolution) as
+						| "repository-exact"
+						| "literal-convention"
+						| "not-found",
+				});
+				items.push(this.#projectRender(render, context, relation));
+				records.push(relation, target, ...this.#relatedRecords(render));
 			}
+		}
+		for (const { entity, assertion, resolution } of targets.values()) {
+			items.push(this.#projectSnippet(entity, context, assertion, resolution));
 		}
 		return { items: sortItems(items), records };
 	}
@@ -552,12 +561,15 @@ export class SemanticInspect {
 		resolution?: "repository-exact" | "literal-convention" | "not-found",
 	): InspectItem {
 		const path = String(entity.attributes.path);
+		const definingEvidence = assertion.evidence.filter(
+			(anchor) => anchor.path === path,
+		);
 		const publicAssertion = {
 			...assertion,
-			evidence: [
-				...assertion.evidence.filter((anchor) => anchor.path === path),
-				...assertion.evidence.filter((anchor) => anchor.path !== path),
-			],
+			evidence:
+				entity.attributes.defined === true && definingEvidence.length > 0
+					? definingEvidence
+					: assertion.evidence,
 		};
 		return {
 			type: "snippet",
@@ -639,6 +651,10 @@ export class SemanticInspect {
 				return [];
 			const semanticArgument = argument as SemanticOccurrence;
 			const attributes = semanticArgument.attributes;
+			const argumentEvidence = this.#evidence(
+				semanticArgument.assertion.evidence,
+				context,
+			);
 			const argumentValue = this.query
 				.ownedBy(semanticArgument.id)
 				.find(
@@ -658,6 +674,9 @@ export class SemanticInspect {
 						argumentValue && "assertion" in argumentValue
 							? argumentValue.assertion.availability
 							: semanticArgument.assertion.availability,
+					...(argumentEvidence.length > 0
+						? { evidence: argumentEvidence }
+						: {}),
 					...(argumentValue && "slot" in argumentValue
 						? {
 								value: this.#projectValue(
@@ -674,11 +693,18 @@ export class SemanticInspect {
 			if (!predicate || this.query.category(predicate.id) !== "predicate")
 				return [];
 			const semanticPredicate = predicate as SemanticPredicate;
+			const predicateEvidence = this.#evidence(
+				semanticPredicate.assertion.evidence,
+				context,
+			);
 			return [
 				{
 					operator: semanticPredicate.operator,
 					expression: String(semanticPredicate.attributes.expression),
 					availability: semanticPredicate.assertion.availability,
+					...(predicateEvidence.length > 0
+						? { evidence: predicateEvidence }
+						: {}),
 				},
 			];
 		});
@@ -691,7 +717,12 @@ export class SemanticInspect {
 					record.slot === "shopify.render-target",
 			);
 		const publicAssertion = relation
-			? relation.assertion
+			? {
+					...relation.assertion,
+					evidence: relation.assertion.evidence.filter(
+						(anchor) => anchor.path === location?.path,
+					),
+				}
 			: targetValue && "assertion" in targetValue
 				? {
 						...render.assertion,

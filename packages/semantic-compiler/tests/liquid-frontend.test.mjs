@@ -149,6 +149,29 @@ test("Liquid frontend extracts branch, render-mode, schema, asset, and locale sy
 	);
 });
 
+test("Liquid frontend preserves statement evidence inside multi-statement liquid tags", () => {
+	const source = `{% liquid
+  assign first = ''
+  assign second = first | append: 'x'
+  if second != blank
+    render 'card', value: second
+  endif
+%}`;
+	const result = extract(source, "snippets/liquid-tag.liquid");
+	const excerpts = (kind) =>
+		factsOf(result, kind).map(({ evidence }) =>
+			source.slice(evidence.range.start, evidence.range.end),
+		);
+	assert.deepEqual(excerpts("liquid.binding"), [
+		"assign first = ''",
+		"assign second = first | append: 'x'",
+	]);
+	assert.deepEqual(excerpts("liquid.condition"), ["if second != blank"]);
+	assert.deepEqual(excerpts("liquid.render-site"), [
+		"render 'card', value: second",
+	]);
+});
+
 test("Liquid frontend scopes parser uncertainty into explicit partial coverage", () => {
 	const result = extract("{% render %}", "snippets/invalid.liquid");
 	assert.equal(result.diagnostics[0].code, "TREE_SITTER_MISSING");

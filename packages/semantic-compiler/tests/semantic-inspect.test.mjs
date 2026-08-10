@@ -115,12 +115,26 @@ test("Inspect returns compact snippet architecture without graph IDs", () => {
 		facet: "dependencies",
 		evidence: "location",
 	});
-	const item = dependencies.answer.groups[0].items[0];
+	const item = dependencies.answer.groups.find(({ kind }) => kind === "snippet")
+		.items[0];
 	assert.equal(item.type, "snippet");
 	assert.equal(item.handle, "price");
 	assert.equal(item.resolution, "repository-exact");
 	assert.equal(item.certainty, "proven");
-	assert.equal(item.evidence[0].path, "snippets/price.liquid");
+	assert.deepEqual(
+		item.evidence.map(({ path }) => path),
+		["snippets/price.liquid"],
+	);
+	const renderItem = dependencies.answer.groups.find(
+		({ kind }) => kind === "render",
+	).items[0];
+	assert.equal(renderItem.path, "snippets/product-card.liquid");
+	assert.equal(renderItem.target, "price");
+	assert.equal(renderItem.arguments[0].name, "product");
+	assert.deepEqual(
+		renderItem.evidence.map(({ path }) => path),
+		["snippets/product-card.liquid"],
+	);
 	assertNoInternalIds(dependencies);
 });
 
@@ -137,12 +151,15 @@ test("Inspect selects exact render and expression occurrences by source offset",
 	assert.equal(render.status, "found");
 	assert.equal(render.answer.summary.target, "price");
 	assert.equal(render.answer.summary.resolution, "repository-exact");
-	assert.deepEqual(render.answer.summary.arguments, [
+	const [renderArgument] = render.answer.summary.arguments;
+	assert.deepEqual(
+		{ ...renderArgument, evidence: undefined },
 		{
 			kind: "named",
 			name: "product",
 			expression: "product",
 			availability: "runtime-dependent",
+			evidence: undefined,
 			value: {
 				representation: "expression",
 				authority: "authored-source",
@@ -150,7 +167,11 @@ test("Inspect selects exact render and expression occurrences by source offset",
 				expression: "product",
 			},
 		},
-	]);
+	);
+	assert.equal(
+		renderArgument.evidence[0].excerpt.includes("product: product"),
+		true,
+	);
 	assert.equal(
 		render.answer.groups[0].items[0].evidence.some(({ excerpt }) =>
 			excerpt?.includes("render 'price'"),

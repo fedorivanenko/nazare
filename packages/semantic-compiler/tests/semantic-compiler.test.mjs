@@ -74,11 +74,17 @@ test("compiler orchestrates repository sources into queryable Inspect output", (
 		evidence: "excerpt",
 	});
 	assert.equal(dependencies.status, "found");
-	assert.equal(dependencies.answer.groups[0].items[0].handle, "price");
 	assert.equal(
-		dependencies.answer.groups[0].items[0].evidence.some(({ excerpt }) =>
-			excerpt?.includes("render 'price'"),
-		),
+		dependencies.answer.groups.find(({ kind }) => kind === "snippet").items[0]
+			.handle,
+		"price",
+	);
+	assert.equal(
+		dependencies.answer.groups
+			.find(({ kind }) => kind === "render")
+			.items[0].evidence.some(({ excerpt }) =>
+				excerpt?.includes("render 'price'"),
+			),
 		true,
 	);
 	assert.equal(dependencies.completeness.status, "complete");

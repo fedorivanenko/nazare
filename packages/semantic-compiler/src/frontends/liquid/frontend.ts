@@ -659,6 +659,7 @@ export const liquidFrontend = defineFrontend<LiquidDocument, LiquidFact>({
 		}
 
 		function tagRange(node: Node): SourceRange {
+			if (insideLiquidTag(node)) return trimRange(node);
 			const open = document.source.lastIndexOf("{%", node.startIndex);
 			const close = document.source.indexOf("%}", node.endIndex);
 			if (open >= 0 && close >= node.endIndex) {
@@ -673,9 +674,26 @@ export const liquidFrontend = defineFrontend<LiquidDocument, LiquidFact>({
 
 		function openingTagRange(node: Node): SourceRange {
 			const range = trimRange(node);
+			if (insideLiquidTag(node)) {
+				const body = node.namedChildren.find((child) => child.type === "block");
+				if (!body) return range;
+				let end = body.startIndex;
+				while (end > range.start && /\s/.test(document.source[end - 1] ?? ""))
+					end -= 1;
+				return { start: range.start, end };
+			}
 			const open = document.source.indexOf("{%", node.startIndex);
 			const close = document.source.indexOf("%}", open + 2);
 			return open >= 0 && close >= 0 ? { start: open, end: close + 2 } : range;
+		}
+
+		function insideLiquidTag(node: Node): boolean {
+			let parent = node.parent;
+			while (parent) {
+				if (parent.type === "liquid_tag") return true;
+				parent = parent.parent;
+			}
+			return false;
 		}
 
 		function childWithText(node: Node, value: string): Node | undefined {

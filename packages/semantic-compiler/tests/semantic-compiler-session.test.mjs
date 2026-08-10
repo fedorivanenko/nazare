@@ -28,6 +28,10 @@ function input(sources, externalInputs = {}) {
 	};
 }
 
+function dependencySnippet(response) {
+	return response.answer.groups.find(({ kind }) => kind === "snippet").items[0];
+}
+
 function instrumentedCompiler() {
 	const base = createShopifySemanticCompiler();
 	const calls = new Map();
@@ -174,8 +178,8 @@ test("session handles removals, re-additions, metadata, and limit invalidation",
 		facet: "dependencies",
 		evidence: "none",
 	});
-	assert.equal(dependency.answer.groups[0].items[0].defined, false);
-	assert.equal(dependency.answer.groups[0].items[0].resolution, "not-found");
+	assert.equal(dependencySnippet(dependency).defined, false);
+	assert.equal(dependencySnippet(dependency).resolution, "not-found");
 
 	const readded = session.apply({
 		changes: [{ kind: "upsert", source: price }],
@@ -185,11 +189,13 @@ test("session handles removals, re-additions, metadata, and limit invalidation",
 	]);
 	assert.equal(calls.get("snippets/price.liquid"), 2);
 	assert.equal(
-		readded.inspect.inspect({
-			subject: { type: "snippet", handle: "product-card" },
-			facet: "dependencies",
-			evidence: "none",
-		}).answer.groups[0].items[0].resolution,
+		dependencySnippet(
+			readded.inspect.inspect({
+				subject: { type: "snippet", handle: "product-card" },
+				facet: "dependencies",
+				evidence: "none",
+			}),
+		).resolution,
 		"repository-exact",
 	);
 
@@ -243,11 +249,13 @@ test("failed session update is transactional", () => {
 	);
 	assert.equal(session.snapshot(), before);
 	assert.equal(
-		session.snapshot().inspect.inspect({
-			subject: { type: "snippet", handle: "product-card" },
-			facet: "dependencies",
-			evidence: "none",
-		}).answer.groups[0].items[0].resolution,
+		dependencySnippet(
+			session.snapshot().inspect.inspect({
+				subject: { type: "snippet", handle: "product-card" },
+				facet: "dependencies",
+				evidence: "none",
+			}),
+		).resolution,
 		"repository-exact",
 	);
 });

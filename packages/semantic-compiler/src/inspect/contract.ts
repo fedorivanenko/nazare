@@ -110,12 +110,14 @@ export type InspectRenderItem = InspectItemAssertion & {
 		name?: string;
 		expression: string;
 		availability: InspectItemAssertion["availability"];
+		evidence?: readonly InspectLocation[];
 		value?: InspectValue;
 	}[];
 	guards?: readonly {
 		operator: string;
 		expression: string;
 		availability: InspectItemAssertion["availability"];
+		evidence?: readonly InspectLocation[];
 	}[];
 };
 

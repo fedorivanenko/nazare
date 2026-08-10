@@ -67,7 +67,9 @@ export const shopifyRepositoryResolutionPass: SemanticAssemblyPass = {
 						},
 						evidence: mergeEvidence(
 							relation.assertion.evidence,
-							target.assertion.evidence,
+							target.assertion.evidence.filter(
+								(anchor) => anchor.path === target.attributes.path,
+							),
 						),
 					},
 				};

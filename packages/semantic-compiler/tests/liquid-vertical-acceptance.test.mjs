@@ -109,15 +109,19 @@ test("Liquid Inspect returns exact dependency and usage architecture", () => {
 	});
 	assert.equal(dependencies.status, "found");
 	assert.equal(dependencies.completeness.status, "complete");
+	const dependencySnippets = dependencies.answer.groups.find(
+		({ kind }) => kind === "snippet",
+	).items;
+	const dependencyRenders = dependencies.answer.groups.find(
+		({ kind }) => kind === "render",
+	).items;
 	assert.deepEqual(
-		dependencies.answer.groups[0].items.map(
-			({ handle, path, resolution, defined }) => ({
-				handle,
-				path,
-				resolution,
-				defined,
-			}),
-		),
+		dependencySnippets.map(({ handle, path, resolution, defined }) => ({
+			handle,
+			path,
+			resolution,
+			defined,
+		})),
 		[
 			{
 				handle: "price",
@@ -128,7 +132,7 @@ test("Liquid Inspect returns exact dependency and usage architecture", () => {
 		],
 	);
 	assert.equal(
-		dependencies.answer.groups[0].items[0].evidence.some(({ excerpt }) =>
+		dependencyRenders[0].evidence.some(({ excerpt }) =>
 			excerpt?.includes("render 'price'"),
 		),
 		true,
