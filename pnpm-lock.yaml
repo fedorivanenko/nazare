@@ -132,6 +132,39 @@ importers:
         specifier: workspace:^
         version: link:../core
 
+  packages/semantic-compiler:
+    dependencies:
+      acorn:
+        specifier: ^8.15.0
+        version: 8.18.0
+      acorn-walk:
+        specifier: ^8.3.4
+        version: 8.3.5
+      graphql:
+        specifier: ^16.11.0
+        version: 16.14.2
+      jsonc-parser:
+        specifier: ^3.3.1
+        version: 3.3.1
+      node-addon-api:
+        specifier: ^8.0.0
+        version: 8.9.0
+      node-gyp-build:
+        specifier: ^4.8.1
+        version: 4.8.4
+      postcss:
+        specifier: ^8.5.17
+        version: 8.5.17
+      postcss-scss:
+        specifier: ^4.0.9
+        version: 4.0.9(postcss@8.5.17)
+      tree-sitter:
+        specifier: 0.21.1
+        version: 0.21.1(patch_hash=67f64f388cd0aff00cf1198ae701800a8e790f5a366d317f3a0d835187ac2c57)
+      tree-sitter-html:
+        specifier: 0.23.2
+        version: 0.23.2(tree-sitter@0.21.1(patch_hash=67f64f388cd0aff00cf1198ae701800a8e790f5a366d317f3a0d835187ac2c57))
+
   packages/source:
     dependencies:
       '@nazare/tree-sitter-liquid':
