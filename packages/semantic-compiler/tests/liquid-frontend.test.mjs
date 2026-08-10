@@ -1,0 +1,178 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+import { liquidFrontend } from "../dist/index.js";
+import { LiquidParserProvider } from "../dist/parsers/liquid/parser.js";
+
+const fixturePath = "snippets/product-card.liquid";
+const fixtureSource = fs.readFileSync(
+	new URL(`../../../fixtures/canonical-theme/${fixturePath}`, import.meta.url),
+	"utf8",
+);
+
+function extract(source = fixtureSource, path = fixturePath, limits = {}) {
+	const parsed = new LiquidParserProvider().parse({ path, source });
+	assert.equal(parsed.ok, true);
+	return liquidFrontend.extract({
+		document: parsed.document,
+		limits: { maxFacts: 1_000, maxWork: 10_000, ...limits },
+	});
+}
+
+function factsOf(result, kind) {
+	return result.facts.filter((fact) => fact.kind === kind);
+}
+
+test("Liquid frontend extracts the canonical product-card slice from CST offsets", () => {
+	const result = extract();
+	assert.deepEqual(result.boundaries, []);
+	assert.equal(
+		result.coverage.every(({ status }) => status === "complete"),
+		true,
+	);
+	assert.equal(result.work.emitted, result.facts.length);
+	assert.equal(result.work.visited > result.work.emitted, true);
+
+	const binding = factsOf(result, "liquid.binding").find(
+		(fact) => fact.name === "product_handle",
+	);
+	assert.equal(binding.binding, "assign");
+	assert.equal(binding.value.text, "product.title | handleize");
+	assert.equal(
+		fixtureSource.slice(
+			binding.evidence.range.start,
+			binding.evidence.range.end,
+		),
+		"{% assign product_handle = product.title | handleize %}",
+	);
+
+	const handleize = factsOf(result, "liquid.filter").find(
+		(fact) => fact.name === "handleize",
+	);
+	assert.equal(handleize.input.text, "product.title");
+
+	const render = factsOf(result, "liquid.render-site")[0];
+	assert.deepEqual(render.evidence.range, { start: 494, end: 532 });
+	assert.deepEqual(render.target, {
+		kind: "literal",
+		value: "price",
+		evidence: { path: fixturePath, range: { start: 504, end: 511 } },
+	});
+	const renderArgument = factsOf(result, "liquid.render-argument")[0];
+	assert.equal(renderArgument.argument.kind, "named");
+	assert.equal(renderArgument.argument.name, "product");
+	assert.equal(renderArgument.argument.value.text, "product");
+
+	const predicate = factsOf(result, "liquid.predicate")[0];
+	assert.equal(predicate.operator, "greater-than");
+	assert.deepEqual(predicate.evidence.range, { start: 543, end: 583 });
+
+	const metafieldReads = factsOf(result, "liquid.access-path").filter(
+		(fact) => fact.path.segments.at(-1)?.name === "subtitle",
+	);
+	assert.equal(metafieldReads.length, 1);
+	assert.deepEqual(
+		metafieldReads[0].path.segments.map((segment) => segment.name),
+		["metafields", "custom", "subtitle"],
+	);
+	assert.equal(metafieldReads[0].context, "output");
+
+	const headingOutputReads = factsOf(result, "liquid.access-path").filter(
+		(fact) =>
+			fact.path.root.name === "heading_tag" && fact.context === "output",
+	);
+	assert.equal(headingOutputReads.length, 2);
+});
+
+test("Liquid frontend extracts branch, render-mode, schema, asset, and locale syntax", () => {
+	const source = [
+		"{% capture label %}{{ product.title | escape }}{% endcapture %}",
+		"{% for item in products limit: 3 %}{{ item.title }}{% else %}none{% endfor %}",
+		"{{ products[index].title }}",
+		"{% render card_name with product as item %}",
+		"{{ 'theme.css' | asset_url | stylesheet_tag }}",
+		"{{ 'products.title' | t }}",
+		"{% unless product.available %}x{% elsif product.tags contains 'x' %}y{% else %}z{% endunless %}",
+		'{% schema %}{"name":"Card"}{% endschema %}',
+	].join("\n");
+	const result = extract(source, "snippets/syntax.liquid");
+	assert.deepEqual(result.boundaries, []);
+	assert.equal(
+		result.coverage.every(({ status }) => status === "complete"),
+		true,
+	);
+
+	const bindingKinds = factsOf(result, "liquid.binding").map(
+		({ binding }) => binding,
+	);
+	assert.deepEqual(bindingKinds, ["capture", "for"]);
+	const renderArgument = factsOf(result, "liquid.render-argument")[0].argument;
+	assert.equal(renderArgument.kind, "with");
+	assert.equal(renderArgument.value.text, "product");
+	assert.equal(renderArgument.alias.name, "item");
+	assert.equal(
+		factsOf(result, "liquid.access-path").some(
+			(fact) =>
+				fact.path.root.name === "index" && fact.path.segments.length === 0,
+		),
+		true,
+	);
+	assert.deepEqual(
+		factsOf(result, "liquid.asset-reference").map(({ syntax }) => syntax),
+		["stylesheet-tag-filter", "asset-url-filter"],
+	);
+	assert.equal(
+		factsOf(result, "liquid.locale-reference")[0].key.value,
+		"products.title",
+	);
+	const schema = factsOf(result, "liquid.schema-region")[0];
+	assert.equal(
+		source.slice(
+			schema.contentEvidence.range.start,
+			schema.contentEvidence.range.end,
+		),
+		'{"name":"Card"}',
+	);
+	assert.deepEqual(
+		factsOf(result, "liquid.condition").map(({ construct }) => construct),
+		["unless", "elsif"],
+	);
+	assert.equal(
+		factsOf(result, "liquid.guard").some(
+			({ outcome }) => outcome === "iterates",
+		),
+		true,
+	);
+	assert.equal(
+		factsOf(result, "liquid.guard").some(({ outcome }) => outcome === "empty"),
+		true,
+	);
+});
+
+test("Liquid frontend scopes parser uncertainty into explicit partial coverage", () => {
+	const result = extract("{% render %}", "snippets/invalid.liquid");
+	assert.equal(result.diagnostics[0].code, "TREE_SITTER_MISSING");
+	assert.equal(result.boundaries[0].kind, "unsupported-syntax");
+	assert.equal(
+		result.coverage.every(({ status }) => status === "partial"),
+		true,
+	);
+});
+
+test("Liquid frontend reports bounded partial coverage without over-emitting", () => {
+	const result = extract(fixtureSource, fixturePath, { maxFacts: 3 });
+	assert.equal(result.facts.length, 3);
+	assert.equal(result.work.emitted, 3);
+	assert.equal(result.boundaries.length, 1);
+	assert.equal(result.boundaries[0].kind, "budget");
+	assert.equal(
+		result.coverage.every(({ status }) => status === "partial"),
+		true,
+	);
+	assert.equal(
+		result.coverage.every(
+			({ boundaryIds }) => boundaryIds[0] === result.boundaries[0].id,
+		),
+		true,
+	);
+});

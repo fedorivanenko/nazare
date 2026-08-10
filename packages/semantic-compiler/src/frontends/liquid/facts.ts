@@ -66,7 +66,7 @@ export type LiquidConditionFact = LiquidFactBase<"liquid.condition"> & {
 export type LiquidGuardFact = LiquidFactBase<"liquid.guard"> & {
 	conditionEvidence: SourceAnchor;
 	guardedEvidence: SourceAnchor;
-	outcome: "true" | "false" | "case-match";
+	outcome: "true" | "false" | "case-match" | "iterates" | "empty";
 };
 
 export type LiquidRenderSiteFact = LiquidFactBase<"liquid.render-site"> & {
@@ -151,6 +151,7 @@ export type LiquidPredicateOperator =
 
 export type LiquidPredicateOperand =
 	| { kind: "access-path"; path: LiquidAccessPath }
+	| { kind: "predicate"; evidence: SourceAnchor }
 	| { kind: "string"; value: string; evidence: SourceAnchor }
 	| { kind: "number"; value: number; evidence: SourceAnchor }
 	| { kind: "boolean"; value: boolean; evidence: SourceAnchor }
