@@ -1,3 +1,4 @@
+export * from "./compiler/semantic-compiler.js";
 export * from "./compiler/semantic-contribution.js";
 export * from "./compiler/semantic-graph-assembler.js";
 export * from "./compiler/semantic-graph-contract.js";
@@ -18,6 +19,8 @@ export * from "./query/semantic-query.js";
 export * from "./semantic/assertion.js";
 export * from "./semantic/evidence.js";
 export * from "./semantic/record.js";
+export { createShopifySemanticCompiler } from "./targets/shopify/compiler.js";
 export { projectLiquidToShopify } from "./targets/shopify/liquid-projection.js";
 export { shopifyOntology } from "./targets/shopify/ontology.js";
 export { shopifyRepositoryResolutionPass } from "./targets/shopify/repository-resolution.js";
+export { projectSourceToShopify } from "./targets/shopify/source-projection.js";
