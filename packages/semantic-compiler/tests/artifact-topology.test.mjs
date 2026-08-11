@@ -81,13 +81,13 @@ test("artifact topology filters same-name class lifecycle by entrypoint reachabi
 		[
 			[
 				"ATTACHED_TO",
-				"artifact:assets~2Fbase.css",
 				"artifact:layout~2Ftheme.liquid",
+				"artifact:assets~2Fbase.css",
 			],
 			[
 				"ATTACHED_TO",
-				"artifact:assets~2Ftheme.js",
 				"artifact:layout~2Ftheme.liquid",
+				"artifact:assets~2Ftheme.js",
 			],
 			[
 				"ATTACHED_TO",
@@ -177,6 +177,36 @@ test("artifact topology filters same-name class lifecycle by entrypoint reachabi
 		).length,
 		4,
 	);
+});
+
+test("shared attached artifacts never bridge unrelated owners", () => {
+	const sources = [
+		{
+			path: "templates/index.json",
+			source: '{"sections":{"home":{"type":"home"}}}',
+		},
+		{ path: "sections/home.liquid", source: "<div>Home</div>" },
+		{
+			path: "layout/theme.liquid",
+			source: "{{ 'shared.js' | asset_url | script_tag }}",
+		},
+		{
+			path: "sections/unrelated.liquid",
+			source: "{{ 'shared.js' | asset_url | script_tag }}",
+		},
+		{ path: "assets/shared.js", source: "console.log('shared')" },
+	];
+	const compilation = compile(sources);
+	const projected = topology(compilation, sources);
+	const entrypoint = "artifact:templates~2Findex.json";
+	const reachable = new Set([
+		entrypoint,
+		...projected.relations
+			.filter(({ kind, to }) => kind === "REACHABLE_FROM" && to === entrypoint)
+			.map(({ from }) => from),
+	]);
+	assert.equal(reachable.has("artifact:assets~2Fshared.js"), true);
+	assert.equal(reachable.has("artifact:sections~2Funrelated.liquid"), false);
 });
 
 test("one artifact remains shared across multiple entrypoints", () => {

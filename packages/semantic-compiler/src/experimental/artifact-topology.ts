@@ -546,8 +546,8 @@ export function projectArtifactTopology(input: {
 				...(attach
 					? {
 							relationKind: "ATTACHED_TO" as const,
-							fromPath: targetPath,
-							toPath: owner.path,
+							fromPath: owner.path,
+							toPath: targetPath,
 						}
 					: {}),
 			});
@@ -627,8 +627,6 @@ function projectReachability(
 			for (const relation of attachments) {
 				if (relation.from === current.artifact.ref) {
 					neighbors.push({ ref: relation.to, relation });
-				} else if (relation.to === current.artifact.ref) {
-					neighbors.push({ ref: relation.from, relation });
 				}
 			}
 			neighbors.sort((left, right) => left.ref.localeCompare(right.ref));

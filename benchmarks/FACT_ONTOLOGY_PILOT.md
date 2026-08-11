@@ -301,14 +301,14 @@ Real Climatic Health pilot over authored and deployed theme artifacts:
 ```text
 files                              262
 source bytes                 1,731,799
-compile                    8.21–16.82 s
-Fact projection            2.03–2.61 s
-topology projection          252–626 ms
-topology snapshot              2.11 MB
+compile                        10.27 s
+Fact projection                 2.27 s
+topology projection              264 ms
+topology snapshot              0.89 MB
 artifacts                            262
 ATTACHED_TO relations                 35
 INCLUDES relations                   381
-REACHABLE_FROM relations           2,760
+REACHABLE_FROM relations             833
 JSON entrypoints                       24
 references                           525
 resolved                             519
@@ -321,14 +321,14 @@ not-found                              1
 ```text
 raw scoped Symbols/artifacts      30
 raw semantic uses               221
-reachable artifacts               8
-reachable uses                  126
-excluded same-name artifacts     22
+reachable occurrence artifacts   5
+reachable uses                  123
+excluded same-name artifacts     25
 entrypoints with candidates      24/24
-first compact page bytes    8,840–8,946
+first compact page bytes         9,037
 ```
 
-Reachability removed 22/30 same-name artifact candidates, approximately 73%, while preserving deployed Liquid/CSS/JavaScript roles. Default page returned 50 expandable Fact refs and stayed below 16 KB.
+For the sampled article entrypoint, reachability removed 25/30 same-name artifact candidates, approximately 83%, while preserving currently modeled deployed Liquid/CSS/JavaScript roles. Default page returned 50 expandable Fact refs and stayed below 16 KB.
 
 All 24 real entrypoints remain topology-partial because some executable `asset_url` contexts are not yet proven as attachments. Combined lifecycle coverage separately reports dynamic Liquid class emission and runtime JavaScript class arguments. Unknown paths never become proven joins.
 
@@ -345,6 +345,7 @@ Validated:
 - Equal Liquid/CSS/JavaScript text remains three separate scoped Symbols before topology joins.
 - Separate artifact topology removes unreachable same-name candidates without merging scoped Symbols.
 - Bounded `REACHABLE_FROM` proof chains fit outside seven semantic predicates.
+- `ATTACHED_TO` traversal must remain directed owner → attached artifact; undirected traversal creates false reachability through shared bundles.
 - Fact-level certainty, authority, evaluation (`static` versus runtime/external), lexical execution conditionality, evidence, and guards remain independent.
 - Symbol/predicate aggregation produces dramatically smaller agent-facing answers.
 - Public Fact refs support targeted expansion without exposing internal graph IDs.
@@ -359,7 +360,7 @@ Unresolved:
 - Fact query indexes are currently built in memory and are not incremental.
 - Artifact attachment and reachability are validated as an experimental projection, not integrated into compiler output or Inspect.
 - JSON section groups, alternate/disabled layouts, preload attachment, dynamic sections, and build provenance from authored SCSS/JavaScript to deployed assets remain incomplete.
-- Eager materialization of 2,760 reachability records costs 2.11 MB; direct indexed traversal or lazy entrypoint closure should replace it before production.
+- Eager materialization of 833 reachability records costs 0.89 MB; direct indexed traversal or lazy entrypoint closure should still replace it before production.
 - JavaScript direct `classList` reads/mutations are validated. DOM attributes, `className`, aliases, helper wrappers, and events remain untested.
 - Existing `SourceAuthority` vocabulary is narrower than the proposed conceptual authority vocabulary.
 
