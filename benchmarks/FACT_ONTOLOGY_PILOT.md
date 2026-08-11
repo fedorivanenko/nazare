@@ -258,6 +258,80 @@ compact bytes 3,922
 
 Coverage was complete for 8/10 files. Remaining files contained runtime class-name arguments; unknown names remained unavailable rather than becoming missing or guessed data.
 
+## Artifact topology and reachability experiment
+
+Fifth phase tested whether repository topology can filter cross-language same-name candidates without merging semantic Symbols or adding an eighth semantic predicate.
+
+Topology remains a separate, revision-bound snapshot:
+
+```text
+ATTACHED_TO      artifact association, traversed from an entrypoint
+INCLUDES         directed template/section/snippet inclusion
+REACHABLE_FROM   bounded derived reachability with proof-chain refs
+```
+
+Pilot supports:
+
+- JSON template section types with exact `jsonc-parser` offsets;
+- default `layout/theme.liquid` attachment as explicit Shopify-convention inference;
+- Liquid snippet render inclusion;
+- `stylesheet_tag`, `script_tag`, `inline_asset_content`, and literal `<script src="... | asset_url">` attachment;
+- resolved, proven `not-found`, partial-scope unknown, runtime-dependent, and external-data-required references;
+- cycle-safe depth/work/relation budgets;
+- bounded, revision-aware lifecycle pagination.
+
+Acceptance corpus result for `is-active`:
+
+```text
+templates/product.json
+  → layout/theme.liquid
+  → assets/base.css
+  → assets/theme.js
+  → sections/main-product.liquid
+  → snippets/badge.liquid
+
+reachable roles: emits + selects + adds
+excluded: assets/orphan.css
+```
+
+Four `is-active` Symbols remain artifact-scoped. Three reachable Symbols form a lifecycle **candidate**; orphan Symbol remains excluded. Candidate does not assert runtime interaction.
+
+Real Climatic Health pilot over authored and deployed theme artifacts:
+
+```text
+files                              262
+source bytes                 1,731,799
+compile                    8.21–16.82 s
+Fact projection            2.03–2.61 s
+topology projection          252–626 ms
+topology snapshot              2.11 MB
+artifacts                            262
+ATTACHED_TO relations                 35
+INCLUDES relations                   381
+REACHABLE_FROM relations           2,760
+JSON entrypoints                       24
+references                           525
+resolved                             519
+external-data-required                 5
+not-found                              1
+```
+
+`is-active` filtering:
+
+```text
+raw scoped Symbols/artifacts      30
+raw semantic uses               221
+reachable artifacts               8
+reachable uses                  126
+excluded same-name artifacts     22
+entrypoints with candidates      24/24
+first compact page bytes    8,840–8,946
+```
+
+Reachability removed 22/30 same-name artifact candidates, approximately 73%, while preserving deployed Liquid/CSS/JavaScript roles. Default page returned 50 expandable Fact refs and stayed below 16 KB.
+
+All 24 real entrypoints remain topology-partial because some executable `asset_url` contexts are not yet proven as attachments. Combined lifecycle coverage separately reports dynamic Liquid class emission and runtime JavaScript class arguments. Unknown paths never become proven joins.
+
 ## Findings
 
 Validated:
@@ -269,6 +343,8 @@ Validated:
 - Equal Liquid/CSS class text remains separate artifact-scoped Symbols before topology joins.
 - Direct JavaScript class lifecycle operations fit the same `USES` predicate through `adds`, `removes`, `toggles`, and `reads` roles.
 - Equal Liquid/CSS/JavaScript text remains three separate scoped Symbols before topology joins.
+- Separate artifact topology removes unreachable same-name candidates without merging scoped Symbols.
+- Bounded `REACHABLE_FROM` proof chains fit outside seven semantic predicates.
 - Fact-level certainty, authority, evaluation (`static` versus runtime/external), lexical execution conditionality, evidence, and guards remain independent.
 - Symbol/predicate aggregation produces dramatically smaller agent-facing answers.
 - Public Fact refs support targeted expansion without exposing internal graph IDs.
@@ -281,7 +357,9 @@ Unresolved:
 - Source snapshots usually contain exact offsets but not precomputed line/character positions; expansion needs source access to calculate lines.
 - Projection adds multi-second eager work. Direct compiler emission or lazy/indexed projection would be preferable.
 - Fact query indexes are currently built in memory and are not incremental.
-- Artifact attachment and reachability topology are not implemented.
+- Artifact attachment and reachability are validated as an experimental projection, not integrated into compiler output or Inspect.
+- JSON section groups, alternate/disabled layouts, preload attachment, dynamic sections, and build provenance from authored SCSS/JavaScript to deployed assets remain incomplete.
+- Eager materialization of 2,760 reachability records costs 2.11 MB; direct indexed traversal or lazy entrypoint closure should replace it before production.
 - JavaScript direct `classList` reads/mutations are validated. DOM attributes, `className`, aliases, helper wrappers, and events remain untested.
 - Existing `SourceAuthority` vocabulary is narrower than the proposed conceptual authority vocabulary.
 
@@ -293,7 +371,7 @@ Continue with the ontology if the next experiments preserve these properties:
 2. **Passed:** frontend-produced Liquid DOM attribute facts match the validated synthetic `USES` role model.
 3. **Passed:** frontend-produced Liquid/CSS class lifecycle facts fit `USES` roles without false joins.
 4. **Passed:** direct JavaScript class operations fit role-qualified `USES` facts while dynamic names remain runtime-dependent.
-5. Artifact topology can keep attachment/reachability separate from semantic Facts.
+5. **Passed:** artifact topology keeps attachment/reachability separate, excludes unreachable same-name artifacts, and retains scoped semantic Facts.
 6. Lazy or direct Fact production removes most projection overhead.
 
 Do not replace the current snapshot yet.

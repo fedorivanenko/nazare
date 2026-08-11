@@ -2,6 +2,7 @@ export * from "./compiler/semantic-compiler.js";
 export * from "./compiler/semantic-contribution.js";
 export * from "./compiler/semantic-graph-assembler.js";
 export * from "./compiler/semantic-graph-contract.js";
+export * from "./experimental/artifact-topology.js";
 export * from "./experimental/fact-ontology.js";
 export * from "./experimental/fact-projection.js";
 export * from "./experimental/fact-query.js";
