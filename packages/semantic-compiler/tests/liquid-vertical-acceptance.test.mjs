@@ -77,9 +77,9 @@ test("Liquid acceptance corpus compiles with complete extractor coverage", () =>
 			predicates: snapshot.predicates.length,
 		},
 		{
-			entities: 20,
-			occurrences: 81,
-			relations: 27,
+			entities: 22,
+			occurrences: 83,
+			relations: 29,
 			values: 95,
 			predicates: 10,
 		},
@@ -93,6 +93,11 @@ test("Liquid acceptance corpus compiles with complete extractor coverage", () =>
 		snapshot.relations.filter(({ kind }) => kind === "shopify.emits-attribute")
 			.length,
 		10,
+	);
+	assert.equal(
+		snapshot.relations.filter(({ kind }) => kind === "shopify.emits-class")
+			.length,
+		2,
 	);
 	assert.deepEqual(snapshot.diagnostics, []);
 	assert.equal(

@@ -12,7 +12,7 @@ const expressionOwners = [
 
 export const shopifyOntology = {
 	namespace: "shopify",
-	version: 3,
+	version: 5,
 	entityKinds: [
 		{
 			kind: "shopify.source-file",
@@ -28,6 +28,24 @@ export const shopifyOntology = {
 				{ name: "language", type: "string", required: true },
 				{ name: "role", type: "string", required: true },
 			],
+		},
+		{
+			kind: "shopify.css-class",
+			identity: [
+				{
+					name: "path",
+					type: "string",
+					required: true,
+					normalization: "path",
+				},
+				{
+					name: "name",
+					type: "string",
+					required: true,
+					normalization: "none",
+				},
+			],
+			attributes: [],
 		},
 		{
 			kind: "shopify.dom-attribute",
@@ -144,6 +162,19 @@ export const shopifyOntology = {
 			],
 		},
 		{
+			kind: "shopify.markup-class-site",
+			ownerKinds: sourceFileOwners,
+			attributes: [{ name: "name", type: "string", required: true }],
+		},
+		{
+			kind: "shopify.class-selector-site",
+			ownerKinds: sourceFileOwners,
+			attributes: [
+				{ name: "name", type: "string", required: true },
+				{ name: "selector", type: "string", required: true },
+			],
+		},
+		{
 			kind: "shopify.markup-attribute-site",
 			ownerKinds: sourceFileOwners,
 			attributes: [
@@ -167,6 +198,26 @@ export const shopifyOntology = {
 			to: { categories: ["entity"], kinds: ["shopify.snippet"] },
 			attributes: [{ name: "resolution", type: "string", required: true }],
 			allowsGuards: true,
+		},
+		{
+			kind: "shopify.emits-class",
+			from: {
+				categories: ["occurrence"],
+				kinds: ["shopify.markup-class-site"],
+			},
+			to: { categories: ["entity"], kinds: ["shopify.css-class"] },
+			attributes: [],
+			allowsGuards: true,
+		},
+		{
+			kind: "shopify.selects-class",
+			from: {
+				categories: ["occurrence"],
+				kinds: ["shopify.class-selector-site"],
+			},
+			to: { categories: ["entity"], kinds: ["shopify.css-class"] },
+			attributes: [],
+			allowsGuards: false,
 		},
 		{
 			kind: "shopify.emits-attribute",
@@ -289,6 +340,14 @@ export const shopifyOntology = {
 		},
 		{ kind: "shopify.conditions", description: "Projected Liquid conditions" },
 		{ kind: "shopify.renders", description: "Projected Liquid renders" },
+		{
+			kind: "shopify.markup-classes",
+			description: "Projected static markup class emissions",
+		},
+		{
+			kind: "shopify.class-selectors",
+			description: "Projected CSS and SCSS class selectors",
+		},
 		{
 			kind: "shopify.markup-attributes",
 			description: "Projected markup attribute emissions",

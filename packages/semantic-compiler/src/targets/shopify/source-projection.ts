@@ -19,6 +19,9 @@ const SOURCE_SEMANTIC_FAMILIES = [
 	"shopify.schema-regions",
 	"shopify.asset-references",
 	"shopify.locale-references",
+	"shopify.markup-attributes",
+	"shopify.markup-classes",
+	"shopify.class-selectors",
 ] as const;
 
 export type ShopifySourceProjectionInput = {

@@ -264,9 +264,10 @@ export const liquidFrontend = defineFrontend<LiquidDocument, LiquidFact>({
 				);
 				valueKind = staticText.length > 0 ? "mixed" : "dynamic";
 			}
+			const attributeEvidence = nodeAnchor(node);
 			emit({
 				kind: "liquid.markup-attribute",
-				evidence: nodeAnchor(node),
+				evidence: attributeEvidence,
 				name: text(nameNode),
 				nameEvidence: nodeAnchor(nameNode),
 				element: text(tagNode),
@@ -274,6 +275,59 @@ export const liquidFrontend = defineFrontend<LiquidDocument, LiquidFact>({
 				valueKind,
 				...(valueNode ? { valueEvidence: nodeAnchor(valueNode, false) } : {}),
 			});
+			if (text(nameNode).toLowerCase() === "class" && valueRange) {
+				emitMarkupClasses(valueRange, attributeEvidence);
+			}
+		}
+
+		function emitMarkupClasses(
+			valueRange: SourceRange,
+			attributeEvidence: SourceAnchor,
+		): void {
+			const characters = document.source
+				.slice(valueRange.start, valueRange.end)
+				.split("");
+			const first = characters[0];
+			if (first === '"' || first === "'") characters[0] = " ";
+			const last = characters.at(-1);
+			if (last === '"' || last === "'") characters[characters.length - 1] = " ";
+			for (const dynamic of document.markupDynamicRanges) {
+				if (!overlaps(dynamic, valueRange)) continue;
+				const start =
+					Math.max(valueRange.start, dynamic.start) - valueRange.start;
+				const end = Math.min(valueRange.end, dynamic.end) - valueRange.start;
+				characters.fill("x", start, end);
+			}
+			const projected = characters.join("");
+			for (const match of projected.matchAll(/\S+/g)) {
+				const localStart = match.index;
+				const localEnd = localStart + match[0].length;
+				const range = {
+					start: valueRange.start + localStart,
+					end: valueRange.start + localEnd,
+				};
+				if (
+					document.markupDynamicRanges.some((dynamic) =>
+						overlaps(dynamic, range),
+					)
+				) {
+					addBoundary(
+						"dynamic-syntax",
+						"Dynamic Liquid class value may emit class names",
+						range,
+						["liquid.markup-classes"],
+					);
+					continue;
+				}
+				const name = document.source.slice(range.start, range.end);
+				emit({
+					kind: "liquid.markup-class",
+					evidence: anchor(range),
+					name,
+					nameEvidence: anchor(range),
+					attributeEvidence,
+				});
+			}
 		}
 
 		function reportDynamicAttributeNames(node: Node): void {

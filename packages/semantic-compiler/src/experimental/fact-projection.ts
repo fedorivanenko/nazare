@@ -303,6 +303,10 @@ function projectRelationFacts(state: ProjectionState): void {
 		if (relation.kind === "shopify.invokes") projectCall(state, relation);
 		if (relation.kind === "shopify.emits-attribute")
 			projectUse(state, relation, "emits");
+		if (relation.kind === "shopify.selects-class")
+			projectUse(state, relation, "selects");
+		if (relation.kind === "shopify.emits-class")
+			projectUse(state, relation, "emits");
 		if (relation.kind === "shopify.passes-argument")
 			projectPass(state, relation);
 	}
@@ -472,19 +476,31 @@ function entitySymbol(
 			.map(String)
 			.join(":");
 	const kind =
-		entity.kind === "shopify.dom-attribute" ? "dom.attribute" : entity.kind;
+		entity.kind === "shopify.dom-attribute"
+			? "dom.attribute"
+			: entity.kind === "shopify.css-class"
+				? "css.class"
+				: entity.kind;
 	const namespace =
 		entity.kind === "shopify.dom-attribute"
 			? "dom"
-			: entity.kind.includes(".")
-				? entity.kind.slice(0, entity.kind.lastIndexOf("."))
-				: "semantic";
-	const ref = `symbol:${escapeRef(kind)}:${escapeRef(name)}`;
+			: entity.kind === "shopify.css-class"
+				? "css"
+				: entity.kind.includes(".")
+					? entity.kind.slice(0, entity.kind.lastIndexOf("."))
+					: "semantic";
 	const path =
 		entity.path ??
 		(typeof entity.attributes.path === "string"
 			? entity.attributes.path
-			: undefined);
+			: entity.kind === "shopify.css-class" &&
+					typeof entity.identity.components.path === "string"
+				? entity.identity.components.path
+				: undefined);
+	const ref =
+		entity.kind === "shopify.css-class" && path
+			? `symbol:${escapeRef(kind)}:${escapeRef(path)}:${escapeRef(name)}`
+			: `symbol:${escapeRef(kind)}:${escapeRef(name)}`;
 	const artifact = path ? state.artifactByPath.get(path) : undefined;
 	return {
 		ref,

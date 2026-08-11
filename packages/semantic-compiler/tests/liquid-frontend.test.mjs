@@ -172,6 +172,15 @@ test("Liquid frontend extracts authored markup attributes across Liquid values",
 			["data-action", "button", "literal"],
 		],
 	);
+	assert.deepEqual(
+		factsOf(result, "liquid.markup-class").map(({ name }) => name),
+		["card"],
+	);
+	assert.equal(
+		result.coverage.find(({ family }) => family === "liquid.markup-classes")
+			.status,
+		"partial",
+	);
 	const productId = attributes.find(({ name }) => name === "data-product-id");
 	assert.equal(
 		source.slice(

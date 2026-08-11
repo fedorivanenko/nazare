@@ -86,7 +86,7 @@ test("semantic index provides exact identity, ownership, relation, and evidence 
 
 test("semantic search separates exact, normalized, and inferred retrieval", () => {
 	const query = new SemanticQueryIndex(canonicalSnapshot());
-	const exact = query.search("price", { categories: ["entity"] });
+	const exact = query.search("price", { kinds: ["shopify.snippet"] });
 	assert.equal(exact.matches[0].match, "exact");
 	assert.equal(exact.matches[0].field, "name");
 	assert.equal(

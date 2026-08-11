@@ -2,6 +2,7 @@ import type { CoverageStatus } from "../ontology/core.js";
 import type {
 	FactOntologyArtifact,
 	FactOntologyCondition,
+	FactOntologyCoverage,
 	FactOntologyFact,
 	FactOntologyOperation,
 	FactOntologyRef,
@@ -66,7 +67,9 @@ export type CompactUseSummary = {
 		role: string;
 		uses: number;
 	}[];
-	coverage: CompactFacetCoverage<"markup-attributes">;
+	coverage: CompactFacetCoverage<
+		"markup-attributes" | "markup-classes" | "class-selectors"
+	>;
 };
 
 export type ExpandedFact = {
@@ -132,8 +135,12 @@ export class FactOntologyQuery {
 		this.#facts = new Map(snapshot.facts.map((fact) => [fact.ref, fact]));
 	}
 
-	usesOf(symbolName: string, kind: string): CompactUseSummary {
-		const symbol = this.#resolveSymbol(symbolName, kind);
+	usesOf(
+		symbolName: string,
+		kind: string,
+		scopePath?: string,
+	): CompactUseSummary {
+		const symbol = this.#resolveSymbol(symbolName, kind, scopePath);
 		const uses = this.snapshot.facts.filter(
 			(fact) =>
 				fact.claim.predicate === "USES" && fact.claim.object === symbol.ref,
@@ -159,10 +166,21 @@ export class FactOntologyQuery {
 				role,
 			};
 		});
-		const coverage = this.#facetCoverage(
-			"shopify.markup-attributes",
-			"markup-attributes",
-		);
+		const symbolLanguage = symbol.scope?.artifact
+			? this.#artifacts.get(symbol.scope.artifact)?.language
+			: undefined;
+		const coverage =
+			kind === "css.class" && symbolLanguage === "liquid"
+				? this.#facetCoverage("shopify.markup-classes", "markup-classes")
+				: kind === "css.class"
+					? this.#facetCoverage("shopify.class-selectors", "class-selectors", [
+							"css",
+							"scss",
+						])
+					: this.#facetCoverage(
+							"shopify.markup-attributes",
+							"markup-attributes",
+						);
 		return {
 			subject: { ref: symbol.ref, name: symbol.name, kind: symbol.kind },
 			uses: {
@@ -293,20 +311,34 @@ export class FactOntologyQuery {
 	#facetCoverage<Family extends string>(
 		snapshotFamily: string,
 		family: Family,
+		languages: readonly string[] = ["liquid"],
 	): CompactFacetCoverage<Family> {
-		const records = this.snapshot.coverage.filter(
-			(coverage) => coverage.family === snapshotFamily,
-		);
-		const coveredArtifactRefs = new Set(
-			records.flatMap((coverage) => coverage.scope.artifacts ?? []),
-		);
+		const records = this.snapshot.coverage.filter((coverage) => {
+			if (coverage.family !== snapshotFamily) return false;
+			const scopedArtifacts = coverage.scope.artifacts ?? [];
+			return (
+				scopedArtifacts.length === 0 ||
+				scopedArtifacts.some((artifactRef) => {
+					const language = this.#artifacts.get(artifactRef)?.language;
+					return language !== undefined && languages.includes(language);
+				})
+			);
+		});
+		const applicableArtifacts = (coverage: FactOntologyCoverage) =>
+			(coverage.scope.artifacts ?? []).filter((artifactRef) => {
+				const language = this.#artifacts.get(artifactRef)?.language;
+				return language !== undefined && languages.includes(language);
+			});
+		const coveredArtifactRefs = new Set(records.flatMap(applicableArtifacts));
 		const completeArtifactRefs = new Set(
 			records
 				.filter(({ status }) => status === "complete")
-				.flatMap((coverage) => coverage.scope.artifacts ?? []),
+				.flatMap(applicableArtifacts),
 		);
 		const totalArtifacts = this.snapshot.artifacts.filter(
-			(artifact) => artifact.language === "liquid",
+			(artifact) =>
+				artifact.language !== undefined &&
+				languages.includes(artifact.language),
 		).length;
 		const reasons = uniqueReasons(
 			records.flatMap((coverage) => coverage.reasons ?? []),
@@ -325,9 +357,17 @@ export class FactOntologyQuery {
 		};
 	}
 
-	#resolveSymbol(symbolName: string, kind: string): FactOntologySymbol {
+	#resolveSymbol(
+		symbolName: string,
+		kind: string,
+		scopePath?: string,
+	): FactOntologySymbol {
 		const matches = this.snapshot.symbols.filter(
-			(symbol) => symbol.name === symbolName && symbol.kind === kind,
+			(symbol) =>
+				symbol.name === symbolName &&
+				symbol.kind === kind &&
+				(scopePath === undefined ||
+					this.#symbolScopePath(symbol) === scopePath),
 		);
 		if (matches.length === 0) {
 			throw new FactOntologyQueryError(
@@ -342,6 +382,12 @@ export class FactOntologyQuery {
 		const symbol = matches[0];
 		if (!symbol) throw new FactOntologyQueryError("Symbol resolution failed");
 		return symbol;
+	}
+
+	#symbolScopePath(symbol: FactOntologySymbol): string | undefined {
+		return symbol.scope?.artifact
+			? this.#artifacts.get(symbol.scope.artifact)?.path
+			: undefined;
 	}
 
 	expandAggregate(ref: string): readonly ExpandedFact[] {

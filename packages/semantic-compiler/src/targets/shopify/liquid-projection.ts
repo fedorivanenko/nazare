@@ -43,6 +43,7 @@ const coverageInputs = {
 	"shopify.asset-references": ["liquid.asset-references"],
 	"shopify.locale-references": ["liquid.locale-references"],
 	"shopify.markup-attributes": ["liquid.markup-attributes"],
+	"shopify.markup-classes": ["liquid.markup-classes"],
 } as const;
 
 /** Projects source-local Liquid facts into Shopify domain semantics. */
@@ -238,6 +239,12 @@ export function projectLiquidToShopify({
 						: fact.input.text,
 					[inputValueId, ...argumentValueIds],
 				);
+				break;
+			}
+			case "liquid.markup-class": {
+				addOccurrence(fact, "shopify.markup-class-site", {
+					name: fact.name,
+				});
 				break;
 			}
 			case "liquid.markup-attribute": {
@@ -553,6 +560,30 @@ export function projectLiquidToShopify({
 	}
 
 	function projectRelations(fact: LiquidFact): void {
+		if (fact.kind === "liquid.markup-class") {
+			const occurrence = occurrenceByFact.get(fact);
+			if (!occurrence) return;
+			const cssClass = ensureCssClass(fact.name, fact.nameEvidence);
+			const guardIds = guardsFor(fact.evidence);
+			relations.push({
+				id: id("relation", "shopify.emits-class", occurrence.id, cssClass.id),
+				kind: "shopify.emits-class",
+				from: occurrence.id,
+				to: cssClass.id,
+				guards: guardIds,
+				attributes: {},
+				assertion: assertion(
+					[fact.nameEvidence],
+					[occurrence.id, cssClass.id],
+					"proven",
+					"syntax",
+					guardIds.length > 0 ? "runtime-dependent" : "static",
+					guardIds.length > 0 ? [runtimeBoundaryId] : [],
+				),
+			});
+			if (guardIds.length > 0)
+				addRuntimeSubject(relations.at(-1)?.id ?? occurrence.id, fact.evidence);
+		}
 		if (fact.kind === "liquid.markup-attribute") {
 			const occurrence = occurrenceByFact.get(fact);
 			if (!occurrence) return;
@@ -811,6 +842,28 @@ export function projectLiquidToShopify({
 			"runtime-dependent",
 			[runtimeBoundaryId],
 		);
+	}
+
+	function ensureCssClass(
+		name: string,
+		evidence: SourceAnchor,
+	): SemanticEntity {
+		const classId = id("entity", "shopify.css-class", document.path, name);
+		const existing = entities.get(classId);
+		if (existing) return existing;
+		const cssClass: SemanticEntity = {
+			id: classId,
+			kind: "shopify.css-class",
+			identity: {
+				scheme: "shopify.css-class",
+				components: { path: document.path, name },
+			},
+			name,
+			attributes: {},
+			assertion: assertion([evidence], [fileId], "proven", "syntax", "static"),
+		};
+		entities.set(classId, cssClass);
+		return cssClass;
 	}
 
 	function ensureDomAttribute(

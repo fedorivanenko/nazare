@@ -169,6 +169,44 @@ Post-attribute snapshot measurements:
 
 Observed non-outlier runs varied with host load: compile 6.7–13.1 seconds, Fact projection 2.4–5.7 seconds, and compact query median 10.0–11.7 ms across 20 in-process runs. Projection remains unsuitable for eager production use.
 
+## Actual CSS/SCSS class-selector experiment
+
+Third phase added a bounded PostCSS frontend and Shopify projection:
+
+```text
+CSS/SCSS rule
+→ exact class-selector fact
+→ artifact-scoped css.class Symbol
+→ USES(role=selects)
+→ compact scoped query
+```
+
+Static Liquid class tokens use the same ontology with `USES(role=emits)`, but remain artifact-scoped. Equal class text across Liquid and CSS is intentionally ambiguous without scope; no cross-language join occurs before artifact reachability exists.
+
+Real authored SCSS corpus:
+
+```text
+files                         98
+class-selector occurrences  752
+scoped class symbols         545
+compile                     328 ms
+Fact projection              62 ms
+```
+
+`is-active` result:
+
+```text
+semantic selector uses       34
+artifacts                     20
+compact response bytes    2,070
+text matches                  36
+comment-only text matches      2
+```
+
+Semantic extraction excluded both comment-only matches. Coverage was complete for 97/98 artifacts; one SCSS interpolation produced explicit partial coverage.
+
+Validated syntax includes plain selectors, selector lists, `:is()`, `:not()`, SCSS nesting, `&`, escaped identifiers, attribute-value false-positive exclusion, comments, interpolation boundaries, exact offsets, and work/fact budgets.
+
 ## Findings
 
 Validated:
@@ -176,6 +214,8 @@ Validated:
 - Seven predicates represent current snippet calls and scoped binding lineage without losing tested semantic truth.
 - Synthetic Liquid/JavaScript/CSS operations share one DOM attribute Symbol through `USES` roles without requiring new core predicates.
 - Actual Liquid markup extraction projects attribute emission into the same `Symbol → USES(role=emits)` model.
+- Actual CSS/SCSS extraction projects selectors through `USES(role=selects)` without adding core predicates.
+- Equal Liquid/CSS class text remains separate artifact-scoped Symbols before topology joins.
 - Fact-level certainty, authority, evidence, and guards remain independent.
 - Symbol/predicate aggregation produces dramatically smaller agent-facing answers.
 - Public Fact refs support targeted expansion without exposing internal graph IDs.
@@ -189,7 +229,7 @@ Unresolved:
 - Projection adds multi-second eager work. Direct compiler emission or lazy/indexed projection would be preferable.
 - Fact query indexes are currently built in memory and are not incremental.
 - Artifact attachment and reachability topology are not implemented.
-- Actual CSS, JavaScript, DOM-read, and event frontends remain untested. Liquid DOM-attribute emission is now validated.
+- Actual JavaScript DOM reads/mutations and event frontends remain untested. Liquid emission and CSS/SCSS selection are now validated independently.
 - Existing `SourceAuthority` vocabulary is narrower than the proposed conceptual authority vocabulary.
 
 ## Decision gate
@@ -198,7 +238,7 @@ Continue with the ontology if the next experiments preserve these properties:
 
 1. Liquid binding compact lineage remains lossless.
 2. **Passed:** frontend-produced Liquid DOM attribute facts match the validated synthetic `USES` role model.
-3. Actual frontend-produced CSS class lifecycle facts fit `USES` roles without false joins.
+3. **Passed:** frontend-produced Liquid/CSS class lifecycle facts fit `USES` roles without false joins.
 4. Artifact topology can keep attachment/reachability separate from semantic Facts.
 5. Lazy or direct Fact production removes most projection overhead.
 
