@@ -149,6 +149,84 @@ test("Liquid frontend extracts branch, render-mode, schema, asset, and locale sy
 	);
 });
 
+test("Liquid frontend extracts authored markup attributes across Liquid values", () => {
+	const source = [
+		"{% if product %}",
+		'<article class="card {{ active_class }}" data-product-id="{{ product.id }}" disabled>',
+		"<button data-action='add'>Add</button>",
+		"</article>",
+		"{% endif %}",
+	].join("\n");
+	const result = extract(source, "sections/product.liquid");
+	const attributes = factsOf(result, "liquid.markup-attribute");
+	assert.deepEqual(
+		attributes.map(({ name, element, valueKind }) => [
+			name,
+			element,
+			valueKind,
+		]),
+		[
+			["class", "article", "mixed"],
+			["data-product-id", "article", "dynamic"],
+			["disabled", "article", "boolean"],
+			["data-action", "button", "literal"],
+		],
+	);
+	const productId = attributes.find(({ name }) => name === "data-product-id");
+	assert.equal(
+		source.slice(
+			productId.nameEvidence.range.start,
+			productId.nameEvidence.range.end,
+		),
+		"data-product-id",
+	);
+	assert.equal(
+		result.coverage.find(({ family }) => family === "liquid.markup-attributes")
+			.status,
+		"complete",
+	);
+});
+
+test("Liquid frontend marks dynamic markup attribute names partial", () => {
+	const result = extract(
+		'<div class="card" {{ block.shopify_attributes }}></div>',
+		"sections/dynamic-attributes.liquid",
+	);
+	assert.deepEqual(
+		factsOf(result, "liquid.markup-attribute").map(({ name }) => name),
+		["class"],
+	);
+	assert.equal(
+		result.coverage.find(({ family }) => family === "liquid.markup-attributes")
+			.status,
+		"partial",
+	);
+	assert.equal(
+		result.boundaries.some(({ message }) =>
+			message.includes("may emit attribute names"),
+		),
+		true,
+	);
+});
+
+test("Liquid frontend marks malformed authored start tags partial", () => {
+	const result = extract(
+		'<div data-test="unterminated',
+		"sections/malformed-markup.liquid",
+	);
+	assert.equal(
+		result.coverage.find(({ family }) => family === "liquid.markup-attributes")
+			.status,
+		"partial",
+	);
+	assert.equal(
+		result.boundaries.some(({ message }) =>
+			message.includes("markup parser could not fully interpret"),
+		),
+		true,
+	);
+});
+
 test("Liquid frontend preserves statement evidence inside multi-statement liquid tags", () => {
 	const source = `{% liquid
   assign first = ''

@@ -13,11 +13,12 @@ const liquidFactDescriptions = {
 	"liquid.schema-region": "Liquid schema tag body",
 	"liquid.asset-reference": "Liquid asset filter reference",
 	"liquid.locale-reference": "Liquid translation filter reference",
+	"liquid.markup-attribute": "Authored markup attribute",
 } as const;
 
 export const liquidMechanicalOntology = defineMechanicalOntology({
 	namespace: "liquid",
-	version: 1,
+	version: 2,
 	factKinds: LIQUID_MECHANICAL_FACT_KINDS.map((kind) => ({
 		kind,
 		description: liquidFactDescriptions[kind],
@@ -66,6 +67,10 @@ export const liquidMechanicalOntology = defineMechanicalOntology({
 		{
 			kind: "liquid.locale-references",
 			description: "Liquid translation filter references",
+		},
+		{
+			kind: "liquid.markup-attributes",
+			description: "Authored markup attribute names and values",
 		},
 	],
 });

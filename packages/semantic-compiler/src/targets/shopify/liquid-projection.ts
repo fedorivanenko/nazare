@@ -5,6 +5,7 @@ import type {
 	LiquidConditionFact,
 	LiquidFact,
 	LiquidGuardFact,
+	LiquidMarkupAttributeFact,
 	LiquidPredicateFact,
 	LiquidPredicateOperand,
 	LiquidReference,
@@ -41,6 +42,7 @@ const coverageInputs = {
 	"shopify.schema-regions": ["liquid.schema-regions"],
 	"shopify.asset-references": ["liquid.asset-references"],
 	"shopify.locale-references": ["liquid.locale-references"],
+	"shopify.markup-attributes": ["liquid.markup-attributes"],
 } as const;
 
 /** Projects source-local Liquid facts into Shopify domain semantics. */
@@ -236,6 +238,19 @@ export function projectLiquidToShopify({
 						: fact.input.text,
 					[inputValueId, ...argumentValueIds],
 				);
+				break;
+			}
+			case "liquid.markup-attribute": {
+				const occurrence = addOccurrence(
+					fact,
+					"shopify.markup-attribute-site",
+					{
+						name: fact.name,
+						element: fact.element,
+						valueKind: fact.valueKind,
+					},
+				);
+				addMarkupAttributeValue(occurrence.id, fact);
 				break;
 			}
 			case "liquid.condition": {
@@ -538,6 +553,35 @@ export function projectLiquidToShopify({
 	}
 
 	function projectRelations(fact: LiquidFact): void {
+		if (fact.kind === "liquid.markup-attribute") {
+			const occurrence = occurrenceByFact.get(fact);
+			if (!occurrence) return;
+			const attribute = ensureDomAttribute(fact.name, fact.nameEvidence);
+			const guardIds = guardsFor(fact.evidence);
+			relations.push({
+				id: id(
+					"relation",
+					"shopify.emits-attribute",
+					occurrence.id,
+					attribute.id,
+				),
+				kind: "shopify.emits-attribute",
+				from: occurrence.id,
+				to: attribute.id,
+				guards: guardIds,
+				attributes: {},
+				assertion: assertion(
+					[fact.nameEvidence],
+					[occurrence.id, attribute.id],
+					"proven",
+					"syntax",
+					guardIds.length > 0 ? "runtime-dependent" : "static",
+					guardIds.length > 0 ? [runtimeBoundaryId] : [],
+				),
+			});
+			if (guardIds.length > 0)
+				addRuntimeSubject(relations.at(-1)?.id ?? occurrence.id, fact.evidence);
+		}
 		if (fact.kind === "liquid.render-site") {
 			const render = occurrenceByFact.get(fact);
 			if (!render || fact.target.kind !== "literal") return;
@@ -624,6 +668,42 @@ export function projectLiquidToShopify({
 			)
 			.map(({ predicateId }) => predicateId)
 			.sort();
+	}
+
+	function addMarkupAttributeValue(
+		ownerId: string,
+		fact: LiquidMarkupAttributeFact,
+	): void {
+		const evidence = fact.valueEvidence ?? fact.nameEvidence;
+		const rawValue = fact.valueEvidence ? source(fact.valueEvidence) : "true";
+		const valueId = id(
+			"value",
+			"shopify.markup-attribute-value",
+			ownerId,
+			evidence.range.start,
+			evidence.range.end,
+		);
+		const runtime = fact.valueKind === "dynamic" || fact.valueKind === "mixed";
+		const resolved =
+			fact.valueKind === "boolean"
+				? true
+				: fact.valueKind === "literal"
+					? unquoteMarkupValue(rawValue)
+					: undefined;
+		values.set(valueId, {
+			id: valueId,
+			ownerId,
+			slot: "shopify.markup-attribute-value",
+			representation: runtime ? "expression" : "literal",
+			authority: "authored-source",
+			...(runtime ? { expression: rawValue } : { resolved: resolved ?? null }),
+			sourceValueIds: [],
+			attributes: { valueKind: fact.valueKind },
+			assertion: runtime
+				? runtimeAssertion([evidence], [ownerId])
+				: assertion([evidence], [ownerId], "proven", "syntax", "static"),
+		});
+		if (runtime) addRuntimeSubject(valueId, evidence);
 	}
 
 	function addExpressionValue(
@@ -731,6 +811,28 @@ export function projectLiquidToShopify({
 			"runtime-dependent",
 			[runtimeBoundaryId],
 		);
+	}
+
+	function ensureDomAttribute(
+		name: string,
+		evidence: SourceAnchor,
+	): SemanticEntity {
+		const attributeId = id("entity", "shopify.dom-attribute", name);
+		const existing = entities.get(attributeId);
+		if (existing) return existing;
+		const attribute: SemanticEntity = {
+			id: attributeId,
+			kind: "shopify.dom-attribute",
+			identity: {
+				scheme: "shopify.dom-attribute",
+				components: { name },
+			},
+			name,
+			attributes: {},
+			assertion: assertion([evidence], [fileId], "proven", "syntax", "static"),
+		};
+		entities.set(attributeId, attribute);
+		return attribute;
 	}
 
 	function ensureSnippet(
@@ -932,6 +1034,17 @@ function snippetHandle(path: string): string | undefined {
 
 function normalizeSnippetHandle(handle: string): string {
 	return handle.replace(/^snippets\//u, "").replace(/\.liquid$/u, "");
+}
+
+function unquoteMarkupValue(value: string): string {
+	if (
+		value.length >= 2 &&
+		((value.startsWith('"') && value.endsWith('"')) ||
+			(value.startsWith("'") && value.endsWith("'")))
+	) {
+		return value.slice(1, -1);
+	}
+	return value;
 }
 
 function liquidLiteral(

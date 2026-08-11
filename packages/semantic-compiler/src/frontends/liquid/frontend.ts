@@ -87,8 +87,23 @@ export const liquidFrontend = defineFrontend<LiquidDocument, LiquidFact>({
 				allCoverageFamilies,
 			);
 		}
+		for (const diagnostic of document.markupDiagnostics) {
+			diagnostics.push({
+				severity: "error",
+				code: diagnostic.code,
+				message: diagnostic.message,
+				range: diagnostic.range,
+			});
+			addBoundary(
+				"unsupported-syntax",
+				`Liquid markup parser could not fully interpret this source: ${diagnostic.message}`,
+				diagnostic.range,
+				["liquid.markup-attributes"],
+			);
+		}
 
 		walk(document.syntax.rootNode);
+		if (!budgetExhausted) walkMarkup(document.markupSyntax.rootNode);
 
 		const coverage: FrontendCoverage[] = allCoverageFamilies.map((family) => {
 			const boundaryIds = [...(coverageBoundaries.get(family) ?? [])];
@@ -121,6 +136,23 @@ export const liquidFrontend = defineFrontend<LiquidDocument, LiquidFact>({
 			if (budgetExhausted) return;
 			for (const child of node.namedChildren) {
 				walk(child);
+				if (budgetExhausted) return;
+			}
+		}
+
+		function walkMarkup(node: Node): void {
+			if (budgetExhausted) return;
+			if (visited >= Math.max(0, limits.maxWork)) {
+				exhaustBudget(rawRange(node), "Liquid frontend work budget exhausted");
+				return;
+			}
+			visited += 1;
+			if (node.type === "attribute") emitMarkupAttribute(node);
+			if (node.type === "start_tag" || node.type === "self_closing_tag") {
+				reportDynamicAttributeNames(node);
+			}
+			for (const child of node.namedChildren) {
+				walkMarkup(child);
 				if (budgetExhausted) return;
 			}
 		}
@@ -188,6 +220,111 @@ export const liquidFrontend = defineFrontend<LiquidDocument, LiquidFact>({
 					if (isReadIdentifier(node)) emitIdentifierRead(node);
 					break;
 			}
+		}
+
+		function emitMarkupAttribute(node: Node): void {
+			const nameNode = node.namedChildren.find(
+				(child) => child.type === "attribute_name",
+			);
+			const tagNode = node.parent?.namedChildren.find(
+				(child) => child.type === "tag_name",
+			);
+			if (
+				nameNode &&
+				document.markupDynamicRanges.some((range) =>
+					overlaps(range, rawRange(nameNode)),
+				)
+			) {
+				return;
+			}
+			if (!nameNode || !tagNode) {
+				unsupported(node, "Liquid markup attribute shape is unsupported", [
+					"liquid.markup-attributes",
+				]);
+				return;
+			}
+			const valueNode = node.namedChildren.find(
+				(child) =>
+					child.type === "quoted_attribute_value" ||
+					child.type === "attribute_value",
+			);
+			const valueRange = valueNode ? rawRange(valueNode) : undefined;
+			const dynamicRanges = valueRange
+				? document.markupDynamicRanges.filter((range) =>
+						overlaps(range, valueRange),
+					)
+				: [];
+			let valueKind: "boolean" | "literal" | "dynamic" | "mixed" = valueNode
+				? "literal"
+				: "boolean";
+			if (valueRange && dynamicRanges.length > 0) {
+				const staticText = staticMarkupText(valueRange, dynamicRanges).replace(
+					/[\s"']/g,
+					"",
+				);
+				valueKind = staticText.length > 0 ? "mixed" : "dynamic";
+			}
+			emit({
+				kind: "liquid.markup-attribute",
+				evidence: nodeAnchor(node),
+				name: text(nameNode),
+				nameEvidence: nodeAnchor(nameNode),
+				element: text(tagNode),
+				elementEvidence: nodeAnchor(tagNode),
+				valueKind,
+				...(valueNode ? { valueEvidence: nodeAnchor(valueNode, false) } : {}),
+			});
+		}
+
+		function reportDynamicAttributeNames(node: Node): void {
+			const attributes = node.namedChildren.filter(
+				(child) => child.type === "attribute",
+			);
+			const tagName = node.namedChildren.find(
+				(child) => child.type === "tag_name",
+			);
+			for (const range of document.markupDynamicRanges) {
+				if (!overlaps(range, rawRange(node))) continue;
+				if (tagName && overlaps(range, rawRange(tagName))) continue;
+				const insideKnownValue = attributes.some((attribute) => {
+					const value = attribute.namedChildren.find(
+						(child) =>
+							child.type === "quoted_attribute_value" ||
+							child.type === "attribute_value",
+					);
+					return value ? containsRange(rawRange(value), range) : false;
+				});
+				if (insideKnownValue) continue;
+				addBoundary(
+					"unsupported-syntax",
+					"Dynamic Liquid markup may emit attribute names",
+					range,
+					["liquid.markup-attributes"],
+				);
+			}
+		}
+
+		function overlaps(left: SourceRange, right: SourceRange): boolean {
+			return left.start < right.end && right.start < left.end;
+		}
+
+		function containsRange(outer: SourceRange, inner: SourceRange): boolean {
+			return outer.start <= inner.start && outer.end >= inner.end;
+		}
+
+		function staticMarkupText(
+			range: SourceRange,
+			dynamicRanges: readonly SourceRange[],
+		): string {
+			const characters = document.source
+				.slice(range.start, range.end)
+				.split("");
+			for (const dynamic of dynamicRanges) {
+				const start = Math.max(range.start, dynamic.start) - range.start;
+				const end = Math.min(range.end, dynamic.end) - range.start;
+				characters.fill(" ", start, end);
+			}
+			return characters.join("");
 		}
 
 		function emitAssignment(node: Node): void {

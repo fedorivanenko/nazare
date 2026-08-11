@@ -34,7 +34,7 @@ function snapshot(contribution) {
 			repositoryFingerprint: "repository:test",
 			externalInputs: {},
 		},
-		ontologies: [{ namespace: "shopify", version: 2 }],
+		ontologies: [{ namespace: "shopify", version: 3 }],
 		entities: contribution.entities,
 		occurrences: contribution.occurrences,
 		relations: contribution.relations,
@@ -110,6 +110,46 @@ test("Shopify Liquid projection validates the canonical product-card contributio
 		contribution.coverage.every(({ status }) => status === "complete"),
 		true,
 	);
+});
+
+test("Shopify Liquid projection emits guarded DOM attribute symbols", () => {
+	const source = [
+		"{% if product.available %}",
+		'<article data-product-id="{{ product.id }}">x</article>',
+		"{% endif %}",
+	].join("\n");
+	const contribution = project(source, "sections/product.liquid");
+	const contract = new SemanticGraphContract([shopifyOntology]);
+	assert.equal(contract.validate(snapshot(contribution)).valid, true);
+	const attribute = recordsOf(
+		contribution.entities,
+		"shopify.dom-attribute",
+	)[0];
+	assert.equal(attribute.identity.components.name, "data-product-id");
+	const occurrence = recordsOf(
+		contribution.occurrences,
+		"shopify.markup-attribute-site",
+	)[0];
+	assert.deepEqual(occurrence.attributes, {
+		name: "data-product-id",
+		element: "article",
+		valueKind: "dynamic",
+	});
+	const value = contribution.values.find(
+		({ slot }) => slot === "shopify.markup-attribute-value",
+	);
+	assert.equal(value.ownerId, occurrence.id);
+	assert.equal(value.expression, '"{{ product.id }}"');
+	assert.equal(value.assertion.availability, "runtime-dependent");
+	const emission = recordsOf(
+		contribution.relations,
+		"shopify.emits-attribute",
+	)[0];
+	assert.equal(emission.from, occurrence.id);
+	assert.equal(emission.to, attribute.id);
+	assert.equal(emission.guards.length, 1);
+	assert.equal(emission.assertion.epistemic.status, "proven");
+	assert.equal(emission.assertion.availability, "runtime-dependent");
 });
 
 test("Shopify Liquid projection attaches exact runtime guards to invokes", () => {

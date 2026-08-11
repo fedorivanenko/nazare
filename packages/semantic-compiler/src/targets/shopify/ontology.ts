@@ -12,7 +12,7 @@ const expressionOwners = [
 
 export const shopifyOntology = {
 	namespace: "shopify",
-	version: 2,
+	version: 3,
 	entityKinds: [
 		{
 			kind: "shopify.source-file",
@@ -28,6 +28,18 @@ export const shopifyOntology = {
 				{ name: "language", type: "string", required: true },
 				{ name: "role", type: "string", required: true },
 			],
+		},
+		{
+			kind: "shopify.dom-attribute",
+			identity: [
+				{
+					name: "name",
+					type: "string",
+					required: true,
+					normalization: "none",
+				},
+			],
+			attributes: [],
 		},
 		{
 			kind: "shopify.snippet",
@@ -131,6 +143,15 @@ export const shopifyOntology = {
 				{ name: "key", type: "string", required: true },
 			],
 		},
+		{
+			kind: "shopify.markup-attribute-site",
+			ownerKinds: sourceFileOwners,
+			attributes: [
+				{ name: "name", type: "string", required: true },
+				{ name: "element", type: "string", required: true },
+				{ name: "valueKind", type: "string", required: true },
+			],
+		},
 	],
 	relationKinds: [
 		{
@@ -145,6 +166,16 @@ export const shopifyOntology = {
 			from: { categories: ["occurrence"], kinds: ["shopify.render-site"] },
 			to: { categories: ["entity"], kinds: ["shopify.snippet"] },
 			attributes: [{ name: "resolution", type: "string", required: true }],
+			allowsGuards: true,
+		},
+		{
+			kind: "shopify.emits-attribute",
+			from: {
+				categories: ["occurrence"],
+				kinds: ["shopify.markup-attribute-site"],
+			},
+			to: { categories: ["entity"], kinds: ["shopify.dom-attribute"] },
+			attributes: [],
 			allowsGuards: true,
 		},
 		{
@@ -183,6 +214,11 @@ export const shopifyOntology = {
 			kind: "shopify.filter-result",
 			ownerKinds: ["shopify.filter-site"],
 			attributes: [{ name: "filter", type: "string", required: true }],
+		},
+		{
+			kind: "shopify.markup-attribute-value",
+			ownerKinds: ["shopify.markup-attribute-site"],
+			attributes: [{ name: "valueKind", type: "string", required: true }],
 		},
 		{
 			kind: "shopify.render-target",
@@ -253,6 +289,10 @@ export const shopifyOntology = {
 		},
 		{ kind: "shopify.conditions", description: "Projected Liquid conditions" },
 		{ kind: "shopify.renders", description: "Projected Liquid renders" },
+		{
+			kind: "shopify.markup-attributes",
+			description: "Projected markup attribute emissions",
+		},
 		{ kind: "shopify.schema-regions", description: "Projected schema regions" },
 		{
 			kind: "shopify.asset-references",

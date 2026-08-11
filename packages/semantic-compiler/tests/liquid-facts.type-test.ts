@@ -55,6 +55,7 @@ function assertExhaustive(fact: LiquidFact): void {
 		case "liquid.schema-region":
 		case "liquid.asset-reference":
 		case "liquid.locale-reference":
+		case "liquid.markup-attribute":
 			return;
 		default:
 			assertNever(fact);

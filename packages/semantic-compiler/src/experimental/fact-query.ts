@@ -11,6 +11,16 @@ import type {
 	FactOntologyValue,
 } from "./fact-ontology.js";
 
+export type CompactFacetCoverage<Family extends string> = {
+	family: Family;
+	status: CoverageStatus;
+	coveredArtifacts: number;
+	completeArtifacts: number;
+	uncertainArtifacts: number;
+	totalArtifacts: number;
+	reasons?: readonly { code: string; message: string }[];
+};
+
 export type CompactCallSummary = {
 	subject: {
 		ref: string;
@@ -36,15 +46,7 @@ export type CompactCallSummary = {
 		calls: number;
 		totalCalls: number;
 	}[];
-	coverage: {
-		family: "renders";
-		status: CoverageStatus;
-		coveredArtifacts: number;
-		completeArtifacts: number;
-		uncertainArtifacts: number;
-		totalArtifacts: number;
-		reasons?: readonly { code: string; message: string }[];
-	};
+	coverage: CompactFacetCoverage<"renders">;
 };
 
 export type CompactUseSummary = {
@@ -64,6 +66,7 @@ export type CompactUseSummary = {
 		role: string;
 		uses: number;
 	}[];
+	coverage: CompactFacetCoverage<"markup-attributes">;
 };
 
 export type ExpandedFact = {
@@ -156,6 +159,10 @@ export class FactOntologyQuery {
 				role,
 			};
 		});
+		const coverage = this.#facetCoverage(
+			"shopify.markup-attributes",
+			"markup-attributes",
+		);
 		return {
 			subject: { ref: symbol.ref, name: symbol.name, kind: symbol.kind },
 			uses: {
@@ -176,6 +183,7 @@ export class FactOntologyQuery {
 					(left, right) =>
 						right.uses - left.uses || left.role.localeCompare(right.role),
 				),
+			coverage,
 		};
 	}
 
@@ -282,6 +290,41 @@ export class FactOntologyQuery {
 		};
 	}
 
+	#facetCoverage<Family extends string>(
+		snapshotFamily: string,
+		family: Family,
+	): CompactFacetCoverage<Family> {
+		const records = this.snapshot.coverage.filter(
+			(coverage) => coverage.family === snapshotFamily,
+		);
+		const coveredArtifactRefs = new Set(
+			records.flatMap((coverage) => coverage.scope.artifacts ?? []),
+		);
+		const completeArtifactRefs = new Set(
+			records
+				.filter(({ status }) => status === "complete")
+				.flatMap((coverage) => coverage.scope.artifacts ?? []),
+		);
+		const totalArtifacts = this.snapshot.artifacts.filter(
+			(artifact) => artifact.language === "liquid",
+		).length;
+		const reasons = uniqueReasons(
+			records.flatMap((coverage) => coverage.reasons ?? []),
+		);
+		return {
+			family,
+			status: worstCoverage(records.map(({ status }) => status)),
+			coveredArtifacts: coveredArtifactRefs.size,
+			completeArtifacts: completeArtifactRefs.size,
+			uncertainArtifacts: Math.max(
+				0,
+				totalArtifacts - completeArtifactRefs.size,
+			),
+			totalArtifacts,
+			...(reasons.length > 0 ? { reasons } : {}),
+		};
+	}
+
 	#resolveSymbol(symbolName: string, kind: string): FactOntologySymbol {
 		const matches = this.snapshot.symbols.filter(
 			(symbol) => symbol.name === symbolName && symbol.kind === kind,
@@ -324,7 +367,13 @@ export class FactOntologyQuery {
 							candidate.claim.subject === fact.claim.subject &&
 							candidate.claim.predicate === "PASSES",
 					)
-				: [];
+				: fact.claim.predicate === "USES"
+					? this.snapshot.facts.filter(
+							(candidate) =>
+								candidate.claim.object === fact.claim.subject &&
+								candidate.claim.predicate === "DERIVES_FROM",
+						)
+					: [];
 		return {
 			fact,
 			subject,

@@ -301,8 +301,36 @@ function projectUsageFacts(state: ProjectionState): void {
 function projectRelationFacts(state: ProjectionState): void {
 	for (const relation of state.snapshot.relations) {
 		if (relation.kind === "shopify.invokes") projectCall(state, relation);
+		if (relation.kind === "shopify.emits-attribute")
+			projectUse(state, relation, "emits");
 		if (relation.kind === "shopify.passes-argument")
 			projectPass(state, relation);
+	}
+}
+
+function projectUse(
+	state: ProjectionState,
+	relation: SemanticRelation,
+	role: string,
+): void {
+	const operation = state.occurrenceRefs.get(relation.from);
+	const symbol = state.entityRefs.get(relation.to);
+	if (!operation || !symbol) return;
+	const guards = relation.guards.flatMap((id) => {
+		const ref = state.predicateRefs.get(id);
+		return ref ? [ref] : [];
+	});
+	const use = addFact(
+		state,
+		"USES",
+		operation,
+		symbol,
+		relation.assertion,
+		{ ...relation.attributes, role },
+		guards,
+	);
+	for (const guard of guards) {
+		addFact(state, "GUARDED_BY", use.ref, guard, relation.assertion);
 	}
 }
 
@@ -443,10 +471,15 @@ function entitySymbol(
 			.filter((value) => value !== null)
 			.map(String)
 			.join(":");
-	const namespace = entity.kind.includes(".")
-		? entity.kind.slice(0, entity.kind.lastIndexOf("."))
-		: "semantic";
-	const ref = `symbol:${escapeRef(entity.kind)}:${escapeRef(name)}`;
+	const kind =
+		entity.kind === "shopify.dom-attribute" ? "dom.attribute" : entity.kind;
+	const namespace =
+		entity.kind === "shopify.dom-attribute"
+			? "dom"
+			: entity.kind.includes(".")
+				? entity.kind.slice(0, entity.kind.lastIndexOf("."))
+				: "semantic";
+	const ref = `symbol:${escapeRef(kind)}:${escapeRef(name)}`;
 	const path =
 		entity.path ??
 		(typeof entity.attributes.path === "string"
@@ -455,7 +488,7 @@ function entitySymbol(
 	const artifact = path ? state.artifactByPath.get(path) : undefined;
 	return {
 		ref,
-		kind: entity.kind,
+		kind,
 		namespace,
 		name,
 		...(artifact ? { scope: { artifact: artifact.ref } } : {}),

@@ -15,7 +15,7 @@ import { projectSourceToShopify } from "./source-projection.js";
 
 const shopifyLiquidPipeline: SemanticSourcePipeline = {
 	id: "shopify-liquid",
-	version: 2,
+	version: 3,
 	accepts: (document) => document.language === "liquid",
 	project: (document, limits) => {
 		const liquidDocument = document as LiquidDocument;

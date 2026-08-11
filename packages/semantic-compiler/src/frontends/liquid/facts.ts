@@ -13,6 +13,7 @@ export const LIQUID_MECHANICAL_FACT_KINDS = [
 	"liquid.schema-region",
 	"liquid.asset-reference",
 	"liquid.locale-reference",
+	"liquid.markup-attribute",
 ] as const;
 
 export type LiquidMechanicalFactKind =
@@ -29,7 +30,8 @@ export type LiquidFact =
 	| LiquidRenderArgumentFact
 	| LiquidSchemaRegionFact
 	| LiquidAssetReferenceFact
-	| LiquidLocaleReferenceFact;
+	| LiquidLocaleReferenceFact
+	| LiquidMarkupAttributeFact;
 
 export type LiquidAccessPathFact = LiquidFactBase<"liquid.access-path"> & {
 	access: "read";
@@ -94,6 +96,16 @@ export type LiquidLocaleReferenceFact =
 	LiquidFactBase<"liquid.locale-reference"> & {
 		syntax: "translation-filter";
 		key: LiquidReference;
+	};
+
+export type LiquidMarkupAttributeFact =
+	LiquidFactBase<"liquid.markup-attribute"> & {
+		name: string;
+		nameEvidence: SourceAnchor;
+		element: string;
+		elementEvidence: SourceAnchor;
+		valueKind: "boolean" | "literal" | "dynamic" | "mixed";
+		valueEvidence?: SourceAnchor;
 	};
 
 type LiquidFactBase<Kind extends LiquidMechanicalFactKind> =

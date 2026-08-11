@@ -127,12 +127,55 @@ Comparison:
 
 Reduction: approximately 93.6%. Every call retains a revision-bound Fact ref and exact source offset. Every argument aggregate retains an expandable aggregate ref. Expanding one call restores its assertion, endpoints, evidence, guards, and passed-value Facts.
 
+## Actual Liquid DOM attribute experiment
+
+Second phase added an HTML CST projection inside the Liquid parser. Liquid syntax is replaced with position-preserving placeholders before HTML parsing, retaining exact original offsets. This supports static names with literal, dynamic, mixed, and boolean values. Dynamic attribute-name emission remains explicit partial coverage.
+
+Real-theme result:
+
+```text
+markup attribute operations   3,005
+markup attribute values       3,005
+unique normalized symbols       189
+```
+
+`data-variant-id` compact query:
+
+```text
+uses             10
+artifacts          3
+roles              emits: 10
+response bytes     1,690 (including coverage)
+```
+
+Semantic count matched textual corpus count. Each use retained exact source offset, expandable evidence, emitted value/resolvability, guards, certainty, authority, execution state, and facet coverage.
+
+Markup-attribute coverage:
+
+```text
+covered artifacts      131/131
+complete artifacts     100/131
+uncertain artifacts     31/131
+status                 partial
+reasons                dynamic attribute names; one unsupported Liquid file
+```
+
+Post-attribute snapshot measurements:
+
+| Snapshot | Bytes |
+| --- | ---: |
+| Existing semantic snapshot | 33,793,256 |
+| Experimental Fact snapshot | 33,118,463 |
+
+Observed non-outlier runs varied with host load: compile 6.7–13.1 seconds, Fact projection 2.4–5.7 seconds, and compact query median 10.0–11.7 ms across 20 in-process runs. Projection remains unsuitable for eager production use.
+
 ## Findings
 
 Validated:
 
 - Seven predicates represent current snippet calls and scoped binding lineage without losing tested semantic truth.
 - Synthetic Liquid/JavaScript/CSS operations share one DOM attribute Symbol through `USES` roles without requiring new core predicates.
+- Actual Liquid markup extraction projects attribute emission into the same `Symbol → USES(role=emits)` model.
 - Fact-level certainty, authority, evidence, and guards remain independent.
 - Symbol/predicate aggregation produces dramatically smaller agent-facing answers.
 - Public Fact refs support targeted expansion without exposing internal graph IDs.
@@ -146,7 +189,7 @@ Unresolved:
 - Projection adds multi-second eager work. Direct compiler emission or lazy/indexed projection would be preferable.
 - Fact query indexes are currently built in memory and are not incremental.
 - Artifact attachment and reachability topology are not implemented.
-- Actual CSS, JavaScript, DOM attribute, and event frontends remain untested; only synthetic cross-language Facts were validated.
+- Actual CSS, JavaScript, DOM-read, and event frontends remain untested. Liquid DOM-attribute emission is now validated.
 - Existing `SourceAuthority` vocabulary is narrower than the proposed conceptual authority vocabulary.
 
 ## Decision gate
@@ -154,7 +197,7 @@ Unresolved:
 Continue with the ontology if the next experiments preserve these properties:
 
 1. Liquid binding compact lineage remains lossless.
-2. Actual frontend-produced DOM attribute facts match the validated synthetic `USES` role model.
+2. **Passed:** frontend-produced Liquid DOM attribute facts match the validated synthetic `USES` role model.
 3. Actual frontend-produced CSS class lifecycle facts fit `USES` roles without false joins.
 4. Artifact topology can keep attachment/reachability separate from semantic Facts.
 5. Lazy or direct Fact production removes most projection overhead.

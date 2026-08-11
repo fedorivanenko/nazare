@@ -185,6 +185,57 @@ test("experimental fact ontology normalizes scoped binding lineage and guards", 
 	);
 });
 
+test("Liquid markup projects into expandable DOM attribute USES facts", () => {
+	const source = [
+		"{% if product.available %}",
+		'<article data-product-id="{{ product.id }}">x</article>',
+		"{% endif %}",
+	].join("\n");
+	const facts = factSet([{ path: "sections/product.liquid", source }]);
+	const attribute = facts.symbols.find(
+		(symbol) =>
+			symbol.kind === "dom.attribute" && symbol.name === "data-product-id",
+	);
+	assert.ok(attribute);
+	const use = facts.facts.find(
+		(fact) =>
+			fact.claim.predicate === "USES" && fact.claim.object === attribute.ref,
+	);
+	assert.equal(use.claim.attributes.role, "emits");
+	assert.equal(use.execution, "conditional");
+	assert.equal(use.guards.length, 1);
+	const query = new FactOntologyQuery(facts);
+	const compact = query.usesOf("data-product-id", "dom.attribute");
+	assert.deepEqual(
+		compact.roles.map(({ role, uses }) => [role, uses]),
+		[["emits", 1]],
+	);
+	assert.equal(compact.uses.items[0].path, "sections/product.liquid");
+	assert.deepEqual(compact.coverage, {
+		family: "markup-attributes",
+		status: "complete",
+		coveredArtifacts: 1,
+		completeArtifacts: 1,
+		uncertainArtifacts: 0,
+		totalArtifacts: 1,
+	});
+	const expanded = query.expand(compact.uses.items[0].ref);
+	assert.equal(expanded.guards.length, 1);
+	assert.equal(expanded.relatedFacts.length, 1);
+	const emittedValue = facts.values.find(
+		(value) => value.ref === expanded.relatedFacts[0].claim.subject,
+	);
+	assert.equal(emittedValue.expression, '"{{ product.id }}"');
+	assert.equal(emittedValue.resolvability, "runtime-dependent");
+	assert.equal(
+		source.slice(
+			expanded.evidence[0].range.start,
+			expanded.evidence[0].range.end,
+		),
+		"data-product-id",
+	);
+});
+
 test("generic USES roles compact DOM attribute behavior across languages", () => {
 	const artifacts = [
 		["artifact:section", "sections/product.liquid", "liquid"],
