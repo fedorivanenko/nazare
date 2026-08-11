@@ -307,6 +307,9 @@ function projectRelationFacts(state: ProjectionState): void {
 			projectUse(state, relation, "selects");
 		if (relation.kind === "shopify.emits-class")
 			projectUse(state, relation, "emits");
+		if (relation.kind === "shopify.uses-class") {
+			projectUse(state, relation, String(relation.attributes.role ?? "uses"));
+		}
 		if (relation.kind === "shopify.passes-argument")
 			projectPass(state, relation);
 	}
@@ -418,6 +421,7 @@ function addFact(
 			authority: assertion.provenance.authorities,
 			evidence,
 		},
+		evaluation: assertion.availability,
 		execution: guards.length > 0 ? "conditional" : "unconditional",
 		...(guards.length > 0 ? { guards } : {}),
 	};

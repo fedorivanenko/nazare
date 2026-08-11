@@ -12,7 +12,7 @@ const expressionOwners = [
 
 export const shopifyOntology = {
 	namespace: "shopify",
-	version: 5,
+	version: 6,
 	entityKinds: [
 		{
 			kind: "shopify.source-file",
@@ -162,6 +162,14 @@ export const shopifyOntology = {
 			],
 		},
 		{
+			kind: "shopify.class-list-operation-site",
+			ownerKinds: sourceFileOwners,
+			attributes: [
+				{ name: "name", type: "string", required: true },
+				{ name: "action", type: "string", required: true },
+			],
+		},
+		{
 			kind: "shopify.markup-class-site",
 			ownerKinds: sourceFileOwners,
 			attributes: [{ name: "name", type: "string", required: true }],
@@ -198,6 +206,16 @@ export const shopifyOntology = {
 			to: { categories: ["entity"], kinds: ["shopify.snippet"] },
 			attributes: [{ name: "resolution", type: "string", required: true }],
 			allowsGuards: true,
+		},
+		{
+			kind: "shopify.uses-class",
+			from: {
+				categories: ["occurrence"],
+				kinds: ["shopify.class-list-operation-site"],
+			},
+			to: { categories: ["entity"], kinds: ["shopify.css-class"] },
+			attributes: [{ name: "role", type: "string", required: true }],
+			allowsGuards: false,
 		},
 		{
 			kind: "shopify.emits-class",
@@ -340,6 +358,10 @@ export const shopifyOntology = {
 		},
 		{ kind: "shopify.conditions", description: "Projected Liquid conditions" },
 		{ kind: "shopify.renders", description: "Projected Liquid renders" },
+		{
+			kind: "shopify.class-list-operations",
+			description: "Projected direct JavaScript classList operations",
+		},
 		{
 			kind: "shopify.markup-classes",
 			description: "Projected static markup class emissions",

@@ -54,7 +54,7 @@ test("compiler orchestrates repository sources into queryable Inspect output", (
 	);
 	assert.deepEqual(
 		compilation.report.sources.map(({ semanticSupport }) => semanticSupport),
-		["source-only", "source-only", "projected", "projected"],
+		["projected", "source-only", "projected", "projected"],
 	);
 	assert.equal(
 		compilation.output.snapshot.entities.filter(
@@ -66,7 +66,7 @@ test("compiler orchestrates repository sources into queryable Inspect output", (
 		compilation.output.snapshot.diagnostics.filter(
 			({ code }) => code === "SEMANTIC_FRONTEND_UNAVAILABLE",
 		).length,
-		2,
+		1,
 	);
 	const dependencies = compilation.inspect.inspect({
 		subject: { type: "snippet", handle: "product-card" },
@@ -90,7 +90,7 @@ test("compiler orchestrates repository sources into queryable Inspect output", (
 	assert.equal(dependencies.completeness.status, "complete");
 
 	const sourceOnly = compilation.inspect.inspect({
-		subject: { type: "file", path: "assets/demo.js" },
+		subject: { type: "file", path: "notes/readme.txt" },
 		evidence: "none",
 	});
 	assert.equal(sourceOnly.status, "found");

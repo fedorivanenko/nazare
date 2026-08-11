@@ -42,7 +42,7 @@ test("experimental fact ontology preserves snippet call truth", () => {
 		fixtureSource("snippets/product-card.liquid"),
 		fixtureSource("snippets/price.liquid"),
 	]);
-	assert.equal(facts.contractVersion, 1);
+	assert.equal(facts.contractVersion, 2);
 	assert.doesNotThrow(() => validateFactOntologySnapshot(facts));
 
 	const price = facts.symbols.find(
@@ -287,10 +287,11 @@ test("generic USES roles compact DOM attribute behavior across languages", () =>
 			authority: ["authored-source"],
 			evidence: [sources[index].ref],
 		},
+		evaluation: "static",
 		execution: "unconditional",
 	}));
 	const snapshot = {
-		contractVersion: 1,
+		contractVersion: 2,
 		revision: { id: "revision:dom", repositoryFingerprint: "repository:dom" },
 		artifacts,
 		symbols: [symbol],
@@ -327,6 +328,12 @@ test("fact ontology validator enforces primary predicate endpoints", () => {
 	call.claim.subject = invalid.artifacts[0].ref;
 	assert.throws(
 		() => validateFactOntologySnapshot(invalid),
+		FactOntologyValidationError,
+	);
+	const invalidEvaluation = structuredClone(facts);
+	invalidEvaluation.facts[0].evaluation = "maybe-runtime";
+	assert.throws(
+		() => validateFactOntologySnapshot(invalidEvaluation),
 		FactOntologyValidationError,
 	);
 });

@@ -75,10 +75,11 @@ test("session recompiles changed sources and reuses unchanged contributions", ()
 		input([productCard, price, javascript]),
 	);
 	assert.deepEqual(Object.fromEntries(calls), {
+		"assets/theme.js": 1,
 		"snippets/price.liquid": 1,
 		"snippets/product-card.liquid": 1,
 	});
-	assert.equal(fallbackCalls(), 1);
+	assert.equal(fallbackCalls(), 0);
 	assert.deepEqual(session.snapshot().report.incremental, {
 		changedPaths: [
 			"assets/theme.js",
@@ -112,7 +113,7 @@ test("session recompiles changed sources and reuses unchanged contributions", ()
 	});
 	assert.equal(calls.get("snippets/product-card.liquid"), 2);
 	assert.equal(calls.get("snippets/price.liquid"), 1);
-	assert.equal(fallbackCalls(), 1);
+	assert.equal(fallbackCalls(), 0);
 	assert.throws(
 		() =>
 			updated.inspect.inspect({

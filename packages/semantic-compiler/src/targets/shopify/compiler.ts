@@ -5,11 +5,14 @@ import {
 import { SemanticGraphAssembler } from "../../compiler/semantic-graph-assembler.js";
 import { SemanticGraphContract } from "../../compiler/semantic-graph-contract.js";
 import { cssFrontend } from "../../frontends/css/frontend.js";
+import { javaScriptFrontend } from "../../frontends/javascript/frontend.js";
 import { liquidFrontend } from "../../frontends/liquid/frontend.js";
 import type { CssDocument } from "../../parsers/css/parser.js";
+import type { JavaScriptDocument } from "../../parsers/javascript/parser.js";
 import type { LiquidDocument } from "../../parsers/liquid/parser.js";
 import { createDefaultParserProviders } from "../../parsers/providers.js";
 import { projectCssToShopify } from "./css-projection.js";
+import { projectJavaScriptToShopify } from "./javascript-projection.js";
 import { projectLiquidToShopify } from "./liquid-projection.js";
 import { shopifyLiquidValueFlowPass } from "./liquid-value-flow.js";
 import { shopifyOntology } from "./ontology.js";
@@ -26,6 +29,22 @@ const shopifyCssPipeline: SemanticSourcePipeline = {
 		return projectCssToShopify({
 			document: cssDocument,
 			frontend: cssFrontend.extract({ document: cssDocument, limits }),
+		});
+	},
+};
+
+const shopifyJavaScriptPipeline: SemanticSourcePipeline = {
+	id: "shopify-javascript",
+	version: 1,
+	accepts: (document) => document.language === "javascript",
+	project: (document, limits) => {
+		const javaScriptDocument = document as JavaScriptDocument;
+		return projectJavaScriptToShopify({
+			document: javaScriptDocument,
+			frontend: javaScriptFrontend.extract({
+				document: javaScriptDocument,
+				limits,
+			}),
 		});
 	},
 };
@@ -54,7 +73,11 @@ export function createShopifySemanticCompiler(): SemanticCompiler {
 			[shopifyLiquidValueFlowPass, shopifyRepositoryResolutionPass],
 		),
 		parserProviders: createDefaultParserProviders(),
-		pipelines: [shopifyLiquidPipeline, shopifyCssPipeline],
+		pipelines: [
+			shopifyLiquidPipeline,
+			shopifyCssPipeline,
+			shopifyJavaScriptPipeline,
+		],
 		fallbackProjector: {
 			id: "shopify-source",
 			version: 1,

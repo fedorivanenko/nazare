@@ -26,6 +26,8 @@ GUARDED_BY
 
 The current snapshot remains authoritative. This pilot tests representational fit and compact query projection; it is not yet a compiler replacement.
 
+Fact ontology contract v2 adds explicit claim evaluation (`static`, `runtime-dependent`, `external-data-required`, or `unsupported`) independently from lexical execution conditionality. Earlier byte measurements were recorded before this small v2 field addition.
+
 ## Implementation
 
 - `packages/semantic-compiler/src/experimental/fact-ontology.ts`
@@ -207,6 +209,55 @@ Semantic extraction excluded both comment-only matches. Coverage was complete fo
 
 Validated syntax includes plain selectors, selector lists, `:is()`, `:not()`, SCSS nesting, `&`, escaped identifiers, attribute-value false-positive exclusion, comments, interpolation boundaries, exact offsets, and work/fact budgets.
 
+## Actual JavaScript class lifecycle experiment
+
+Fourth phase added bounded Acorn extraction and browser-runtime projection:
+
+```text
+classList.add      → USES(role=adds)
+classList.remove   → USES(role=removes)
+classList.toggle   → USES(role=toggles)
+classList.contains → USES(role=reads)
+classList.replace  → removes + adds
+```
+
+Literal class names produce exact artifact-scoped `css.class` Symbols. Runtime arguments produce no guessed symbol and explicit browser-runtime partial coverage. JavaScript, Liquid, and CSS symbols with equal text remain three distinct scoped identities before topology joins.
+
+Real authored JavaScript corpus, excluding minified duplicates:
+
+```text
+files                         10
+source bytes             307,417
+textual classList calls       200
+static class Facts            195
+scoped class symbols           60
+dynamic argument boundaries     9
+compile                     339 ms
+Fact projection              10 ms
+```
+
+Role totals:
+
+```text
+adds       77
+removes    69
+reads      28
+toggles    21
+```
+
+`is-active` result:
+
+```text
+uses             62
+adds             22
+removes          22
+toggles          11
+reads             7
+compact bytes 3,922
+```
+
+Coverage was complete for 8/10 files. Remaining files contained runtime class-name arguments; unknown names remained unavailable rather than becoming missing or guessed data.
+
 ## Findings
 
 Validated:
@@ -216,7 +267,9 @@ Validated:
 - Actual Liquid markup extraction projects attribute emission into the same `Symbol → USES(role=emits)` model.
 - Actual CSS/SCSS extraction projects selectors through `USES(role=selects)` without adding core predicates.
 - Equal Liquid/CSS class text remains separate artifact-scoped Symbols before topology joins.
-- Fact-level certainty, authority, evidence, and guards remain independent.
+- Direct JavaScript class lifecycle operations fit the same `USES` predicate through `adds`, `removes`, `toggles`, and `reads` roles.
+- Equal Liquid/CSS/JavaScript text remains three separate scoped Symbols before topology joins.
+- Fact-level certainty, authority, evaluation (`static` versus runtime/external), lexical execution conditionality, evidence, and guards remain independent.
 - Symbol/predicate aggregation produces dramatically smaller agent-facing answers.
 - Public Fact refs support targeted expansion without exposing internal graph IDs.
 - Coverage can describe render enumeration independently from value-flow completeness.
@@ -229,7 +282,7 @@ Unresolved:
 - Projection adds multi-second eager work. Direct compiler emission or lazy/indexed projection would be preferable.
 - Fact query indexes are currently built in memory and are not incremental.
 - Artifact attachment and reachability topology are not implemented.
-- Actual JavaScript DOM reads/mutations and event frontends remain untested. Liquid emission and CSS/SCSS selection are now validated independently.
+- JavaScript direct `classList` reads/mutations are validated. DOM attributes, `className`, aliases, helper wrappers, and events remain untested.
 - Existing `SourceAuthority` vocabulary is narrower than the proposed conceptual authority vocabulary.
 
 ## Decision gate
@@ -239,7 +292,8 @@ Continue with the ontology if the next experiments preserve these properties:
 1. Liquid binding compact lineage remains lossless.
 2. **Passed:** frontend-produced Liquid DOM attribute facts match the validated synthetic `USES` role model.
 3. **Passed:** frontend-produced Liquid/CSS class lifecycle facts fit `USES` roles without false joins.
-4. Artifact topology can keep attachment/reachability separate from semantic Facts.
-5. Lazy or direct Fact production removes most projection overhead.
+4. **Passed:** direct JavaScript class operations fit role-qualified `USES` facts while dynamic names remain runtime-dependent.
+5. Artifact topology can keep attachment/reachability separate from semantic Facts.
+6. Lazy or direct Fact production removes most projection overhead.
 
 Do not replace the current snapshot yet.

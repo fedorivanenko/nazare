@@ -38,6 +38,7 @@ export type CompactCallSummary = {
 			path: string;
 			offset: number;
 			line?: number;
+			evaluation: FactOntologyFact["evaluation"];
 			execution: "unconditional" | "conditional";
 		}[];
 	};
@@ -60,6 +61,7 @@ export type CompactUseSummary = {
 			path: string;
 			offset: number;
 			role: string;
+			evaluation: FactOntologyFact["evaluation"];
 		}[];
 	};
 	roles: readonly {
@@ -68,7 +70,10 @@ export type CompactUseSummary = {
 		uses: number;
 	}[];
 	coverage: CompactFacetCoverage<
-		"markup-attributes" | "markup-classes" | "class-selectors"
+		| "markup-attributes"
+		| "markup-classes"
+		| "class-selectors"
+		| "class-list-operations"
 	>;
 };
 
@@ -164,6 +169,7 @@ export class FactOntologyQuery {
 				path: artifact.path,
 				offset: operation.scope.start ?? 0,
 				role,
+				evaluation: fact.evaluation,
 			};
 		});
 		const symbolLanguage = symbol.scope?.artifact
@@ -172,15 +178,22 @@ export class FactOntologyQuery {
 		const coverage =
 			kind === "css.class" && symbolLanguage === "liquid"
 				? this.#facetCoverage("shopify.markup-classes", "markup-classes")
-				: kind === "css.class"
-					? this.#facetCoverage("shopify.class-selectors", "class-selectors", [
-							"css",
-							"scss",
-						])
-					: this.#facetCoverage(
-							"shopify.markup-attributes",
-							"markup-attributes",
-						);
+				: kind === "css.class" && symbolLanguage === "javascript"
+					? this.#facetCoverage(
+							"shopify.class-list-operations",
+							"class-list-operations",
+							["javascript"],
+						)
+					: kind === "css.class"
+						? this.#facetCoverage(
+								"shopify.class-selectors",
+								"class-selectors",
+								["css", "scss"],
+							)
+						: this.#facetCoverage(
+								"shopify.markup-attributes",
+								"markup-attributes",
+							);
 		return {
 			subject: { ref: symbol.ref, name: symbol.name, kind: symbol.kind },
 			uses: {
@@ -228,6 +241,7 @@ export class FactOntologyQuery {
 				path: artifact.path,
 				offset: source?.range.start ?? operation.scope.start ?? 0,
 				...(source?.line ? { line: source.line } : {}),
+				evaluation: call.evaluation,
 				execution: call.execution,
 			};
 		});

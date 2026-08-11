@@ -31,7 +31,7 @@ function snapshot(contribution) {
 			repositoryFingerprint: "repository:css",
 			externalInputs: {},
 		},
-		ontologies: [{ namespace: "shopify", version: 5 }],
+		ontologies: [{ namespace: "shopify", version: 6 }],
 		entities: contribution.entities,
 		occurrences: contribution.occurrences,
 		relations: contribution.relations,
@@ -99,7 +99,7 @@ test("same class text remains artifact-scoped before topology joins", () => {
 		})),
 		[
 			{ path: "assets/base.css", semanticSupport: "projected" },
-			{ path: "assets/modal.js", semanticSupport: "source-only" },
+			{ path: "assets/modal.js", semanticSupport: "projected" },
 			{ path: "sections/modal.liquid", semanticSupport: "projected" },
 		],
 	);
@@ -107,8 +107,8 @@ test("same class text remains artifact-scoped before topology joins", () => {
 	const symbols = facts.symbols.filter(
 		({ kind, name }) => kind === "css.class" && name === "is-active",
 	);
-	assert.equal(symbols.length, 2);
-	assert.notEqual(symbols[0].ref, symbols[1].ref);
+	assert.equal(symbols.length, 3);
+	assert.equal(new Set(symbols.map(({ ref }) => ref)).size, 3);
 	const query = new FactOntologyQuery(facts);
 	assert.throws(
 		() => query.usesOf("is-active", "css.class"),
@@ -141,6 +141,16 @@ test("same class text remains artifact-scoped before topology joins", () => {
 	);
 	assert.equal(markup.coverage.family, "markup-classes");
 	assert.equal(markup.coverage.status, "complete");
+	const javaScript = query.usesOf("is-active", "css.class", "assets/modal.js");
+	assert.deepEqual(
+		javaScript.roles.map(({ role, uses }) => [role, uses]),
+		[["adds", 1]],
+	);
+	assert.equal(javaScript.coverage.family, "class-list-operations");
+	assert.equal(javaScript.coverage.status, "complete");
+	assert.equal(javaScript.uses.items[0].evaluation, "runtime-dependent");
+	const javaScriptExpanded = query.expand(javaScript.uses.items[0].ref);
+	assert.equal(javaScriptExpanded.fact.evaluation, "runtime-dependent");
 	const expanded = query.expand(base.uses.items[0].ref);
 	assert.equal(expanded.fact.claim.predicate, "USES");
 	assert.equal(expanded.fact.claim.attributes.role, "selects");

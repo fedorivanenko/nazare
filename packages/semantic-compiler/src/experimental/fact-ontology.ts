@@ -5,7 +5,7 @@ import type {
 } from "../ontology/core.js";
 import type { JsonValue } from "../semantic/record.js";
 
-export const FACT_ONTOLOGY_SNAPSHOT_VERSION = 1 as const;
+export const FACT_ONTOLOGY_SNAPSHOT_VERSION = 2 as const;
 
 export type FactOntologyRef = string;
 export type ArtifactRef = FactOntologyRef;
@@ -103,6 +103,11 @@ export type FactOntologyFact = {
 		authority: readonly SourceAuthority[];
 		evidence: readonly SourceRef[];
 	};
+	evaluation:
+		| "static"
+		| "runtime-dependent"
+		| "external-data-required"
+		| "unsupported";
 	execution: "unconditional" | "conditional";
 	guards?: readonly ConditionRef[];
 };
@@ -144,6 +149,11 @@ export class FactOntologyValidationError extends Error {
 export function validateFactOntologySnapshot(
 	snapshot: FactOntologySnapshot,
 ): void {
+	if (snapshot.contractVersion !== FACT_ONTOLOGY_SNAPSHOT_VERSION) {
+		throw new FactOntologyValidationError(
+			`Expected Fact ontology version ${FACT_ONTOLOGY_SNAPSHOT_VERSION}, got ${String(snapshot.contractVersion)}`,
+		);
+	}
 	const categories = new Map<FactOntologyRef, string>();
 	for (const [category, records] of [
 		["artifact", snapshot.artifacts],
@@ -189,6 +199,23 @@ export function validateFactOntologySnapshot(
 		}
 	}
 	for (const fact of snapshot.facts) {
+		if (
+			![
+				"static",
+				"runtime-dependent",
+				"external-data-required",
+				"unsupported",
+			].includes(fact.evaluation)
+		) {
+			throw new FactOntologyValidationError(
+				`${fact.ref} has invalid evaluation ${String(fact.evaluation)}`,
+			);
+		}
+		if (!["unconditional", "conditional"].includes(fact.execution)) {
+			throw new FactOntologyValidationError(
+				`${fact.ref} has invalid execution ${String(fact.execution)}`,
+			);
+		}
 		validateFactEndpoints(categories, fact);
 		for (const source of fact.assertion.evidence) {
 			requireCategory(categories, source, ["source"], fact.ref);

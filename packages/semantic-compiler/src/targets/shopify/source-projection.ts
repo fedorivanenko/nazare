@@ -22,6 +22,7 @@ const SOURCE_SEMANTIC_FAMILIES = [
 	"shopify.markup-attributes",
 	"shopify.markup-classes",
 	"shopify.class-selectors",
+	"shopify.class-list-operations",
 ] as const;
 
 export type ShopifySourceProjectionInput = {
