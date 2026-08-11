@@ -7,7 +7,6 @@ Manual answer-quality and token comparisons:
 
 - [general Inspect vs grep](./INSPECT_VS_GREP.md)
 - [Liquid Inspect vs grep](./LIQUID_INSPECT_VS_GREP.md)
-- [cross-language `css.class:is-active` Inspect vs grep](./CSS_CLASS_INSPECT_VS_GREP.md)
 
 ```bash
 pnpm benchmark:inspect                      # synthetic theme, scales 1/4/16
