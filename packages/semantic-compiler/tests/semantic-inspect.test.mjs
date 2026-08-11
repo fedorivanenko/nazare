@@ -130,6 +130,48 @@ test("Inspect resolves exact symbols with optional kind", () => {
 	assert.equal(missing.facet, "summary");
 });
 
+test("Inspect projects scoped binding symbols into bounded lineage", () => {
+	const binding = contribution(
+		"snippets/binding-inspect.liquid",
+		"{% assign source = section.title %}\n{% assign menu = '' %}\n{% assign menu = menu | append: source %}\n{% if section.enabled %}{% render 'price', product: menu %}{% endif %}",
+	);
+	const { inspect } = inspectFixture("complete", [binding]);
+	const lineage = inspect.inspect({
+		subject: {
+			symbol: "menu",
+			kind: "binding",
+			scope: { path: "snippets/binding-inspect.liquid" },
+		},
+		facet: "lineage",
+		evidence: "excerpt",
+	});
+	assert.equal(lineage.status, "found");
+	assert.equal(lineage.answer.summary.definitions, 2);
+	assert.equal(lineage.answer.summary.sourceBindings, 1);
+	assert.equal(lineage.answer.summary.renderArguments, 1);
+	const bindings = lineage.answer.groups.find(
+		({ kind }) => kind === "binding",
+	).items;
+	assert.equal(bindings.length, 3);
+	const definitions = bindings.filter(({ role }) => role === "definition");
+	assert.equal(definitions[0].value.resolved, "");
+	assert.equal(definitions[1].value.representation, "derived");
+	assert.equal(
+		definitions[1].value.derivedFrom.some(
+			({ expression }) => expression === "source",
+		),
+		true,
+	);
+	const source = bindings.find(({ role }) => role === "source");
+	assert.equal(source.symbol, "source");
+	assert.equal(source.value.expression, "section.title");
+	const render = lineage.answer.groups.find(({ kind }) => kind === "render")
+		.items[0];
+	assert.equal(render.arguments[0].expression, "menu");
+	assert.equal(render.guards[0].expression, "section.enabled");
+	assertNoInternalIds(lineage);
+});
+
 test("Inspect returns compact snippet architecture without graph IDs", () => {
 	const { inspect } = inspectFixture();
 	const summary = inspect.inspect({
@@ -367,6 +409,14 @@ test("Inspect rejects malformed or graph-oriented public inputs", () => {
 	);
 	assert.throws(
 		() => inspect.inspect({ query: "price", kinds: ["render"] }),
+		InvalidSemanticInspectRequestError,
+	);
+	assert.throws(
+		() =>
+			inspect.inspect({
+				subject: { symbol: "menu", kind: "binding" },
+				facet: "lineage",
+			}),
 		InvalidSemanticInspectRequestError,
 	);
 });

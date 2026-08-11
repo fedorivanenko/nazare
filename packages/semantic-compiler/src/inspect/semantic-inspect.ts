@@ -17,6 +17,7 @@ import type { SourceAnchor } from "../semantic/evidence.js";
 import type { JsonValue } from "../semantic/record.js";
 import type {
 	InspectCompleteness,
+	InspectDiscoveryKind,
 	InspectEvidenceMode,
 	InspectFacet,
 	InspectGroup,
@@ -224,7 +225,14 @@ export class SemanticInspect {
 		limit: number,
 		cursorShape: unknown,
 	): SemanticInspectResponse {
-		const kinds: readonly InspectSymbolKind[] = subject.kind
+		if (subject.kind === "binding" || (!subject.kind && subject.scope)) {
+			return this.#inspectBindingSymbol(
+				{ ...subject, kind: "binding" },
+				facet,
+				context,
+			);
+		}
+		const kinds: readonly InspectDiscoveryKind[] = subject.kind
 			? [subject.kind]
 			: ["snippet"];
 		const matches: Array<{
@@ -320,6 +328,157 @@ export class SemanticInspect {
 				kind: match.kind,
 			},
 		};
+	}
+
+	#inspectBindingSymbol(
+		subject: Extract<SemanticInspectSubject, { symbol: string }> & {
+			kind: "binding";
+		},
+		facet: InspectFacet,
+		context: ProjectionContext,
+	): SemanticInspectResponse {
+		const scope = subject.scope;
+		if (!scope) {
+			throw new SemanticInspectInputError(
+				"Binding symbol subject requires scope.path",
+			);
+		}
+		const file = this.query
+			.findByPath(scope.path)
+			.find((entity) => entity.kind === "shopify.source-file");
+		const requirements: CoverageRequirement[] = [
+			{ family: "shopify.bindings", path: scope.path },
+			{ family: "shopify.value-flow", path: scope.path },
+		];
+		if (!file) {
+			return this.#missing(subject, requirements, context);
+		}
+		const ownedOccurrences = this.query
+			.ownedBy(file.id)
+			.filter(
+				(record): record is SemanticOccurrence =>
+					this.query.category(record.id) === "occurrence",
+			);
+		const definitions = ownedOccurrences.filter(
+			(occurrence) =>
+				occurrence.kind === "shopify.binding-site" &&
+				occurrence.attributes.name === subject.symbol &&
+				(scope.offset === undefined ||
+					(Number(occurrence.attributes.scopeStart) <= scope.offset &&
+						Number(occurrence.attributes.scopeEnd) >= scope.offset)),
+		);
+		if (definitions.length === 0) {
+			return this.#missing(subject, requirements, context);
+		}
+		const argumentSites = ownedOccurrences.filter(
+			(occurrence) =>
+				occurrence.kind === "shopify.render-argument-site" &&
+				occurrence.attributes.expression === subject.symbol,
+		);
+		const renderById = new Map<string, SemanticOccurrence>();
+		for (const argument of argumentSites) {
+			for (const relation of this.query.incoming(
+				argument.id,
+				"shopify.passes-argument",
+			)) {
+				const render = this.query.record(relation.from);
+				if (
+					render &&
+					this.query.category(render.id) === "occurrence" &&
+					(render as SemanticOccurrence).kind === "shopify.render-site"
+				) {
+					renderById.set(render.id, render as SemanticOccurrence);
+				}
+			}
+		}
+		const renders = [...renderById.values()];
+		const sourceBindingResult = this.#sourceBindingOccurrences(
+			definitions,
+			subject.symbol,
+		);
+		const sourceBindings = sourceBindingResult.items;
+		const records: SemanticIndexedRecord[] = [
+			file,
+			...definitions,
+			...sourceBindings,
+			...argumentSites,
+			...renders,
+			...definitions.flatMap((definition) => this.#relatedRecords(definition)),
+			...sourceBindings.flatMap((binding) => this.#relatedRecords(binding)),
+			...renders.flatMap((render) => this.#relatedRecords(render)),
+		];
+		const canonicalSubject = {
+			symbol: subject.symbol,
+			kind: "binding",
+			scope,
+		} as const;
+		if (facet === "summary") {
+			return this.#response({
+				status: "found",
+				subject: canonicalSubject,
+				facet,
+				answer: {
+					summary: {
+						symbol: subject.symbol,
+						kind: "binding",
+						path: scope.path,
+						definitions: definitions.length,
+						sourceBindings: sourceBindings.length,
+						...(sourceBindingResult.truncated
+							? { sourceBindingsTruncated: true }
+							: {}),
+						renderArguments: renders.length,
+					},
+				},
+				completeness: this.#completeness(requirements, records, context),
+			});
+		}
+		if (facet === "lineage" || facet === "usages") {
+			const definitionItems = definitions.map((definition) => ({
+				...this.#projectOccurrence(definition, context),
+				role: "definition" as const,
+			}));
+			const sourceBindingItems = sourceBindings.map((binding) => ({
+				...this.#projectOccurrence(binding, context),
+				role: "source" as const,
+			}));
+			const renderItems = renders.map((render) =>
+				this.#projectRender(
+					render,
+					context,
+					this.query.outgoing(render.id, "shopify.invokes")[0],
+				),
+			);
+			const items =
+				facet === "lineage"
+					? sortItems([
+							...definitionItems,
+							...sourceBindingItems,
+							...renderItems,
+						])
+					: sortItems(renderItems);
+			return this.#response({
+				status: "found",
+				subject: canonicalSubject,
+				facet,
+				answer: {
+					summary: {
+						symbol: subject.symbol,
+						path: scope.path,
+						definitions: definitions.length,
+						sourceBindings: sourceBindings.length,
+						...(sourceBindingResult.truncated
+							? { sourceBindingsTruncated: true }
+							: {}),
+						renderArguments: renders.length,
+					},
+					groups: groupItems(items, items),
+				},
+				completeness: this.#completeness(requirements, records, context),
+				page: { total: items.length, returned: items.length },
+			});
+		}
+		return this.#unsupported(subject, facet);
 	}
 
 	#inspectFile(
@@ -707,6 +866,33 @@ export class SemanticInspect {
 			return this.#projectRender(occurrence, context, relation);
 		}
 		const location = occurrence.assertion.evidence[0];
+		if (occurrence.kind === "shopify.binding-site") {
+			const bindingValue = this.query
+				.ownedBy(occurrence.id)
+				.find(
+					(record) =>
+						this.query.category(record.id) === "value" &&
+						"slot" in record &&
+						record.slot === "shopify.binding-value",
+				);
+			return {
+				type: "binding",
+				symbol: String(occurrence.attributes.name),
+				path: location?.path ?? "",
+				offset: location?.range.start ?? 0,
+				binding: String(occurrence.attributes.binding),
+				scope: {
+					start: Number(occurrence.attributes.scopeStart),
+					end: Number(occurrence.attributes.scopeEnd),
+				},
+				...(bindingValue && "slot" in bindingValue
+					? {
+							value: this.#projectValue(bindingValue as SemanticValue, context),
+						}
+					: {}),
+				...this.#itemAssertion(occurrence.assertion, context),
+			};
+		}
 		if (occurrence.kind === "shopify.expression-site") {
 			const readValue = this.query
 				.ownedBy(occurrence.id)
@@ -964,6 +1150,59 @@ export class SemanticInspect {
 		});
 	}
 
+	#sourceBindingOccurrences(
+		definitions: readonly SemanticOccurrence[],
+		symbol: string,
+	): { items: SemanticOccurrence[]; truncated: boolean } {
+		const queue = definitions.flatMap((definition) =>
+			this.query
+				.ownedBy(definition.id)
+				.filter(
+					(record): record is SemanticValue =>
+						this.query.category(record.id) === "value" &&
+						"sourceValueIds" in record,
+				)
+				.flatMap((value) => value.sourceValueIds),
+		);
+		const seen = new Set<string>();
+		const bindings = new Map<string, SemanticOccurrence>();
+		const maxVisitedValues = MAX_VALUE_FLOW_SOURCES * 8;
+		while (queue.length > 0 && seen.size < maxVisitedValues) {
+			const id = queue.shift();
+			if (!id || seen.has(id)) continue;
+			seen.add(id);
+			const record = this.query.record(id);
+			if (
+				!record ||
+				this.query.category(record.id) !== "value" ||
+				!("sourceValueIds" in record)
+			)
+				continue;
+			const value = record as SemanticValue;
+			const owner = this.query.record(value.ownerId);
+			if (
+				owner &&
+				this.query.category(owner.id) === "occurrence" &&
+				(owner as SemanticOccurrence).kind === "shopify.binding-site" &&
+				(owner as SemanticOccurrence).attributes.name !== symbol
+			) {
+				bindings.set(owner.id, owner as SemanticOccurrence);
+			}
+			for (const sourceId of value.sourceValueIds) queue.push(sourceId);
+		}
+		return {
+			items: [...bindings.values()].sort((left, right) => {
+				const leftAnchor = left.assertion.evidence[0];
+				const rightAnchor = right.assertion.evidence[0];
+				return (
+					(leftAnchor?.path ?? "").localeCompare(rightAnchor?.path ?? "") ||
+					(leftAnchor?.range.start ?? 0) - (rightAnchor?.range.start ?? 0)
+				);
+			}),
+			truncated: queue.length > 0,
+		};
+	}
+
 	#relatedRecords(occurrence: SemanticOccurrence): SemanticIndexedRecord[] {
 		return [
 			...this.query.ownedBy(occurrence.id),
@@ -1013,7 +1252,7 @@ export class SemanticInspect {
 	}
 
 	#discoveryRequirements(
-		kinds: readonly InspectSymbolKind[],
+		kinds: readonly InspectDiscoveryKind[],
 	): CoverageRequirement[] {
 		const requirements: CoverageRequirement[] = [
 			{ family: "shopify.source-files", globalKind: "shopify.source-file" },
@@ -1236,7 +1475,7 @@ export class SemanticInspect {
 	}
 }
 
-function publicKindToSemanticKinds(kind: InspectSymbolKind): string[] {
+function publicKindToSemanticKinds(kind: InspectDiscoveryKind): string[] {
 	return kind === "file" ? ["shopify.source-file"] : ["shopify.snippet"];
 }
 

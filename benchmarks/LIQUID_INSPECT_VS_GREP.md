@@ -121,6 +121,34 @@ This isolates subject identity from relationship intent and removes discovery hy
 
 Symbol support is currently an Inspect/index projection over the existing graph. Snapshot records were not collapsed or renamed.
 
+### Scoped binding follow-up
+
+Scoped Liquid bindings can now act as symbols:
+
+```json
+{
+  "subject": {
+    "symbol": "megamenu_title_array",
+    "kind": "binding",
+    "scope": { "path": "sections/g-header.liquid" }
+  },
+  "facet": "lineage"
+}
+```
+
+One lineage projection returns all same-scope definitions, bounded upstream binding symbols, render-argument uses, guards, values, and evidence. `scope.offset` remains optional for shadowing disambiguation.
+
+Re-running the previously losing `megamenu_title_array` task:
+
+| Metric | Original Inspect | Scoped-symbol Inspect | grep |
+| --- | ---: | ---: | ---: |
+| Tool calls | 14 | 3 | 9 |
+| Raw tool bytes | 71,109 | 26,088 | 34,865 |
+| Total tokens | 128,826 | 14,161 | 31,160 |
+| Peak context | 20,565 | 7,506 | 11,171 |
+
+Answer retained both render guards, two local definitions, loop source binding `i`, runtime `section.blocks`/`i.type`/`i.settings.title` inputs, and exact evidence. One 483-byte failed discovery and one 12,649-byte file dependency call remained avoidable; the binding-lineage response itself was 12,956 bytes.
+
 ## Conclusion
 
 Current Liquid Inspect UX wins architecture-shaped questions and loses focused local value-flow tracing. Across this three-task pilot, total tokens were effectively equal, peak context was slightly worse for Inspect, and tool calls were halved. Next UX work should target binding/value-flow inspection and smaller dependent projections before claiming a general token-efficiency win for the standalone compiler.

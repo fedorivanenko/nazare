@@ -5,7 +5,7 @@ export const SEMANTIC_INSPECT_CONTRACT_VERSION = 2 as const;
 export type SemanticInspectRequest =
 	| {
 			query: string;
-			kinds?: readonly InspectSymbolKind[];
+			kinds?: readonly InspectDiscoveryKind[];
 			evidence?: InspectEvidenceMode;
 			limit?: number;
 			cursor?: string;
@@ -18,10 +18,15 @@ export type SemanticInspectRequest =
 			cursor?: string;
 	  };
 
-export type InspectSymbolKind = "file" | "snippet";
+export type InspectDiscoveryKind = "file" | "snippet";
+export type InspectSymbolKind = InspectDiscoveryKind | "binding";
 
 export type SemanticInspectSubject =
-	| { symbol: string; kind?: InspectSymbolKind }
+	| {
+			symbol: string;
+			kind?: InspectSymbolKind;
+			scope?: { path: string; offset?: number };
+	  }
 	| { type: "file"; path: string }
 	| { type: "snippet"; handle: string }
 	| { type: "render"; path: string; offset: number }
@@ -32,7 +37,8 @@ export type InspectFacet =
 	| "dependencies"
 	| "dependents"
 	| "usages"
-	| "occurrences";
+	| "occurrences"
+	| "lineage";
 
 export type InspectEvidenceMode = "none" | "location" | "excerpt";
 
@@ -68,6 +74,7 @@ export type InspectGroup = {
 export type InspectItem =
 	| InspectFileItem
 	| InspectSnippetItem
+	| InspectBindingItem
 	| InspectRenderItem
 	| InspectExpressionItem
 	| InspectOccurrenceItem;
@@ -99,6 +106,17 @@ export type InspectSnippetItem = InspectItemAssertion & {
 	path: string;
 	defined: boolean;
 	resolution?: "repository-exact" | "literal-convention" | "not-found";
+};
+
+export type InspectBindingItem = InspectItemAssertion & {
+	type: "binding";
+	symbol: string;
+	path: string;
+	offset: number;
+	binding: string;
+	role?: "definition" | "source";
+	scope: { start: number; end: number };
+	value?: InspectValue;
 };
 
 export type InspectRenderItem = InspectItemAssertion & {

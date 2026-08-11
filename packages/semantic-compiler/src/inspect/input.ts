@@ -12,9 +12,10 @@ const TOP_LEVEL_KEYS = new Set([
 	"limit",
 	"cursor",
 ]);
-const PUBLIC_SYMBOL_KINDS = ["file", "snippet"] as const;
+const PUBLIC_DISCOVERY_KINDS = ["file", "snippet"] as const;
+const PUBLIC_SYMBOL_KINDS = [...PUBLIC_DISCOVERY_KINDS, "binding"] as const;
 const PUBLIC_SUBJECT_TYPES = [
-	...PUBLIC_SYMBOL_KINDS,
+	...PUBLIC_DISCOVERY_KINDS,
 	"render",
 	"expression",
 ] as const;
@@ -24,6 +25,7 @@ const FACETS = [
 	"dependents",
 	"usages",
 	"occurrences",
+	"lineage",
 ] as const;
 const EVIDENCE_MODES = ["none", "location", "excerpt"] as const;
 
@@ -62,7 +64,7 @@ export function parseSemanticInspectRequest(
 			);
 		}
 		const query = nonEmptyString(value.query, "query");
-		let kinds: readonly (typeof PUBLIC_SYMBOL_KINDS)[number][] | undefined;
+		let kinds: readonly (typeof PUBLIC_DISCOVERY_KINDS)[number][] | undefined;
 		if (value.kinds !== undefined) {
 			if (!Array.isArray(value.kinds) || value.kinds.length === 0) {
 				throw new InvalidSemanticInspectRequestError(
@@ -72,7 +74,7 @@ export function parseSemanticInspectRequest(
 			kinds = [
 				...new Set(
 					value.kinds.map((kind) =>
-						requiredEnum(kind, PUBLIC_SYMBOL_KINDS, "kind"),
+						requiredEnum(kind, PUBLIC_DISCOVERY_KINDS, "kind"),
 					),
 				),
 			];
@@ -92,7 +94,7 @@ export function parseSemanticInspectRequest(
 function parseSubject(input: unknown): SemanticInspectSubject {
 	const value = object(input, "subject");
 	if ("symbol" in value) {
-		const allowed = new Set(["symbol", "kind"]);
+		const allowed = new Set(["symbol", "kind", "scope"]);
 		for (const key of Object.keys(value)) {
 			if (!allowed.has(key)) {
 				throw new InvalidSemanticInspectRequestError(
@@ -100,9 +102,39 @@ function parseSubject(input: unknown): SemanticInspectSubject {
 				);
 			}
 		}
+		const kind = optionalEnum(value.kind, PUBLIC_SYMBOL_KINDS, "subject.kind");
+		let scope: { path: string; offset?: number } | undefined;
+		if (value.scope !== undefined) {
+			const scopeValue = object(value.scope, "subject.scope");
+			for (const key of Object.keys(scopeValue)) {
+				if (key !== "path" && key !== "offset") {
+					throw new InvalidSemanticInspectRequestError(
+						`Unknown symbol scope field ${key}`,
+					);
+				}
+			}
+			scope = compact({
+				path: nonEmptyString(scopeValue.path, "subject.scope.path"),
+				offset:
+					scopeValue.offset === undefined
+						? undefined
+						: nonNegativeInteger(scopeValue.offset, "subject.scope.offset"),
+			});
+		}
+		if (kind === "binding" && !scope) {
+			throw new InvalidSemanticInspectRequestError(
+				"Binding symbol subject requires scope.path",
+			);
+		}
+		if (scope && kind && kind !== "binding") {
+			throw new InvalidSemanticInspectRequestError(
+				"Symbol scope is only supported for binding symbols",
+			);
+		}
 		return compact({
 			symbol: nonEmptyString(value.symbol, "subject.symbol"),
-			kind: optionalEnum(value.kind, PUBLIC_SYMBOL_KINDS, "subject.kind"),
+			kind,
+			scope,
 		});
 	}
 	const type = requiredEnum(value.type, PUBLIC_SUBJECT_TYPES, "subject.type");
