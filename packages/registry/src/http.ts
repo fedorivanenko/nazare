@@ -7,7 +7,7 @@ import type {
 	RegistryClient,
 	RegistryComponent,
 	RegistryErrorCode,
-} from "@nazare/core";
+} from "./contracts.js";
 import { parseComponentId } from "./id.js";
 
 type RegistryErrorBody = { error?: { code?: string; message?: string } };

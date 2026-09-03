@@ -1,15 +1,8 @@
 {
-  "files": [],
-  "references": [
-    { "path": "apps/registry-api" },
-    { "path": "packages/cli-client" },
-    { "path": "packages/compiler" },
-    { "path": "packages/core" },
-    { "path": "packages/registry" },
-    { "path": "packages/semantic-compiler" },
-		{ "path": "packages/source" },
-		{ "path": "packages/source-cli" },
-    { "path": "packages/preview" },
-    { "path": "packages/target-shopify" },
-  ]
+	"files": [],
+	"references": [
+		{ "path": "packages/registry" },
+		{ "path": "packages/theme-intelligence" },
+		{ "path": "apps/registry-api" }
+	]
 }

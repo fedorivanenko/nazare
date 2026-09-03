@@ -3,8 +3,11 @@
 // atomically at the database, never via a read-then-write race. Works with any
 // Postgres, including Neon's pooled endpoint on Vercel (DATABASE_URL). See
 // migrations/001_components.sql for the schema.
-import type { ComponentMetadata, RegistryComponent } from "@nazare/core";
-import { compareVersions } from "@nazare/registry";
+import {
+	type ComponentMetadata,
+	compareVersions,
+	type RegistryComponent,
+} from "@nazare/registry";
 import postgres from "postgres";
 import type { PutOutcome, RegistryStore } from "./store.js";
 

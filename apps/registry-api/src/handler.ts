@@ -11,7 +11,7 @@
 //   - the bearer token is compared in constant time (no timing oracle)
 //   - malformed JSON / shape -> 400, never a 500 that leaks a stack
 import { createHash, timingSafeEqual } from "node:crypto";
-import type { RegistryComponent, RegistryErrorCode } from "@nazare/core";
+import type { RegistryComponent, RegistryErrorCode } from "@nazare/registry";
 import {
 	isSafeRelativePath,
 	isValidVersion,

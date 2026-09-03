@@ -7,8 +7,11 @@
 //
 // InMemoryStore here is for tests only — it exercises the handler without a
 // database, and is never wired into the running server.
-import type { ComponentMetadata, RegistryComponent } from "@nazare/core";
-import { compareVersions } from "@nazare/registry";
+import {
+	type ComponentMetadata,
+	compareVersions,
+	type RegistryComponent,
+} from "@nazare/registry";
 
 export type PutOutcome = "created" | "exists";
 

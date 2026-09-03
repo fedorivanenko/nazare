@@ -1,8 +1,0 @@
-{% component snippet %}
-
-{% props {
-  label: string.required(),
-  tone: string.enum("info", "success", "warn").default("info"),
-} %}
-
-<span class="badge badge--{{ props.tone }}">{{ props.label }}</span>

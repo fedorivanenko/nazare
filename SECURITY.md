@@ -1,28 +1,21 @@
 # Security Policy
 
-Nazare compiles source into Shopify themes and includes a publish-capable registry server (`apps/registry-api`), so security reports are taken seriously.
+Nazare includes a publish-capable registry service and native parsing code, so security reports are taken seriously.
 
 ## Reporting a vulnerability
 
 **Do not open a public issue for security problems.**
 
-Please report privately via GitHub's **[Report a vulnerability](https://github.com/fedorivanenko/nazare/security/advisories/new)** (Security tab → Advisories → Report a vulnerability), or by email to **security@nazare.engineering**.
-
-We aim to acknowledge reports within a few business days and to coordinate a fix and disclosure timeline with you.
+Report privately through [GitHub Security Advisories](https://github.com/fedorivanenko/nazare/security/advisories/new) or email **security@nazare.engineering**.
 
 ## Scope
 
 Especially relevant areas:
 
-- **registry-api** — auth/token handling, request validation, publish path.
-- **CLI install** — writing registry files into a consumer's project (path-traversal guards).
-- **Build/emit** — output written into a user's theme directory.
+- `apps/registry-api`: authentication, request validation, and immutable publication
+- `packages/registry`: transport handling and consumer-side path safety
+- `packages/theme-intelligence`: parser safety, resource bounds, and malformed-input handling
 
 ## Supported versions
 
-Nazare is pre-1.0 and under active development. Only the latest released version receives security fixes.
-
-| Version | Supported |
-| ------- | --------- |
-| latest  | ✅        |
-| older   | ❌        |
+Only latest released version receives security fixes.

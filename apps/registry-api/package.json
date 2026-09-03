@@ -1,19 +1,20 @@
 {
-  "name": "@nazare/registry-api",
-  "private": true,
-  "license": "MIT",
-  "type": "module",
-  "main": "dist/index.js",
-  "bin": {
-    "nazare-registry": "dist/index.js"
-  },
-  "scripts": {
-    "typecheck": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
-  },
-  "dependencies": {
-    "@nazare/core": "workspace:*",
-    "@nazare/registry": "workspace:*",
-    "postgres": "^3.4.5"
-  }
+	"name": "@nazare/registry-api",
+	"private": true,
+	"license": "MIT",
+	"type": "module",
+	"main": "dist/index.js",
+	"bin": {
+		"nazare-registry": "dist/index.js"
+	},
+	"scripts": {
+		"build": "tsc -b --force tsconfig.json",
+		"start": "node dist/index.js",
+		"test": "pnpm run build && node --test tests/*.test.mjs",
+		"typecheck": "tsc -p tsconfig.json --noEmit"
+	},
+	"dependencies": {
+		"@nazare/registry": "workspace:*",
+		"postgres": "^3.4.5"
+	}
 }

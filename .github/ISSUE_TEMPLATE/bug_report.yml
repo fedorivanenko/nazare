@@ -20,9 +20,9 @@ body:
       label: Steps to reproduce
       description: Minimal steps, source, or a link to a repo that reproduces it.
       placeholder: |
-        1. Given this `.nz.liquid` …
-        2. Run `nazare build …`
-        3. …
+        1. Given this minimal input …
+        2. Call the affected package API …
+        3. Observe …
     validations:
       required: true
   - type: input
@@ -43,7 +43,7 @@ body:
     id: logs
     attributes:
       label: Diagnostics / output
-      description: Relevant compiler diagnostics, build output, or stack traces.
+      description: Relevant diagnostics, test output, or stack traces.
       render: shell
     validations:
       required: false
