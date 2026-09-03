@@ -2,7 +2,7 @@
 // The tooling bakes in no default: the variable must be set, so the choice of
 // registry is always explicit and never a silent fallback to a blessed host.
 // See packages/registry/README.md (decentralized-first).
-import type { RegistryClient } from "@nazare/core";
+import type { RegistryClient } from "./contracts.js";
 import { FileSystemRegistry } from "./fake.js";
 import { HttpRegistry } from "./http.js";
 

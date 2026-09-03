@@ -1,31 +1,10 @@
-# build artifacts
 node_modules/
 dist/
-.astro/
-.nazare-out/
-.release/
+build/
 .nazare-out/
 *.tsbuildinfo
 
-# env
 .env*
-
-# AI
 .claude/
 tmp/
-
-# personal
-notes/
-!notes/
-notes/*
-!notes/adr-tree-sitter-source-runtime.md
-!notes/tree-sitter-performance.md
-!notes/optimized-refactor.ts
-!notes/optimized-refactor-plan.md
-
-# The example theme's built theme/ output IS committed (part of the showcase;
-# it carries its own .nazare/build-manifest.json so an in-place rebuild
-# reconciles cleanly). Only the per-build reconciliation baselines are noise.
-examples/theme/nazare.schema-lock.json
-examples/theme/nazare.locales-base.json
-examples/theme/nazare.migrations-applied.json
+.DS_Store

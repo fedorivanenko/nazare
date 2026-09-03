@@ -10,12 +10,10 @@
 			"packages/**",
 			"apps/**",
 			"registry/**",
-			"benchmarks/**",
 			"!**/dist",
-			"!**/.nazare-out",
 			"!**/*.json",
-			"!packages/tree-sitter-*/bindings",
-			"!packages/tree-sitter-liquid/grammar.js"
+			"!packages/theme-intelligence/src/parsers/liquid/vendor",
+			"!packages/theme-intelligence/tests/fixtures"
 		]
 	},
 	"formatter": {

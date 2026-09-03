@@ -1,4 +1,4 @@
-import type { RegistryComponent } from "@nazare/core";
+import type { RegistryComponent } from "./contracts.js";
 import { parseComponentId } from "./id.js";
 
 export const VERSION_PATTERN = /^[0-9]+\.[0-9]+\.[0-9]+$/;

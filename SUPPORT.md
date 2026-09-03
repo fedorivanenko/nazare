@@ -8,4 +8,4 @@ Need help with Nazare?
 
 Before opening an issue, please check the [README](README.md).
 
-Nazare is in heavy active development; behavior may change between versions. When testing generated themes, keep Theme Check and the Shopify CLI in your workflow.
+Nazare is in active development; behavior may change between pre-1.0 versions.

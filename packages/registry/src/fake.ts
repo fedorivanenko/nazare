@@ -9,7 +9,7 @@ import type {
 	PublishResult,
 	RegistryClient,
 	RegistryComponent,
-} from "@nazare/core";
+} from "./contracts.js";
 import { compareVersions, parseComponentId } from "./id.js";
 import { validateBasicRegistryComponent } from "./validation.js";
 
